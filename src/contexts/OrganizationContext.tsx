@@ -80,13 +80,14 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     }
   }, [initialOrganizations, currentOrganization])
 
-  const getAuthHeaders = useCallback(() => {
+  const getAuthHeaders = useCallback((): Record<string, string> => {
     if (!accessToken) return {}
     return { Authorization: `Bearer ${accessToken}` }
   }, [accessToken])
 
   // Helper to make authenticated requests with automatic token refresh on 401
-  const fetchWithRefresh = useCallback(async (
+  // TODO: Integrate this into the fetch calls below for automatic token refresh
+  const _fetchWithRefresh = useCallback(async (
     url: string,
     options: RequestInit = {}
   ): Promise<Response> => {
@@ -112,6 +113,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
 
     return response
   }, [getAuthHeaders, onTokenExpired])
+  void _fetchWithRefresh; // Available for future integration
 
   const switchOrganization = useCallback((orgId: string) => {
     const org = organizations.find((o) => o.organizationId === orgId)

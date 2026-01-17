@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { TitleBar } from '../TitleBar'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
@@ -25,7 +25,6 @@ import {
   ChevronDown,
   X,
   Maximize2,
-  Minimize2,
   PanelLeft,
   PanelRight,
   PanelBottom,
@@ -177,7 +176,7 @@ export function ProjectShellLayout({
         </aside>
 
         {/* Resizable Panels */}
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanelGroup orientation="horizontal" className="flex-1">
           {/* Left Panel (File Tree) */}
           {showLeftPanel && (
             <>
@@ -206,7 +205,7 @@ export function ProjectShellLayout({
 
           {/* Center Panel (Editor + Bottom Panel) */}
           <ResizablePanel defaultSize={showRightPanel ? 55 : 80}>
-            <ResizablePanelGroup direction="vertical">
+            <ResizablePanelGroup orientation="vertical">
               {/* Editor Area */}
               <ResizablePanel defaultSize={showBottomPanel ? 70 : 100}>
                 <div className="h-full flex flex-col bg-background">

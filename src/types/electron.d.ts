@@ -15,6 +15,9 @@ export interface ElectronAPI {
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
   }
+  tools: {
+    run: (request: { name: string; input: Record<string, unknown> }) => Promise<{ success: boolean; output?: unknown; error?: string }>
+  }
 }
 
 declare global {

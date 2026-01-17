@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { TitleBar } from '../TitleBar'
 import { Button } from '../ui/button'
 import { Progress } from '../ui/progress'
@@ -47,7 +47,7 @@ interface BuilderLayoutProps {
 
 export function BuilderLayout({
   phases,
-  currentPhase,
+  currentPhase: _currentPhase,
   progress,
   statusMessage,
   isRunning,
@@ -60,6 +60,7 @@ export function BuilderLayout({
   onOpenProject,
   onViewChanges,
 }: BuilderLayoutProps) {
+  void _currentPhase; // Available for future use
   const isComplete = phases.every((p) => p.status === 'completed')
 
   return (

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://claude.ai/schema/claude.json",
+  "mcpServers": {
+    "ai-elements": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://registry.ai-sdk.dev/api/mcp"],
+      "description": "AI SDK Elements registry - provides access to component documentation and examples"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-filesystem"],
+      "description": "File system access for reading and writing files"
+    }
+  },
+  "settings": {
+    "model": "claude-sonnet-4-20250514",
+    "maxTokens": 8192,
+    "tools": {
+      "enabled": true,
+      "allowedTools": ["read", "write", "search", "web"]
+    }
+  }
+}

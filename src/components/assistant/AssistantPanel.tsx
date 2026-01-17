@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { AIConversation } from './AIConversation'
 import { cn } from '@/lib/utils'
+import { CreditDisplay } from './CreditDisplay'
 
 interface AssistantPanelProps {
   className?: string
@@ -107,6 +108,7 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
         <div className="flex items-center justify-between h-9 px-4 shrink-0">
           <div className="flex items-center gap-1">
             <span className="text-sm font-medium truncate max-w-[200px]">{chatTitle}</span>
+            <CreditDisplay className="ml-2" />
           </div>
           <div className="flex items-center gap-1">
             <Button

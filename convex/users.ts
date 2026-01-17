@@ -1,5 +1,17 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
+
+const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+
+function assertGatewaySecret(secret: string | undefined) {
+  if (!AI_GATEWAY_SECRET) {
+    throw new Error("AI_GATEWAY_SECRET is not configured")
+  }
+  if (secret !== AI_GATEWAY_SECRET) {
+    throw new Error("Unauthorized")
+  }
+}
 
 // Sync user from WorkOS - called after authentication
 export const syncFromWorkOS = mutation({
@@ -61,10 +73,47 @@ export const syncFromWorkOS = mutation({
 export const getByWorkosId = query({
   args: { workosId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
       .first()
+
+    if (!user) return null
+
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    return safeUser
+  },
+})
+
+// Server-only: return user with decrypted BYOK keys
+export const getByWorkosIdForServer = query({
+  args: {
+    workosId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
+      .first()
+
+    if (!user) return null
+
+    const decryptOrPass = async (value?: string) => {
+      if (!value) return undefined
+      const decrypted = await safeDecrypt(value)
+      if (decrypted !== null) return decrypted
+      return isEncrypted(value) ? undefined : value
+    }
+
+    return {
+      ...user,
+      byokAnthropicKey: await decryptOrPass(user.byokAnthropicKey),
+      byokOpenaiKey: await decryptOrPass(user.byokOpenaiKey),
+      byokGoogleKey: await decryptOrPass(user.byokGoogleKey),
+    }
   },
 })
 
@@ -72,10 +121,15 @@ export const getByWorkosId = query({
 export const getByEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first()
+
+    if (!user) return null
+
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    return safeUser
   },
 })
 
@@ -126,11 +180,33 @@ export const updateByokKeys = mutation({
     userId: v.id("users"),
     byokAnthropicKey: v.optional(v.string()),
     byokOpenaiKey: v.optional(v.string()),
+    byokGoogleKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId, ...keys } = args
+    const updates: Record<string, string | undefined> = {}
+
+    if (keys.byokAnthropicKey !== undefined) {
+      if (keys.byokAnthropicKey && !validateKeyFormat("anthropic", keys.byokAnthropicKey)) {
+        throw new Error("Invalid Anthropic API key format")
+      }
+      updates.byokAnthropicKey = keys.byokAnthropicKey ? await ensureEncrypted(keys.byokAnthropicKey) : undefined
+    }
+    if (keys.byokOpenaiKey !== undefined) {
+      if (keys.byokOpenaiKey && !validateKeyFormat("openai", keys.byokOpenaiKey)) {
+        throw new Error("Invalid OpenAI API key format")
+      }
+      updates.byokOpenaiKey = keys.byokOpenaiKey ? await ensureEncrypted(keys.byokOpenaiKey) : undefined
+    }
+    if (keys.byokGoogleKey !== undefined) {
+      if (keys.byokGoogleKey && !validateKeyFormat("google", keys.byokGoogleKey)) {
+        throw new Error("Invalid Google API key format")
+      }
+      updates.byokGoogleKey = keys.byokGoogleKey ? await ensureEncrypted(keys.byokGoogleKey) : undefined
+    }
+
     await ctx.db.patch(userId, {
-      ...keys,
+      ...updates,
       updatedAt: Date.now(),
     })
   },
@@ -155,9 +231,16 @@ export const getWithOrganizations = query({
       })
     )
 
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+
     return {
-      ...user,
-      organizations: organizations.filter(Boolean),
+      ...safeUser,
+      organizations: organizations
+        .filter(Boolean)
+        .map((org: any) => {
+          const { aiCredentials, ...safeOrg } = org || {}
+          return safeOrg
+        }),
     }
   },
 })

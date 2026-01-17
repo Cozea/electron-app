@@ -34,6 +34,9 @@ export interface ElectronAPI {
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
   }
+  tools: {
+    run: (request: { name: string; input: Record<string, unknown> }) => Promise<{ success: boolean; output?: unknown; error?: string }>
+  }
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -58,5 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       // Return cleanup function
       return () => ipcRenderer.removeListener('auth:error', handler)
     },
+  },
+  tools: {
+    run: (request: { name: string; input: Record<string, unknown> }) => ipcRenderer.invoke('tools:run', request),
   },
 } satisfies ElectronAPI)

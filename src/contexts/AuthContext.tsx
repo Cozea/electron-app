@@ -20,6 +20,13 @@ interface AuthContextType {
   setCurrentOrganization: (org: OrganizationMembership | null) => void
 }
 
+type ConvexOrganizationShape = {
+  _id: Id<"organizations">
+  workosId?: string
+  name: string
+  role?: string
+}
+
 const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -41,9 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (convexUserWithOrgs?.organizations && convexUserWithOrgs.organizations.length > 0) {
       // Convert Convex orgs to OrganizationMembership format (filter out nulls)
-      const convexOrgs: OrganizationMembership[] = convexUserWithOrgs.organizations
-        .filter((org): org is NonNullable<typeof org> => org !== null)
-        .map(org => ({
+      const orgs = convexUserWithOrgs.organizations as Array<ConvexOrganizationShape | null>
+      const convexOrgs: OrganizationMembership[] = orgs
+        .filter((org): org is ConvexOrganizationShape => org !== null)
+        .map((org) => ({
           id: org._id, // Use Convex ID as membership ID
           organizationId: org.workosId || org._id,
           organizationName: org.name,

@@ -1,26 +1,15 @@
-import { useMutation, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
-import { Id } from "../../convex/_generated/dataModel"
+import type { Id } from "../../convex/_generated/dataModel"
 
-interface LogUsageParams {
-  organizationId: Id<"organizations">
-  userId: Id<"users">
-  model: string
-  provider: "anthropic" | "openai"
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  keySource: "organization" | "byok"
-  feature?: string
-  projectId?: string
-}
-
+/**
+ * Hook to fetch AI usage data for an organization/user.
+ * Note: Usage logging is handled server-side via the AI gateway.
+ */
 export function useAiUsage(
   organizationId: Id<"organizations"> | null,
   userId: Id<"users"> | null
 ) {
-  const logUsage = useMutation(api.aiUsage.log)
-
   const recentOrgUsage = useQuery(
     api.aiUsage.getRecentForOrganization,
     organizationId ? { organizationId, limit: 50 } : "skip"
@@ -41,37 +30,7 @@ export function useAiUsage(
     organizationId ? { organizationId, period: "daily" } : "skip"
   )
 
-  // Helper to log usage from AI SDK response
-  const trackUsage = async (
-    params: Omit<LogUsageParams, "organizationId" | "userId"> & {
-      organizationId?: Id<"organizations">
-      userId?: Id<"users">
-    }
-  ) => {
-    const orgId = params.organizationId || organizationId
-    const uId = params.userId || userId
-
-    if (!orgId || !uId) {
-      console.warn("Cannot track usage: missing organizationId or userId")
-      return null
-    }
-
-    return logUsage({
-      organizationId: orgId,
-      userId: uId,
-      model: params.model,
-      provider: params.provider,
-      promptTokens: params.promptTokens,
-      completionTokens: params.completionTokens,
-      totalTokens: params.totalTokens,
-      keySource: params.keySource,
-      feature: params.feature,
-      projectId: params.projectId,
-    })
-  }
-
   return {
-    trackUsage,
     recentOrgUsage,
     recentUserUsage,
     monthlyAggregates,

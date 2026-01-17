@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog } from 'electro
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { runTool } from './tools'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -274,6 +275,11 @@ ipcMain.handle('auth:refresh', async () => {
     clearSession()
     return null
   }
+})
+
+// Local tool execution (agent runtime)
+ipcMain.handle('tools:run', async (_event, request: { name: string; input: Record<string, unknown> }) => {
+  return runTool(request)
 })
 
 app.on('window-all-closed', () => {

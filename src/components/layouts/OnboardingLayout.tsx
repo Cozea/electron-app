@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { TitleBar } from '../TitleBar'
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'

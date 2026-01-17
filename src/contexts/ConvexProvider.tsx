@@ -1,4 +1,4 @@
-import { ReactNode } from "react"
+import type { ReactNode } from "react"
 import { ConvexProvider as ConvexReactProvider } from "convex/react"
 import { convex } from "@/lib/convex"
 

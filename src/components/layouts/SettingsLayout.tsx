@@ -1,9 +1,8 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { TitleBar } from '../TitleBar'
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
-import { Separator } from '../ui/separator'
 import { cn } from '@/lib/utils'
 import {
   X,

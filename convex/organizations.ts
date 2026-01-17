@@ -1,6 +1,18 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
+import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
+
+const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+
+function assertGatewaySecret(secret: string | undefined) {
+  if (!AI_GATEWAY_SECRET) {
+    throw new Error("AI_GATEWAY_SECRET is not configured")
+  }
+  if (secret !== AI_GATEWAY_SECRET) {
+    throw new Error("Unauthorized")
+  }
+}
 
 // Sync organization from WorkOS
 export const syncFromWorkOS = mutation({
@@ -18,16 +30,61 @@ export const syncFromWorkOS = mutation({
       .first()
 
     if (existingOrg) {
-      // Update existing org
-      await ctx.db.patch(existingOrg._id, {
+      // Ensure new schema fields exist while preserving existing data
+      const updates: Record<string, unknown> = {
         name: args.name,
         updatedAt: now,
-      })
+      }
+
+      if (!existingOrg.aiSettings) {
+        updates.aiSettings = {
+          allowedProviders: ["anthropic", "openai", "google"],
+          byokPolicy: "required",
+          allowProviderTools: false,
+          allowWebSearch: false,
+          maxReasoningDepth: "high",
+          defaultModelTier: "standard",
+          overageEnabled: false,
+        }
+      }
+
+      if (!existingOrg.subscription || !existingOrg.subscription.plan) {
+        updates.subscription = {
+          plan: "free",
+          status: "active",
+          currentPeriodStart: now,
+          currentPeriodEnd: new Date(now + 30 * 24 * 60 * 60 * 1000).getTime(),
+        }
+      }
+
+      const existingCredits: any = existingOrg.credits || {}
+      if (
+        existingCredits.subscriptionCreditsRemaining === undefined ||
+        existingCredits.subscriptionCreditsTotal === undefined
+      ) {
+        const fallbackBalance = existingCredits.balance ?? 0
+        updates.credits = {
+          subscriptionCreditsRemaining: fallbackBalance,
+          subscriptionCreditsTotal: fallbackBalance,
+          overageCreditsUsed: existingCredits.overageCreditsUsed ?? 0,
+          overageAmountCents: existingCredits.overageAmountCents ?? 0,
+          currentPeriodStart: existingCredits.currentPeriodStart ?? now,
+          currentPeriodEnd: existingCredits.currentPeriodEnd ?? new Date(now + 30 * 24 * 60 * 60 * 1000).getTime(),
+          balance: existingCredits.balance,
+          monthlyAllocation: existingCredits.monthlyAllocation,
+          lastResetAt: existingCredits.lastResetAt,
+        }
+      }
+
+      await ctx.db.patch(existingOrg._id, updates)
       return existingOrg._id
     }
 
     // Create new org with slug derived from name
     const slug = args.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+
+    const periodStart = now
+    const periodEnd = new Date(now + 30 * 24 * 60 * 60 * 1000).getTime()
 
     const orgId = await ctx.db.insert("organizations", {
       workosId: args.workosId,
@@ -37,13 +94,30 @@ export const syncFromWorkOS = mutation({
         allowByok: true,
         defaultModel: "claude-sonnet-4-20250514",
       },
+      aiSettings: {
+        allowedProviders: ["anthropic", "openai", "google"],
+        byokPolicy: "required",
+        allowProviderTools: false,
+        allowWebSearch: false,
+        maxReasoningDepth: "high",
+        defaultModelTier: "standard",
+        overageEnabled: false,
+      },
       subscription: {
         plan: "free",
         status: "active",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
       },
       credits: {
-        balance: 1000,
-        monthlyAllocation: 1000,
+        subscriptionCreditsRemaining: 0,
+        subscriptionCreditsTotal: 0,
+        overageCreditsUsed: 0,
+        overageAmountCents: 0,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        balance: 0,
+        monthlyAllocation: 0,
         lastResetAt: now,
       },
       createdAt: now,
@@ -137,10 +211,91 @@ export const syncMembershipFromWorkOS = mutation({
 export const getByWorkosId = query({
   args: { workosId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const org = await ctx.db
       .query("organizations")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
       .first()
+
+    if (!org) return null
+
+    const { aiCredentials, ...safeOrg } = org as any
+    return safeOrg
+  },
+})
+
+// Server-only: return org with decrypted keys
+export const getByWorkosIdForServer = query({
+  args: {
+    workosId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
+      .first()
+
+    if (!org) return null
+
+    const encrypted = org.aiCredentials || {}
+    const decryptOrPass = async (value?: string) => {
+      if (!value) return undefined
+      const decrypted = await safeDecrypt(value)
+      if (decrypted !== null) return decrypted
+      return isEncrypted(value) ? undefined : value
+    }
+
+    return {
+      ...org,
+      aiCredentials: {
+        anthropicKey: await decryptOrPass(encrypted.anthropicKey),
+        openaiKey: await decryptOrPass(encrypted.openaiKey),
+        googleKey: await decryptOrPass(encrypted.googleKey),
+      },
+    }
+  },
+})
+
+// Server-only: verify membership (used by AI Gateway)
+export const isUserMemberForServer = query({
+  args: {
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", args.organizationId).eq("userId", args.userId)
+      )
+      .first()
+
+    return !!membership
+  },
+})
+
+export const getMemberRoleForServer = query({
+  args: {
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", args.organizationId).eq("userId", args.userId)
+      )
+      .first()
+
+    return membership?.role || null
   },
 })
 
@@ -167,6 +322,9 @@ export const create = mutation({
     }
 
     // Create organization
+    const periodStart = now
+    const periodEnd = new Date(now + 30 * 24 * 60 * 60 * 1000).getTime()
+
     const orgId = await ctx.db.insert("organizations", {
       workosId: args.workosId,
       name: args.name,
@@ -175,13 +333,30 @@ export const create = mutation({
         allowByok: true,
         defaultModel: "claude-sonnet-4-20250514",
       },
+      aiSettings: {
+        allowedProviders: ["anthropic", "openai", "google"],
+        byokPolicy: "required",
+        allowProviderTools: false,
+        allowWebSearch: false,
+        maxReasoningDepth: "high",
+        defaultModelTier: "standard",
+        overageEnabled: false,
+      },
       subscription: {
         plan: "free",
         status: "active",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
       },
       credits: {
-        balance: 1000, // Starting credits for free tier
-        monthlyAllocation: 1000,
+        subscriptionCreditsRemaining: 0,
+        subscriptionCreditsTotal: 0,
+        overageCreditsUsed: 0,
+        overageAmountCents: 0,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        balance: 0,
+        monthlyAllocation: 0,
         lastResetAt: now,
       },
       createdAt: now,
@@ -216,7 +391,11 @@ export const create = mutation({
 export const get = query({
   args: { id: v.id("organizations") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id)
+    const org = await ctx.db.get(args.id)
+    if (!org) return null
+
+    const { aiCredentials, ...safeOrg } = org as any
+    return safeOrg
   },
 })
 
@@ -224,10 +403,15 @@ export const get = query({
 export const getBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const org = await ctx.db
       .query("organizations")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first()
+
+    if (!org) return null
+
+    const { aiCredentials, ...safeOrg } = org as any
+    return safeOrg
   },
 })
 
@@ -284,6 +468,7 @@ export const updateAiCredentials = mutation({
     userId: v.id("users"),
     anthropicKey: v.optional(v.string()),
     openaiKey: v.optional(v.string()),
+    googleKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Verify user is admin or owner
@@ -298,11 +483,36 @@ export const updateAiCredentials = mutation({
       throw new Error("Unauthorized")
     }
 
+    const org = await ctx.db.get(args.orgId)
+    if (!org) {
+      throw new Error("Organization not found")
+    }
+
+    const updates: Record<string, string | undefined> = {}
+    if (args.anthropicKey !== undefined) {
+      if (args.anthropicKey && !validateKeyFormat("anthropic", args.anthropicKey)) {
+        throw new Error("Invalid Anthropic API key format")
+      }
+      updates.anthropicKey = args.anthropicKey ? await ensureEncrypted(args.anthropicKey) : undefined
+    }
+    if (args.openaiKey !== undefined) {
+      if (args.openaiKey && !validateKeyFormat("openai", args.openaiKey)) {
+        throw new Error("Invalid OpenAI API key format")
+      }
+      updates.openaiKey = args.openaiKey ? await ensureEncrypted(args.openaiKey) : undefined
+    }
+    if (args.googleKey !== undefined) {
+      if (args.googleKey && !validateKeyFormat("google", args.googleKey)) {
+        throw new Error("Invalid Google API key format")
+      }
+      updates.googleKey = args.googleKey ? await ensureEncrypted(args.googleKey) : undefined
+    }
+
     const now = Date.now()
     await ctx.db.patch(args.orgId, {
       aiCredentials: {
-        anthropicKey: args.anthropicKey,
-        openaiKey: args.openaiKey,
+        ...(org.aiCredentials || {}),
+        ...updates,
       },
       updatedAt: now,
     })
@@ -314,6 +524,59 @@ export const updateAiCredentials = mutation({
       action: "ai_credentials.updated",
       resourceType: "organization",
       resourceId: args.orgId,
+      timestamp: now,
+    })
+  },
+})
+
+// Update AI policy settings (admin only)
+export const updateAiSettings = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    aiSettings: v.object({
+      allowedProviders: v.array(v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google"))),
+      allowedModels: v.optional(v.array(v.string())),
+      byokPolicy: v.union(v.literal("required"), v.literal("optional"), v.literal("disabled")),
+      allowProviderTools: v.optional(v.boolean()),
+      allowWebSearch: v.optional(v.boolean()),
+      maxReasoningDepth: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
+      monthlySpendingCapCents: v.optional(v.number()),
+      defaultModelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
+      overageEnabled: v.optional(v.boolean()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", args.orgId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
+      throw new Error("Unauthorized")
+    }
+
+    const org = await ctx.db.get(args.orgId)
+    if (!org) throw new Error("Organization not found")
+
+    const now = Date.now()
+    await ctx.db.patch(args.orgId, {
+      aiSettings: {
+        ...(org.aiSettings || {}),
+        ...args.aiSettings,
+      },
+      updatedAt: now,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "ai_settings.updated",
+      resourceType: "organization",
+      resourceId: args.orgId,
+      metadata: args.aiSettings,
       timestamp: now,
     })
   },
@@ -348,7 +611,7 @@ export const updateOrganization = mutation({
     if (args.slug && args.slug !== org.slug) {
       const existingOrg = await ctx.db
         .query("organizations")
-        .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+        .withIndex("by_slug", (q) => q.eq("slug", args.slug!))
         .first()
 
       if (existingOrg) {
