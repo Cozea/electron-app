@@ -1,21 +1,19 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar'
+import { ProjectCard } from '../features/projects/components/ProjectCard'
 import {
   Plus,
-  Search,
-  LayoutGrid,
-  List,
-  FolderKanban,
-  Clock,
-  MoreHorizontal,
   ArrowUpDown,
+  Loader2,
+  FileCode,
+  Hammer,
+  Archive,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -23,56 +21,122 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu'
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from '../components/ui/empty'
+import { TooltipProvider } from '../components/ui/tooltip'
+import { IconFolderCode } from '@tabler/icons-react'
 
-// Mock data for projects
-const mockProjects = [
-  {
-    id: '1',
-    name: 'E-commerce Platform',
-    description: 'Full-stack online store with payment integration',
-    lastModified: '2 hours ago',
-    stack: ['Next.js', 'Tailwind', 'Stripe'],
-    members: [
-      { name: 'John', avatar: '' },
-      { name: 'Sarah', avatar: '' },
-      { name: 'Mike', avatar: '' },
-    ],
-    status: 'active',
-  },
-  {
-    id: '2',
-    name: 'Dashboard Analytics',
-    description: 'Real-time analytics dashboard for business metrics',
-    lastModified: '1 day ago',
-    stack: ['React', 'D3.js', 'PostgreSQL'],
-    members: [
-      { name: 'Alice', avatar: '' },
-      { name: 'Bob', avatar: '' },
-    ],
-    status: 'active',
-  },
-  {
-    id: '3',
-    name: 'Mobile App Backend',
-    description: 'REST API for iOS and Android applications',
-    lastModified: '3 days ago',
-    stack: ['Node.js', 'Express', 'MongoDB'],
-    members: [{ name: 'Chris', avatar: '' }],
-    status: 'archived',
-  },
-]
+type SortOption = 'last_modified' | 'name' | 'created'
+type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`
+  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+  return 'Just now'
+}
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case 'active':
+      return <Badge variant="default" className="bg-green-600">Active</Badge>
+    case 'draft':
+      return <Badge variant="secondary">Draft</Badge>
+    case 'generating':
+    case 'building':
+      return (
+        <Badge variant="secondary" className="bg-blue-600 text-white">
+          <Hammer className="h-3 w-3 mr-1 animate-pulse" />
+          Building
+        </Badge>
+      )
+    case 'archived':
+      return (
+        <Badge variant="outline" className="text-muted-foreground">
+          <Archive className="h-3 w-3 mr-1" />
+          Archived
+        </Badge>
+      )
+    default:
+      return <Badge variant="outline">{status}</Badge>
+  }
+}
+
+function getStackBadges(project: { stack?: { backend?: string; hosting?: string; aiProvider?: string } }) {
+  const badges: string[] = []
+  if (project.stack?.backend) badges.push(project.stack.backend)
+  if (project.stack?.hosting) badges.push(project.stack.hosting)
+  if (project.stack?.aiProvider && project.stack.aiProvider !== 'none') {
+    badges.push(project.stack.aiProvider)
+  }
+  return badges
+}
 
 export function Projects() {
-  const { user, logout } = useAuth()
+  const { user, logout, currentOrganization } = useAuth()
   const navigate = useNavigate()
-  const [view, setView] = useState<'grid' | 'list'>('grid')
-  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<SortOption>('last_modified')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  const filteredProjects = mockProjects.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.description.toLowerCase().includes(search.toLowerCase())
+  // Get Convex organization by WorkOS ID
+  const convexOrg = useQuery(
+    api.organizations.getByWorkosId,
+    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
   )
+
+  // Query projects from Convex using the Convex org ID
+  const projects = useQuery(
+    api.projects.listForOrganization,
+    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+  )
+
+  // Filter and sort projects
+  const filteredProjects = useMemo(() => {
+    if (!projects) return []
+
+    let result = projects
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'building') {
+        result = result.filter((p) => p.status === 'building' || p.status === 'generating')
+      } else {
+        result = result.filter((p) => p.status === statusFilter)
+      }
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name)
+        case 'created':
+          return b.createdAt - a.createdAt
+        case 'last_modified':
+        default:
+          return b.updatedAt - a.updatedAt
+      }
+    })
+
+    return result
+  }, [projects, statusFilter, sortBy])
+
+  const isLoading = convexOrg === undefined || (convexOrg && projects === undefined)
+  const hasProjects = projects && projects.length > 0
+  const isEmptyState = !isLoading && !hasProjects
 
   return (
     <DashboardLayout
@@ -80,213 +144,90 @@ export function Projects() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Projects' }]}
     >
-      {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Projects</h1>
-          <p className="text-muted-foreground">
-            Create and manage your AI-powered projects
-          </p>
-        </div>
-        <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-          <Plus className="h-4 w-4" />
-          New Project
-        </Button>
-      </div>
+      <TooltipProvider>
+      {/* Page Header with Filters - hidden in empty state */}
+      {!isEmptyState && (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold">Projects</h1>
+            <p className="text-muted-foreground">
+              Create and manage your AI-powered projects
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Status Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <FileCode className="h-4 w-4" />
+                  {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-      {/* Filters and Search */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search projects..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <ArrowUpDown className="h-4 w-4" />
-              Sort
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Last modified</DropdownMenuItem>
-            <DropdownMenuItem>Name</DropdownMenuItem>
-            <DropdownMenuItem>Created date</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <div className="flex items-center border rounded-md">
-          <Button
-            variant={view === 'grid' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="rounded-r-none"
-            onClick={() => setView('grid')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={view === 'list' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="rounded-l-none"
-            onClick={() => setView('list')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+            {/* Sort */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <ArrowUpDown className="h-4 w-4" />
+                  Sort
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-      {/* Projects Grid/List */}
-      {filteredProjects.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <FolderKanban className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <CardTitle className="mb-2">No projects found</CardTitle>
-            <CardDescription className="text-center max-w-sm mb-6">
-              {search
-                ? 'No projects match your search. Try a different query.'
-                : 'Get started by creating your first project.'}
-            </CardDescription>
             <Button className="gap-2" onClick={() => navigate('/projects/new')}>
               <Plus className="h-4 w-4" />
               New Project
             </Button>
-          </CardContent>
-        </Card>
-      ) : view === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((project) => (
-            <Card
-              key={project.id}
-              className="cursor-pointer hover:bg-accent/50 transition-colors"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                      <FolderKanban className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">{project.name}</CardTitle>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                        <Clock className="h-3 w-3" />
-                        {project.lastModified}
-                      </div>
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Open</DropdownMenuItem>
-                      <DropdownMenuItem>Settings</DropdownMenuItem>
-                      <DropdownMenuItem>Archive</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="mb-3 line-clamp-2">
-                  {project.description}
-                </CardDescription>
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-1">
-                    {project.stack.slice(0, 2).map((tech) => (
-                      <Badge key={tech} variant="secondary" className="text-xs">
-                        {tech}
-                      </Badge>
-                    ))}
-                    {project.stack.length > 2 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{project.stack.length - 2}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex -space-x-2">
-                    {project.members.slice(0, 3).map((member, i) => (
-                      <Avatar key={i} className="h-6 w-6 border-2 border-background">
-                        <AvatarImage src={member.avatar} />
-                        <AvatarFallback className="text-xs">
-                          {member.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
-                    {project.members.length > 3 && (
-                      <div className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs">
-                        +{project.members.length - 3}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          </div>
         </div>
+      )}
+
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        /* Empty State */
+        <Empty className="h-[calc(100vh-12rem)]">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconFolderCode />
+            </EmptyMedia>
+            <EmptyTitle>No Projects Yet</EmptyTitle>
+            <EmptyDescription>
+              You haven't created any projects yet. Get started by creating your first project.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button className="gap-2" onClick={() => navigate('/projects/new')}>
+              <Plus className="h-4 w-4" />
+              Create Project
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
-        <div className="space-y-2">
+        /* Grid View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
           {filteredProjects.map((project) => (
-            <Card
-              key={project.id}
-              className="cursor-pointer hover:bg-accent/50 transition-colors"
-            >
-              <CardContent className="flex items-center justify-between py-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <FolderKanban className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium">{project.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {project.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex gap-1">
-                    {project.stack.map((tech) => (
-                      <Badge key={tech} variant="secondary" className="text-xs">
-                        {tech}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="flex -space-x-2">
-                    {project.members.slice(0, 3).map((member, i) => (
-                      <Avatar key={i} className="h-6 w-6 border-2 border-background">
-                        <AvatarImage src={member.avatar} />
-                        <AvatarFallback className="text-xs">
-                          {member.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
-                  </div>
-                  <span className="text-sm text-muted-foreground w-24">
-                    {project.lastModified}
-                  </span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Open</DropdownMenuItem>
-                      <DropdownMenuItem>Settings</DropdownMenuItem>
-                      <DropdownMenuItem>Archive</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardContent>
-            </Card>
+            <ProjectCard key={project._id} project={project} />
           ))}
         </div>
       )}
-    </DashboardLayout>
-  )
+    </TooltipProvider>
+  </DashboardLayout>
+)
 }

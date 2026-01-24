@@ -10,15 +10,24 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as billing from "../billing.js";
+import type * as builderRuns from "../builderRuns.js";
 import type * as crons from "../crons.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_modelTiers from "../lib/modelTiers.js";
 import type * as lib_permissions from "../lib/permissions.js";
+import type * as lib_seatLimits from "../lib/seatLimits.js";
 import type * as organizations from "../organizations.js";
+import type * as projectFiles from "../projectFiles.js";
+import type * as projectInvites from "../projectInvites.js";
+import type * as projectMembers from "../projectMembers.js";
+import type * as projectMessages from "../projectMessages.js";
+import type * as projectTemplates from "../projectTemplates.js";
+import type * as projects from "../projects.js";
 import type * as toolApprovals from "../toolApprovals.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
+import type * as yjs from "../yjs.js";
 
 import type {
   ApiFromModules,
@@ -29,15 +38,24 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   billing: typeof billing;
+  builderRuns: typeof builderRuns;
   crons: typeof crons;
   invitations: typeof invitations;
   "lib/encryption": typeof lib_encryption;
   "lib/modelTiers": typeof lib_modelTiers;
   "lib/permissions": typeof lib_permissions;
+  "lib/seatLimits": typeof lib_seatLimits;
   organizations: typeof organizations;
+  projectFiles: typeof projectFiles;
+  projectInvites: typeof projectInvites;
+  projectMembers: typeof projectMembers;
+  projectMessages: typeof projectMessages;
+  projectTemplates: typeof projectTemplates;
+  projects: typeof projects;
   toolApprovals: typeof toolApprovals;
   tools: typeof tools;
   users: typeof users;
+  yjs: typeof yjs;
 }>;
 
 /**

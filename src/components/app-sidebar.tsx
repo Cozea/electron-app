@@ -3,16 +3,15 @@
 import * as React from "react"
 import { useLocation } from "react-router-dom"
 import {
-  FolderKanban,
-  Sparkles,
   Home,
   Users,
   Building2,
 } from "lucide-react"
+import { IconFolderCode } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
+import { ContextSwitcher } from "@/components/context-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -26,31 +25,14 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     email: string
     firstName?: string | null
     lastName?: string | null
+    profileImageUrl?: string | null
   } | null
   onLogout?: () => void
 }
 
-const teams = [
-  {
-    name: "Cozea",
-    logo: Sparkles,
-    plan: "Pro",
-  },
-]
-
 export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
   const location = useLocation()
   const currentPath = location.pathname
-
-  const userName = user?.firstName
-    ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}`
-    : user?.email?.split("@")[0] || "User"
-
-  const userData = {
-    name: userName,
-    email: user?.email || "",
-    avatar: "",
-  }
 
   const navMain = [
     {
@@ -62,7 +44,7 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
     {
       title: "Projects",
       url: "/projects",
-      icon: FolderKanban,
+      icon: IconFolderCode,
       isActive: currentPath.startsWith("/projects"),
     },
     {
@@ -92,14 +74,14 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="mt-7">
-        <TeamSwitcher teams={teams} />
+      <SidebarHeader className="mt-9">
+        <ContextSwitcher />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="group-data-[collapsible=icon]:mt-9">
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="pb-6">
-        <NavUser user={userData} onLogout={onLogout} />
+        <NavUser user={user} onLogout={onLogout} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

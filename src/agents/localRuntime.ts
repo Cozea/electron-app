@@ -29,7 +29,11 @@ export class LocalAgentRuntime implements AgentRuntime {
       return { success: false, error: 'Local tool execution is unavailable' }
     }
 
-    return window.electronAPI.tools.run({ name: toolCall.toolName, input: toolCall.input })
+    return window.electronAPI.tools.run({
+      name: toolCall.toolName,
+      input: toolCall.input,
+      projectPath: toolCall.projectPath,
+    })
   }
 
   async checkpoint(_checkpoint: AgentCheckpoint): Promise<void> {

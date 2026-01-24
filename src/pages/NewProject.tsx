@@ -1,322 +1,303 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { Label } from '../components/ui/label'
-import { Badge } from '../components/ui/badge'
-import { Progress } from '../components/ui/progress'
+import { ArrowLeft, ArrowRight, Rocket, Loader2 } from 'lucide-react'
+import type { Id } from '../../convex/_generated/dataModel'
+
 import {
-  ArrowLeft,
-  ArrowRight,
-  Sparkles,
-  Layout,
-  Palette,
-  Users,
-  FileCode,
-  Rocket,
-  Check,
-} from 'lucide-react'
-
-const steps = [
-  { id: 'intent', title: 'Intent', icon: Sparkles },
-  { id: 'template', title: 'Template', icon: Layout },
-  { id: 'stack', title: 'Stack', icon: FileCode },
-  { id: 'visuals', title: 'Visuals', icon: Palette },
-  { id: 'team', title: 'Team', icon: Users },
-  { id: 'review', title: 'Review', icon: Rocket },
-]
-
-const templates = [
-  { id: 'blank', name: 'Blank Project', description: 'Start from scratch' },
-  { id: 'saas', name: 'SaaS Starter', description: 'Auth, billing, dashboard' },
-  { id: 'ecommerce', name: 'E-commerce', description: 'Products, cart, checkout' },
-  { id: 'blog', name: 'Blog Platform', description: 'Posts, comments, CMS' },
-  { id: 'dashboard', name: 'Admin Dashboard', description: 'Analytics, tables, charts' },
-  { id: 'landing', name: 'Landing Page', description: 'Marketing site with CTA' },
-]
-
-const frameworks = [
-  { id: 'nextjs', name: 'Next.js', category: 'Framework' },
-  { id: 'react', name: 'React', category: 'Framework' },
-  { id: 'vue', name: 'Vue.js', category: 'Framework' },
-]
-
-const uiLibraries = [
-  { id: 'tailwind', name: 'Tailwind CSS', category: 'Styling' },
-  { id: 'shadcn', name: 'shadcn/ui', category: 'Components' },
-  { id: 'chakra', name: 'Chakra UI', category: 'Components' },
-]
-
-const databases = [
-  { id: 'postgres', name: 'PostgreSQL', category: 'Database' },
-  { id: 'mongodb', name: 'MongoDB', category: 'Database' },
-  { id: 'convex', name: 'Convex', category: 'Database' },
-]
+  WizardLayout,
+  EntryChoice,
+  IntentStep,
+  TemplateStep,
+  StackStep,
+  SourceControlStep,
+  VisualsStep,
+  TeamStep,
+  ReviewStep,
+  PromptInput,
+  WizardConversation,
+  type PromptSettings,
+  type PlanOption,
+} from '../components/wizard'
+import { useWizardState, type CreationPath } from '../hooks/useWizardState'
+import { useMutation } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import { normalizeGeneratedPlan } from '../lib/plan'
 
 export function NewProject() {
-  const { user, logout } = useAuth()
+  const { user, logout, convexUserId, currentOrganization } = useAuth()
   const navigate = useNavigate()
-  const [currentStep, setCurrentStep] = useState(0)
-  const [projectData, setProjectData] = useState({
-    name: '',
-    description: '',
-    audience: '',
-    template: '',
-    framework: 'nextjs',
-    ui: 'tailwind',
-    database: 'convex',
-    primaryColor: '#6366f1',
-    fontStyle: 'modern',
-  })
 
-  const progress = ((currentStep + 1) / steps.length) * 100
+  // Get Convex org ID from currentOrganization (populated after Convex sync)
+  const organizationId = currentOrganization?.convexOrgId as Id<"organizations"> | undefined
 
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1)
+  const wizard = useWizardState(organizationId, convexUserId ?? undefined)
+
+  // Prompt path options
+  const [reviewBeforeBuild, setReviewBeforeBuild] = useState(true)
+  const [customizeTeam, setCustomizeTeam] = useState(false)
+
+  // Conversation mode state (for prompt path) - stored locally until plan is selected
+  const [isConversationMode, setIsConversationMode] = useState(false)
+  const [conversationPromptSettings, setConversationPromptSettings] = useState<PromptSettings | null>(null)
+  const [pendingPromptText, setPendingPromptText] = useState<string>('')
+
+  // Convex mutation for creating project
+  const createProject = useMutation(api.projects.create)
+  const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
+
+  const {
+    state,
+    steps,
+    currentStepDef,
+    isFirstStep,
+    canProceed,
+    setPath,
+    goToStep,
+    nextStep,
+    prevStep,
+    updateIntent,
+    setTemplate,
+    updateStack,
+    updateSourceControl,
+    addTeamMember,
+    removeTeamMember,
+    setOriginalPrompt,
+    createOrUpdateProject,
+  } = wizard
+
+  // Add current user as project manager when entering team step
+  useEffect(() => {
+    if (currentStepDef?.id === 'team' && state.team.length === 0 && user) {
+      addTeamMember({
+        email: user.email,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+        role: 'project_manager',
+        isCurrentUser: true,
+      })
     }
-  }
+  }, [currentStepDef?.id, state.team.length, user, addTeamMember])
 
   const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1)
-    } else {
+    if (isFirstStep) {
       navigate('/projects')
+    } else {
+      prevStep()
     }
   }
 
+  const handleNext = async () => {
+    // On the review step (before generate), create/update the project
+    if (currentStepDef?.id === 'review') {
+      const projectId = await createOrUpdateProject()
+      if (projectId) {
+        // Navigate to the build page for this project
+        navigate(`/projects/${projectId}/build`)
+      }
+      return
+    }
+
+    // For prompt path, create project and go to build
+    if (currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review') {
+      const projectId = await createOrUpdateProject()
+      if (projectId) {
+        navigate(`/projects/${projectId}/build`)
+      }
+      return
+    }
+
+    nextStep()
+  }
+
+  const handleSelectPath = (path: CreationPath) => {
+    setPath(path)
+  }
+
+  const handlePromptSubmit = async (settings: PromptSettings, promptText: string) => {
+    // Don't create project yet - just start conversation mode
+    // Project will be created when user selects a plan
+    setOriginalPrompt(promptText)
+    setPendingPromptText(promptText)
+    setConversationPromptSettings(settings)
+    setIsConversationMode(true)
+  }
+
+  const handlePlanSelected = async (plan: PlanOption) => {
+    if (!organizationId || !convexUserId) {
+      console.error('Missing organizationId or convexUserId', { organizationId, convexUserId, currentOrganization })
+      alert('Unable to create project. Please try again or refresh the page.')
+      return
+    }
+
+    try {
+      // NOW create the project with the selected plan configuration
+      const result = await createProject({
+        organizationId,
+        userId: convexUserId,
+        name: plan.config.name || 'Untitled Project',
+        creationPath: 'prompt',
+        description: plan.config.description,
+        audience: plan.config.audience,
+        template: plan.config.template,
+        stack: plan.config.stack,
+        sourceControl: plan.config.sourceControl,
+        visuals: plan.config.visuals,
+        originalPrompt: pendingPromptText,
+        promptSettings: conversationPromptSettings ? {
+          model: conversationPromptSettings.model,
+          agentType: conversationPromptSettings.agentType,
+          reasoningDepth: conversationPromptSettings.reasoningDepth,
+          toolsEnabled: conversationPromptSettings.toolsEnabled,
+          webSearchEnabled: conversationPromptSettings.webSearchEnabled,
+          thinkingEffort: conversationPromptSettings.thinkingEffort,
+          providerOptions: conversationPromptSettings.providerOptions as Record<string, unknown> | undefined,
+        } : undefined,
+      })
+
+      const generatedPlan = normalizeGeneratedPlan(
+        plan.config.generatedPlan ?? { pages: [], entities: [] }
+      )
+      await saveGeneratedPlan({
+        projectId: result.projectId,
+        plan: generatedPlan,
+        selectedPlanTier: plan.tier,
+      })
+
+      // Navigate to build page with the new project
+      navigate(`/projects/${result.projectId}/build`)
+    } catch (error) {
+      console.error('Failed to create project:', error)
+    }
+  }
+
+  const handleEditStep = (stepIndex: number) => {
+    goToStep(stepIndex)
+  }
+
+  // Render the current step content
   const renderStepContent = () => {
-    switch (steps[currentStep].id) {
+    // Conversation mode for prompt path (project not created yet)
+    if (isConversationMode && conversationPromptSettings) {
+      return (
+        <WizardConversation
+          initialPrompt={pendingPromptText}
+          promptSettings={conversationPromptSettings}
+          onPlanSelected={handlePlanSelected}
+          className="flex-1 h-full"
+        />
+      )
+    }
+
+    // Entry step (choosing path)
+    if (!state.path || state.step === 0) {
+      return (
+        <EntryChoice
+          onSelect={handleSelectPath}
+          promptValue={state.originalPrompt || ''}
+          onPromptChange={setOriginalPrompt}
+          onPromptSubmit={handlePromptSubmit}
+          isSubmitting={state.isSaving}
+        />
+      )
+    }
+
+    // Path-specific steps
+    switch (currentStepDef?.id) {
       case 'intent':
-        return (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="name">Project Name</Label>
-              <Input
-                id="name"
-                placeholder="My Awesome Project"
-                value={projectData.name}
-                onChange={(e) => setProjectData({ ...projectData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">What are you building?</Label>
-              <textarea
-                id="description"
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                placeholder="Describe your project in a few sentences. What problem does it solve? What features should it have?"
-                value={projectData.description}
-                onChange={(e) => setProjectData({ ...projectData, description: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="audience">Who is it for?</Label>
-              <Input
-                id="audience"
-                placeholder="e.g., Small business owners, developers, students..."
-                value={projectData.audience}
-                onChange={(e) => setProjectData({ ...projectData, audience: e.target.value })}
-              />
-            </div>
-          </div>
-        )
+        return <IntentStep intent={state.intent} onUpdate={updateIntent} />
 
       case 'template':
-        return (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {templates.map((template) => (
-              <Card
-                key={template.id}
-                className={`cursor-pointer transition-colors ${
-                  projectData.template === template.id
-                    ? 'border-primary bg-primary/5'
-                    : 'hover:bg-accent/50'
-                }`}
-                onClick={() => setProjectData({ ...projectData, template: template.id })}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center justify-between">
-                    {template.name}
-                    {projectData.template === template.id && (
-                      <Check className="h-4 w-4 text-primary" />
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-xs">{template.description}</CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )
+        return <TemplateStep selected={state.template} onSelect={setTemplate} />
 
       case 'stack':
-        return (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <Label>Framework</Label>
-              <div className="flex gap-2">
-                {frameworks.map((fw) => (
-                  <Badge
-                    key={fw.id}
-                    variant={projectData.framework === fw.id ? 'default' : 'outline'}
-                    className="cursor-pointer px-4 py-2"
-                    onClick={() => setProjectData({ ...projectData, framework: fw.id })}
-                  >
-                    {fw.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3">
-              <Label>UI Library</Label>
-              <div className="flex gap-2">
-                {uiLibraries.map((ui) => (
-                  <Badge
-                    key={ui.id}
-                    variant={projectData.ui === ui.id ? 'default' : 'outline'}
-                    className="cursor-pointer px-4 py-2"
-                    onClick={() => setProjectData({ ...projectData, ui: ui.id })}
-                  >
-                    {ui.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3">
-              <Label>Database</Label>
-              <div className="flex gap-2">
-                {databases.map((db) => (
-                  <Badge
-                    key={db.id}
-                    variant={projectData.database === db.id ? 'default' : 'outline'}
-                    className="cursor-pointer px-4 py-2"
-                    onClick={() => setProjectData({ ...projectData, database: db.id })}
-                  >
-                    {db.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </div>
-        )
+        return <StackStep stack={state.stack} onUpdate={updateStack} />
+
+      case 'source':
+        return <SourceControlStep sourceControl={state.sourceControl} onUpdate={updateSourceControl} />
 
       case 'visuals':
-        return (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <Label>Primary Color</Label>
-              <div className="flex gap-3">
-                {['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'].map((color) => (
-                  <button
-                    key={color}
-                    className={`w-10 h-10 rounded-full transition-transform ${
-                      projectData.primaryColor === color ? 'ring-2 ring-offset-2 ring-primary scale-110' : ''
-                    }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setProjectData({ ...projectData, primaryColor: color })}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3">
-              <Label>Font Style</Label>
-              <div className="flex gap-2">
-                {[
-                  { id: 'modern', name: 'Modern', sample: 'Inter' },
-                  { id: 'classic', name: 'Classic', sample: 'Georgia' },
-                  { id: 'mono', name: 'Monospace', sample: 'JetBrains Mono' },
-                ].map((font) => (
-                  <Card
-                    key={font.id}
-                    className={`cursor-pointer flex-1 ${
-                      projectData.fontStyle === font.id ? 'border-primary' : ''
-                    }`}
-                    onClick={() => setProjectData({ ...projectData, fontStyle: font.id })}
-                  >
-                    <CardContent className="p-4 text-center">
-                      <p className="font-medium">{font.name}</p>
-                      <p className="text-xs text-muted-foreground">{font.sample}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </div>
-        )
+        return <VisualsStep visuals={state.visuals} onUpdate={wizard.updateVisuals} />
 
       case 'team':
         return (
-          <div className="space-y-6">
-            <p className="text-muted-foreground">
-              Invite team members to collaborate on this project. You can skip this step and add members later.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="invite">Invite by email</Label>
-              <div className="flex gap-2">
-                <Input id="invite" placeholder="colleague@example.com" className="flex-1" />
-                <Button variant="outline">Add</Button>
-              </div>
+          <TeamStep
+            team={state.team}
+            currentUserEmail={user?.email || ''}
+            onAddMember={addTeamMember}
+            onRemoveMember={removeTeamMember}
+          />
+        )
+
+      case 'review':
+        return <ReviewStep state={state} onEditStep={handleEditStep} />
+
+      case 'prompt':
+        return (
+          <PromptInput
+            value={state.originalPrompt || ''}
+            onChange={setOriginalPrompt}
+            reviewBeforeBuild={reviewBeforeBuild}
+            setReviewBeforeBuild={setReviewBeforeBuild}
+            customizeTeam={customizeTeam}
+            setCustomizeTeam={setCustomizeTeam}
+          />
+        )
+
+      case 'quick-review':
+        // For one-shot path, show a simplified review
+        return (
+          <div className="space-y-6 max-w-2xl mx-auto">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-semibold">Ready to Generate</h2>
+              <p className="text-muted-foreground">
+                Your AI assistant will analyze your prompt and generate a complete project plan.
+              </p>
             </div>
-            <div className="border rounded-lg p-4 text-center text-muted-foreground">
-              <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No team members added yet</p>
+            <div className="bg-muted/50 rounded-lg p-6">
+              <h3 className="text-sm font-medium mb-2">Your prompt:</h3>
+              <p className="text-muted-foreground whitespace-pre-wrap">
+                {state.originalPrompt}
+              </p>
             </div>
           </div>
         )
 
-      case 'review':
+      // Repo path steps (not yet implemented)
+      case 'repo-source':
+      case 'repo-scan':
         return (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{projectData.name || 'Untitled Project'}</CardTitle>
-                <CardDescription>{projectData.description || 'No description'}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground w-24">Template:</span>
-                  <Badge variant="secondary">
-                    {templates.find((t) => t.id === projectData.template)?.name || 'Blank'}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground w-24">Stack:</span>
-                  <div className="flex gap-1">
-                    <Badge variant="secondary">
-                      {frameworks.find((f) => f.id === projectData.framework)?.name}
-                    </Badge>
-                    <Badge variant="secondary">
-                      {uiLibraries.find((u) => u.id === projectData.ui)?.name}
-                    </Badge>
-                    <Badge variant="secondary">
-                      {databases.find((d) => d.id === projectData.database)?.name}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground w-24">Theme:</span>
-                  <div
-                    className="w-6 h-6 rounded-full"
-                    style={{ backgroundColor: projectData.primaryColor }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-            <Button className="w-full gap-2" size="lg">
-              <Rocket className="h-4 w-4" />
-              Create Project
-            </Button>
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              Repository import coming soon...
+            </p>
           </div>
         )
+
+      // Plan and Build steps redirect to dedicated pages
+      case 'plan':
+      case 'build':
+        return null
 
       default:
         return null
     }
   }
+
+  // Determine button text
+  const nextButtonText = useMemo(() => {
+    if (state.isSaving) return 'Saving...'
+    if (currentStepDef?.id === 'review') return 'Generate Plan'
+    if (currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review') return 'Generate Project'
+    return 'Next'
+  }, [currentStepDef?.id, state.isSaving])
+
+  // Don't show Next button on entry step (path selection handles it) or in conversation mode
+  const showNextButton = state.path !== null && state.step > 0 && !['plan', 'build'].includes(currentStepDef?.id || '') && !isConversationMode
+
+  // Don't show navigation at all in conversation mode
+  const showNavigation = state.step > 0 && !isConversationMode
 
   return (
     <DashboardLayout
@@ -327,82 +308,46 @@ export function NewProject() {
         { label: 'New Project' },
       ]}
     >
-      <div className="max-w-3xl mx-auto">
-        {/* Progress */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl font-semibold">New Project</h1>
-            <span className="text-sm text-muted-foreground">
-              Step {currentStep + 1} of {steps.length}
-            </span>
-          </div>
-          <Progress value={progress} className="h-2" />
-        </div>
-
-        {/* Step Indicators */}
-        <div className="flex items-center justify-between mb-8">
-          {steps.map((step, index) => {
-            const Icon = step.icon
-            const isActive = index === currentStep
-            const isCompleted = index < currentStep
-            return (
-              <div
-                key={step.id}
-                className={`flex flex-col items-center gap-1 ${
-                  isActive
-                    ? 'text-foreground'
-                    : isCompleted
-                    ? 'text-primary'
-                    : 'text-muted-foreground'
-                }`}
-              >
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : isCompleted
-                      ? 'bg-primary/10'
-                      : 'bg-muted'
-                  }`}
-                >
-                  {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-                </div>
-                <span className="text-xs font-medium">{step.title}</span>
-              </div>
-            )
-          })}
-        </div>
-
+      <WizardLayout
+        steps={steps}
+        currentStep={state.step}
+        onStepClick={goToStep}
+        canNavigateToStep={(step) => step < state.step}
+        title={isConversationMode ? 'AI Project Planning' : state.path ? 'New Project' : 'Create a New Project'}
+        fullHeight={isConversationMode}
+      >
         {/* Step Content */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{steps[currentStep].title}</CardTitle>
-            <CardDescription>
-              {currentStep === 0 && 'Tell us about your project'}
-              {currentStep === 1 && 'Choose a starting template'}
-              {currentStep === 2 && 'Select your tech stack'}
-              {currentStep === 3 && 'Customize the look and feel'}
-              {currentStep === 4 && 'Add team members'}
-              {currentStep === 5 && 'Review and create your project'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>{renderStepContent()}</CardContent>
-        </Card>
+        <div className={isConversationMode ? "flex-1 flex flex-col min-h-0" : "min-h-[300px]"}>
+          {renderStepContent()}
+        </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-6">
+        {/* Navigation - hidden on entry step and in conversation mode */}
+        {showNavigation && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t">
           <Button variant="outline" onClick={handleBack} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
-            {currentStep === 0 ? 'Cancel' : 'Back'}
+            Back
           </Button>
-          {currentStep < steps.length - 1 && (
-            <Button onClick={handleNext} className="gap-2">
-              Next
-              <ArrowRight className="h-4 w-4" />
+
+          {showNextButton && (
+            <Button
+              onClick={handleNext}
+              disabled={!canProceed || state.isSaving}
+              className="gap-2"
+            >
+              {state.isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
+                <Rocket className="h-4 w-4" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
+              {nextButtonText}
             </Button>
           )}
         </div>
-      </div>
+        )}
+      </WizardLayout>
     </DashboardLayout>
   )
 }

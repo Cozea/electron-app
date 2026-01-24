@@ -1,9 +1,9 @@
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
-import { Progress } from '../../components/ui/progress'
-import { Badge } from '../../components/ui/badge'
+import { cn } from '../../lib/utils'
 import {
   Table,
   TableBody,
@@ -23,64 +23,117 @@ import {
 } from '../../components/ui/dialog'
 import {
   Folder,
-  FolderOpen,
-  HardDrive,
   Trash2,
   FileText,
   Package,
   RefreshCw,
-  AlertTriangle,
-  Cloud,
-  CloudOff,
+  Loader2,
 } from 'lucide-react'
+import type { StorageUsage, LocalProject } from '../../types/electron'
 
-const localProjects = [
-  {
-    id: '1',
-    name: 'E-commerce Platform',
-    path: '~/Developer/Cozea/ecommerce',
-    size: '2.4 GB',
-    synced: true,
-    lastOpened: '2 hours ago',
-  },
-  {
-    id: '2',
-    name: 'Dashboard Analytics',
-    path: '~/Developer/Cozea/dashboard',
-    size: '1.8 GB',
-    synced: true,
-    lastOpened: '1 day ago',
-  },
-  {
-    id: '3',
-    name: 'Mobile Backend',
-    path: '~/Developer/Cozea/mobile-api',
-    size: '0.9 GB',
-    synced: false,
-    lastOpened: '3 days ago',
-  },
-  {
-    id: '4',
-    name: 'Personal Blog',
-    path: '~/Developer/Cozea/blog',
-    size: '0.3 GB',
-    synced: false,
-    lastOpened: '1 week ago',
-  },
-]
+// Format bytes to human readable size
+function formatBytes(bytes: number): string {
+  if (bytes <= 0 || !Number.isFinite(bytes)) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
+
+// Convert bytes to GB for display
+function bytesToGB(bytes: number): number {
+  return bytes / (1024 * 1024 * 1024)
+}
+
+// Format relative time
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`
+  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+  return 'Just now'
+}
 
 export function Storage() {
   const { user, logout } = useAuth()
+  const [projectsDirectory, setProjectsDirectory] = useState<string>('~/Developer/Cozea')
+  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
+  const [localProjects, setLocalProjects] = useState<LocalProject[]>([])
+  const [isLoadingStorage, setIsLoadingStorage] = useState(true)
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true)
 
-  const storage = {
-    total: 15.2,
-    breakdown: [
-      { name: 'Projects', size: 5.4, icon: Folder },
-      { name: 'Dependencies', size: 6.2, icon: Package },
-      { name: 'Build Cache', size: 2.8, icon: HardDrive },
-      { name: 'Logs', size: 0.8, icon: FileText },
-    ],
+  // Load storage usage
+  const loadStorageUsage = useCallback(async () => {
+    if (!window.electronAPI?.storage) return
+    setIsLoadingStorage(true)
+    try {
+      const usage = await window.electronAPI.storage.getUsage()
+      setStorageUsage(usage)
+    } catch (err) {
+      console.error('Failed to load storage usage:', err)
+    } finally {
+      setIsLoadingStorage(false)
+    }
+  }, [])
+
+  // Load local projects
+  const loadLocalProjects = useCallback(async () => {
+    if (!window.electronAPI?.storage) return
+    setIsLoadingProjects(true)
+    try {
+      const projects = await window.electronAPI.storage.listProjects()
+      setLocalProjects(projects)
+    } catch (err) {
+      console.error('Failed to load local projects:', err)
+    } finally {
+      setIsLoadingProjects(false)
+    }
+  }, [])
+
+  // Load settings and storage on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (window.electronAPI?.settings) {
+        const settings = await window.electronAPI.settings.get()
+        setProjectsDirectory(settings.projectsDirectory)
+      }
+    }
+    loadSettings()
+    loadStorageUsage()
+    loadLocalProjects()
+  }, [loadStorageUsage, loadLocalProjects])
+
+  // Handle directory change
+  const handleChangeDirectory = async () => {
+    if (!window.electronAPI?.dialog) return
+
+    const result = await window.electronAPI.dialog.selectDirectory()
+    if (result.success && result.path) {
+      setProjectsDirectory(result.path)
+      await window.electronAPI.settings.set({ projectsDirectory: result.path })
+      // Refresh storage usage after changing directory
+      loadStorageUsage()
+    }
   }
+
+  // Calculate segments from real data
+  const segments = storageUsage ? [
+    { label: 'Projects', value: bytesToGB(storageUsage.projects), bytes: storageUsage.projects, color: 'bg-blue-500' },
+    { label: 'Dependencies', value: bytesToGB(storageUsage.dependencies), bytes: storageUsage.dependencies, color: 'bg-emerald-500' },
+    { label: 'Build Cache', value: bytesToGB(storageUsage.buildCache), bytes: storageUsage.buildCache, color: 'bg-amber-500' },
+    { label: 'Logs', value: bytesToGB(storageUsage.logs), bytes: storageUsage.logs, color: 'bg-purple-500' },
+  ] : []
+
+  // Use actual disk total, fallback to dynamic if disk info unavailable
+  const diskTotal = storageUsage?.diskTotal || 0
+  const diskFree = storageUsage?.diskFree || 0
+  const total = diskTotal > 0 ? bytesToGB(diskTotal) : 100 // Use actual disk size or default to 100 GB
 
   return (
     <DashboardLayout
@@ -88,75 +141,82 @@ export function Storage() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Storage' }]}
     >
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Storage</h1>
-        <p className="text-muted-foreground">
-          Manage local files and storage
-        </p>
-      </div>
-
       <div className="space-y-6">
-        {/* Projects Directory */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5" />
-              Projects Directory
-            </CardTitle>
-            <CardDescription>
-              Where new projects are created on your computer
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-              <Folder className="h-8 w-8 text-muted-foreground" />
-              <div className="flex-1">
-                <p className="font-mono text-sm">~/Developer/Cozea</p>
-                <p className="text-xs text-muted-foreground">
-                  New projects will be created in this directory
-                </p>
-              </div>
-              <Button variant="outline">Change</Button>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Storage Usage */}
-        <Card>
+        <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HardDrive className="h-5 w-5" />
-              Local Storage
-            </CardTitle>
-            <CardDescription>
-              {storage.total} GB used on this device
-            </CardDescription>
+            <CardTitle>Local Storage</CardTitle>
+            <CardDescription>Storage usage on this device</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              {storage.breakdown.map((item) => {
-                const Icon = item.icon
-                const percentage = (item.size / storage.total) * 100
-                return (
-                  <div key={item.name} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">{item.name}</span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">{item.size} GB</span>
-                    </div>
-                    <Progress value={percentage} className="h-2" />
-                  </div>
-                )
-              })}
-            </div>
+          <CardContent>
+            {isLoadingStorage ? (
+              <div className="flex items-center gap-2 py-8">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Calculating storage usage...</span>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Using{' '}
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {storageUsage ? formatBytes(storageUsage.total) : '0 B'}
+                  </span>
+                  {diskTotal > 0 && (
+                    <> of <span className="tabular-nums">{formatBytes(diskTotal)}</span></>
+                  )}
+                </p>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  {segments.map((segment) => {
+                    const percentage = (segment.value / total) * 100
+                    return (
+                      <div
+                        aria-label={segment.label}
+                        aria-valuemax={total}
+                        aria-valuemin={0}
+                        aria-valuenow={segment.value}
+                        className={cn('h-full transition-all', segment.color)}
+                        key={segment.label}
+                        role="progressbar"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    )
+                  })}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+                  {segments.map((segment) => (
+                    <div className="flex items-center gap-2" key={segment.label}>
+                      <span
+                        aria-hidden="true"
+                        className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', segment.color)}
+                      />
+                      <span className="text-sm text-muted-foreground">{segment.label}</span>
+                      <span className="text-sm tabular-nums text-foreground">
+                        {formatBytes(segment.bytes)}
+                      </span>
+                    </div>
+                  ))}
+                  {diskFree > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted"
+                      />
+                      <span className="text-sm text-muted-foreground">Free</span>
+                      <span className="text-sm tabular-nums text-foreground">
+                        {formatBytes(diskFree)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2">
+                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage}>
                     <Package className="h-4 w-4" />
                     Clear Cache
                   </Button>
@@ -165,7 +225,7 @@ export function Storage() {
                   <DialogHeader>
                     <DialogTitle>Clear Build Cache</DialogTitle>
                     <DialogDescription>
-                      This will remove 2.8 GB of cached build artifacts. Projects may take longer to build next time.
+                      This will remove {storageUsage ? formatBytes(storageUsage.buildCache) : '0 B'} of cached build artifacts. Projects may take longer to build next time.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -177,7 +237,7 @@ export function Storage() {
 
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2">
+                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage}>
                     <FileText className="h-4 w-4" />
                     Clear Logs
                   </Button>
@@ -186,7 +246,7 @@ export function Storage() {
                   <DialogHeader>
                     <DialogTitle>Clear Logs</DialogTitle>
                     <DialogDescription>
-                      This will remove 0.8 GB of log files. This action cannot be undone.
+                      This will remove {storageUsage ? formatBytes(storageUsage.logs) : '0 B'} of log files. This action cannot be undone.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -196,21 +256,48 @@ export function Storage() {
                 </DialogContent>
               </Dialog>
 
-              <Button variant="outline" className="w-full gap-2">
-                <RefreshCw className="h-4 w-4" />
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={loadStorageUsage}
+                disabled={isLoadingStorage}
+              >
+                <RefreshCw className={cn("h-4 w-4", isLoadingStorage && "animate-spin")} />
                 Refresh
               </Button>
 
               <Button variant="outline" className="w-full gap-2">
-                <FolderOpen className="h-4 w-4" />
+                <Folder className="h-4 w-4" />
                 View Folder
               </Button>
             </div>
           </CardContent>
         </Card>
 
+        {/* Projects Directory */}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader>
+            <CardTitle>Projects Directory</CardTitle>
+            <CardDescription>
+              Where new projects are created on your computer
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+              <Folder className="h-8 w-8 text-muted-foreground" />
+              <div className="flex-1 min-w-0">
+                <p className="font-mono text-sm truncate">{projectsDirectory}</p>
+                <p className="text-xs text-muted-foreground">
+                  New projects will be created in this directory
+                </p>
+              </div>
+              <Button variant="outline" onClick={handleChangeDirectory}>Change</Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Local Projects */}
-        <Card>
+        <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle>Local Projects</CardTitle>
             <CardDescription>
@@ -218,62 +305,52 @@ export function Storage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Path</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Sync Status</TableHead>
-                  <TableHead>Last Opened</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {localProjects.map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell className="font-medium">{project.name}</TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {project.path}
-                      </code>
-                    </TableCell>
-                    <TableCell>{project.size}</TableCell>
-                    <TableCell>
-                      {project.synced ? (
-                        <Badge variant="secondary" className="gap-1">
-                          <Cloud className="h-3 w-3" />
-                          Synced
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="gap-1 text-muted-foreground">
-                          <CloudOff className="h-3 w-3" />
-                          Local only
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {project.lastOpened}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </TableCell>
+            {isLoadingProjects ? (
+              <div className="flex items-center gap-2 py-8">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading projects...</span>
+              </div>
+            ) : localProjects.length === 0 ? (
+              <div className="flex items-center justify-center py-12 border-2 border-dashed border-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  No projects found in this directory
+                </p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>Last Modified</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {localProjects.map((project) => (
+                    <TableRow key={project.path}>
+                      <TableCell className="font-medium">{project.name}</TableCell>
+                      <TableCell>{formatBytes(project.size)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatRelativeTime(project.lastModified)}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
         {/* Danger Zone */}
-        <Card className="border-destructive/50">
+        <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Danger Zone
-            </CardTitle>
+            <CardTitle className="text-destructive">Danger Zone</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">

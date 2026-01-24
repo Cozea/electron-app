@@ -7,6 +7,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Wrench, Search, Code, Terminal, Monitor, FileText } from 'lucide-react'
 
 interface ModelCapabilities {
@@ -28,19 +35,36 @@ export interface ProviderOptionsState {
   enableShellTool?: boolean
   enableApplyPatch?: boolean
   enableCodeInterpreter?: boolean
+  reasoningSummary?: 'auto' | 'detailed'
+  textVerbosity?: 'low' | 'medium' | 'high'
+  serviceTier?: 'auto' | 'flex' | 'priority' | 'default'
+  strictJsonSchema?: boolean
+  parallelToolCalls?: boolean
 
   // Anthropic
   thinkingEffort?: 'low' | 'medium' | 'high' // Opus 4.5 only - moved to main bar
   enableComputerUse?: boolean
   enableBashTool?: boolean
   enableTextEditor?: boolean
+  anthropicEnableWebFetch?: boolean
+  anthropicEnableCodeExecution?: boolean
+  anthropicEnableMemoryTool?: boolean
+  anthropicEnableToolSearch?: boolean
+  anthropicToolSearchType?: 'bm25' | 'regex'
+  sendReasoning?: boolean
+  disableParallelToolUse?: boolean
+  toolStreaming?: boolean
 
   // Google
   enableSearchGrounding?: boolean
   enableCodeExecution?: boolean
+  enableUrlContext?: boolean
+  enableMapsGrounding?: boolean
+  enableFileSearch?: boolean
+  includeThoughts?: boolean
+  structuredOutputs?: boolean
 
   // Common
-  enableWebSearch?: boolean
 }
 
 interface ProviderOptionsProps {
@@ -66,6 +90,7 @@ export function ProviderOptions({
     capabilities.supportsShellTool ||
     capabilities.supportsTextEditor ||
     capabilities.supportsApplyPatch
+  const hasLocalExecution = false
 
   if (!hasToolOptions) return null
 
@@ -76,16 +101,6 @@ export function ProviderOptions({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-3 rounded-2xl">
         <div className="space-y-3">
-          {capabilities.supportsWebSearch && (
-            <ToolToggle
-              icon={<Search className="size-3" />}
-              label="Web Search"
-              checked={options.enableWebSearch ?? false}
-              onChange={(checked) => onChange({ ...options, enableWebSearch: checked })}
-              disabled={disabled}
-            />
-          )}
-
           {capabilities.supportsCodeInterpreter && (
             <ToolToggle
               icon={<Code className="size-3" />}
@@ -110,7 +125,75 @@ export function ProviderOptions({
           {/* OpenAI-specific tools */}
           {provider === 'openai' && (
             <>
-              {capabilities.supportsShellTool && (
+              <OptionSelect
+                label="Reasoning Summary"
+                value={options.reasoningSummary}
+                placeholder="Off"
+                items={[
+                  { label: 'Off', value: 'off' },
+                  { label: 'Auto', value: 'auto' },
+                  { label: 'Detailed', value: 'detailed' },
+                ]}
+                onValueChange={(value) =>
+                  onChange({
+                    ...options,
+                    reasoningSummary: value === 'off' ? undefined : value as ProviderOptionsState['reasoningSummary'],
+                  })
+                }
+                disabled={disabled}
+              />
+              <OptionSelect
+                label="Text Verbosity"
+                value={options.textVerbosity}
+                placeholder="Default"
+                items={[
+                  { label: 'Default', value: 'off' },
+                  { label: 'Low', value: 'low' },
+                  { label: 'Medium', value: 'medium' },
+                  { label: 'High', value: 'high' },
+                ]}
+                onValueChange={(value) =>
+                  onChange({
+                    ...options,
+                    textVerbosity: value === 'off' ? undefined : value as ProviderOptionsState['textVerbosity'],
+                  })
+                }
+                disabled={disabled}
+              />
+              <OptionSelect
+                label="Service Tier"
+                value={options.serviceTier}
+                placeholder="Auto"
+                items={[
+                  { label: 'Auto (Default)', value: 'off' },
+                  { label: 'Auto', value: 'auto' },
+                  { label: 'Flex', value: 'flex' },
+                  { label: 'Priority', value: 'priority' },
+                  { label: 'Default', value: 'default' },
+                ]}
+                onValueChange={(value) =>
+                  onChange({
+                    ...options,
+                    serviceTier: value === 'off' ? undefined : value as ProviderOptionsState['serviceTier'],
+                  })
+                }
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Strict JSON Schema"
+                checked={options.strictJsonSchema ?? true}
+                onChange={(checked) => onChange({ ...options, strictJsonSchema: checked })}
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Parallel Tool Calls"
+                checked={options.parallelToolCalls ?? true}
+                onChange={(checked) => onChange({ ...options, parallelToolCalls: checked })}
+                disabled={disabled}
+              />
+              {capabilities.supportsShellTool && hasLocalExecution && (
                 <ToolToggle
                   icon={<Terminal className="size-3" />}
                   label="Shell Tool"
@@ -119,7 +202,7 @@ export function ProviderOptions({
                   disabled={disabled}
                 />
               )}
-              {capabilities.supportsApplyPatch && (
+              {capabilities.supportsApplyPatch && hasLocalExecution && (
                 <ToolToggle
                   icon={<FileText className="size-3" />}
                   label="Apply Patch"
@@ -128,7 +211,7 @@ export function ProviderOptions({
                   disabled={disabled}
                 />
               )}
-              {capabilities.supportsComputerUse && (
+              {capabilities.supportsComputerUse && hasLocalExecution && (
                 <ToolToggle
                   icon={<Monitor className="size-3" />}
                   label="Computer Use"
@@ -143,7 +226,28 @@ export function ProviderOptions({
           {/* Anthropic-specific tools */}
           {provider === 'anthropic' && (
             <>
-              {capabilities.supportsComputerUse && (
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Send Reasoning"
+                checked={options.sendReasoning ?? true}
+                onChange={(checked) => onChange({ ...options, sendReasoning: checked })}
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Tool Streaming"
+                checked={options.toolStreaming ?? true}
+                onChange={(checked) => onChange({ ...options, toolStreaming: checked })}
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Disable Parallel Tool Use"
+                checked={options.disableParallelToolUse ?? false}
+                onChange={(checked) => onChange({ ...options, disableParallelToolUse: checked })}
+                disabled={disabled}
+              />
+              {capabilities.supportsComputerUse && hasLocalExecution && (
                 <ToolToggle
                   icon={<Monitor className="size-3" />}
                   label="Computer Use"
@@ -152,7 +256,7 @@ export function ProviderOptions({
                   disabled={disabled}
                 />
               )}
-              {capabilities.supportsShellTool && (
+              {capabilities.supportsShellTool && hasLocalExecution && (
                 <ToolToggle
                   icon={<Terminal className="size-3" />}
                   label="Bash Tool"
@@ -161,7 +265,7 @@ export function ProviderOptions({
                   disabled={disabled}
                 />
               )}
-              {capabilities.supportsTextEditor && (
+              {capabilities.supportsTextEditor && hasLocalExecution && (
                 <ToolToggle
                   icon={<FileText className="size-3" />}
                   label="Text Editor"
@@ -170,18 +274,108 @@ export function ProviderOptions({
                   disabled={disabled}
                 />
               )}
+              <ToolToggle
+                icon={<Search className="size-3" />}
+                label="Web Fetch"
+                checked={options.anthropicEnableWebFetch ?? false}
+                onChange={(checked) => onChange({ ...options, anthropicEnableWebFetch: checked })}
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<Code className="size-3" />}
+                label="Code Execution"
+                checked={options.anthropicEnableCodeExecution ?? false}
+                onChange={(checked) => onChange({ ...options, anthropicEnableCodeExecution: checked })}
+                disabled={disabled}
+              />
+              {hasLocalExecution && (
+                <ToolToggle
+                  icon={<CheckBoxIcon />}
+                  label="Memory Tool"
+                  checked={options.anthropicEnableMemoryTool ?? false}
+                  onChange={(checked) => onChange({ ...options, anthropicEnableMemoryTool: checked })}
+                  disabled={disabled}
+                />
+              )}
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Tool Search"
+                checked={options.anthropicEnableToolSearch ?? false}
+                onChange={(checked) => onChange({ ...options, anthropicEnableToolSearch: checked })}
+                disabled={disabled}
+              />
+              {options.anthropicEnableToolSearch && (
+                <OptionSelect
+                  label="Tool Search Type"
+                  value={options.anthropicToolSearchType}
+                  placeholder="BM25"
+                  items={[
+                    { label: 'BM25', value: 'bm25' },
+                    { label: 'Regex', value: 'regex' },
+                  ]}
+                  onValueChange={(value) =>
+                    onChange({ ...options, anthropicToolSearchType: value as ProviderOptionsState['anthropicToolSearchType'] })
+                  }
+                  disabled={disabled}
+                />
+              )}
             </>
           )}
 
           {/* Google-specific tools */}
-          {provider === 'google' && capabilities.supportsWebSearch && (
-            <ToolToggle
-              icon={<Search className="size-3" />}
-              label="Search Grounding"
-              checked={options.enableSearchGrounding ?? false}
-              onChange={(checked) => onChange({ ...options, enableSearchGrounding: checked })}
-              disabled={disabled}
-            />
+          {provider === 'google' && (
+            <>
+              {capabilities.supportsWebSearch && (
+                <ToolToggle
+                  icon={<Search className="size-3" />}
+                  label="Search Grounding"
+                  checked={options.enableSearchGrounding ?? false}
+                  onChange={(checked) => onChange({ ...options, enableSearchGrounding: checked })}
+                  disabled={disabled}
+                />
+              )}
+              {capabilities.supportsUrlContext && (
+                <ToolToggle
+                  icon={<Search className="size-3" />}
+                  label="URL Context"
+                  checked={options.enableUrlContext ?? false}
+                  onChange={(checked) => onChange({ ...options, enableUrlContext: checked })}
+                  disabled={disabled}
+                />
+              )}
+              {capabilities.supportsMapsGrounding && (
+                <ToolToggle
+                  icon={<Search className="size-3" />}
+                  label="Maps Grounding"
+                  checked={options.enableMapsGrounding ?? false}
+                  onChange={(checked) => onChange({ ...options, enableMapsGrounding: checked })}
+                  disabled={disabled}
+                />
+              )}
+              {capabilities.supportsFileSearch && (
+                <ToolToggle
+                  icon={<Search className="size-3" />}
+                  label="File Search"
+                  checked={options.enableFileSearch ?? false}
+                  onChange={(checked) => onChange({ ...options, enableFileSearch: checked })}
+                  disabled={disabled}
+                />
+              )}
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Include Thoughts"
+                checked={options.includeThoughts ?? true}
+                onChange={(checked) => onChange({ ...options, includeThoughts: checked })}
+                disabled={disabled}
+              />
+              <ToolToggle
+                icon={<CheckBoxIcon />}
+                label="Structured Outputs"
+                checked={options.structuredOutputs ?? true}
+                onChange={(checked) => onChange({ ...options, structuredOutputs: checked })}
+                disabled={disabled}
+              />
+            </>
           )}
         </div>
       </PopoverContent>
@@ -212,4 +406,42 @@ function ToolToggle({ icon, label, checked, onChange, disabled }: ToolToggleProp
       />
     </div>
   )
+}
+
+interface OptionItem {
+  label: string
+  value: string
+}
+
+interface OptionSelectProps {
+  label: string
+  value?: string
+  placeholder?: string
+  items: OptionItem[]
+  onValueChange: (value: string) => void
+  disabled?: boolean
+}
+
+function OptionSelect({ label, value, placeholder, items, onValueChange, disabled }: OptionSelectProps) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Label className="text-sm">{label}</Label>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger className="h-7 w-[140px] text-xs">
+          <SelectValue placeholder={placeholder ?? 'Select'} />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function CheckBoxIcon() {
+  return <div className="size-3 rounded-[2px] border border-current" />
 }

@@ -1,4 +1,10 @@
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
+
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -12,59 +18,372 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table'
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
+import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
-  CreditCard,
-  Sparkles,
-  Users,
-  FolderKanban,
-  HardDrive,
-  Download,
-  Check,
-  ArrowUpRight,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '../../components/ui/chart'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+import {
+  Loader2,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 
-const plans = [
+interface PlanInfo {
+  id: string
+  name: string
+  price: string
+  period: string
+  credits: number
+  features: string[]
+}
+
+const plans: PlanInfo[] = [
   {
     id: 'free',
     name: 'Free',
     price: '$0',
     period: '/month',
-    features: ['3 projects', '2 team members', '500 AI credits/month', '1GB storage'],
-    current: false,
+    credits: 0,
+    features: ['Use your own API keys', 'Unlimited projects', '2 team members', 'Basic support'],
   },
   {
     id: 'pro',
     name: 'Pro',
-    price: '$29',
+    price: '$20',
     period: '/month',
-    features: ['Unlimited projects', '10 team members', '5,000 AI credits/month', '50GB storage'],
-    current: true,
+    credits: 5000,
+    features: ['5,000 AI credits/month', 'Unlimited projects', '10 team members', 'Priority support'],
+  },
+  {
+    id: 'max',
+    name: 'Max',
+    price: '$50',
+    period: '/month',
+    credits: 15000,
+    features: ['15,000 AI credits/month', 'Unlimited projects', '25 team members', 'Priority support'],
   },
   {
     id: 'team',
     name: 'Team',
-    price: '$79',
-    period: '/month',
-    features: ['Unlimited projects', 'Unlimited members', '20,000 AI credits/month', '500GB storage'],
-    current: false,
+    price: '$40',
+    period: '/seat/month',
+    credits: 10000,
+    features: ['10,000 credits per seat', 'Unlimited projects', 'Unlimited members', 'Dedicated support'],
   },
 ]
 
-const invoices = [
-  { id: '1', date: 'Jan 1, 2025', amount: '$29.00', status: 'paid' },
-  { id: '2', date: 'Dec 1, 2024', amount: '$29.00', status: 'paid' },
-  { id: '3', date: 'Nov 1, 2024', amount: '$29.00', status: 'paid' },
-  { id: '4', date: 'Oct 1, 2024', amount: '$29.00', status: 'paid' },
+const creditPacks = [
+  { id: 'starter', name: 'Starter', credits: 1000, price: '$12' },
+  { id: 'plus', name: 'Plus', credits: 5000, price: '$50' },
+  { id: 'pro', name: 'Pro', credits: 15000, price: '$120' },
+  { id: 'max', name: 'Max', credits: 50000, price: '$350' },
 ]
 
-export function Billing() {
-  const { user, logout } = useAuth()
+interface StripeInvoice {
+  id: string
+  number: string | null
+  date: number
+  amountDue: number
+  amountPaid: number
+  status: string | null
+  description: string
+  hostedInvoiceUrl: string | null
+  invoicePdf: string | null
+}
 
-  const usage = {
-    aiCredits: { used: 3200, total: 5000 },
-    members: { used: 5, total: 10 },
-    projects: { used: 8, total: -1 }, // -1 = unlimited
-    storage: { used: 12.5, total: 50 },
+export function Billing() {
+  const { user, logout, currentOrganization, accessToken } = useAuth()
+
+  // Get Convex organization by WorkOS ID
+  const convexOrg = useQuery(
+    api.organizations.getByWorkosId,
+    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+
+  // Get members count
+  const members = useQuery(
+    api.organizations.getMembers,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+
+  // Stripe invoices state
+  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+
+  // Get credit lots (purchased credits)
+  const creditLots = useQuery(
+    api.billing.getCreditLots,
+    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+  )
+
+  // Usage chart state
+  const [usageTimeRange, setUsageTimeRange] = useState('30d')
+
+  // Calculate date range for usage query
+  const usageDateRange = useMemo(() => {
+    const now = Date.now()
+    const daysToSubtract = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const startDate = now - daysToSubtract * 24 * 60 * 60 * 1000
+    return { startDate, endDate: now }
+  }, [usageTimeRange])
+
+  // Get daily usage aggregates
+  const usageAggregates = useQuery(
+    api.aiUsage.getAggregates,
+    convexOrg?._id ? {
+      organizationId: convexOrg._id,
+      period: 'daily' as const,
+      startDate: usageDateRange.startDate,
+      endDate: usageDateRange.endDate,
+    } : 'skip'
+  )
+
+  // Transform usage data for chart
+  const chartData = useMemo(() => {
+    if (!usageAggregates) return []
+
+    // Create a map of all dates in the range
+    const daysToShow = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const dates: { date: string; credits: number }[] = []
+    const now = new Date()
+
+    for (let i = daysToShow - 1; i >= 0; i--) {
+      const date = new Date(now)
+      date.setDate(date.getDate() - i)
+      date.setHours(0, 0, 0, 0)
+      dates.push({
+        date: date.toISOString().split('T')[0],
+        credits: 0,
+      })
+    }
+
+    // Fill in actual usage data
+    for (const aggregate of usageAggregates) {
+      const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
+      const found = dates.find(d => d.date === dateStr)
+      if (found) {
+        found.credits = aggregate.totalCreditsUsed
+      }
+    }
+
+    return dates
+  }, [usageAggregates, usageTimeRange])
+
+  // Chart config
+  const chartConfig: ChartConfig = {
+    credits: {
+      label: 'Credits Used',
+      theme: {
+        light: 'hsl(240 5% 34%)',
+        dark: 'hsl(0 0% 85%)',
+      },
+    },
+  }
+
+  const [isUpgrading, setIsUpgrading] = useState(false)
+  const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
+
+  // Fetch Stripe invoices
+  useEffect(() => {
+    const fetchInvoices = async () => {
+      if (!currentOrganization?.organizationId || !accessToken) return
+
+      setInvoicesLoading(true)
+      try {
+        const response = await fetch(
+          `${AUTH_SERVER_URL}/stripe/invoices?organizationId=${currentOrganization.organizationId}&limit=10`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        )
+
+        if (response.ok) {
+          const data = await response.json()
+          setStripeInvoices(data.invoices || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch invoices:', err)
+      } finally {
+        setInvoicesLoading(false)
+      }
+    }
+
+    fetchInvoices()
+  }, [currentOrganization?.organizationId, accessToken])
+
+  const subscription = convexOrg?.subscription
+  const credits = convexOrg?.credits
+  const currentPlan = subscription?.plan || 'free'
+  const planInfo = plans.find(p => p.id === currentPlan)
+
+  // Credit calculations
+  const subscriptionCreditsRemaining = credits?.subscriptionCreditsRemaining ?? 0
+
+  // Purchased credits from active lots
+  const purchasedCreditsRemaining = creditLots
+    ?.filter(lot => lot.status === 'active')
+    .reduce((sum, lot) => sum + lot.remainingCredits, 0) ?? 0
+
+  const totalCreditsRemaining = subscriptionCreditsRemaining + purchasedCreditsRemaining
+
+  // Member counts
+  const memberCount = members?.length ?? 0
+  const memberLimit = currentPlan === 'free' ? 2 : currentPlan === 'pro' ? 10 : currentPlan === 'max' ? 25 : -1
+
+  // Format date
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return '—'
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }
+
+  // Handle Stripe portal for managing billing
+  const handleManageBilling = useCallback(async () => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    try {
+      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-portal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganization.organizationId,
+          returnUrl: `${window.location.origin}/workspace/billing`,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to open billing portal')
+      }
+
+      const { url } = await response.json()
+      if (url) {
+        await window.electronAPI.shell.openExternal(url)
+      }
+    } catch (err) {
+      console.error('Billing portal error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to open billing portal')
+    }
+  }, [currentOrganization?.organizationId, accessToken])
+
+  // Handle plan upgrade via Stripe Checkout (redirect)
+  const handleUpgrade = useCallback(async (planId: string) => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    // Free plan / downgrade - use portal
+    if (planId === 'free') {
+      handleManageBilling()
+      return
+    }
+
+    setIsUpgrading(true)
+    try {
+      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganization.organizationId,
+          type: 'subscription',
+          plan: planId,
+          successUrl: 'cozea://billing/success?type=subscription',
+          cancelUrl: 'cozea://billing/canceled',
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create checkout')
+      }
+
+      const { url } = await response.json()
+      if (url) {
+        await window.electronAPI.shell.openExternal(url)
+      }
+    } catch (err) {
+      console.error('Checkout error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to start checkout')
+    } finally {
+      setIsUpgrading(false)
+    }
+  }, [currentOrganization?.organizationId, accessToken, handleManageBilling])
+
+  // Handle credit pack purchase via Stripe Checkout (redirect)
+  const handleBuyCredits = useCallback(async (packId: string) => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    try {
+      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganization.organizationId,
+          type: 'credits',
+          packType: packId,
+          successUrl: 'cozea://billing/success?type=credits',
+          cancelUrl: 'cozea://billing/canceled',
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create checkout')
+      }
+
+      const { url } = await response.json()
+      if (url) {
+        await window.electronAPI.shell.openExternal(url)
+      }
+    } catch (err) {
+      console.error('Checkout error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to start checkout')
+    }
+  }, [currentOrganization?.organizationId, accessToken])
+
+  // Check for success/cancel query params from Stripe redirect
+  const urlParams = new URLSearchParams(window.location.search)
+  const successType = urlParams.get('success')
+  const wasCanceled = urlParams.get('canceled')
+
+  const isLoading = !convexOrg
+
+  if (isLoading) {
+    return (
+      <DashboardLayout
+        user={user}
+        onLogout={logout}
+        breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
@@ -73,209 +392,386 @@ export function Billing() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
     >
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Billing</h1>
-        <p className="text-muted-foreground">
-          Manage your subscription and billing information
-        </p>
-      </div>
+      {/* Success/Cancel Alerts */}
+      {successType && (
+        <Alert className="mb-6 border-green-500/50 bg-green-500/10">
+          <CheckCircle2 className="h-4 w-4 text-green-500" />
+          <AlertTitle className="text-green-500">
+            {successType === 'subscription' ? 'Subscription Updated!' : 'Credits Purchased!'}
+          </AlertTitle>
+          <AlertDescription>
+            {successType === 'subscription'
+              ? 'Your subscription has been updated. Your new credits are now available.'
+              : 'Your credits have been added to your account and are ready to use.'}
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="space-y-6">
+      {wasCanceled && (
+        <Alert className="mb-6 border-amber-500/50 bg-amber-500/10">
+          <XCircle className="h-4 w-4 text-amber-500" />
+          <AlertTitle className="text-amber-500">Checkout Canceled</AlertTitle>
+          <AlertDescription>
+            Your checkout was canceled. No charges were made.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="space-y-4">
         {/* Current Plan */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Current Plan</CardTitle>
-            <CardDescription>
-              You are currently on the Pro plan
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {plans.map((plan) => (
-                <Card
-                  key={plan.id}
-                  className={plan.current ? 'border-primary bg-primary/5' : ''}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{plan.name}</CardTitle>
-                      {plan.current && <Badge>Current</Badge>}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0">
+                {/* Header row */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold">{planInfo?.name} plan</h3>
+                    {subscription?.status === 'active' && (
+                      <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20">
+                        Active
+                      </Badge>
+                    )}
+                  </div>
+                  <Button onClick={() => setShowUpgradeOptions(!showUpgradeOptions)}>
+                    {showUpgradeOptions ? 'Hide Plans' : 'Upgrade Plan'}
+                  </Button>
+                </div>
+
+                {/* Description */}
+                <p className="text-sm text-muted-foreground mb-4">
+                  {planInfo?.features[0]}
+                </p>
+
+                {/* Price */}
+                <div className="mb-6">
+                  <span className="text-3xl font-bold">{planInfo?.price}</span>
+                  <span className="text-muted-foreground">{planInfo?.period}</span>
+                </div>
+
+                {/* Team Usage */}
+                {memberLimit > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Team Usage</span>
+                      <span className="text-muted-foreground">{memberCount} of {memberLimit} seats</span>
                     </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold">{plan.price}</span>
-                      <span className="text-muted-foreground">{plan.period}</span>
+                    <Progress value={(memberCount / memberLimit) * 100} className="h-2" />
+                    {/* Member Avatars */}
+                    {members && members.length > 0 && (
+                      <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                        <div className="flex -space-x-2">
+                          {members.slice(0, 4).map((member) => {
+                            const displayName = member.user?.firstName
+                              ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                              : member.user?.email
+                            return (
+                              <Avatar key={member._id} className="ring-background ring-2">
+                                <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
+                                <AvatarFallback className="text-xs">
+                                  {(displayName || '?').slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )
+                          })}
+                        </div>
+                        {members.length > 4 && (
+                          <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
+                            +{members.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {memberLimit < 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Team Usage</span>
+                      <span className="text-muted-foreground">{memberCount} members (unlimited)</span>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex items-center gap-2 text-sm">
-                          <Check className="h-4 w-4 text-primary" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      variant={plan.current ? 'outline' : 'default'}
-                      className="w-full mt-4"
-                      disabled={plan.current}
-                    >
-                      {plan.current ? 'Current Plan' : 'Upgrade'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    {/* Member Avatars */}
+                    {members && members.length > 0 && (
+                      <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                        <div className="flex -space-x-2">
+                          {members.slice(0, 4).map((member) => {
+                            const displayName = member.user?.firstName
+                              ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                              : member.user?.email
+                            return (
+                              <Avatar key={member._id} className="ring-background ring-2">
+                                <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
+                                <AvatarFallback className="text-xs">
+                                  {(displayName || '?').slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            )
+                          })}
+                        </div>
+                        {members.length > 4 && (
+                          <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
+                            +{members.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
           </CardContent>
         </Card>
 
-        {/* Usage */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Usage</CardTitle>
-            <CardDescription>
-              Your current usage this billing period
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">AI Credits</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {usage.aiCredits.used} / {usage.aiCredits.total}
-                  </span>
-                </div>
-                <Progress value={(usage.aiCredits.used / usage.aiCredits.total) * 100} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Team Members</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {usage.members.used} / {usage.members.total}
-                  </span>
-                </div>
-                <Progress value={(usage.members.used / usage.members.total) * 100} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FolderKanban className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Projects</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {usage.projects.used} / Unlimited
-                  </span>
-                </div>
-                <Progress value={30} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Storage</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {usage.storage.used}GB / {usage.storage.total}GB
-                  </span>
-                </div>
-                <Progress value={(usage.storage.used / usage.storage.total) * 100} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Upgrade Options (collapsible with animation) */}
+        <div
+          className={`grid transition-all duration-300 ease-in-out ${
+            showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+          }`}
+        >
+          <div className="overflow-hidden">
+            <Card className="border-none shadow-none bg-transparent">
+              <CardHeader className="pt-0">
+                <CardTitle>Available Plans</CardTitle>
+                <CardDescription>
+                  Choose a plan that fits your needs
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {plans.map((plan, index) => {
+                    const isCurrent = plan.id === currentPlan
+                    const isDowngrade = plans.findIndex(p => p.id === plan.id) < plans.findIndex(p => p.id === currentPlan)
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Payment Method */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment Method</CardTitle>
-              <CardDescription>
-                Manage your payment information
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4 p-4 border rounded-lg">
-                <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-blue-400 rounded flex items-center justify-center">
-                  <CreditCard className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Visa ending in 4242</p>
-                  <p className="text-sm text-muted-foreground">Expires 12/2026</p>
-                </div>
-                <Button variant="outline" size="sm">Update</Button>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Billing email</span>
-                <span className="text-sm">billing@acme.com</span>
-              </div>
-            </CardContent>
-          </Card>
+                    const descriptions: Record<string, string> = {
+                      free: 'Use your own API keys with unlimited projects and basic support.',
+                      pro: 'Get 5,000 AI credits monthly with priority support and more team members.',
+                      max: 'Get 15,000 AI credits monthly with extended team size and priority support.',
+                      team: 'Scale with 10,000 credits per seat, unlimited members, and dedicated support.',
+                    }
 
-          {/* Invoices */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice History</CardTitle>
-              <CardDescription>
-                Download your past invoices
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell>{invoice.date}</TableCell>
-                      <TableCell>{invoice.amount}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="capitalize">
-                          {invoice.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Download className="h-4 w-4" />
+                    return (
+                      <div
+                        key={plan.id}
+                        className={`relative rounded-lg border bg-card p-5 flex flex-col transition-all duration-300 ${
+                          isCurrent ? 'ring-2 ring-primary' : ''
+                        } ${
+                          showUpgradeOptions
+                            ? 'opacity-100 translate-y-0'
+                            : 'opacity-0 -translate-y-4'
+                        }`}
+                        style={{
+                          transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(plans.length - 1 - index) * 50}ms`,
+                        }}
+                      >
+                        {isCurrent && (
+                          <Badge className="absolute top-3 right-3">Current</Badge>
+                        )}
+                        <div className="flex items-baseline gap-2 mb-3">
+                          <span className="text-lg font-semibold">{plan.name}</span>
+                          <span className="text-muted-foreground">
+                            {plan.price}{plan.period}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground flex-1 mb-4">
+                          {descriptions[plan.id]}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-fit"
+                          disabled={isCurrent || isUpgrading}
+                          onClick={() => handleUpgrade(plan.id)}
+                        >
+                          {isCurrent ? 'Current Plan' : isDowngrade ? 'Downgrade' : `Upgrade to ${plan.name}`}
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Cancel */}
-        <Card>
-          <CardContent className="flex items-center justify-between py-6">
-            <div>
-              <h4 className="font-medium">Cancel Subscription</h4>
-              <p className="text-sm text-muted-foreground">
-                Your plan will remain active until the end of the billing period
-              </p>
-            </div>
-            <Button variant="outline" className="gap-2">
-              Cancel Plan
-              <ArrowUpRight className="h-4 w-4" />
-            </Button>
+        {/* Credits & Usage */}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0">
+              {/* Usage Chart */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="font-medium">Usage Over Time</p>
+                    <p className="text-sm text-muted-foreground">
+                      Daily credit consumption
+                    </p>
+                  </div>
+                  <Select value={usageTimeRange} onValueChange={setUsageTimeRange}>
+                    <SelectTrigger className="w-[140px]" aria-label="Select time range">
+                      <SelectValue placeholder="Last 30 days" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
+                      <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                      <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="fillCredits" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-credits)" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="var(--color-credits)" stopOpacity={0.1} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      minTickGap={32}
+                      tickFormatter={(value) => {
+                        const date = new Date(value)
+                        return date.toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      }}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(value) => {
+                            return new Date(value).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          }}
+                          indicator="dot"
+                        />
+                      }
+                    />
+                    <Area
+                      dataKey="credits"
+                      type="natural"
+                      fill="url(#fillCredits)"
+                      stroke="var(--color-credits)"
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              </div>
+
+              {/* Total Credits Summary */}
+              <div className="mt-6 pt-6 border-t">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Total Available Credits</p>
+                    <p className="text-sm text-muted-foreground">
+                      Subscription + purchased credits
+                    </p>
+                  </div>
+                  <p className="text-3xl font-bold">{totalCreditsRemaining.toLocaleString()}</p>
+                </div>
+              </div>
           </CardContent>
         </Card>
-      </div>
+
+        {/* Buy Credits */}
+      <Card className="border-none shadow-none bg-transparent">
+        <CardHeader>
+          <CardTitle>Buy Credits</CardTitle>
+          <CardDescription>
+            Purchase additional credits that never expire (valid for 12 months)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {creditPacks.map((pack) => (
+              <Card key={pack.id} className="cursor-pointer hover:border-primary transition-colors">
+                <CardContent className="pt-4 text-center">
+                  <p className="text-2xl font-bold">{pack.credits.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground mb-3">credits</p>
+                  <p className="text-lg font-semibold mb-3">{pack.price}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleBuyCredits(pack.id)}
+                  >
+                    Buy {pack.name}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Invoice History */}
+      <Card className="border-none shadow-none bg-transparent">
+        <CardHeader className="pt-0">
+          <CardTitle>Invoice History</CardTitle>
+          <CardDescription>
+            View and download your past invoices
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {invoicesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : stripeInvoices.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Invoice</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stripeInvoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell>{formatDate(invoice.date)}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {invoice.description}
+                    </TableCell>
+                    <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
+                        className="capitalize"
+                      >
+                        {invoice.status || 'unknown'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {invoice.hostedInvoiceUrl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1"
+                          onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                        >
+                          View
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No invoices yet</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+    </div>
     </DashboardLayout>
   )
 }

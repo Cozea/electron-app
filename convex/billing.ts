@@ -138,8 +138,8 @@ export const checkOverageThresholds = internalMutation({
         // Create new draft invoice
         await ctx.db.insert("invoices", {
           organizationId: org._id,
-          periodStart: org.credits.currentPeriodStart,
-          periodEnd: org.credits.currentPeriodEnd,
+          periodStart: org.credits.currentPeriodStart ?? Date.now(),
+          periodEnd: org.credits.currentPeriodEnd ?? Date.now() + 30 * 24 * 60 * 60 * 1000,
           subscriptionAmountCents: 0, // Subscription is billed separately via Stripe
           overageAmountCents,
           creditPackAmountCents: 0,
@@ -234,9 +234,9 @@ async function resetBillingPeriodForOrg(
   const now = Date.now()
 
   // Calculate new period (monthly)
-  const oldPeriodEnd = org.credits.currentPeriodEnd
+  const oldPeriodEnd = org.credits.currentPeriodEnd ?? now
   const newPeriodStart = oldPeriodEnd
-  const newPeriodEnd = new Date(newPeriodStart)
+  const newPeriodEnd = new Date(newPeriodStart as number)
   newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1)
 
   // Get subscription credits for the plan
@@ -361,7 +361,7 @@ export const purchaseCreditPack = mutation({
 })
 
 /**
- * Record credit pack purchase from Stripe webhook
+ * Record credit pack purchase from Stripe webhook (internal)
  * Called internally after payment confirmation
  */
 export const recordCreditPackPurchase = internalMutation({
@@ -378,47 +378,96 @@ export const recordCreditPackPurchase = internalMutation({
     purchasedBy: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const now = Date.now()
-
-    // Check for duplicate (idempotency)
-    const existing = await ctx.db
-      .query("creditLots")
-      .withIndex("by_stripe_payment", (q) =>
-        q.eq("stripePaymentIntentId", args.stripePaymentIntentId)
-      )
-      .first()
-
-    if (existing) {
-      return { lotId: existing._id, alreadyProcessed: true }
-    }
-
-    const pack = CREDIT_PACKS[args.packType as CreditPackType]
-    if (!pack) {
-      throw new Error(`Invalid pack type: ${args.packType}`)
-    }
-
-    // Calculate expiration (12 months from now)
-    const expiresAt = new Date(now)
-    expiresAt.setMonth(expiresAt.getMonth() + pack.expirationMonths)
-
-    // Create credit lot
-    const lotId = await ctx.db.insert("creditLots", {
-      organizationId: args.organizationId,
-      packType: args.packType,
-      originalCredits: pack.credits,
-      remainingCredits: pack.credits,
-      amountPaidCents: pack.priceCents,
-      stripePaymentIntentId: args.stripePaymentIntentId,
-      stripeCheckoutSessionId: args.stripeCheckoutSessionId,
-      purchasedAt: now,
-      expiresAt: expiresAt.getTime(),
-      status: "active",
-      purchasedBy: args.purchasedBy,
-    })
-
-    return { lotId, alreadyProcessed: false }
+    return await recordCreditPackPurchaseHandler(ctx, args)
   },
 })
+
+/**
+ * Record credit pack purchase - server-facing version
+ * Called from the AI gateway server after Stripe webhook
+ */
+export const recordCreditPackPurchaseForServer = mutation({
+  args: {
+    organizationId: v.string(), // String ID from server
+    packType: v.union(
+      v.literal("starter"),
+      v.literal("plus"),
+      v.literal("pro"),
+      v.literal("max")
+    ),
+    stripePaymentIntentId: v.string(),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    // Parse the organization ID
+    const orgId = ctx.db.normalizeId("organizations", args.organizationId)
+    if (!orgId) {
+      throw new Error("Invalid organization ID")
+    }
+
+    return await recordCreditPackPurchaseHandler(ctx, {
+      organizationId: orgId,
+      packType: args.packType,
+      stripePaymentIntentId: args.stripePaymentIntentId,
+      stripeCheckoutSessionId: args.stripeCheckoutSessionId,
+    })
+  },
+})
+
+// Shared handler for credit pack purchases
+async function recordCreditPackPurchaseHandler(
+  ctx: { db: any },
+  args: {
+    organizationId: any
+    packType: "starter" | "plus" | "pro" | "max"
+    stripePaymentIntentId: string
+    stripeCheckoutSessionId?: string
+    purchasedBy?: any
+  }
+) {
+  const now = Date.now()
+
+  // Check for duplicate (idempotency)
+  const existing = await ctx.db
+    .query("creditLots")
+    .withIndex("by_stripe_payment", (q: any) =>
+      q.eq("stripePaymentIntentId", args.stripePaymentIntentId)
+    )
+    .first()
+
+  if (existing) {
+    return { lotId: existing._id, alreadyProcessed: true }
+  }
+
+  const pack = CREDIT_PACKS[args.packType as CreditPackType]
+  if (!pack) {
+    throw new Error(`Invalid pack type: ${args.packType}`)
+  }
+
+  // Calculate expiration (12 months from now)
+  const expiresAt = new Date(now)
+  expiresAt.setMonth(expiresAt.getMonth() + pack.expirationMonths)
+
+  // Create credit lot
+  const lotId = await ctx.db.insert("creditLots", {
+    organizationId: args.organizationId,
+    packType: args.packType,
+    originalCredits: pack.credits,
+    remainingCredits: pack.credits,
+    amountPaidCents: pack.priceCents,
+    stripePaymentIntentId: args.stripePaymentIntentId,
+    stripeCheckoutSessionId: args.stripeCheckoutSessionId,
+    purchasedAt: now,
+    expiresAt: expiresAt.getTime(),
+    status: "active",
+    purchasedBy: args.purchasedBy,
+  })
+
+  return { lotId, alreadyProcessed: false }
+}
 
 /**
  * Finalize overage invoice for a billing period
@@ -561,7 +610,7 @@ export const getCreditLots = query({
 })
 
 /**
- * Update organization subscription after Stripe webhook
+ * Update organization subscription after Stripe webhook (internal)
  */
 export const updateSubscription = internalMutation({
   args: {
@@ -586,40 +635,115 @@ export const updateSubscription = internalMutation({
     seatCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const now = Date.now()
-
-    const org = await ctx.db.get(args.organizationId)
-    if (!org) {
-      throw new Error("Organization not found")
-    }
-
-    // Calculate new credit allocation
-    const subscriptionCredits = getPlanCredits(args.plan, args.seatCount)
-
-    // Update subscription
-    await ctx.db.patch(args.organizationId, {
-      subscription: {
-        ...org.subscription,
-        plan: args.plan,
-        status: args.status,
-        stripeCustomerId: args.stripeCustomerId ?? org.subscription.stripeCustomerId,
-        stripeSubscriptionId: args.stripeSubscriptionId ?? org.subscription.stripeSubscriptionId,
-        currentPeriodStart: args.currentPeriodStart ?? org.subscription.currentPeriodStart,
-        currentPeriodEnd: args.currentPeriodEnd ?? org.subscription.currentPeriodEnd,
-        seatCount: args.seatCount ?? org.subscription.seatCount,
-      },
-      credits: {
-        ...org.credits,
-        subscriptionCreditsTotal: subscriptionCredits,
-        // Only reset remaining if upgrading or at period start
-        subscriptionCreditsRemaining:
-          args.currentPeriodStart !== org.subscription.currentPeriodStart
-            ? subscriptionCredits
-            : org.credits.subscriptionCreditsRemaining,
-      },
-      updatedAt: now,
-    })
-
-    return { success: true, plan: args.plan, credits: subscriptionCredits }
+    return await updateSubscriptionHandler(ctx, args)
   },
 })
+
+/**
+ * Update organization subscription - server-facing version
+ * Called from the AI gateway server after Stripe webhook
+ */
+export const updateSubscriptionForServer = mutation({
+  args: {
+    organizationId: v.string(), // String ID from server
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("team"),
+      v.literal("enterprise")
+    ),
+    status: v.union(
+      v.literal("active"),
+      v.literal("canceled"),
+      v.literal("past_due"),
+      v.literal("trialing")
+    ),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    seatCount: v.optional(v.number()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    // Parse the organization ID
+    const orgId = ctx.db.normalizeId("organizations", args.organizationId)
+    if (!orgId) {
+      throw new Error("Invalid organization ID")
+    }
+
+    return await updateSubscriptionHandler(ctx, {
+      organizationId: orgId,
+      plan: args.plan,
+      status: args.status,
+      stripeCustomerId: args.stripeCustomerId,
+      stripeSubscriptionId: args.stripeSubscriptionId,
+      currentPeriodStart: args.currentPeriodStart,
+      currentPeriodEnd: args.currentPeriodEnd,
+      seatCount: args.seatCount,
+    })
+  },
+})
+
+// Shared handler for subscription updates
+async function updateSubscriptionHandler(
+  ctx: { db: any },
+  args: {
+    organizationId: any
+    plan: "free" | "pro" | "max" | "team" | "enterprise"
+    status: "active" | "canceled" | "past_due" | "trialing"
+    stripeCustomerId?: string
+    stripeSubscriptionId?: string
+    currentPeriodStart?: number
+    currentPeriodEnd?: number
+    seatCount?: number
+  }
+) {
+  const now = Date.now()
+
+  const org = await ctx.db.get(args.organizationId)
+  if (!org) {
+    throw new Error("Organization not found")
+  }
+
+  // Calculate new credit allocation
+  const subscriptionCredits = getPlanCredits(args.plan, args.seatCount)
+
+  // Determine byokPolicy based on plan
+  // Paid plans get "optional" (can use server credits or BYOK)
+  // Free plan gets "required" (must use BYOK since no server credits)
+  const byokPolicy = args.plan === "free" ? "required" : "optional"
+
+  // Update subscription and aiSettings
+  await ctx.db.patch(args.organizationId, {
+    subscription: {
+      ...org.subscription,
+      plan: args.plan,
+      status: args.status,
+      stripeCustomerId: args.stripeCustomerId ?? org.subscription.stripeCustomerId,
+      stripeSubscriptionId: args.stripeSubscriptionId ?? org.subscription.stripeSubscriptionId,
+      currentPeriodStart: args.currentPeriodStart ?? org.subscription.currentPeriodStart,
+      currentPeriodEnd: args.currentPeriodEnd ?? org.subscription.currentPeriodEnd,
+      seatCount: args.seatCount ?? org.subscription.seatCount,
+    },
+    credits: {
+      ...org.credits,
+      subscriptionCreditsTotal: subscriptionCredits,
+      // Only reset remaining if upgrading or at period start
+      subscriptionCreditsRemaining:
+        args.currentPeriodStart !== org.subscription.currentPeriodStart
+          ? subscriptionCredits
+          : org.credits.subscriptionCreditsRemaining,
+    },
+    aiSettings: {
+      ...org.aiSettings,
+      byokPolicy,
+    },
+    updatedAt: now,
+  })
+
+  return { success: true, plan: args.plan, credits: subscriptionCredits }
+}

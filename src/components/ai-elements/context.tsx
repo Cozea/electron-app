@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import {
   HoverCard,
   HoverCardContent,
@@ -16,10 +15,6 @@ import { getUsage } from "tokenlens";
 export type { LanguageModelUsage };
 
 const PERCENT_MAX = 100;
-const ICON_RADIUS = 10;
-const ICON_VIEWBOX = 24;
-const ICON_CENTER = 12;
-const ICON_STROKE_WIDTH = 2;
 
 type ModelId = string;
 
@@ -63,66 +58,75 @@ export const Context = ({
   </ContextContext.Provider>
 );
 
-const ContextIcon = () => {
+const ContextIcon = ({ size = 16 }: { size?: number }) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const circumference = 2 * Math.PI * ICON_RADIUS;
+  const radius = size * 0.4;
+  const strokeWidth = size * 0.12;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
   const usedPercent = usedTokens / maxTokens;
   const dashOffset = circumference * (1 - usedPercent);
 
   return (
     <svg
       aria-label="Model context usage"
-      height="20"
+      height={size}
       role="img"
-      style={{ color: "currentcolor" }}
-      viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`}
-      width="20"
+      viewBox={`0 0 ${size} ${size}`}
+      width={size}
     >
       <circle
-        cx={ICON_CENTER}
-        cy={ICON_CENTER}
+        cx={center}
+        cy={center}
         fill="none"
-        opacity="0.25"
-        r={ICON_RADIUS}
+        r={radius}
         stroke="currentColor"
-        strokeWidth={ICON_STROKE_WIDTH}
+        strokeWidth={strokeWidth}
+        className="opacity-20"
       />
       <circle
-        cx={ICON_CENTER}
-        cy={ICON_CENTER}
+        cx={center}
+        cy={center}
         fill="none"
-        opacity="0.7"
-        r={ICON_RADIUS}
+        r={radius}
         stroke="currentColor"
         strokeDasharray={`${circumference} ${circumference}`}
         strokeDashoffset={dashOffset}
         strokeLinecap="round"
-        strokeWidth={ICON_STROKE_WIDTH}
+        strokeWidth={strokeWidth}
+        className="opacity-80"
         style={{ transformOrigin: "center", transform: "rotate(-90deg)" }}
       />
     </svg>
   );
 };
 
-export type ContextTriggerProps = ComponentProps<typeof Button>;
+export type ContextTriggerProps = ComponentProps<"button"> & {
+  /** Show only the icon without percentage text */
+  iconOnly?: boolean;
+};
 
-export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
+export const ContextTrigger = ({ children, iconOnly, className, ...props }: ContextTriggerProps) => {
   const { usedTokens, maxTokens } = useContextValue();
   const usedPercent = usedTokens / maxTokens;
-  const renderedPercent = new Intl.NumberFormat("en-US", {
-    style: "percent",
-    maximumFractionDigits: 1,
-  }).format(usedPercent);
+  const renderedPercent = Math.round(usedPercent * 100);
 
   return (
     <HoverCardTrigger asChild>
       {children ?? (
-        <Button type="button" variant="ghost" {...props}>
-          <span className="font-medium text-muted-foreground">
-            {renderedPercent}
-          </span>
-          <ContextIcon />
-        </Button>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-1",
+            "bg-secondary/50 hover:bg-secondary transition-colors",
+            "text-xs text-muted-foreground",
+            className
+          )}
+          {...props}
+        >
+          <ContextIcon size={14} />
+          {!iconOnly && <span>{renderedPercent}%</span>}
+        </button>
       )}
     </HoverCardTrigger>
   );

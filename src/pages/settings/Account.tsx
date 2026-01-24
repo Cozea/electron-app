@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -18,59 +19,89 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
-  Upload,
   Shield,
   Key,
   Smartphone,
   Monitor,
-  Globe,
   Mail,
   Bell,
   AlertTriangle,
   Trash2,
-  Download,
-  Check,
+  Loader2,
+  Upload,
 } from 'lucide-react'
 
-const connectedAccounts = [
-  { id: 'google', name: 'Google', email: 'john@gmail.com', connected: true },
-  { id: 'github', name: 'GitHub', email: 'johndoe', connected: true },
-  { id: 'microsoft', name: 'Microsoft', email: null, connected: false },
-]
-
-const activeSessions = [
-  {
-    id: '1',
-    device: 'MacBook Pro',
-    icon: Monitor,
-    location: 'San Francisco, CA',
-    lastActive: 'Now',
-    current: true,
-  },
-  {
-    id: '2',
-    device: 'iPhone 15',
-    icon: Smartphone,
-    location: 'San Francisco, CA',
-    lastActive: '2 hours ago',
-    current: false,
-  },
-  {
-    id: '3',
-    device: 'Chrome on Windows',
-    icon: Globe,
-    location: 'New York, NY',
-    lastActive: '3 days ago',
-    current: false,
-  },
-]
+interface NotificationPrefs {
+  emailNotifications: boolean
+  pushNotifications: boolean
+}
 
 export function Account() {
-  const { user, logout } = useAuth()
-  const [displayName, setDisplayName] = useState(
-    user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : ''
+  const { user, convexUserId, logout } = useAuth()
+
+  // Fetch extended profile from Convex
+  const profile = useQuery(
+    api.users.getById,
+    convexUserId ? { userId: convexUserId } : 'skip'
   )
-  const [jobTitle, setJobTitle] = useState('Software Engineer')
+
+  // Mutations
+  const updatePreferencesMutation = useMutation(api.users.updatePreferences)
+
+  // Notification preferences state
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>({
+    emailNotifications: true,
+    pushNotifications: true,
+  })
+
+  // Initialize notification prefs from Convex profile
+  useEffect(() => {
+    if (profile) {
+      setNotificationPrefs({
+        emailNotifications: profile.preferences?.emailNotifications ?? true,
+        pushNotifications: profile.preferences?.pushNotifications ?? true,
+      })
+    }
+  }, [profile])
+
+  // Derived state
+  const displayName = profile?.firstName
+    ? `${profile.firstName} ${profile.lastName || ''}`.trim()
+    : user?.email?.split('@')[0] || 'User'
+
+  // Handlers
+  const handleNotificationToggle = async (key: keyof NotificationPrefs, value: boolean) => {
+    if (!convexUserId) return
+
+    const newPrefs = { ...notificationPrefs, [key]: value }
+    setNotificationPrefs(newPrefs)
+
+    try {
+      await updatePreferencesMutation({
+        userId: convexUserId,
+        preferences: { [key]: value },
+      })
+    } catch (error) {
+      // Revert on error
+      setNotificationPrefs(notificationPrefs)
+      console.error('Failed to update notification preference:', error)
+    }
+  }
+
+  // Loading state
+  if (profile === undefined) {
+    return (
+      <DashboardLayout
+        user={user}
+        onLogout={logout}
+        breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout
@@ -78,96 +109,55 @@ export function Account() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
     >
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Account Settings</h1>
-        <p className="text-muted-foreground">
-          Manage your profile and security settings
-        </p>
-      </div>
-
-      <div className="max-w-2xl space-y-6">
-        {/* Profile */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Your personal information
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center gap-6">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src="" />
-                <AvatarFallback className="text-2xl">
-                  {displayName.charAt(0) || 'U'}
+      <div className="max-w-2xl space-y-8 px-6 pt-6">
+        {/* Profile Summary */}
+        <div>
+          <h3 className="text-base font-medium mb-1">Profile</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Manage your profile on the web dashboard
+          </p>
+          <div className="flex items-center gap-4 p-4 border rounded-lg">
+            <div className="group relative h-16 w-16 cursor-pointer shrink-0">
+              <Avatar className="h-16 w-16">
+                <AvatarImage src={profile?.profileImageUrl || ''} />
+                <AvatarFallback className="text-xl">
+                  {displayName.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div className="space-y-2">
-                <Button variant="outline" className="gap-2">
-                  <Upload className="h-4 w-4" />
-                  Upload Photo
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  JPG, PNG or GIF. Max 2MB.
-                </p>
+              <div className="absolute inset-x-0 bottom-0 h-6 bg-black/60 rounded-b-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Upload className="h-3 w-3 text-white" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="jobTitle">Job Title</Label>
-                <Input
-                  id="jobTitle"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-lg truncate">{displayName}</p>
+              {profile?.jobTitle && (
+                <p className="text-sm text-muted-foreground truncate">{profile.jobTitle}</p>
+              )}
+              <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
             </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <div className="flex items-center gap-2">
-                <Input value={user?.email || ''} disabled />
-                <Badge variant="secondary" className="gap-1">
-                  <Check className="h-3 w-3" />
-                  Verified
-                </Badge>
-              </div>
-            </div>
-            <Button>Save Changes</Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Security */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Security
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
+        <div>
+          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Security
+          </h3>
+          <div className="space-y-4 mt-4">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Key className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="font-medium">Password</p>
                   <p className="text-sm text-muted-foreground">
-                    Last changed 3 months ago
+                    Managed via your identity provider
                   </p>
                 </div>
               </div>
-              <Button variant="outline">Change Password</Button>
+              <Button variant="outline" disabled>Change Password</Button>
             </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Smartphone className="h-5 w-5 text-muted-foreground" />
                 <div>
@@ -177,103 +167,49 @@ export function Account() {
                   </p>
                 </div>
               </div>
-              <Button variant="outline">Enable</Button>
+              <Button variant="outline" disabled>Enable</Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Active Sessions */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Active Sessions</CardTitle>
-                <CardDescription>
-                  Devices currently signed in to your account
-                </CardDescription>
+        {/* Active Sessions - Placeholder */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-base font-medium">Active Sessions</h3>
+            <Button variant="outline" size="sm" disabled>
+              Sign out all other devices
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Devices currently signed in to your account
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <div className="flex items-center gap-3">
+                <Monitor className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">Current Device</p>
+                    <Badge variant="secondary" className="text-xs">
+                      Current
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Active now
+                  </p>
+                </div>
               </div>
-              <Button variant="outline" size="sm">
-                Sign out all other devices
-              </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activeSessions.map((session) => {
-              const Icon = session.icon
-              return (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{session.device}</p>
-                        {session.current && (
-                          <Badge variant="secondary" className="text-xs">
-                            Current
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {session.location} · {session.lastActive}
-                      </p>
-                    </div>
-                  </div>
-                  {!session.current && (
-                    <Button variant="ghost" size="sm" className="text-destructive">
-                      Sign out
-                    </Button>
-                  )}
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-
-        {/* Connected Accounts */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Connected Accounts</CardTitle>
-            <CardDescription>
-              Sign in with your existing accounts
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {connectedAccounts.map((account) => (
-              <div
-                key={account.id}
-                className="flex items-center justify-between p-3 border rounded-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-muted flex items-center justify-center">
-                    <Globe className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{account.name}</p>
-                    {account.email && (
-                      <p className="text-sm text-muted-foreground">{account.email}</p>
-                    )}
-                  </div>
-                </div>
-                <Button variant={account.connected ? 'outline' : 'default'} size="sm">
-                  {account.connected ? 'Disconnect' : 'Connect'}
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Notifications */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div>
+          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Notifications
+          </h3>
+          <div className="space-y-4 mt-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-muted-foreground" />
@@ -284,7 +220,10 @@ export function Account() {
                   </p>
                 </div>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={notificationPrefs.emailNotifications}
+                onCheckedChange={(checked) => handleNotificationToggle('emailNotifications', checked)}
+              />
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -296,32 +235,21 @@ export function Account() {
                   </p>
                 </div>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={notificationPrefs.pushNotifications}
+                onCheckedChange={(checked) => handleNotificationToggle('pushNotifications', checked)}
+              />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Danger Zone */}
-        <Card className="border-destructive/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Danger Zone
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <h4 className="font-medium">Export Data</h4>
-                <p className="text-sm text-muted-foreground">
-                  Download all your personal data
-                </p>
-              </div>
-              <Button variant="outline" className="gap-2">
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
-            </div>
+        <div>
+          <h3 className="text-base font-medium mb-1 flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            Danger Zone
+          </h3>
+          <div className="space-y-4 mt-4">
             <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">
               <div>
                 <h4 className="font-medium">Delete Account</h4>
@@ -331,7 +259,7 @@ export function Account() {
               </div>
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="destructive" className="gap-2">
+                  <Button variant="destructive" className="gap-2" disabled>
                     <Trash2 className="h-4 w-4" />
                     Delete
                   </Button>
@@ -356,8 +284,8 @@ export function Account() {
                 </DialogContent>
               </Dialog>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   )

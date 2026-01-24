@@ -133,13 +133,27 @@ export const getByEmail = query({
   },
 })
 
-// Update user profile (name, profile image)
+// Get user by ID (for account settings)
+export const getById = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId)
+    if (!user) return null
+
+    // Strip sensitive BYOK keys
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    return safeUser
+  },
+})
+
+// Update user profile (name, profile image, job title)
 export const updateProfile = mutation({
   args: {
     userId: v.id("users"),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
+    jobTitle: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId, ...updates } = args
@@ -149,6 +163,7 @@ export const updateProfile = mutation({
     if (updates.firstName !== undefined) filteredUpdates.firstName = updates.firstName
     if (updates.lastName !== undefined) filteredUpdates.lastName = updates.lastName
     if (updates.profileImageUrl !== undefined) filteredUpdates.profileImageUrl = updates.profileImageUrl
+    if (updates.jobTitle !== undefined) filteredUpdates.jobTitle = updates.jobTitle
 
     await ctx.db.patch(userId, {
       ...filteredUpdates,
@@ -157,18 +172,24 @@ export const updateProfile = mutation({
   },
 })
 
-// Update user preferences
+// Update user preferences (theme, model, notifications)
 export const updatePreferences = mutation({
   args: {
     userId: v.id("users"),
     preferences: v.object({
       theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
       defaultModel: v.optional(v.string()),
+      emailNotifications: v.optional(v.boolean()),
+      pushNotifications: v.optional(v.boolean()),
     }),
   },
   handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId)
+    if (!user) throw new Error("User not found")
+
+    // Merge with existing preferences to allow partial updates
     await ctx.db.patch(args.userId, {
-      preferences: args.preferences,
+      preferences: { ...user.preferences, ...args.preferences },
       updatedAt: Date.now(),
     })
   },

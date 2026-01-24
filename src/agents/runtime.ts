@@ -26,6 +26,7 @@ export interface AgentToolCall {
   toolName: string
   input: Record<string, unknown>
   toolCallId?: string
+  projectPath?: string
 }
 
 export interface AgentToolResult {

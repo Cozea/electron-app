@@ -15,10 +15,11 @@ export interface User {
 // Organization membership from WorkOS
 export interface OrganizationMembership {
   id: string // WorkOS membership ID
-  organizationId: string
+  organizationId: string // WorkOS organization ID
   organizationName: string
   role: string // admin | member | viewer
   status: 'active' | 'inactive' | 'pending'
+  convexOrgId?: string // Convex document ID (populated after sync)
 }
 
 // Session data stored after authentication

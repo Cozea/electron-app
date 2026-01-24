@@ -2,10 +2,12 @@
  * Credit Display Component
  *
  * Shows remaining credits with a progress bar for the current billing period.
+ * Uses Convex directly for real-time updates.
  */
 
-import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { IconCoins } from '@tabler/icons-react'
@@ -15,67 +17,38 @@ interface CreditDisplayProps {
   variant?: 'compact' | 'full'
 }
 
-interface CreditSummary {
-  subscriptionCreditsRemaining: number
-  subscriptionCreditsTotal: number
-  purchasedCreditsRemaining: number
-  totalCreditsRemaining: number
-  plan: string
-}
-
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
-
 export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayProps) {
-  const { currentOrganization, accessToken } = useAuth()
-  const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null)
+  const { currentOrganization } = useAuth()
 
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) {
-      setCreditSummary(null)
-      return
-    }
+  // Get Convex organization by WorkOS ID
+  const convexOrg = useQuery(
+    api.organizations.getByWorkosId,
+    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
 
-    const controller = new AbortController()
+  // Get credit lots (purchased credits)
+  const creditLots = useQuery(
+    api.billing.getCreditLots,
+    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+  )
 
-    fetch(
-      `${AI_BASE_URL}/usage?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal: controller.signal,
-      }
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error('Failed to load usage')
-        }
-        return res.json()
-      })
-      .then((data) => {
-        setCreditSummary(data?.credits ?? null)
-      })
-      .catch((err) => {
-        if (err?.name !== 'AbortError') {
-          console.warn('Failed to fetch credit summary:', err)
-        }
-        setCreditSummary(null)
-      })
+  // Calculate credits
+  const credits = convexOrg?.credits
+  const subscriptionCreditsRemaining = credits?.subscriptionCreditsRemaining ?? 0
+  const subscriptionCreditsTotal = credits?.subscriptionCreditsTotal ?? 0
 
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId])
+  // Purchased credits from active lots
+  const purchasedCreditsRemaining = creditLots
+    ?.filter(lot => lot.status === 'active')
+    .reduce((sum, lot) => sum + lot.remainingCredits, 0) ?? 0
 
-  if (!creditSummary) {
+  const totalCreditsRemaining = subscriptionCreditsRemaining + purchasedCreditsRemaining
+  const plan = convexOrg?.subscription?.plan || 'free'
+
+  // Don't render until data is loaded
+  if (!convexOrg) {
     return null
   }
-
-  const {
-    subscriptionCreditsTotal,
-    purchasedCreditsRemaining,
-    totalCreditsRemaining,
-    plan,
-  } = creditSummary
 
   // Calculate percentage used
   const totalCredits = subscriptionCreditsTotal + purchasedCreditsRemaining

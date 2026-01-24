@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
 import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
+import { checkSeatLimit } from "./lib/seatLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -220,6 +221,24 @@ export const getByWorkosId = query({
 
     const { aiCredentials, ...safeOrg } = org as any
     return safeOrg
+  },
+})
+
+// Get AI credentials status (connected/not connected) without exposing keys
+export const getAiCredentialsStatus = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const org = await ctx.db.get(args.orgId)
+    if (!org) return null
+
+    const creds = org.aiCredentials || {}
+
+    // Keys are encrypted - just return connection status
+    return {
+      anthropic: { connected: !!creds.anthropicKey },
+      openai: { connected: !!creds.openaiKey },
+      google: { connected: !!creds.googleKey },
+    }
   },
 })
 
@@ -953,5 +972,13 @@ export const deleteOrganization = mutation({
     await ctx.db.delete(args.orgId)
 
     return { success: true }
+  },
+})
+
+// Get seat status for organization (used by UI to show limits)
+export const getSeatStatus = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    return await checkSeatLimit(ctx, args.orgId)
   },
 })

@@ -6,6 +6,20 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Projects } from './pages/Projects'
 import { NewProject } from './pages/NewProject'
+import { ProjectBuild } from './pages/ProjectBuild'
+// Project pages (under ProjectLayout)
+import { ProjectLayout } from './features/projects/layouts/ProjectLayout'
+import { ProjectDetailPage } from './features/projects/pages/ProjectDetailPage'
+import { ProjectPagesPage } from './features/projects/pages/ProjectPagesPage'
+import { ProjectDatabasePage } from './features/projects/pages/ProjectDatabasePage'
+import { ProjectDependenciesPage } from './features/projects/pages/ProjectDependenciesPage'
+import { ProjectBackendStudioPage } from './features/projects/pages/ProjectBackendStudioPage'
+import { AgenticFeedPage } from './features/projects/pages/AgenticFeedPage'
+import { MergeQueuePage } from './features/projects/pages/MergeQueuePage'
+import { VersionControlPage } from './features/projects/pages/VersionControlPage'
+import { TasksPage } from './features/projects/pages/TasksPage'
+import { ProjectSettingsPage } from './features/projects/pages/ProjectSettingsPage'
+// Other pages
 import { Members } from './pages/teams/Members'
 import { MemberDetails } from './pages/teams/MemberDetails'
 import { Roles } from './pages/teams/Roles'
@@ -62,9 +76,25 @@ function AppContent() {
       {/* Dashboard */}
       <Route path="/" element={<Dashboard />} />
 
-      {/* Projects */}
+      {/* Projects List and Wizard */}
       <Route path="/projects" element={<Projects />} />
       <Route path="/projects/new" element={<NewProject />} />
+      <Route path="/projects/:projectId/build" element={<ProjectBuild />} />
+
+      {/* Project Editor - Nested Routes with ProjectLayout */}
+      <Route path="/projects/:slug" element={<ProjectLayout />}>
+        <Route index element={<ProjectDetailPage />} />
+        <Route path="pages" element={<ProjectPagesPage />} />
+        <Route path="database" element={<ProjectDatabasePage />} />
+        <Route path="dependencies" element={<ProjectDependenciesPage />} />
+        <Route path="backend" element={<ProjectBackendStudioPage />} />
+        <Route path="feed" element={<AgenticFeedPage />} />
+        <Route path="merge-queue" element={<MergeQueuePage />} />
+        <Route path="version-control" element={<VersionControlPage />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="settings" element={<ProjectSettingsPage />} />
+        <Route path="*" element={<ProjectDetailPage />} />
+      </Route>
 
       {/* Teams */}
       <Route path="/teams" element={<Members />} />

@@ -8,9 +8,12 @@ import { CreditDisplay } from './CreditDisplay'
 
 interface AssistantPanelProps {
   className?: string
+  projectPath?: string | null
+  projectName?: string | null
+  projectSlug?: string | null
 }
 
-export function AssistantPanel({ className }: AssistantPanelProps) {
+export function AssistantPanel({ className, projectPath, projectName, projectSlug }: AssistantPanelProps) {
   const {
     mode,
     close,
@@ -61,7 +64,7 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
   return (
     <div
       className={cn(
-        'flex flex-col bg-background border-l overflow-hidden pt-9',
+        'flex flex-col bg-background border-l overflow-hidden',
         'relative',
         !isDragging && 'transition-all duration-300 ease-in-out',
         className
@@ -145,7 +148,7 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
 
         {/* Body - AI Conversation */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <AIConversation className="w-full h-full" />
+          <AIConversation className="w-full h-full" projectPath={projectPath} projectName={projectName} projectSlug={projectSlug} />
         </div>
       </div>
     </div>

@@ -1,16 +1,16 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
-type Theme = 'light' | 'dark' | 'system'
+export type Theme = 'light' | 'dark' | 'navy' | 'wine' | 'sunny' | 'forest' | 'system'
 
 interface ThemeContextType {
   theme: Theme
   setTheme: (theme: Theme) => void
-  resolvedTheme: 'light' | 'dark'
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 const STORAGE_KEY = 'cozea-theme'
+const ALL_THEMES = ['light', 'dark', 'navy', 'wine', 'sunny', 'forest'] as const
 
 function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light'
@@ -20,16 +20,11 @@ function getSystemTheme(): 'light' | 'dark' {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'system'
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+    if (stored && (ALL_THEMES.includes(stored as typeof ALL_THEMES[number]) || stored === 'system')) {
       return stored
     }
-    return 'system'
-  })
-
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
-    if (theme === 'system') return getSystemTheme()
-    return theme
+    return 'dark'
   })
 
   const setTheme = (newTheme: Theme) => {
@@ -37,42 +32,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, newTheme)
   }
 
-  // Update resolved theme when theme changes or system preference changes
+  // Apply the theme class to the document
   useEffect(() => {
-    const updateResolvedTheme = () => {
-      if (theme === 'system') {
-        setResolvedTheme(getSystemTheme())
-      } else {
-        setResolvedTheme(theme)
-      }
+    const root = document.documentElement
+    // Remove all theme classes
+    root.classList.remove('light', 'dark', 'navy', 'wine', 'sunny', 'forest')
+
+    if (theme === 'system') {
+      const systemTheme = getSystemTheme()
+      root.classList.add(systemTheme)
+    } else {
+      root.classList.add(theme)
     }
+  }, [theme])
 
-    updateResolvedTheme()
+  // Listen for system theme changes
+  useEffect(() => {
+    if (theme !== 'system') return
 
-    // Listen for system theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = () => {
-      if (theme === 'system') {
-        setResolvedTheme(getSystemTheme())
-      }
+      const root = document.documentElement
+      root.classList.remove('light', 'dark')
+      root.classList.add(getSystemTheme())
     }
 
     mediaQuery.addEventListener('change', handleChange)
     return () => mediaQuery.removeEventListener('change', handleChange)
   }, [theme])
 
-  // Apply the theme class to the document
-  useEffect(() => {
-    const root = document.documentElement
-    if (resolvedTheme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-  }, [resolvedTheme])
-
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

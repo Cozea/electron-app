@@ -51,23 +51,18 @@ export function Onboarding() {
         status: data.membership.status,
       }
 
-      // Sync to Convex
-      try {
-        await syncOrgToConvex({
-          workosId: data.organization.id,
-          name: data.organization.name,
-        })
-        await syncMembershipToConvex({
-          workosId: data.membership.id,
-          workosOrgId: data.organization.id,
-          workosUserId: user!.id,
-          role: data.membership.role,
-          status: data.membership.status,
-        })
-      } catch (syncErr) {
-        console.warn('Failed to sync org to Convex:', syncErr)
-        // Continue anyway - org exists in WorkOS
-      }
+      // Sync to Convex - this MUST succeed for billing to work
+      await syncOrgToConvex({
+        workosId: data.organization.id,
+        name: data.organization.name,
+      })
+      await syncMembershipToConvex({
+        workosId: data.membership.id,
+        workosOrgId: data.organization.id,
+        workosUserId: user!.id,
+        role: data.membership.role,
+        status: data.membership.status,
+      })
 
       // Persist to local session file so it survives app restart
       await window.electronAPI.auth.updateOrganizations([newMembership])

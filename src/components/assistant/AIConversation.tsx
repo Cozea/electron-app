@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import {
   DefaultChatTransport,
@@ -18,6 +19,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import {
+  loadModelSettings,
+  saveModelSettings,
+  type StoredModelSettings,
+} from '@/lib/modelSettingsStorage'
+import {
   IconArrowUp,
   IconBolt,
   IconBrain,
@@ -34,6 +40,7 @@ import {
   IconUser,
   IconWorld,
   IconCheck,
+  IconX,
 } from '@tabler/icons-react'
 import {
   ModelSelector,
@@ -51,7 +58,9 @@ import {
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
+import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { ProviderOptions, type ProviderOptionsState } from './ProviderOptions'
+import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 
 // AI Elements components
 import {
@@ -59,25 +68,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message'
-import {
-  Tool,
-  ToolHeader,
-  ToolContent,
-  ToolInput,
-  ToolOutput,
-} from '@/components/ai-elements/tool'
-import {
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
-} from '@/components/ai-elements/reasoning'
 import { Suggestions, Suggestion } from '@/components/ai-elements/suggestion'
-import { Sources, SourcesTrigger, SourcesContent, Source } from '@/components/ai-elements/sources'
 import { Loader } from '@/components/ai-elements/loader'
 import {
   Context,
@@ -86,10 +77,13 @@ import {
   ContextContentHeader,
   ContextContentFooter,
 } from '@/components/ai-elements/context'
-import { ConfirmationDialog, type ConfirmationState } from '@/components/ai-elements/confirmation'
+import { BillingError, parseBillingError, type BillingErrorData } from './BillingError'
 
 interface AIConversationProps {
   className?: string
+  projectPath?: string | null
+  projectName?: string | null
+  projectSlug?: string | null
 }
 
 interface ToolMeta {
@@ -189,7 +183,8 @@ const defaultModels = [
   },
 ]
 
-export function AIConversation({ className }: AIConversationProps) {
+export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
+  const navigate = useNavigate()
   const { triggerClearChat } = useAssistantPanelStore()
   const { accessToken, currentOrganization } = useAuth()
 
@@ -198,18 +193,26 @@ export function AIConversation({ className }: AIConversationProps) {
   const [availableModels, setAvailableModels] = useState(defaultModels)
   const [model, setModel] = useState<string>(defaultModels[0].id)
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
+  const [toolsLoaded, setToolsLoaded] = useState(false)
   const [toolPolicy, setToolPolicy] = useState<{
     allowProviderTools: boolean
     allowWebSearch: boolean
     maxReasoningDepth: 'low' | 'medium' | 'high'
   } | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState("Agent")
-  const [selectedPerformance, setSelectedPerformance] = useState("High")
+  const [selectedAgent, setSelectedAgent] = useState<"Agent" | "Assistant">("Agent")
+  const [selectedPerformance, setSelectedPerformance] = useState<"High" | "Medium" | "Low">("High")
   const [toolsEnabled, setToolsEnabled] = useState(true)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [providerOptions, setProviderOptions] = useState<ProviderOptionsState>({})
+  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
+    () => loadModelSettings()
+  )
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, any>>({})
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [toolsError, setToolsError] = useState<string | null>(null)
+  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
+  const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
@@ -225,17 +228,46 @@ export function AIConversation({ className }: AIConversationProps) {
     return modelCapabilities[model] ?? null
   }, [model, modelCapabilities])
 
-  // Track previous provider to reset options when switching
-  const prevProviderRef = useRef(selectedProvider)
+  const modelSettingsRef = useRef(modelSettings)
   useEffect(() => {
-    if (prevProviderRef.current !== selectedProvider) {
-      setProviderOptions({}) // Reset on provider change
-      prevProviderRef.current = selectedProvider
+    modelSettingsRef.current = modelSettings
+  }, [modelSettings])
+
+  useEffect(() => {
+    const stored = modelSettingsRef.current[model]
+    if (stored) {
+      setSelectedAgent(stored.selectedAgent ?? "Agent")
+      setSelectedPerformance(stored.selectedPerformance ?? "High")
+      setToolsEnabled(stored.toolsEnabled ?? true)
+      setWebSearchEnabled(stored.webSearchEnabled ?? false)
+      setProviderOptions(stored.providerOptions ?? {})
+      return
     }
-  }, [selectedProvider])
+    setSelectedAgent("Agent")
+    setSelectedPerformance("High")
+    setToolsEnabled(true)
+    setWebSearchEnabled(false)
+    setProviderOptions({})
+  }, [model])
+
+  useEffect(() => {
+    const nextSettings: StoredModelSettings = {
+      selectedAgent,
+      selectedPerformance,
+      toolsEnabled,
+      webSearchEnabled,
+      providerOptions,
+    }
+    setModelSettings((prev) => {
+      const updated = { ...prev, [model]: nextSettings }
+      saveModelSettings(updated)
+      return updated
+    })
+  }, [model, selectedAgent, selectedPerformance, toolsEnabled, webSearchEnabled, providerOptions])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
+  const isAgentMode = selectedAgent.toLowerCase() === 'agent'
 
   // Memoize headers to avoid re-creating on every render
   const headers = useMemo((): Record<string, string> => {
@@ -244,6 +276,12 @@ export function AIConversation({ className }: AIConversationProps) {
       Authorization: `Bearer ${accessToken}`,
     }
   }, [accessToken])
+
+  useEffect(() => {
+    if (accessToken && currentOrganization?.organizationId) return
+    setModelsError(null)
+    setToolsError(null)
+  }, [accessToken, currentOrganization?.organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -254,11 +292,9 @@ export function AIConversation({ className }: AIConversationProps) {
   }, [availableTools])
 
   const canUseWebSearch = useMemo(() => {
-    return availableTools.some((tool) =>
-      tool.executionEnvironment === 'provider' &&
-      (!tool.provider || tool.provider === selectedProvider)
-    )
-  }, [availableTools, selectedProvider])
+    if (!toolPolicy?.allowProviderTools || !toolPolicy.allowWebSearch) return false
+    return Boolean(selectedModelCapabilities?.supportsWebSearch)
+  }, [toolPolicy, selectedModelCapabilities])
 
   const canUseLocalTools = useMemo(() => {
     return availableTools.some((tool) => tool.executionEnvironment === 'local')
@@ -277,9 +313,8 @@ export function AIConversation({ className }: AIConversationProps) {
     const order = { low: 0, medium: 1, high: 2 }
     const current = selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high'
     if (order[current] > order[maxReasoningDepth]) {
-      setSelectedPerformance(
-        maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1)
-      )
+      const capitalized = maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1) as "High" | "Medium" | "Low"
+      setSelectedPerformance(capitalized)
     }
   }, [maxReasoningDepth, selectedPerformance])
 
@@ -296,10 +331,13 @@ export function AIConversation({ className }: AIConversationProps) {
   }, [canUseWebSearch, webSearchEnabled])
 
   useEffect(() => {
-    if (!canUseLocalTools && toolsEnabled) {
+    // Only disable tools after we've loaded the tools list
+    // This prevents the race condition where tools are disabled before the API returns
+    if (toolsLoaded && !canUseLocalTools && toolsEnabled) {
       setToolsEnabled(false)
     }
-  }, [canUseLocalTools, toolsEnabled])
+  }, [toolsLoaded, canUseLocalTools, toolsEnabled])
+
 
   // Fetch allowed models from AI Gateway
   useEffect(() => {
@@ -313,6 +351,9 @@ export function AIConversation({ className }: AIConversationProps) {
     })
       .then(async (res) => {
         if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Unauthorized. Please sign in again.')
+          }
           throw new Error('Failed to load models')
         }
         return res.json()
@@ -335,6 +376,7 @@ export function AIConversation({ className }: AIConversationProps) {
           }
         }
         setModelCapabilities(caps)
+        setModelsError(null)
         if (mapped.length > 0) {
           setAvailableModels(mapped)
           if (!mapped.some((item: any) => item.id === model)) {
@@ -343,6 +385,9 @@ export function AIConversation({ className }: AIConversationProps) {
         }
       })
       .catch((err) => {
+        if ((err as { name?: string }).name === 'AbortError') return
+        const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
+        setModelsError(message)
         console.warn('Failed to fetch models:', err)
       })
 
@@ -361,6 +406,9 @@ export function AIConversation({ className }: AIConversationProps) {
     })
       .then(async (res) => {
         if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Unauthorized. Please sign in again.')
+          }
           throw new Error('Failed to load tools')
         }
         return res.json()
@@ -369,8 +417,14 @@ export function AIConversation({ className }: AIConversationProps) {
         if (!data?.tools) return
         setAvailableTools(data.tools as ToolMeta[])
         setToolPolicy(data.policy ?? null)
+        setToolsError(null)
+        setToolsLoaded(true)
       })
       .catch((err) => {
+        if ((err as { name?: string }).name === 'AbortError') return
+        const message = err instanceof Error && err.message ? err.message : 'Failed to load tools'
+        setToolsError(message)
+        setToolsLoaded(true)
         console.warn('Failed to fetch tools:', err)
       })
 
@@ -387,6 +441,12 @@ export function AIConversation({ className }: AIConversationProps) {
     webSearchEnabled,
     reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
     providerOptions,
+    // Project context for AI awareness
+    projectContext: projectName && projectSlug ? {
+      name: projectName,
+      slug: projectSlug,
+      localPath: projectPath ?? undefined,
+    } : null,
   })
 
   useEffect(() => {
@@ -400,6 +460,12 @@ export function AIConversation({ className }: AIConversationProps) {
       webSearchEnabled,
       reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
       providerOptions,
+      // Project context for AI awareness
+      projectContext: projectName && projectSlug ? {
+        name: projectName,
+        slug: projectSlug,
+        localPath: projectPath ?? undefined,
+      } : null,
     }
   }, [
     accessToken,
@@ -411,6 +477,9 @@ export function AIConversation({ className }: AIConversationProps) {
     toolsEnabled,
     webSearchEnabled,
     providerOptions,
+    projectName,
+    projectSlug,
+    projectPath,
   ])
 
   const chatTransport = useMemo(() => {
@@ -431,16 +500,29 @@ export function AIConversation({ className }: AIConversationProps) {
         reasoningDepth: requestConfigRef.current.reasoningDepth,
         // Provider-specific options
         providerOptions: requestConfigRef.current.providerOptions,
+        // Project context for AI awareness
+        projectContext: requestConfigRef.current.projectContext,
       }),
-      prepareSendMessagesRequest: ({ body, messageId }) => {
+      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
         const actionType = requestConfigRef.current.actionType
         const api = actionType === 'agent' ? `${AI_BASE_URL}/agent` : `${AI_BASE_URL}/chat`
         const requestBody = body ?? {}
-        const nextBody = messageId ? { ...requestBody, requestId: messageId } : requestBody
+        const nextBody = {
+          ...requestBody,
+          messages,
+          ...(messageId ? { requestId: messageId } : {}),
+        }
         return { api, body: nextBody }
       },
     })
   }, [])
+
+  const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
+    if (!toolMeta) return false
+    if (toolMeta.executionEnvironment !== 'local') return false
+    if (isAgentMode) return false
+    return toolMeta.requiresApproval ?? false
+  }, [isAgentMode])
 
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: any }) => {
     if (toolCall?.dynamic) return
@@ -451,7 +533,7 @@ export function AIConversation({ className }: AIConversationProps) {
       return
     }
 
-    if (toolMeta.requiresApproval) {
+    if (shouldRequireLocalApproval(toolMeta)) {
       return
     }
 
@@ -474,6 +556,7 @@ export function AIConversation({ className }: AIConversationProps) {
         toolName: toolCall.toolName,
         input: toolCall.input,
         toolCallId: toolCall.toolCallId,
+        projectPath: projectPath ?? undefined,
       })
 
       if (result.success) {
@@ -498,7 +581,7 @@ export function AIConversation({ className }: AIConversationProps) {
         errorText: err instanceof Error ? err.message : 'Tool failed',
       })
     }
-  }, [])
+  }, [shouldRequireLocalApproval, localRuntime, conversationId, projectPath])
 
   // Chat hook with auth transport
   const {
@@ -518,11 +601,45 @@ export function AIConversation({ className }: AIConversationProps) {
     onToolCall: handleToolCall,
     onError: (err: any) => {
       console.error('Chat error:', err)
+      // Try to parse as billing error for nice display
+      const billingErr = parseBillingError(err)
+      if (billingErr) {
+        setBillingError(billingErr)
+      }
     },
   })
 
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
+
+  const genericErrorMessage = useMemo(() => {
+    if (!error || billingError) return null
+    const message = (error as { message?: string }).message
+    if (typeof message === 'string' && message.trim()) return message
+    const errorStr = error as unknown
+    if (typeof errorStr === 'string' && errorStr.trim()) return errorStr
+    return 'Something went wrong'
+  }, [error, billingError])
+
+  const serviceErrorMessage = modelsError || toolsError
+  const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
+
+  const genericErrorRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!surfaceErrorMessage) {
+      genericErrorRef.current = null
+      setDismissedError(null)
+      return
+    }
+    if (surfaceErrorMessage !== genericErrorRef.current) {
+      genericErrorRef.current = surfaceErrorMessage
+      setDismissedError(null)
+    }
+  }, [surfaceErrorMessage])
+
+  const showGenericError = Boolean(
+    surfaceErrorMessage && dismissedError !== surfaceErrorMessage
+  )
 
   // Compute accumulated token usage from all messages
   // This follows the official AI SDK pattern of reading custom data-* parts from the stream
@@ -633,7 +750,7 @@ export function AIConversation({ className }: AIConversationProps) {
   const runLocalTool = useCallback(async (toolName: string, toolCallId: string, input: any) => {
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta && toolMeta.executionEnvironment !== 'local') {
-      await addToolOutput({
+      void addToolOutput({
         state: 'output-error',
         tool: toolName,
         toolCallId,
@@ -645,7 +762,7 @@ export function AIConversation({ className }: AIConversationProps) {
     if (toolMeta?.inputSchema) {
       const validation = validateInputAgainstSchema(toolMeta.inputSchema, input)
       if (!validation.valid) {
-        await addToolOutput({
+        void addToolOutput({
           state: 'output-error',
           tool: toolName,
           toolCallId,
@@ -659,22 +776,23 @@ export function AIConversation({ className }: AIConversationProps) {
       toolName,
       input,
       toolCallId,
+      projectPath: projectPath ?? undefined,
     })
     if (result.success) {
-      await addToolOutput({
+      void addToolOutput({
         tool: toolName,
         toolCallId,
         output: result.output,
       })
     } else {
-      await addToolOutput({
+      void addToolOutput({
         state: 'output-error',
         tool: toolName,
         toolCallId,
         errorText: result.error || 'Tool failed',
       })
     }
-  }, [addToolOutput, localRuntime, conversationId])
+  }, [addToolOutput, localRuntime, conversationId, projectPath])
 
   const handleApprovedTool = useCallback(async (
     toolName: string,
@@ -695,7 +813,7 @@ export function AIConversation({ className }: AIConversationProps) {
         await runLocalTool(toolName, toolCallId, input)
       }
     } catch (err) {
-      await addToolOutput({
+      void addToolOutput({
         state: 'output-error',
         tool: toolName,
         toolCallId,
@@ -718,7 +836,7 @@ export function AIConversation({ className }: AIConversationProps) {
       return
     }
 
-    await addToolOutput({
+    void addToolOutput({
       state: 'output-error',
       tool: toolName,
       toolCallId,
@@ -808,6 +926,8 @@ export function AIConversation({ className }: AIConversationProps) {
     e?.preventDefault();
     if (!input.trim()) return;
 
+    // Clear any previous billing error when trying again
+    setBillingError(null)
     await sendMessage({ text: input })
     setInput("")
   };
@@ -828,6 +948,10 @@ export function AIConversation({ className }: AIConversationProps) {
     <div className={cn('flex flex-col h-full overflow-hidden', className)}>
       {/* Messages Area */}
       <div className="flex-1 min-h-0 relative">
+        {/* Top fade */}
+        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
+        {/* Bottom fade */}
+        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
           <ConversationContent className={cn(messages.length === 0 && "h-full p-0")}>
             {messages.length === 0 ? (
@@ -843,6 +967,7 @@ export function AIConversation({ className }: AIConversationProps) {
                   message={message}
                   toolsByName={toolsByName}
                   status={status}
+                  shouldRequireLocalApproval={shouldRequireLocalApproval}
                   onApproveTool={handleApprovedTool}
                   onDenyTool={handleDeniedTool}
                 />
@@ -854,10 +979,15 @@ export function AIConversation({ className }: AIConversationProps) {
                 <span className="text-sm">Thinking...</span>
               </div>
             )}
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
-                Error: {error.message || 'Something went wrong'}
-              </div>
+            {billingError && (
+              <BillingError
+                error={billingError}
+                onAction={(href) => {
+                  setBillingError(null)
+                  navigate(href)
+                }}
+                className="max-w-md mx-auto"
+              />
             )}
             <div ref={messagesEndRef} />
           </ConversationContent>
@@ -866,8 +996,28 @@ export function AIConversation({ className }: AIConversationProps) {
       </div>
 
       {/* Input Area - Compact AI Prompt */}
-      <div className="px-3 pb-3 shrink-0 pt-2 mt-auto bg-background z-10 w-full max-w-2xl mx-auto">
+      <div
+        className={cn(
+          "px-3 pb-3 shrink-0 mt-auto bg-background z-10 w-full max-w-2xl mx-auto",
+          messages.length === 0 ? "pt-1" : "pt-2"
+        )}
+      >
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
+          {showGenericError && surfaceErrorMessage && (
+            <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
+              <p className="text-xs leading-relaxed flex-1">
+                {surfaceErrorMessage}
+              </p>
+              <button
+                type="button"
+                className="mt-0.5 text-destructive/70 hover:text-destructive"
+                onClick={() => setDismissedError(surfaceErrorMessage)}
+                aria-label="Dismiss error"
+              >
+                <IconX className="size-4" />
+              </button>
+            </div>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -1170,7 +1320,9 @@ export function AIConversation({ className }: AIConversationProps) {
             />
           )}
 
-          {/* Context window usage display */}
+          <div className="flex-1" />
+
+          {/* Context window usage display - right aligned */}
           <Context
             maxTokens={200_000}
             usedTokens={accumulatedUsage.usedTokens}
@@ -1183,8 +1335,6 @@ export function AIConversation({ className }: AIConversationProps) {
               <ContextContentFooter />
             </ContextContent>
           </Context>
-
-          <div className="flex-1" />
         </div>
       </div>
     </div>
@@ -1204,8 +1354,8 @@ function EmptyState({ onSuggestionClick }: EmptyStateProps) {
   ]
 
   return (
-    <div className="flex flex-col items-center justify-center h-full py-12 text-center gap-6">
-      <div>
+    <div className="flex flex-col h-full w-full">
+      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center gap-6">
         <div className="rounded-full bg-primary/10 p-4 mb-4 mx-auto w-fit">
           <Sparkles className="h-8 w-8 text-primary" />
         </div>
@@ -1215,15 +1365,17 @@ function EmptyState({ onSuggestionClick }: EmptyStateProps) {
         </p>
       </div>
       {onSuggestionClick && (
-        <Suggestions>
-          {suggestions.map((text) => (
-            <Suggestion
-              key={text}
-              suggestion={text}
-              onClick={() => onSuggestionClick(text)}
-            />
-          ))}
-        </Suggestions>
+        <div className="w-full max-w-2xl mx-auto px-3 pb-1">
+          <Suggestions>
+            {suggestions.map((text) => (
+              <Suggestion
+                key={text}
+                suggestion={text}
+                onClick={() => onSuggestionClick(text)}
+              />
+            ))}
+          </Suggestions>
+        </div>
       )}
     </div>
   )
@@ -1234,386 +1386,4 @@ function getMessageText(message: UIMessage): string {
     .filter((part) => part.type === 'text')
     .map((part) => part.text)
     .join('')
-}
-
-function formatToolPayload(value: unknown): string {
-  if (typeof value === 'string') return value
-  try {
-    const serialized = JSON.stringify(value, null, 2)
-    return serialized ?? String(value)
-  } catch {
-    return String(value)
-  }
-}
-
-interface ExtractedSource {
-  url: string
-  title: string
-  favicon?: string
-}
-
-function extractSourcesFromToolOutput(output: unknown, toolName: string): ExtractedSource[] {
-  // Only extract sources from web search related tools
-  const isWebSearchTool = toolName.toLowerCase().includes('search') ||
-    toolName.toLowerCase().includes('web') ||
-    toolName === 'tavily_search' ||
-    toolName === 'brave_search' ||
-    toolName === 'bing_search'
-
-  if (!isWebSearchTool) return []
-
-  const sources: ExtractedSource[] = []
-
-  try {
-    // Handle different output formats
-    if (typeof output === 'string') {
-      // Try to parse JSON string
-      try {
-        const parsed = JSON.parse(output)
-        return extractSourcesFromToolOutput(parsed, toolName)
-      } catch {
-        // Extract URLs from plain text
-        const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
-        const urls = output.match(urlRegex) || []
-        urls.forEach((url) => {
-          try {
-            const urlObj = new URL(url)
-            sources.push({
-              url,
-              title: urlObj.hostname,
-            })
-          } catch {
-            // Invalid URL, skip
-          }
-        })
-      }
-    } else if (Array.isArray(output)) {
-      // Handle array of results (common format)
-      output.forEach((item: any) => {
-        if (item?.url) {
-          sources.push({
-            url: item.url,
-            title: item.title || item.name || new URL(item.url).hostname,
-            favicon: item.favicon || item.icon,
-          })
-        } else if (item?.link) {
-          sources.push({
-            url: item.link,
-            title: item.title || item.name || new URL(item.link).hostname,
-            favicon: item.favicon || item.icon,
-          })
-        }
-      })
-    } else if (typeof output === 'object' && output !== null) {
-      // Handle object with results array
-      const obj = output as Record<string, any>
-      if (obj.results && Array.isArray(obj.results)) {
-        return extractSourcesFromToolOutput(obj.results, toolName)
-      }
-      if (obj.sources && Array.isArray(obj.sources)) {
-        return extractSourcesFromToolOutput(obj.sources, toolName)
-      }
-      if (obj.organic && Array.isArray(obj.organic)) {
-        return extractSourcesFromToolOutput(obj.organic, toolName)
-      }
-      // Single result object
-      if (obj.url) {
-        sources.push({
-          url: obj.url,
-          title: obj.title || obj.name || new URL(obj.url).hostname,
-          favicon: obj.favicon || obj.icon,
-        })
-      }
-    }
-  } catch {
-    // Failed to extract sources, return empty array
-  }
-
-  // Deduplicate by URL
-  const seen = new Set<string>()
-  return sources.filter((source) => {
-    if (seen.has(source.url)) return false
-    seen.add(source.url)
-    return true
-  })
-}
-
-type ToolValidationResult = { valid: true } | { valid: false; error: string }
-
-function validateInputAgainstSchema(schema: Record<string, any>, value: unknown): ToolValidationResult {
-  if (!schema || typeof schema !== 'object') {
-    return { valid: true }
-  }
-
-  const validation = validateSchemaNode(schema, value, 'input')
-  return validation.valid ? { valid: true } : validation
-}
-
-function validateSchemaNode(
-  schema: Record<string, any>,
-  value: unknown,
-  path: string
-): ToolValidationResult {
-  const alternates = Array.isArray(schema.anyOf)
-    ? schema.anyOf
-    : Array.isArray(schema.oneOf)
-      ? schema.oneOf
-      : null
-
-  if (alternates) {
-    for (const option of alternates) {
-      const result = validateSchemaNode(option, value, path)
-      if (result.valid) {
-        return result
-      }
-    }
-    return { valid: false, error: `${path} does not match any allowed schema` }
-  }
-
-  const expectedTypes = Array.isArray(schema.type)
-    ? schema.type
-    : schema.type
-      ? [schema.type]
-      : []
-
-  if (expectedTypes.length > 0 && !expectedTypes.some((type) => matchesSchemaType(type, value))) {
-    return { valid: false, error: `${path} should be ${expectedTypes.join(' or ')}` }
-  }
-
-  if (schema.type === 'object' || (!schema.type && schema.properties)) {
-    if (!isPlainObject(value)) {
-      return { valid: false, error: `${path} should be an object` }
-    }
-
-    const required = Array.isArray(schema.required) ? schema.required : []
-    for (const key of required) {
-      if ((value as Record<string, unknown>)[key] === undefined) {
-        return { valid: false, error: `${path}.${key} is required` }
-      }
-    }
-
-    const properties = schema.properties || {}
-    for (const [key, propSchema] of Object.entries(properties)) {
-      const propValue = (value as Record<string, unknown>)[key]
-      if (propValue !== undefined && propSchema) {
-        const propResult = validateSchemaNode(propSchema as Record<string, any>, propValue, `${path}.${key}`)
-        if (!propResult.valid) {
-          return propResult
-        }
-      }
-    }
-  }
-
-  if (schema.type === 'array') {
-    if (!Array.isArray(value)) {
-      return { valid: false, error: `${path} should be an array` }
-    }
-
-    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
-      return { valid: false, error: `${path} must contain at least ${schema.minItems} items` }
-    }
-
-    if (schema.items) {
-      for (let index = 0; index < value.length; index += 1) {
-        const itemResult = validateSchemaNode(schema.items as Record<string, any>, value[index], `${path}[${index}]`)
-        if (!itemResult.valid) {
-          return itemResult
-        }
-      }
-    }
-  }
-
-  return { valid: true }
-}
-
-function matchesSchemaType(type: string, value: unknown): boolean {
-  switch (type) {
-    case 'string':
-      return typeof value === 'string'
-    case 'number':
-      return typeof value === 'number' && !Number.isNaN(value)
-    case 'integer':
-      return typeof value === 'number' && Number.isInteger(value)
-    case 'boolean':
-      return typeof value === 'boolean'
-    case 'array':
-      return Array.isArray(value)
-    case 'object':
-      return isPlainObject(value)
-    default:
-      return true
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function MessageBubble({
-  message,
-  toolsByName,
-  status,
-  onApproveTool,
-  onDenyTool,
-}: {
-  message: UIMessage
-  toolsByName: Map<string, ToolMeta>
-  status: 'ready' | 'submitted' | 'streaming' | 'error'
-  onApproveTool: (toolName: string, toolCallId: string, input: any, approvalId?: string) => void
-  onDenyTool: (toolName: string, toolCallId: string, approvalId?: string) => void
-}) {
-  const isStreaming = status === 'streaming'
-
-  return (
-    <Message from={message.role}>
-      <MessageContent>
-            {message.parts.map((part, index) => {
-              if (part.type === 'text') {
-                return (
-                  <MessageResponse key={`${message.id}-text-${index}`}>
-                    {part.text}
-                  </MessageResponse>
-                )
-              }
-
-              if (part.type === 'reasoning') {
-                const reasoningPart = part as any
-                return (
-                  <Reasoning
-                    key={`${message.id}-reasoning-${index}`}
-                    isStreaming={isStreaming}
-                    duration={reasoningPart.duration}
-                  >
-                    <ReasoningTrigger />
-                    <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
-                  </Reasoning>
-                )
-              }
-
-              if (part.type === 'data-usage') {
-                const usage = (part as any).data as {
-                  model?: string
-                  provider?: string
-                  creditsUsed?: number
-                  promptTokens?: number
-                  completionTokens?: number
-                  totalTokens?: number
-                } | undefined
-
-                if (!usage) return null
-
-                const stats: string[] = []
-                if (usage.creditsUsed !== undefined) {
-                  stats.push(`${usage.creditsUsed} credits`)
-                }
-                if (usage.totalTokens !== undefined) {
-                  stats.push(`${usage.totalTokens} tokens`)
-                } else if (
-                  usage.promptTokens !== undefined &&
-                  usage.completionTokens !== undefined
-                ) {
-                  stats.push(`${usage.promptTokens + usage.completionTokens} tokens`)
-                }
-                if (usage.model) {
-                  stats.push(usage.model)
-                }
-
-                if (stats.length === 0) return null
-
-                return (
-                  <div
-                    key={`${message.id}-usage-${index}`}
-                    className="rounded-md bg-background/70 px-2 py-1 text-[11px] text-muted-foreground"
-                  >
-                    Usage: {stats.join(' · ')}
-                  </div>
-                )
-              }
-
-              if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
-                const toolPart = part as any
-                const toolName = part.type === 'dynamic-tool'
-                  ? toolPart.toolName
-                  : part.type.replace(/^tool-/, '')
-                const toolMeta = toolsByName.get(toolName)
-                const requiresApproval = toolMeta?.requiresApproval ?? true
-
-                // Map internal state to ToolState type expected by AI Elements
-                const toolState = toolPart.state || 'input-streaming'
-
-                return (
-                  <Tool key={`${message.id}-tool-${index}`}>
-                    <ToolHeader
-                      title={toolMeta?.displayName || toolName}
-                      type={toolMeta?.toolType || 'function'}
-                      state={toolState}
-                    />
-                    <ToolContent>
-                      {toolPart.input && (
-                        <ToolInput input={formatToolPayload(toolPart.input)} />
-                      )}
-
-                      {requiresApproval && (
-                        <ConfirmationDialog
-                          state={
-                            (toolPart.state === 'input-available' || toolPart.state === 'approval-requested')
-                              ? 'pending'
-                              : toolPart.state === 'output-denied'
-                                ? 'rejected'
-                                : toolPart.state === 'output-available'
-                                  ? 'approved'
-                                  : 'pending' as ConfirmationState
-                          }
-                          toolName={toolMeta?.displayName || toolName}
-                          toolCallId={toolPart.toolCallId}
-                          description="This tool requires your approval to execute."
-                          onApprove={() => onApproveTool(toolName, toolPart.toolCallId, toolPart.input, toolPart.approval?.id)}
-                          onReject={() => onDenyTool(toolName, toolPart.toolCallId, toolPart.approval?.id)}
-                        />
-                      )}
-
-                      {toolPart.state === 'output-available' && (
-                        <>
-                          <ToolOutput output={formatToolPayload(toolPart.output)} />
-                          {(() => {
-                            const sources = extractSourcesFromToolOutput(toolPart.output, toolName)
-                            if (sources.length === 0) return null
-                            return (
-                              <div className="px-4 pb-4">
-                                <Sources>
-                                  <SourcesTrigger count={sources.length} />
-                                  <SourcesContent>
-                                    {sources.map((source, idx) => (
-                                      <Source
-                                        key={`${source.url}-${idx}`}
-                                        href={source.url}
-                                        title={source.title}
-                                        favicon={source.favicon}
-                                      />
-                                    ))}
-                                  </SourcesContent>
-                                </Sources>
-                              </div>
-                            )
-                          })()}
-                        </>
-                      )}
-
-                      {toolPart.state === 'output-error' && (
-                        <ToolOutput output={null} errorText={toolPart.errorText} />
-                      )}
-
-                      {toolPart.state === 'output-denied' && (
-                        <ToolOutput output={null} errorText="Tool execution denied" />
-                      )}
-                    </ToolContent>
-                  </Tool>
-                )
-              }
-
-              return null
-            })}
-        </MessageContent>
-    </Message>
-  )
 }

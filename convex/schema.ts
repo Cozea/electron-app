@@ -10,6 +10,7 @@ export default defineSchema({
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
+    jobTitle: v.optional(v.string()),
 
     // BYOK (Bring Your Own Keys) - encrypted in production
     byokAnthropicKey: v.optional(v.string()),
@@ -21,6 +22,8 @@ export default defineSchema({
       v.object({
         theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
         defaultModel: v.optional(v.string()),
+        emailNotifications: v.optional(v.boolean()),
+        pushNotifications: v.optional(v.boolean()),
       })
     ),
 
@@ -116,14 +119,14 @@ export default defineSchema({
     // Credits system (expanded per pricing spec)
     credits: v.object({
       // Subscription credits (expire at billing period end)
-      subscriptionCreditsRemaining: v.number(),
-      subscriptionCreditsTotal: v.number(),
+      subscriptionCreditsRemaining: v.optional(v.number()),
+      subscriptionCreditsTotal: v.optional(v.number()),
       // Overage tracking
-      overageCreditsUsed: v.number(),
-      overageAmountCents: v.number(),
+      overageCreditsUsed: v.optional(v.number()),
+      overageAmountCents: v.optional(v.number()),
       // Billing period bounds
-      currentPeriodStart: v.number(),
-      currentPeriodEnd: v.number(),
+      currentPeriodStart: v.optional(v.number()),
+      currentPeriodEnd: v.optional(v.number()),
       // Legacy fields (for backward compat during migration)
       balance: v.optional(v.number()),
       monthlyAllocation: v.optional(v.number()),
@@ -534,4 +537,497 @@ export default defineSchema({
   })
     .index("by_version", ["catalogVersion"])
     .index("by_updated_at", ["updatedAt"]),
+
+  // ============================================
+  // PROJECT SYSTEM TABLES
+  // ============================================
+
+  // Projects - comprehensive project configuration
+  projects: defineTable({
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    targetLaunchDate: v.optional(v.number()),
+
+    // Creation path
+    creationPath: v.union(
+      v.literal("fresh"),
+      v.literal("repo"),
+      v.literal("prompt")
+    ),
+
+    // Template & Stack
+    template: v.optional(v.string()),
+    stack: v.optional(
+      v.object({
+        backend: v.optional(v.string()), // supabase, convex, firebase, postgres
+        hosting: v.optional(v.string()), // vercel, netlify, railway, aws
+        aiProvider: v.optional(v.string()), // openai, anthropic, byok, none
+      })
+    ),
+
+    // Source Control
+    sourceControl: v.optional(
+      v.object({
+        provider: v.optional(v.string()), // github, gitlab, bitbucket, local
+        repoUrl: v.optional(v.string()),
+        visibility: v.optional(v.string()), // public, private
+        mergeStrategy: v.optional(v.string()), // squash, merge, rebase
+        mergeQueue: v.optional(v.string()),
+      })
+    ),
+
+    // Visuals
+    visuals: v.optional(
+      v.object({
+        uiLibrary: v.optional(v.string()), // shadcn, radix, material, chakra
+        vibeDescription: v.optional(v.string()),
+        colorPreset: v.optional(v.string()),
+        primaryColor: v.optional(v.string()),
+        secondaryColor: v.optional(v.string()),
+        accentColor: v.optional(v.string()),
+        logoUrl: v.optional(v.string()),
+      })
+    ),
+
+    // Generated plan (from Step 8)
+    generatedPlan: v.optional(
+      v.object({
+        pages: v.array(
+          v.object({
+            id: v.string(),
+            name: v.string(),
+            route: v.string(),
+            type: v.string(),
+            purpose: v.optional(v.string()),
+            actions: v.optional(v.array(v.string())),
+          })
+        ),
+        entities: v.array(
+          v.object({
+            id: v.string(),
+            name: v.string(),
+            fields: v.optional(v.array(v.string())),
+          })
+        ),
+      })
+    ),
+
+    // Status
+    status: v.union(
+      v.literal("draft"), // Still in wizard
+      v.literal("generating"), // AI generating plan
+      v.literal("building"), // AI building files
+      v.literal("active"), // Ready to use
+      v.literal("archived"),
+      v.literal("deleted")
+    ),
+    wizardStep: v.optional(v.number()),
+
+    // Repo import specific
+    importedFrom: v.optional(
+      v.object({
+        provider: v.string(),
+        repoFullName: v.string(),
+        branch: v.string(),
+        detectedStack: v.optional(v.any()),
+      })
+    ),
+
+    // One-shot specific
+    originalPrompt: v.optional(v.string()),
+    promptSettings: v.optional(
+      v.object({
+        model: v.string(),
+        agentType: v.union(v.literal("agent"), v.literal("assistant")),
+        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        toolsEnabled: v.boolean(),
+        webSearchEnabled: v.boolean(),
+        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
+        providerOptions: v.optional(v.any()), // Provider-specific tool options
+      })
+    ),
+
+    // Selected plan tier (from AI-generated plans)
+    selectedPlanTier: v.optional(
+      v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
+    ),
+
+    // Local path where project files are stored (on creator's machine)
+    localPath: v.optional(v.string()),
+
+    // Framework metadata (set during build, used for Pages tab + dev server)
+    frameworkInfo: v.optional(
+      v.object({
+        framework: v.string(), // nextjs, remix, vite-react, sveltekit, etc.
+        displayName: v.optional(v.string()), // "Next.js", "Vite + React", etc.
+        routeConvention: v.optional(v.string()), // file-based, config-based
+        devCommand: v.optional(v.string()), // npm run dev
+        devPort: v.optional(v.number()), // 3000, 5173, etc.
+        buildCommand: v.optional(v.string()), // npm run build
+        startCommand: v.optional(v.string()), // npm start
+      })
+    ),
+
+    // Cloud storage for org-wide access
+    cloudStorage: v.optional(
+      v.object({
+        provider: v.string(), // "crozcode" | "s3" | "gcs" | "azure"
+        bucket: v.optional(v.string()),
+        key: v.string(), // path/key within storage
+        uploadedAt: v.optional(v.number()),
+        uploadedBy: v.optional(v.id("users")),
+        version: v.number(), // for diff checking
+        checksum: v.optional(v.string()), // for integrity verification
+        sizeBytes: v.optional(v.number()),
+      })
+    ),
+
+    // Sync status between local and cloud
+    syncStatus: v.optional(
+      v.union(
+        v.literal("local_only"), // Not yet uploaded to cloud
+        v.literal("uploading"), // Currently uploading
+        v.literal("syncing"), // Currently syncing
+        v.literal("synced"), // Local matches cloud
+        v.literal("local_ahead"), // Local has changes not in cloud
+        v.literal("cloud_ahead"), // Cloud has changes not downloaded
+        v.literal("conflict"), // Both have changes (needs resolution)
+        v.literal("error") // Sync failed
+      )
+    ),
+    syncError: v.optional(v.string()),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncBy: v.optional(v.id("users")),
+
+    // Project team (for role-based access within org)
+    teamId: v.optional(v.id("projectTeams")),
+
+    // Collaborative editing state (for future traffic control)
+    sharedFilesVersion: v.optional(v.number()),
+    lastSharedUpdate: v.optional(v.number()),
+
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_slug", ["organizationId", "slug"])
+    .index("by_organization_and_status", ["organizationId", "status"])
+    .index("by_created_by", ["createdBy"]),
+
+  // Project members with expanded roles
+  projectMembers: defineTable({
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    addedAt: v.number(),
+    addedBy: v.id("users"),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_user", ["userId"])
+    .index("by_project_and_user", ["projectId", "userId"]),
+
+  // Project invites for pending team members
+  projectInvites: defineTable({
+    projectId: v.id("projects"),
+    email: v.string(),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    invitedBy: v.id("users"),
+    invitedAt: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired")
+    ),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_email", ["email"])
+    .index("by_project_and_status", ["projectId", "status"]),
+
+  // Project teams - groups of users with shared access to projects
+  projectTeams: defineTable({
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    description: v.optional(v.string()),
+
+    // Team-level permissions (can be overridden per-project)
+    defaultRole: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"]),
+
+  // Project team members
+  projectTeamMembers: defineTable({
+    teamId: v.id("projectTeams"),
+    userId: v.id("users"),
+    role: v.union(
+      v.literal("team_lead"),
+      v.literal("member")
+    ),
+    addedAt: v.number(),
+    addedBy: v.id("users"),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_user", ["userId"])
+    .index("by_team_and_user", ["teamId", "userId"]),
+
+  // File locks for collaborative editing (traffic control system)
+  projectFileLocks: defineTable({
+    projectId: v.id("projects"),
+    filePath: v.string(), // relative path within project
+
+    // Lock status
+    status: v.union(
+      v.literal("free"), // Available for editing
+      v.literal("locked"), // Currently being edited
+      v.literal("merging") // Being merged by traffic control
+    ),
+
+    // Who has the lock
+    lockedBy: v.optional(v.id("users")),
+    lockedAt: v.optional(v.number()),
+
+    // For merge tracking
+    pendingMerges: v.optional(v.array(v.id("users"))), // Users with local changes waiting to merge
+    lastMergedAt: v.optional(v.number()),
+    lastMergedBy: v.optional(v.id("users")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_path", ["projectId", "filePath"])
+    .index("by_locked_by", ["lockedBy"]),
+
+  // Project conversation messages (for AI planning phase)
+  projectMessages: defineTable({
+    projectId: v.id("projects"),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+
+    // For plan cards rendered in the conversation
+    planOptions: v.optional(
+      v.array(
+        v.object({
+          tier: v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp")),
+          name: v.string(),
+          description: v.string(),
+          features: v.array(v.string()),
+          estimatedScope: v.optional(v.string()),
+          // Full project config for this plan tier
+          config: v.object({
+            name: v.optional(v.string()),
+            description: v.optional(v.string()),
+            audience: v.optional(v.string()),
+            template: v.optional(v.string()),
+            stack: v.optional(
+              v.object({
+                backend: v.string(),
+                hosting: v.string(),
+                aiProvider: v.string(),
+              })
+            ),
+            sourceControl: v.optional(
+              v.object({
+                provider: v.string(),
+                repoUrl: v.optional(v.string()),
+                visibility: v.string(),
+                mergeStrategy: v.string(),
+              })
+            ),
+            visuals: v.optional(
+              v.object({
+                uiLibrary: v.string(),
+                vibeDescription: v.optional(v.string()),
+                colorPreset: v.optional(v.string()),
+                primaryColor: v.string(),
+                secondaryColor: v.string(),
+                accentColor: v.string(),
+                logoUrl: v.optional(v.string()),
+              })
+            ),
+            generatedPlan: v.optional(
+              v.object({
+                pages: v.array(
+                  v.object({
+                    id: v.string(),
+                    name: v.string(),
+                    route: v.string(),
+                    type: v.string(),
+                    purpose: v.optional(v.string()),
+                    actions: v.optional(v.array(v.string())),
+                  })
+                ),
+                entities: v.array(
+                  v.object({
+                    id: v.string(),
+                    name: v.string(),
+                    fields: v.optional(v.array(v.string())),
+                  })
+                ),
+              })
+            ),
+          }),
+        })
+      )
+    ),
+
+    createdAt: v.number(),
+    })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_created", ["projectId", "createdAt"]),
+
+  // Builder run lifecycle (AI build execution tracking)
+  builderRuns: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    runId: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("interrupted")
+    ),
+    attempt: v.number(),
+    conversationId: v.optional(v.string()),
+    localPath: v.optional(v.string()),
+
+    // Latest task state (from build_tasks tool)
+    tasks: v.optional(
+      v.array(
+        v.object({
+          content: v.string(),
+          activeForm: v.string(),
+          status: v.union(
+            v.literal("pending"),
+            v.literal("in_progress"),
+            v.literal("completed")
+          ),
+          files: v.optional(v.array(v.string())),
+        })
+      )
+    ),
+    progress: v.optional(v.number()),
+    statusMessage: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    logs: v.optional(v.array(v.string())),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastCheckpointAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_updated", ["projectId", "updatedAt"])
+    .index("by_run_id", ["runId"])
+    .index("by_user", ["userId"]),
+
+  // Project templates (system-defined)
+  projectTemplates: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    icon: v.string(),
+    pageCount: v.number(),
+    category: v.string(),
+    defaultPages: v.array(
+      v.object({
+        name: v.string(),
+        route: v.string(),
+        type: v.string(),
+      })
+    ),
+    defaultEntities: v.array(
+      v.object({
+        name: v.string(),
+        fields: v.array(v.string()),
+      })
+    ),
+    scaffoldPrompt: v.string(),
+    isActive: v.boolean(),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_category", ["category"])
+    .index("by_active_and_sort", ["isActive", "sortOrder"]),
+
+  // Project files stored in Convex File Storage
+  projectFiles: defineTable({
+    projectId: v.id("projects"),
+
+    // File identity
+    fileName: v.string(), // e.g., "config.json", "src/App.tsx"
+    filePath: v.string(), // Relative path within project
+    fileType: v.string(), // MIME type
+
+    // Convex storage reference
+    storageId: v.id("_storage"), // Reference to stored file
+
+    // Metadata
+    sizeBytes: v.number(),
+    checksum: v.optional(v.string()), // SHA-256 for integrity
+
+    // Versioning
+    version: v.number(),
+    previousVersionId: v.optional(v.id("projectFiles")),
+
+    // Upload tracking
+    uploadedBy: v.id("users"),
+    uploadedAt: v.number(),
+
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("deleted"),
+      v.literal("superseded") // Replaced by newer version
+    ),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_path", ["projectId", "filePath"])
+    .index("by_project_and_status", ["projectId", "status"])
+    .index("by_storage_id", ["storageId"]),
+
+  // ============================================
+  // YJS COLLABORATIVE EDITING TABLES
+  // ============================================
+
+  // Yjs incremental updates for real-time collaboration
+  yjsUpdates: defineTable({
+    projectId: v.id("projects"),
+    update: v.bytes(), // Binary Yjs update
+    clientId: v.string(), // Y.Doc clientID as string
+    origin: v.optional(v.string()), // "user", "agent", "init", etc.
+    timestamp: v.number(),
+  })
+    .index("by_project_and_time", ["projectId", "timestamp"]),
+
+  // Yjs document snapshots for recovery/initialization
+  yjsDocuments: defineTable({
+    projectId: v.id("projects"),
+    snapshot: v.bytes(), // Full Y.Doc state as binary
+    version: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_version", ["projectId", "version"]),
 })

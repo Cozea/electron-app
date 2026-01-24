@@ -57,7 +57,10 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 
 type TableRowData = {
   id: string
@@ -113,19 +116,11 @@ export function Members() {
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-  // Current user's role in the organization
-  const currentUserRole = currentOrganization?.role as Role | undefined
-  const canInvite = hasPermission(currentUserRole, 'members:invite')
-  const canRemove = hasPermission(currentUserRole, 'members:remove')
-  const canUpdateRole = hasPermission(currentUserRole, 'members:update_role')
-  const canRevokeInvite = hasPermission(currentUserRole, 'invitations:revoke')
-
   // Get Convex organization by WorkOS ID
   const convexOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
   )
-
 
   // Convex queries for members and invitations
   const members = useQuery(
@@ -137,6 +132,20 @@ export function Members() {
     api.invitations.listForOrganization,
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
+
+  // Seat limit status
+  const seatStatus = useQuery(
+    api.organizations.getSeatStatus,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+
+  // Current user's role in the organization
+  const currentUserRole = currentOrganization?.role as Role | undefined
+  const hasInvitePermission = hasPermission(currentUserRole, 'members:invite')
+  const canInvite = hasInvitePermission && (seatStatus?.allowed ?? true)
+  const canRemove = hasPermission(currentUserRole, 'members:remove')
+  const canUpdateRole = hasPermission(currentUserRole, 'members:update_role')
+  const canRevokeInvite = hasPermission(currentUserRole, 'invitations:revoke')
 
   // Convex mutations
   const createInvitation = useMutation(api.invitations.create)
@@ -449,7 +458,17 @@ export function Members() {
       <div>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Members</h1>
+          <div>
+            <h1 className="text-2xl font-semibold">Members</h1>
+            {seatStatus && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {seatStatus.limit > 0
+                  ? `${seatStatus.current} / ${seatStatus.limit} seats used`
+                  : `${seatStatus.current} members`
+                }
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {selected.length > 0 && (
               <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
@@ -565,6 +584,53 @@ export function Members() {
             </Dialog>
           </div>
         </div>
+
+        {/* Seat limit warnings */}
+        {seatStatus && seatStatus.limit > 0 && (
+          <>
+            {seatStatus.overLimit ? (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Over seat limit</AlertTitle>
+                <AlertDescription>
+                  You have {seatStatus.current} members but your plan allows {seatStatus.limit}.
+                  Remove {seatStatus.current - seatStatus.limit} member(s) or{' '}
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-destructive underline"
+                    onClick={() => navigate('/workspace/billing')}
+                  >
+                    upgrade your plan
+                  </Button>{' '}
+                  to invite more.
+                </AlertDescription>
+              </Alert>
+            ) : seatStatus.current >= seatStatus.limit ? (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Seat limit reached</AlertTitle>
+                <AlertDescription>
+                  You've used all {seatStatus.limit} seats on your plan.{' '}
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-destructive underline"
+                    onClick={() => navigate('/workspace/billing')}
+                  >
+                    Upgrade to add more members
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : seatStatus.current >= seatStatus.limit - 1 ? (
+              <Alert className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>1 seat remaining</AlertTitle>
+                <AlertDescription>
+                  {seatStatus.current}/{seatStatus.limit} seats used. You can invite one more member.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </>
+        )}
 
         {/* Filter tabs and search row */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">

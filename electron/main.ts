@@ -2,18 +2,99 @@ import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog } from 'electro
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { exec, type ChildProcess } from 'node:child_process'
+import { promisify } from 'node:util'
 import { runTool } from './tools'
+import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
+import * as pty from 'node-pty'
+
+// xxhash instance for file hashing
+// The hasher object contains h64Raw for direct hashing of Uint8Array
+let xxhasher: XXHashAPI | null = null
+
+// Dev server process management
+// Maps projectPath to running PTY instance for proper terminal emulation
+const devServerProcesses = new Map<string, pty.IPty>()
+
+// ============================================
+// Terminal Management (VS Code-style multi-terminal)
+// ============================================
+
+interface TerminalProfile {
+  id: string
+  name: string
+  path: string
+  args?: string[]
+  env?: Record<string, string>
+  icon?: string
+}
+
+interface ManagedTerminal {
+  id: string
+  projectPath: string
+  ptyProcess: pty.IPty
+  profile: TerminalProfile
+  title: string
+}
+
+// All terminal instances by ID
+const terminals = new Map<string, ManagedTerminal>()
+// Track terminals per project
+const projectTerminals = new Map<string, string[]>()
+
+// Detect available shell profiles
+function detectTerminalProfiles(): TerminalProfile[] {
+  const profiles: TerminalProfile[] = []
+
+  // macOS/Linux shells
+  if (process.platform !== 'win32') {
+    if (fs.existsSync('/bin/zsh')) {
+      profiles.push({ id: 'zsh', name: 'zsh', path: '/bin/zsh', icon: 'terminal' })
+    }
+    if (fs.existsSync('/bin/bash')) {
+      profiles.push({ id: 'bash', name: 'bash', path: '/bin/bash', icon: 'terminal' })
+    }
+    if (fs.existsSync('/bin/sh')) {
+      profiles.push({ id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' })
+    }
+  }
+
+  // Windows shells
+  if (process.platform === 'win32') {
+    profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
+    profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
+  }
+
+  // Node.js (cross-platform)
+  profiles.push({ id: 'node', name: 'Node.js', path: 'node', icon: 'symbol-event' })
+
+  return profiles
+}
+
+function getTerminalProfile(profileId?: string): TerminalProfile {
+  const profiles = detectTerminalProfiles()
+  if (profileId) {
+    const profile = profiles.find(p => p.id === profileId)
+    if (profile) return profile
+  }
+  // Default to first available profile (usually zsh or bash)
+  return profiles[0] || { id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' }
+}
+
+const execAsync = promisify(exec)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '..')
 
-// Determine if this is a production build (not running with vite dev server)
-const isProductionBuild = !process.env['VITE_DEV_SERVER_URL']
+// Dev server URL from electron-vite (ELECTRON_RENDERER_URL) or legacy var
+export const VITE_DEV_SERVER_URL =
+  process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
 
-export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+// Determine if this is a production build (not running with dev server)
+const isProductionBuild = !VITE_DEV_SERVER_URL
+export const MAIN_DIST = path.join(process.env.APP_ROOT, 'out/main')
+export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'out/renderer')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
@@ -21,10 +102,65 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 const AUTH_SERVER_URL = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 const PROTOCOL = 'cozea'
 
-// Session storage path (encrypted)
-const SESSION_PATH = path.join(app.getPath('userData'), 'session.enc')
+// Default settings
+interface AppSettings {
+  projectsDirectory: string
+}
 
-let win: BrowserWindow | null
+// Lazy-loaded paths (app.getPath not available at module load time in ESM)
+let _sessionPath: string | null = null
+let _settingsPath: string | null = null
+let _defaultSettings: AppSettings | null = null
+
+function getSessionPath(): string {
+  if (!_sessionPath) _sessionPath = path.join(app.getPath('userData'), 'session.enc')
+  return _sessionPath
+}
+
+function getSettingsPath(): string {
+  if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json')
+  return _settingsPath
+}
+
+function getDefaultSettings(): AppSettings {
+  if (!_defaultSettings) {
+    _defaultSettings = {
+      projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
+    }
+  }
+  return _defaultSettings
+}
+
+function loadSettings(): AppSettings {
+  try {
+    if (fs.existsSync(getSettingsPath())) {
+      const data = fs.readFileSync(getSettingsPath(), 'utf-8')
+      return { ...getDefaultSettings(), ...JSON.parse(data) }
+    }
+  } catch (err) {
+    console.error('Failed to load settings:', err)
+  }
+  return getDefaultSettings()
+}
+
+function saveSettings(settings: Partial<AppSettings>): void {
+  try {
+    const current = loadSettings()
+    const updated = { ...current, ...settings }
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(updated, null, 2))
+  } catch (err) {
+    console.error('Failed to save settings:', err)
+  }
+}
+
+let win: InstanceType<typeof BrowserWindow> | null
+
+// Notify all windows of file changes (for Yjs collaborative editing)
+export function notifyFileChanged(filePath: string, content: string): void {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('yjs:external-file-change', { filePath, content })
+  })
+}
 
 // Session management
 interface OrganizationMembership {
@@ -54,7 +190,7 @@ function saveSession(session: Session): void {
   // Use safeStorage if available (encrypts using OS keychain)
   if (safeStorage.isEncryptionAvailable()) {
     const encryptedData = safeStorage.encryptString(jsonData)
-    fs.writeFileSync(SESSION_PATH, encryptedData)
+    fs.writeFileSync(getSessionPath(), encryptedData)
   } else if (isProductionBuild) {
     // In production, encryption is required for security
     dialog.showErrorBox(
@@ -65,17 +201,17 @@ function saveSession(session: Session): void {
   } else {
     // Fallback to plain storage in development only
     console.warn('safeStorage not available, storing session unencrypted (dev mode only)')
-    fs.writeFileSync(SESSION_PATH, jsonData)
+    fs.writeFileSync(getSessionPath(), jsonData)
   }
 }
 
 function loadSession(): Session | null {
   try {
-    if (!fs.existsSync(SESSION_PATH)) {
+    if (!fs.existsSync(getSessionPath())) {
       return null
     }
 
-    const fileData = fs.readFileSync(SESSION_PATH)
+    const fileData = fs.readFileSync(getSessionPath())
 
     // Try to decrypt if safeStorage is available
     if (safeStorage.isEncryptionAvailable()) {
@@ -101,16 +237,53 @@ function loadSession(): Session | null {
 
 function clearSession(): void {
   try {
-    if (fs.existsSync(SESSION_PATH)) {
-      fs.unlinkSync(SESSION_PATH)
+    if (fs.existsSync(getSessionPath())) {
+      fs.unlinkSync(getSessionPath())
     }
     // Also try to clear old unencrypted session file if it exists
-    const oldSessionPath = SESSION_PATH.replace('.enc', '.json')
+    const oldSessionPath = getSessionPath().replace('.enc', '.json')
     if (fs.existsSync(oldSessionPath)) {
       fs.unlinkSync(oldSessionPath)
     }
   } catch (err) {
     console.error('Failed to clear session:', err)
+  }
+}
+
+// Handle billing callback (success/cancel from Stripe)
+function handleBillingCallback(url: string): void {
+  const urlObj = new URL(url)
+  const urlPath = urlObj.pathname // '/success' or '/canceled'
+  const type = urlObj.searchParams.get('type') // 'subscription' or 'credits'
+
+  // Focus the window
+  if (win) {
+    if (win.isMinimized()) win.restore()
+    win.focus()
+
+    // Navigate to billing page with appropriate query params
+    const isSuccess = urlPath === '/success' || urlPath === '//success'
+    const isCanceled = urlPath === '/canceled' || urlPath === '//canceled'
+
+    let queryString = ''
+    if (isSuccess) {
+      queryString = `?success=${type || 'true'}`
+    } else if (isCanceled) {
+      queryString = '?canceled=true'
+    }
+
+    if (queryString) {
+      if (VITE_DEV_SERVER_URL) {
+        win.loadURL(`${VITE_DEV_SERVER_URL}/workspace/billing${queryString}`)
+      } else {
+        // For production, load index.html - the SPA will handle routing
+        win.loadFile(path.join(RENDERER_DIST, 'index.html'))
+        // Send a message to navigate after the page loads
+        win.webContents.once('did-finish-load', () => {
+          win?.webContents.send('navigate', `/workspace/billing${queryString}`)
+        })
+      }
+    }
   }
 }
 
@@ -162,6 +335,8 @@ app.on('open-url', (event, url) => {
   event.preventDefault()
   if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
     handleAuthCallback(url)
+  } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
+    handleBillingCallback(url)
   }
 })
 
@@ -180,8 +355,12 @@ if (!gotTheLock) {
 
     // Handle protocol URL on Windows/Linux
     const url = commandLine.find(arg => arg.startsWith(`${PROTOCOL}://`))
-    if (url && url.startsWith(`${PROTOCOL}://auth/callback`)) {
-      handleAuthCallback(url)
+    if (url) {
+      if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
+        handleAuthCallback(url)
+      } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
+        handleBillingCallback(url)
+      }
     }
   })
 }
@@ -191,7 +370,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -282,7 +461,1081 @@ ipcMain.handle('tools:run', async (_event, request: { name: string; input: Recor
   return runTool(request)
 })
 
+// Open URL in system browser
+ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+  await shell.openExternal(url)
+  return { success: true }
+})
+
+// Window state handlers
+ipcMain.handle('window:isFullScreen', () => {
+  return win?.isFullScreen() ?? false
+})
+
+// Settings handlers
+ipcMain.handle('settings:get', () => {
+  return loadSettings()
+})
+
+ipcMain.handle('settings:set', (_event, settings: Partial<AppSettings>) => {
+  saveSettings(settings)
+  return { success: true }
+})
+
+// Dialog to select a directory
+ipcMain.handle('dialog:selectDirectory', async () => {
+  if (!win) return { success: false, error: 'No window available' }
+
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select Projects Directory',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true }
+  }
+
+  return { success: true, path: result.filePaths[0] }
+})
+
+// Storage usage calculation
+interface StorageUsage {
+  projects: number
+  dependencies: number
+  buildCache: number
+  logs: number
+  total: number
+  diskTotal: number
+  diskFree: number
+}
+
+async function getDirectorySize(dirPath: string): Promise<number> {
+  try {
+    if (!fs.existsSync(dirPath)) return 0
+
+    // Use native du command for fast directory size calculation
+    if (process.platform === 'win32') {
+      // Windows: use PowerShell
+      const { stdout } = await execAsync(
+        `powershell -command "(Get-ChildItem -Path '${dirPath}' -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum"`,
+        { timeout: 30000 }
+      )
+      const size = parseInt(stdout.trim(), 10)
+      return isNaN(size) ? 0 : size
+    } else {
+      // macOS/Linux: use du command (-s for summary, -k for KB)
+      const { stdout } = await execAsync(
+        `du -sk "${dirPath}" 2>/dev/null || echo "0"`,
+        { timeout: 30000 }
+      )
+      const sizeKB = parseInt(stdout.split('\t')[0], 10)
+      return isNaN(sizeKB) ? 0 : sizeKB * 1024 // Convert KB to bytes
+    }
+  } catch {
+    return 0
+  }
+}
+
+async function getDiskSpace(dirPath: string): Promise<{ total: number; free: number }> {
+  try {
+    if (process.platform === 'win32') {
+      // Windows: use PowerShell to get drive info
+      const driveLetter = path.parse(dirPath).root || 'C:\\'
+      const { stdout } = await execAsync(
+        `powershell -command "Get-PSDrive -Name '${driveLetter[0]}' | Select-Object Used,Free | ConvertTo-Json"`,
+        { timeout: 10000 }
+      )
+      const info = JSON.parse(stdout)
+      return {
+        total: (info.Used || 0) + (info.Free || 0),
+        free: info.Free || 0,
+      }
+    } else {
+      // macOS/Linux: use df command
+      const { stdout } = await execAsync(
+        `df -k "${dirPath}" 2>/dev/null | tail -1`,
+        { timeout: 10000 }
+      )
+      const parts = stdout.trim().split(/\s+/)
+      // df output: Filesystem 1K-blocks Used Available Use% Mounted
+      const totalKB = parseInt(parts[1], 10)
+      const availableKB = parseInt(parts[3], 10)
+      return {
+        total: isNaN(totalKB) ? 0 : totalKB * 1024,
+        free: isNaN(availableKB) ? 0 : availableKB * 1024,
+      }
+    }
+  } catch {
+    return { total: 0, free: 0 }
+  }
+}
+
+ipcMain.handle('storage:getUsage', async (): Promise<StorageUsage> => {
+  const settings = loadSettings()
+  const projectsDir = settings.projectsDirectory
+  const userDataDir = app.getPath('userData')
+  const logsDir = app.getPath('logs')
+
+  // Calculate sizes in parallel
+  const [projectsSize, logsSize] = await Promise.all([
+    getDirectorySize(projectsDir),
+    getDirectorySize(logsDir),
+  ])
+
+  // For dependencies, we need to scan node_modules folders within projects
+  let dependenciesSize = 0
+  let buildCacheSize = 0
+
+  if (fs.existsSync(projectsDir)) {
+    try {
+      const projects = fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+
+      const sizes = await Promise.all(
+        projects.map(async (project) => {
+          const projectPath = path.join(projectsDir, project.name)
+          const nodeModulesPath = path.join(projectPath, 'node_modules')
+          const distPath = path.join(projectPath, 'dist')
+          const buildPath = path.join(projectPath, 'build')
+          const nextCachePath = path.join(projectPath, '.next')
+
+          const [nodeModules, dist, build, nextCache] = await Promise.all([
+            getDirectorySize(nodeModulesPath),
+            getDirectorySize(distPath),
+            getDirectorySize(buildPath),
+            getDirectorySize(nextCachePath),
+          ])
+
+          return {
+            dependencies: nodeModules,
+            buildCache: dist + build + nextCache,
+          }
+        })
+      )
+
+      for (const size of sizes) {
+        dependenciesSize += size.dependencies
+        buildCacheSize += size.buildCache
+      }
+    } catch (err) {
+      console.error('Failed to scan project directories:', err)
+    }
+  }
+
+  // Also check for app-level cache (separate from project build cache)
+  const appCachePath = path.join(userDataDir, 'Cache')
+  const appCache = await getDirectorySize(appCachePath)
+
+  // Get disk space for the projects directory
+  const diskSpace = await getDiskSpace(projectsDir)
+
+  // Calculate actual project files (ensure non-negative)
+  const projectFilesSize = Math.max(0, projectsSize - dependenciesSize - buildCacheSize)
+
+  // Total build cache includes both project build artifacts and app cache
+  const totalBuildCache = buildCacheSize + appCache
+
+  return {
+    projects: projectFilesSize,
+    dependencies: dependenciesSize,
+    buildCache: totalBuildCache,
+    logs: logsSize,
+    total: projectFilesSize + dependenciesSize + totalBuildCache + logsSize,
+    diskTotal: diskSpace.total,
+    diskFree: diskSpace.free,
+  }
+})
+
+// List local projects with their sizes
+interface LocalProject {
+  name: string
+  path: string
+  size: number
+  lastModified: number
+}
+
+ipcMain.handle('storage:listProjects', async (): Promise<LocalProject[]> => {
+  const settings = loadSettings()
+  const projectsDir = settings.projectsDirectory
+
+  if (!fs.existsSync(projectsDir)) {
+    return []
+  }
+
+  try {
+    const entries = fs.readdirSync(projectsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+
+    const projects = await Promise.all(
+      entries.map(async (entry) => {
+        const projectPath = path.join(projectsDir, entry.name)
+        const size = await getDirectorySize(projectPath)
+
+        // Get last modified time
+        let lastModified = Date.now()
+        try {
+          const stats = fs.statSync(projectPath)
+          lastModified = stats.mtimeMs
+        } catch {
+          // Ignore stat errors
+        }
+
+        return {
+          name: entry.name,
+          path: projectPath,
+          size,
+          lastModified,
+        }
+      })
+    )
+
+    // Sort by last modified (most recent first)
+    return projects.sort((a, b) => b.lastModified - a.lastModified)
+  } catch (err) {
+    console.error('Failed to list projects:', err)
+    return []
+  }
+})
+
+// Project folder management
+interface CreateProjectFolderResult {
+  success: boolean
+  localPath?: string
+  error?: string
+}
+
+ipcMain.handle(
+  'project:createFolder',
+  async (
+    _event,
+    { slug, initGit = true }: { slug: string; initGit?: boolean }
+  ): Promise<CreateProjectFolderResult> => {
+    const settings = loadSettings()
+    const projectsDir = settings.projectsDirectory
+    const projectPath = path.join(projectsDir, slug)
+
+    try {
+      // Ensure projects directory exists
+      if (!fs.existsSync(projectsDir)) {
+        fs.mkdirSync(projectsDir, { recursive: true })
+      }
+
+      // Check if project folder already exists
+      if (fs.existsSync(projectPath)) {
+        return {
+          success: false,
+          error: `Project folder already exists: ${projectPath}`,
+        }
+      }
+
+      // Create project folder
+      fs.mkdirSync(projectPath, { recursive: true })
+      console.log(`[Project] Created folder: ${projectPath}`)
+
+      // Initialize git repository if requested
+      if (initGit) {
+        const { execSync } = await import('child_process')
+        try {
+          execSync('git init', { cwd: projectPath, stdio: 'pipe' })
+          console.log(`[Project] Initialized git repo: ${projectPath}`)
+
+          // Create initial .gitignore
+          const gitignoreContent = `# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cache
+.cache/
+.turbo/
+`
+          fs.writeFileSync(path.join(projectPath, '.gitignore'), gitignoreContent)
+          console.log(`[Project] Created .gitignore`)
+        } catch (gitErr) {
+          console.warn(`[Project] Git init failed (git may not be installed):`, gitErr)
+          // Don't fail the whole operation if git isn't available
+        }
+      }
+
+      return {
+        success: true,
+        localPath: projectPath,
+      }
+    } catch (err) {
+      console.error('[Project] Failed to create folder:', err)
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to create project folder',
+      }
+    }
+  }
+)
+
+// Get local path for a project by slug (returns path if exists, null otherwise)
+ipcMain.handle(
+  'project:getLocalPath',
+  (_event, { slug }: { slug: string }): string | null => {
+    const settings = loadSettings()
+    const projectPath = path.join(settings.projectsDirectory, slug)
+    return fs.existsSync(projectPath) ? projectPath : null
+  }
+)
+
+// Check if a local project folder exists
+ipcMain.handle(
+  'project:exists',
+  (_event, { slug }: { slug: string }): boolean => {
+    const settings = loadSettings()
+    const projectPath = path.join(settings.projectsDirectory, slug)
+    return fs.existsSync(projectPath)
+  }
+)
+
+// Write a file to project folder
+ipcMain.handle(
+  'project:writeFile',
+  async (
+    _event,
+    {
+      projectPath,
+      filePath,
+      content,
+    }: {
+      projectPath: string
+      filePath: string // relative path, e.g., "config/config.json"
+      content: string
+    }
+  ): Promise<{
+    success: boolean
+    fullPath?: string
+    sizeBytes?: number
+    error?: string
+  }> => {
+    try {
+      const fullPath = path.join(projectPath, filePath)
+      const dir = path.dirname(fullPath)
+
+      // Ensure directory exists
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+
+      fs.writeFileSync(fullPath, content, 'utf-8')
+      const stats = fs.statSync(fullPath)
+      console.log(`[Project] Wrote file: ${fullPath}`)
+
+      // Notify Yjs of the file change for collaborative editing
+      notifyFileChanged(fullPath, content)
+
+      return {
+        success: true,
+        fullPath,
+        sizeBytes: stats.size,
+      }
+    } catch (error) {
+      console.error('[Project] Failed to write file:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
+// Read a file from project folder
+ipcMain.handle(
+  'project:readFile',
+  async (
+    _event,
+    { projectPath, filePath }: { projectPath: string; filePath: string }
+  ): Promise<{
+    success: boolean
+    content?: string
+    sizeBytes?: number
+    error?: string
+  }> => {
+    try {
+      const fullPath = path.join(projectPath, filePath)
+
+      if (!fs.existsSync(fullPath)) {
+        return { success: false, error: 'File not found' }
+      }
+
+      const content = fs.readFileSync(fullPath, 'utf-8')
+      const stats = fs.statSync(fullPath)
+
+      return {
+        success: true,
+        content,
+        sizeBytes: stats.size,
+      }
+    } catch (error) {
+      console.error('[Project] Failed to read file:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
+// List all files in project folder (recursive)
+ipcMain.handle(
+  'project:listFiles',
+  async (
+    _event,
+    { projectPath }: { projectPath: string }
+  ): Promise<{
+    success: boolean
+    files?: { path: string; sizeBytes: number }[]
+    error?: string
+  }> => {
+    try {
+      const files: { path: string; sizeBytes: number }[] = []
+
+      function walkDir(dir: string, relativePath = '') {
+        if (!fs.existsSync(dir)) return
+
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          const relPath = path.join(relativePath, entry.name)
+          const fullPath = path.join(dir, entry.name)
+
+          if (entry.isDirectory()) {
+            // Skip .git and node_modules
+            if (entry.name !== '.git' && entry.name !== 'node_modules') {
+              walkDir(fullPath, relPath)
+            }
+          } else {
+            const stats = fs.statSync(fullPath)
+            files.push({ path: relPath, sizeBytes: stats.size })
+          }
+        }
+      }
+
+      walkDir(projectPath)
+      return { success: true, files }
+    } catch (error) {
+      console.error('[Project] Failed to list files:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
+// Read directory contents (one level)
+interface FileEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  modifiedAt?: string
+}
+
+ipcMain.handle(
+  'fs:readDir',
+  async (_event, dirPath: string): Promise<FileEntry[]> => {
+    try {
+      if (!fs.existsSync(dirPath)) {
+        return []
+      }
+
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+      const result: FileEntry[] = []
+
+      for (const entry of entries) {
+        // Skip hidden files and common non-essential directories
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+          continue
+        }
+
+        const fullPath = path.join(dirPath, entry.name)
+        const isDirectory = entry.isDirectory()
+
+        try {
+          const stats = fs.statSync(fullPath)
+          result.push({
+            name: entry.name,
+            path: fullPath,
+            type: isDirectory ? 'directory' : 'file',
+            size: isDirectory ? undefined : stats.size,
+            modifiedAt: stats.mtime.toISOString(),
+          })
+        } catch {
+          // Skip files we can't stat
+        }
+      }
+
+      return result
+    } catch (error) {
+      console.error('[FS] Failed to read directory:', error)
+      return []
+    }
+  }
+)
+
+// Read file content
+ipcMain.handle(
+  'fs:readFile',
+  async (_event, filePath: string): Promise<string | null> => {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return null
+      }
+      return fs.readFileSync(filePath, 'utf-8')
+    } catch (error) {
+      console.error('[FS] Failed to read file:', error)
+      return null
+    }
+  }
+)
+
+// ============================================
+// Sync IPC Handlers (for file synchronization)
+// ============================================
+
+// Hash a single file using xxhash
+ipcMain.handle(
+  'sync:hashFile',
+  async (
+    _event,
+    { filePath }: { filePath: string }
+  ): Promise<{ hash: string; size: number }> => {
+    if (!xxhasher) throw new Error('xxhash not initialized')
+
+    const content = fs.readFileSync(filePath)
+    const hash = xxhasher.h64Raw(content).toString(16).padStart(16, '0')
+
+    return { hash, size: content.length }
+  }
+)
+
+// Get local manifest (all files with hashes)
+ipcMain.handle(
+  'sync:getLocalManifest',
+  async (
+    _event,
+    {
+      projectPath,
+      excludePatterns,
+    }: {
+      projectPath: string
+      excludePatterns?: string[]
+    }
+  ): Promise<{
+    manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
+    totalFiles: number
+  }> => {
+    if (!xxhasher) throw new Error('xxhash not initialized')
+
+    const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
+    const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])])
+
+    const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
+
+    function walkDir(dir: string, relativePath = '') {
+      if (!fs.existsSync(dir)) return
+
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        // Skip excluded directories/files
+        if (excludes.has(entry.name)) continue
+        // Skip hidden files except .env.example
+        if (entry.name.startsWith('.') && entry.name !== '.env.example') continue
+
+        const relPath = path.join(relativePath, entry.name)
+        const fullPath = path.join(dir, entry.name)
+
+        if (entry.isDirectory()) {
+          walkDir(fullPath, relPath)
+        } else if (entry.isFile()) {
+          try {
+            const content = fs.readFileSync(fullPath)
+            const stats = fs.statSync(fullPath)
+            const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+
+            manifest.push({
+              path: relPath.replace(/\\/g, '/'), // Normalize to forward slashes
+              hash,
+              size: stats.size,
+              mtime: stats.mtimeMs,
+            })
+          } catch (err) {
+            console.warn(`[Sync] Could not read file: ${fullPath}`, err)
+          }
+        }
+      }
+    }
+
+    if (fs.existsSync(projectPath)) {
+      walkDir(projectPath)
+    }
+
+    console.log(`[Sync] Generated manifest with ${manifest.length} files for ${projectPath}`)
+    return { manifest, totalFiles: manifest.length }
+  }
+)
+
+// Write multiple files atomically
+ipcMain.handle(
+  'sync:writeFiles',
+  async (
+    _event,
+    {
+      projectPath,
+      files,
+    }: {
+      projectPath: string
+      files: Array<{ path: string; content: string }>
+    }
+  ): Promise<{
+    results: Array<{ path: string; success: boolean; error?: string }>
+    successCount: number
+  }> => {
+    const results: Array<{ path: string; success: boolean; error?: string }> = []
+
+    for (const file of files) {
+      try {
+        const fullPath = path.join(projectPath, file.path)
+        const dir = path.dirname(fullPath)
+
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true })
+        }
+
+        fs.writeFileSync(fullPath, file.content, 'utf-8')
+        results.push({ path: file.path, success: true })
+        console.log(`[Sync] Wrote file: ${file.path}`)
+
+        // Notify Yjs of the file change for collaborative editing
+        notifyFileChanged(fullPath, file.content)
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+        results.push({ path: file.path, success: false, error: errorMsg })
+        console.error(`[Sync] Failed to write file: ${file.path}`, err)
+      }
+    }
+
+    return { results, successCount: results.filter((r) => r.success).length }
+  }
+)
+
+// Delete multiple files
+ipcMain.handle(
+  'sync:deleteFiles',
+  async (
+    _event,
+    {
+      projectPath,
+      paths,
+    }: {
+      projectPath: string
+      paths: string[]
+    }
+  ): Promise<{
+    results: Array<{ path: string; success: boolean }>
+  }> => {
+    const results: Array<{ path: string; success: boolean }> = []
+
+    for (const relPath of paths) {
+      try {
+        const fullPath = path.join(projectPath, relPath)
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath)
+          console.log(`[Sync] Deleted file: ${relPath}`)
+        }
+        results.push({ path: relPath, success: true })
+      } catch (err) {
+        console.error(`[Sync] Failed to delete file: ${relPath}`, err)
+        results.push({ path: relPath, success: false })
+      }
+    }
+
+    return { results }
+  }
+)
+
+// ============================================
+// Dev Server IPC Handlers
+// ============================================
+
+// Start a dev server for a project using PTY for proper terminal emulation
+ipcMain.handle(
+  'devServer:start',
+  async (
+    _event,
+    {
+      projectPath,
+      command,
+      port,
+      cols = 80,
+      rows = 24,
+    }: {
+      projectPath: string
+      command: string
+      port: number
+      cols?: number
+      rows?: number
+    }
+  ): Promise<{ success: boolean; pid?: number; error?: string }> => {
+    // Check if server is already running for this project
+    if (devServerProcesses.has(projectPath)) {
+      return { success: false, error: 'Dev server already running for this project' }
+    }
+
+    try {
+      console.log(`[DevServer] Starting PTY: ${command} in ${projectPath} (${cols}x${rows})`)
+
+      // Determine shell based on platform
+      const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
+
+      // Spawn the process using node-pty for proper terminal emulation
+      const ptyProcess = pty.spawn(shell, ['-c', command], {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: projectPath,
+        env: {
+          ...process.env,
+          PORT: String(port),
+          FORCE_COLOR: '1',
+          TERM: 'xterm-256color',
+        } as Record<string, string>,
+      })
+
+      devServerProcesses.set(projectPath, ptyProcess)
+
+      // Stream output to renderer (PTY combines stdout and stderr)
+      ptyProcess.onData((data: string) => {
+        // Don't log every output line to reduce console spam
+        win?.webContents.send('devServer:output', { projectPath, output: data, stream: 'stdout' })
+      })
+
+      // Handle process exit
+      ptyProcess.onExit(({ exitCode }) => {
+        console.log(`[DevServer] PTY exited with code ${exitCode}`)
+        devServerProcesses.delete(projectPath)
+        win?.webContents.send('devServer:exit', { projectPath, code: exitCode })
+      })
+
+      return { success: true, pid: ptyProcess.pid }
+    } catch (err) {
+      console.error('[DevServer] Failed to start PTY:', err)
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to start dev server',
+      }
+    }
+  }
+)
+
+// Stop a dev server for a project
+ipcMain.handle(
+  'devServer:stop',
+  async (
+    _event,
+    { projectPath }: { projectPath: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    const ptyProcess = devServerProcesses.get(projectPath)
+    if (!ptyProcess) {
+      return { success: true } // Already stopped
+    }
+
+    try {
+      console.log(`[DevServer] Stopping PTY for ${projectPath}`)
+
+      // Kill the PTY process (node-pty handles killing the process tree)
+      ptyProcess.kill()
+
+      devServerProcesses.delete(projectPath)
+      return { success: true }
+    } catch (err) {
+      console.error('[DevServer] Failed to stop PTY:', err)
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to stop dev server',
+      }
+    }
+  }
+)
+
+// Resize a running PTY
+ipcMain.handle(
+  'devServer:resize',
+  (
+    _event,
+    { projectPath, cols, rows }: { projectPath: string; cols: number; rows: number }
+  ): { success: boolean } => {
+    const ptyProcess = devServerProcesses.get(projectPath)
+    if (!ptyProcess) {
+      return { success: false }
+    }
+
+    try {
+      ptyProcess.resize(cols, rows)
+      return { success: true }
+    } catch (err) {
+      console.error('[DevServer] Failed to resize PTY:', err)
+      return { success: false }
+    }
+  }
+)
+
+// Check if a dev server is running for a project
+ipcMain.handle(
+  'devServer:isRunning',
+  (_event, { projectPath }: { projectPath: string }): boolean => {
+    return devServerProcesses.has(projectPath)
+  }
+)
+
+// ============================================
+// Terminal IPC Handlers (VS Code-style multi-terminal)
+// ============================================
+
+// Create a new terminal instance
+ipcMain.handle(
+  'terminal:create',
+  async (
+    _event,
+    {
+      projectPath,
+      profileId,
+      cwd,
+      cols = 80,
+      rows = 24,
+    }: {
+      projectPath: string
+      profileId?: string
+      cwd?: string
+      cols?: number
+      rows?: number
+    }
+  ): Promise<{ success: boolean; terminalId?: string; error?: string }> => {
+    try {
+      const terminalId = crypto.randomUUID()
+      const profile = getTerminalProfile(profileId)
+
+      console.log(`[Terminal] Creating terminal ${terminalId} with profile ${profile.name} in ${cwd || projectPath}`)
+
+      const ptyProcess = pty.spawn(profile.path, profile.args || [], {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: cwd || projectPath,
+        env: {
+          ...process.env,
+          ...profile.env,
+          TERM: 'xterm-256color',
+          COLORTERM: 'truecolor',
+        } as Record<string, string>,
+      })
+
+      const terminal: ManagedTerminal = {
+        id: terminalId,
+        projectPath,
+        ptyProcess,
+        profile,
+        title: profile.name,
+      }
+
+      terminals.set(terminalId, terminal)
+
+      // Track terminals per project
+      const projectTerms = projectTerminals.get(projectPath) || []
+      projectTerms.push(terminalId)
+      projectTerminals.set(projectPath, projectTerms)
+
+      // Stream output to renderer
+      ptyProcess.onData((data: string) => {
+        win?.webContents.send('terminal:output', { terminalId, data })
+      })
+
+      // Handle process exit
+      ptyProcess.onExit(({ exitCode }) => {
+        console.log(`[Terminal] Terminal ${terminalId} exited with code ${exitCode}`)
+        win?.webContents.send('terminal:exit', { terminalId, exitCode })
+
+        // Clean up
+        terminals.delete(terminalId)
+        const projectTerms = projectTerminals.get(projectPath)
+        if (projectTerms) {
+          const idx = projectTerms.indexOf(terminalId)
+          if (idx !== -1) projectTerms.splice(idx, 1)
+          if (projectTerms.length === 0) {
+            projectTerminals.delete(projectPath)
+          }
+        }
+      })
+
+      return { success: true, terminalId }
+    } catch (err) {
+      console.error('[Terminal] Failed to create terminal:', err)
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to create terminal',
+      }
+    }
+  }
+)
+
+// Send input to a terminal (keystrokes)
+ipcMain.handle(
+  'terminal:input',
+  async (
+    _event,
+    { terminalId, data }: { terminalId: string; data: string }
+  ): Promise<void> => {
+    const terminal = terminals.get(terminalId)
+    if (terminal) {
+      terminal.ptyProcess.write(data)
+    }
+  }
+)
+
+// Resize a terminal
+ipcMain.handle(
+  'terminal:resize',
+  (
+    _event,
+    { terminalId, cols, rows }: { terminalId: string; cols: number; rows: number }
+  ): { success: boolean } => {
+    const terminal = terminals.get(terminalId)
+    if (terminal) {
+      try {
+        terminal.ptyProcess.resize(cols, rows)
+        return { success: true }
+      } catch (err) {
+        console.error('[Terminal] Failed to resize:', err)
+        return { success: false }
+      }
+    }
+    return { success: false }
+  }
+)
+
+// Kill a terminal
+ipcMain.handle(
+  'terminal:kill',
+  async (
+    _event,
+    { terminalId }: { terminalId: string }
+  ): Promise<{ success: boolean }> => {
+    const terminal = terminals.get(terminalId)
+    if (terminal) {
+      try {
+        console.log(`[Terminal] Killing terminal ${terminalId}`)
+        terminal.ptyProcess.kill()
+        terminals.delete(terminalId)
+
+        // Clean up project tracking
+        const projectTerms = projectTerminals.get(terminal.projectPath)
+        if (projectTerms) {
+          const idx = projectTerms.indexOf(terminalId)
+          if (idx !== -1) projectTerms.splice(idx, 1)
+          if (projectTerms.length === 0) {
+            projectTerminals.delete(terminal.projectPath)
+          }
+        }
+
+        return { success: true }
+      } catch (err) {
+        console.error('[Terminal] Failed to kill:', err)
+        return { success: false }
+      }
+    }
+    return { success: true } // Already dead
+  }
+)
+
+// Get available terminal profiles
+ipcMain.handle(
+  'terminal:getProfiles',
+  (): TerminalProfile[] => {
+    return detectTerminalProfiles()
+  }
+)
+
+// List terminals for a project
+ipcMain.handle(
+  'terminal:list',
+  (_event, { projectPath }: { projectPath: string }): string[] => {
+    return projectTerminals.get(projectPath) || []
+  }
+)
+
+// Get terminal info
+ipcMain.handle(
+  'terminal:getInfo',
+  (_event, { terminalId }: { terminalId: string }): {
+    id: string
+    profileId: string
+    profileName: string
+    title: string
+  } | null => {
+    const terminal = terminals.get(terminalId)
+    if (terminal) {
+      return {
+        id: terminal.id,
+        profileId: terminal.profile.id,
+        profileName: terminal.profile.name,
+        title: terminal.title,
+      }
+    }
+    return null
+  }
+)
+
 app.on('window-all-closed', () => {
+  // Kill all running dev servers when app closes
+  for (const [projectPath, ptyProcess] of devServerProcesses) {
+    console.log(`[DevServer] Killing PTY for ${projectPath}`)
+    try {
+      ptyProcess.kill()
+    } catch {
+      // Ignore errors when killing on shutdown
+    }
+  }
+  devServerProcesses.clear()
+
+  // Kill all terminal instances when app closes
+  for (const [terminalId, terminal] of terminals) {
+    console.log(`[Terminal] Killing terminal ${terminalId}`)
+    try {
+      terminal.ptyProcess.kill()
+    } catch {
+      // Ignore errors when killing on shutdown
+    }
+  }
+  terminals.clear()
+  projectTerminals.clear()
+
   if (process.platform !== 'darwin') {
     app.quit()
     win = null
@@ -295,4 +1548,10 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  // Initialize xxhash for file sync
+  xxhasher = await xxhashInit()
+  console.log('[Sync] xxhash initialized')
+
+  createWindow()
+})

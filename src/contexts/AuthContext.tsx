@@ -52,18 +52,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const convexOrgs: OrganizationMembership[] = orgs
         .filter((org): org is ConvexOrganizationShape => org !== null)
         .map((org) => ({
-          id: org._id, // Use Convex ID as membership ID
-          organizationId: org.workosId || org._id,
+          id: org.workosId || org._id, // Keep WorkOS ID for consistency
+          organizationId: org.workosId || org._id, // WorkOS organization ID
           organizationName: org.name,
           role: org.role || 'member',
           status: 'active' as const,
+          convexOrgId: org._id, // Store Convex document ID separately
         }))
 
-      // Update state if different from current
-      if (convexOrgs.length > 0 && organizations.length === 0) {
+      // Update with Convex data if convexOrgId is missing (to fix race condition)
+      const needsConvexOrgId = !currentOrganization?.convexOrgId || organizations.some(org => !org.convexOrgId)
+      if (convexOrgs.length > 0 && needsConvexOrgId) {
         setOrganizationsState(convexOrgs)
-        if (!currentOrganization) {
-          setCurrentOrganization(convexOrgs[0])
+        // Update current org with the one that has convexOrgId
+        const currentOrgId = currentOrganization?.organizationId
+        const updatedCurrentOrg = currentOrgId
+          ? convexOrgs.find(org => org.organizationId === currentOrgId)
+          : convexOrgs[0]
+        if (updatedCurrentOrg) {
+          setCurrentOrganization(updatedCurrentOrg)
         }
         // Persist to local session
         window.electronAPI.auth.updateOrganizations(convexOrgs)
@@ -120,29 +127,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         setConvexUserId(userId)
 
-        // Sync organizations and memberships to Convex
+        // Sync organizations and memberships to Convex - must succeed for billing
         for (const org of session.organizations || []) {
-          try {
-            // Sync org
-            await syncOrgToConvex({
-              workosId: org.organizationId,
-              name: org.organizationName,
-            })
+          // Sync org
+          await syncOrgToConvex({
+            workosId: org.organizationId,
+            name: org.organizationName,
+          })
 
-            // Sync membership
-            await syncMembershipToConvex({
-              workosId: org.id,
-              workosOrgId: org.organizationId,
-              workosUserId: session.user.id,
-              role: org.role,
-              status: org.status,
-            })
-          } catch (err) {
-            console.warn('Failed to sync org to Convex:', err)
-          }
+          // Sync membership
+          await syncMembershipToConvex({
+            workosId: org.id,
+            workosOrgId: org.organizationId,
+            workosUserId: session.user.id,
+            role: org.role,
+            status: org.status,
+          })
         }
       } catch (err) {
-        console.warn('Failed to sync user to Convex:', err)
+        console.error('Failed to sync to Convex - billing will not work:', err)
+        // Re-throw so the error is visible - sync must succeed for billing
+        throw err
       }
     } else {
       setUser(null)

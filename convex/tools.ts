@@ -265,6 +265,62 @@ const BUILTIN_TOOLS = [
     isEnabled: true,
   },
   {
+    name: "run_in_terminal",
+    displayName: "Run in Terminal",
+    description: "Run a shell command in the workspace. Use absolute paths. For long-running commands (watch mode, dev servers), set isBackground=true. Use get_terminal_output to check background command output.",
+    category: "code",
+    inputSchema: {
+      type: "object",
+      required: ["command", "explanation", "isBackground", "timeout"],
+      properties: {
+        command: {
+          description: "The command to run in the terminal.",
+          type: "string",
+        },
+        explanation: {
+          description: "A one-sentence description of what the command does.",
+          type: "string",
+        },
+        isBackground: {
+          description: "Whether the command starts a background process.",
+          type: "boolean",
+        },
+        timeout: {
+          description: "Optional timeout in milliseconds. Use 0 for no timeout.",
+          type: "number",
+        },
+      },
+    },
+    requiresApproval: true,
+    allowedRoles: ["admin", "member"],
+    riskLevel: "dangerous",
+    executionEnvironment: "local",
+    isBuiltin: true,
+    isEnabled: true,
+  },
+  {
+    name: "get_terminal_output",
+    displayName: "Get Terminal Output",
+    description: "Get the output of a background terminal command started with run_in_terminal.",
+    category: "code",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: {
+          description: "The terminal id returned by run_in_terminal.",
+          type: "string",
+        },
+      },
+    },
+    requiresApproval: false,
+    allowedRoles: ["admin", "member", "viewer"],
+    riskLevel: "safe",
+    executionEnvironment: "local",
+    isBuiltin: true,
+    isEnabled: true,
+  },
+  {
     name: "apply_patch",
     displayName: "Apply Patch",
     description: "Edit text files. Do not use this tool to edit Jupyter notebooks. `apply_patch` allows you to execute a diff/patch against a text file, but the format of the diff specification is unique to this task, so pay careful attention to these instructions. To use the `apply_patch` command, you should pass a message of the following structure as \"input\":\n\n*** Begin Patch\n[YOUR_PATCH]\n*** End Patch\n\nWhere [YOUR_PATCH] is the actual content of your patch, specified in the following V4A diff format.\n\n*** [ACTION] File: [/absolute/path/to/file] -> ACTION can be one of Add, Update, or Delete.\nAn example of a message that you might pass as \"input\" to this function, in order to apply a patch, is shown below.\n\n*** Begin Patch\n*** Update File: /Users/someone/pygorithm/searching/binary_search.py\n@@class BaseClass\n@@    def search():\n-        pass\n+        raise NotImplementedError()\n\n@@class Subclass\n@@    def search():\n-        pass\n+        raise NotImplementedError()\n\n*** End Patch\nDo not use line numbers in this diff format.",
@@ -314,7 +370,7 @@ const BUILTIN_TOOLS = [
     riskLevel: "safe",
     executionEnvironment: "provider",
     isBuiltin: true,
-    isEnabled: true,
+    isEnabled: false,
   },
   {
     name: "google_search",
@@ -339,6 +395,46 @@ const BUILTIN_TOOLS = [
     allowedRoles: ["admin", "member", "viewer"],
     riskLevel: "safe",
     executionEnvironment: "provider",
+    isBuiltin: true,
+    isEnabled: false,
+  },
+  {
+    name: "todo_list",
+    displayName: "Todo List",
+    description: "Present or update a structured task list with statuses.",
+    category: "custom",
+    inputSchema: {
+      type: "object",
+      required: ["tasks"],
+      properties: {
+        tasks: {
+          type: "array",
+          description: "List of tasks to display to the user.",
+          items: {
+            type: "object",
+            required: ["id", "title", "status"],
+            properties: {
+              id: { type: "string", description: "Unique task id." },
+              title: { type: "string", description: "Short task title." },
+              status: {
+                type: "string",
+                enum: ["pending", "in_progress", "completed", "error"],
+              },
+              files: {
+                type: "array",
+                items: { type: "string" },
+                description: "Optional list of related file paths.",
+              },
+              details: { type: "string", description: "Optional extra details." },
+            },
+          },
+        },
+      },
+    },
+    requiresApproval: false,
+    allowedRoles: ["admin", "member", "viewer"],
+    riskLevel: "safe",
+    executionEnvironment: "server",
     isBuiltin: true,
     isEnabled: true,
   },

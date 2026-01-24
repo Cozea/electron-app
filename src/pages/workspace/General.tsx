@@ -196,8 +196,8 @@ export function General() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="slug">Workspace URL</Label>
-              <div className="flex items-center">
-                <span className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-l-md border border-r-0">
+              <div className="flex items-stretch">
+                <span className="flex items-center text-sm text-muted-foreground bg-muted px-3 rounded-l-md border border-r-0">
                   app.cozea.io/
                 </span>
                 <Input

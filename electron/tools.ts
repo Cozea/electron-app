@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { rgPath } from '@vscode/ripgrep'
 
 export interface ToolRequest {
   name: string
   input: Record<string, any>
+  projectPath?: string
 }
 
 export interface ToolResult {
@@ -17,20 +19,47 @@ const WORKSPACE_ROOT = path.resolve(
   process.env.COZEA_WORKSPACE_ROOT || process.env.APP_ROOT || process.cwd()
 )
 
-function resolveToolPath(inputPath: string): string {
+const MAX_OUTPUT_LENGTH = 60_000
+const TRUNCATION_MESSAGE = '\n...output truncated...\n'
+
+interface BackgroundProcess {
+  id: string
+  command: string
+  startedAt: number
+  endedAt?: number
+  exitCode?: number | null
+  timedOut?: boolean
+  stdout: string
+  stderr: string
+  process: ReturnType<typeof spawn>
+}
+
+const backgroundProcesses = new Map<string, BackgroundProcess>()
+
+function truncateOutput(output: string) {
+  if (output.length <= MAX_OUTPUT_LENGTH) return output
+  const tailLength = Math.max(0, MAX_OUTPUT_LENGTH - TRUNCATION_MESSAGE.length)
+  return `${TRUNCATION_MESSAGE}${output.slice(-tailLength)}`
+}
+
+function appendOutput(current: string, chunk: string) {
+  return truncateOutput(current + chunk)
+}
+
+function resolveToolPath(inputPath: string, workingDir: string): string {
   const resolved = path.resolve(
-    path.isAbsolute(inputPath) ? inputPath : path.join(WORKSPACE_ROOT, inputPath)
+    path.isAbsolute(inputPath) ? inputPath : path.join(workingDir, inputPath)
   )
-  const relative = path.relative(WORKSPACE_ROOT, resolved)
+  const relative = path.relative(workingDir, resolved)
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error('Path is outside of the workspace')
   }
   return resolved
 }
 
-async function runRipgrep(args: string[]): Promise<string> {
+async function runRipgrep(args: string[], workingDir: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const rg = spawn('rg', args, { cwd: WORKSPACE_ROOT })
+    const rg = spawn(rgPath, args, { cwd: workingDir })
     let stdout = ''
     let stderr = ''
 
@@ -59,8 +88,8 @@ async function readFile(input: {
   limit?: number
   startLine?: number
   endLine?: number
-}) {
-  const filePath = resolveToolPath(input.filePath)
+}, workingDir: string) {
+  const filePath = resolveToolPath(input.filePath, workingDir)
   const content = fs.readFileSync(filePath, 'utf-8')
   const lines = content.split(/\r?\n/)
   const totalLines = lines.length
@@ -102,8 +131,8 @@ async function readFile(input: {
   }
 }
 
-async function listDir(input: { path: string }) {
-  const dirPath = resolveToolPath(input.path)
+async function listDir(input: { path: string }, workingDir: string) {
+  const dirPath = resolveToolPath(input.path, workingDir)
   const entries = fs.readdirSync(dirPath, { withFileTypes: true })
 
   return {
@@ -115,10 +144,10 @@ async function listDir(input: { path: string }) {
   }
 }
 
-async function findFiles(input: { query: string; maxResults?: number }) {
+async function findFiles(input: { query: string; maxResults?: number }, workingDir: string) {
   const pattern = input.query
   const args = ['--files', '-g', pattern]
-  const raw = await runRipgrep(args)
+  const raw = await runRipgrep(args, workingDir)
   const results = raw.split(/\r?\n/).filter(Boolean)
   const max = input.maxResults ? Math.max(1, input.maxResults) : 20
 
@@ -136,7 +165,7 @@ async function grepSearch(input: {
   includePattern?: string
   maxResults?: number
   includeIgnoredFiles?: boolean
-}) {
+}, workingDir: string) {
   const max = input.maxResults ? Math.max(1, input.maxResults) : 20
   const args = ['--json']
 
@@ -154,7 +183,7 @@ async function grepSearch(input: {
 
   args.push(input.query)
 
-  const raw = await runRipgrep(args)
+  const raw = await runRipgrep(args, workingDir)
   const matches: Array<{ filePath: string; line: number; text: string }> = []
 
   for (const line of raw.split(/\r?\n/)) {
@@ -180,8 +209,8 @@ async function grepSearch(input: {
   }
 }
 
-async function createFile(input: { filePath: string; content: string }) {
-  const filePath = resolveToolPath(input.filePath)
+async function createFile(input: { filePath: string; content: string }, workingDir: string) {
+  const filePath = resolveToolPath(input.filePath, workingDir)
   if (fs.existsSync(filePath)) {
     throw new Error('File already exists')
   }
@@ -190,18 +219,18 @@ async function createFile(input: { filePath: string; content: string }) {
   return { filePath }
 }
 
-async function createDirectory(input: { dirPath?: string; path?: string }) {
+async function createDirectory(input: { dirPath?: string; path?: string }, workingDir: string) {
   const targetPath = input.dirPath ?? input.path
   if (!targetPath) {
     throw new Error('dirPath is required')
   }
-  const dirPath = resolveToolPath(targetPath)
+  const dirPath = resolveToolPath(targetPath, workingDir)
   fs.mkdirSync(dirPath, { recursive: true })
   return { dirPath }
 }
 
-function replaceStringInFile(input: { filePath: string; oldString: string; newString: string }) {
-  const filePath = resolveToolPath(input.filePath)
+function replaceStringInFile(input: { filePath: string; oldString: string; newString: string }, workingDir: string) {
+  const filePath = resolveToolPath(input.filePath, workingDir)
   const content = fs.readFileSync(filePath, 'utf-8')
 
   const occurrences = content.split(input.oldString).length - 1
@@ -218,11 +247,11 @@ function replaceStringInFile(input: { filePath: string; oldString: string; newSt
   return { filePath, replacements: 1 }
 }
 
-function multiReplaceString(input: { replacements: Array<{ filePath: string; oldString: string; newString: string }> }) {
+function multiReplaceString(input: { replacements: Array<{ filePath: string; oldString: string; newString: string }> }, workingDir: string) {
   const results: Array<{ filePath: string; replacements: number }> = []
 
   for (const replacement of input.replacements) {
-    const filePath = resolveToolPath(replacement.filePath)
+    const filePath = resolveToolPath(replacement.filePath, workingDir)
     const content = fs.readFileSync(filePath, 'utf-8')
 
     const occurrences = content.split(replacement.oldString).length - 1
@@ -241,25 +270,159 @@ function multiReplaceString(input: { replacements: Array<{ filePath: string; old
   return { results }
 }
 
+async function runInTerminal(input: {
+  command: string
+  explanation?: string
+  isBackground?: boolean
+  timeout?: number
+}, workingDir: string) {
+  if (!input.command || typeof input.command !== 'string') {
+    throw new Error('command is required')
+  }
+
+  const timeoutMs = typeof input.timeout === 'number' ? Math.max(0, input.timeout) : 0
+  const isBackground = Boolean(input.isBackground)
+
+  const child = spawn(input.command, {
+    cwd: workingDir,
+    shell: true,
+    env: process.env,
+  })
+
+  if (isBackground) {
+    const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const entry: BackgroundProcess = {
+      id,
+      command: input.command,
+      startedAt: Date.now(),
+      stdout: '',
+      stderr: '',
+      process: child,
+    }
+
+    child.stdout.on('data', (chunk) => {
+      entry.stdout = appendOutput(entry.stdout, chunk.toString())
+    })
+    child.stderr.on('data', (chunk) => {
+      entry.stderr = appendOutput(entry.stderr, chunk.toString())
+    })
+    child.on('close', (code) => {
+      entry.exitCode = code
+      entry.endedAt = Date.now()
+    })
+    child.on('error', (err) => {
+      entry.stderr = appendOutput(entry.stderr, `${err.message}\n`)
+      entry.exitCode = -1
+      entry.endedAt = Date.now()
+    })
+
+    if (timeoutMs > 0) {
+      setTimeout(() => {
+        if (!entry.endedAt) {
+          entry.timedOut = true
+          try {
+            child.kill('SIGTERM')
+          } catch {
+            // ignore
+          }
+        }
+      }, timeoutMs)
+    }
+
+    backgroundProcesses.set(id, entry)
+    return { id, pid: child.pid, command: input.command, isBackground: true }
+  }
+
+  return new Promise((resolve) => {
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
+    let timeoutHandle: NodeJS.Timeout | undefined
+
+    const finish = (code: number | null) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      resolve({
+        command: input.command,
+        stdout: truncateOutput(stdout),
+        stderr: truncateOutput(stderr),
+        exitCode: code,
+        timedOut,
+      })
+    }
+
+    child.stdout.on('data', (chunk) => {
+      stdout = appendOutput(stdout, chunk.toString())
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr = appendOutput(stderr, chunk.toString())
+    })
+    child.on('close', (code) => finish(code))
+    child.on('error', (err) => {
+      stderr = appendOutput(stderr, `${err.message}\n`)
+      finish(-1)
+    })
+
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          // ignore
+        }
+      }, timeoutMs)
+    }
+  })
+}
+
+async function getTerminalOutput(input: { id: string }) {
+  if (!input.id || typeof input.id !== 'string') {
+    throw new Error('id is required')
+  }
+  const entry = backgroundProcesses.get(input.id)
+  if (!entry) {
+    throw new Error('Unknown terminal id')
+  }
+
+  return {
+    id: entry.id,
+    command: entry.command,
+    stdout: entry.stdout,
+    stderr: entry.stderr,
+    exitCode: entry.exitCode ?? null,
+    running: entry.endedAt === undefined,
+    startedAt: entry.startedAt,
+    endedAt: entry.endedAt ?? null,
+    timedOut: entry.timedOut ?? false,
+  }
+}
+
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
+  // Use projectPath if provided, otherwise fall back to global WORKSPACE_ROOT
+  const workingDir = request.projectPath || WORKSPACE_ROOT
+
   try {
     switch (request.name) {
       case 'read_file':
-        return { success: true, output: await readFile(request.input as any) }
+        return { success: true, output: await readFile(request.input as any, workingDir) }
       case 'list_dir':
-        return { success: true, output: await listDir(request.input as any) }
+        return { success: true, output: await listDir(request.input as any, workingDir) }
       case 'file_search':
-        return { success: true, output: await findFiles(request.input as any) }
+        return { success: true, output: await findFiles(request.input as any, workingDir) }
       case 'grep_search':
-        return { success: true, output: await grepSearch(request.input as any) }
+        return { success: true, output: await grepSearch(request.input as any, workingDir) }
       case 'create_file':
-        return { success: true, output: await createFile(request.input as any) }
+        return { success: true, output: await createFile(request.input as any, workingDir) }
       case 'create_directory':
-        return { success: true, output: await createDirectory(request.input as any) }
+        return { success: true, output: await createDirectory(request.input as any, workingDir) }
       case 'replace_string_in_file':
-        return { success: true, output: replaceStringInFile(request.input as any) }
+        return { success: true, output: replaceStringInFile(request.input as any, workingDir) }
       case 'multi_replace_string_in_file':
-        return { success: true, output: multiReplaceString(request.input as any) }
+        return { success: true, output: multiReplaceString(request.input as any, workingDir) }
+      case 'run_in_terminal':
+        return { success: true, output: await runInTerminal(request.input as any, workingDir) }
+      case 'get_terminal_output':
+        return { success: true, output: await getTerminalOutput(request.input as any) }
       case 'apply_patch':
         return { success: false, error: 'apply_patch is not yet enabled in this runtime' }
       default:
