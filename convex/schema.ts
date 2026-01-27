@@ -1032,4 +1032,36 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_version", ["projectId", "version"]),
+
+  // ============================================
+  // REAL-TIME PRESENCE TABLES
+  // ============================================
+
+  // Project presence - tracks who is actively viewing/editing a project
+  projectPresence: defineTable({
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+
+    // User display info (denormalized for fast reads)
+    userName: v.string(),
+    userEmail: v.string(),
+    userAvatarUrl: v.optional(v.string()),
+
+    // Activity tracking
+    lastHeartbeat: v.number(), // Updated every 30s by client
+    activeTab: v.optional(v.string()), // Which tab they're viewing (editor, pages, etc.)
+    activeFile: v.optional(v.string()), // Which file they're editing (if any)
+
+    // Cursor position (for future live cursors feature)
+    cursor: v.optional(
+      v.object({
+        line: v.number(),
+        column: v.number(),
+      })
+    ),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_user", ["projectId", "userId"])
+    .index("by_user", ["userId"])
+    .index("by_heartbeat", ["lastHeartbeat"]),
 })

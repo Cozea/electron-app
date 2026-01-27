@@ -21,6 +21,7 @@ import { useFileTabsStore } from "@/stores/useFileTabsStore"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
+import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { Loader2 } from "lucide-react"
 
 interface ProjectLayoutProps {
@@ -69,6 +70,15 @@ export function ProjectLayout({
 
     // Per-user local path only (no fallback to shared project.localPath)
     const effectiveLocalPath = memberLocalPath ?? null
+
+    // Real-time presence tracking
+    const { otherUsers: presenceUsers } = useProjectPresence({
+        projectId: project?._id,
+        userId: convexUser?._id,
+        userName: convexUser?.firstName || convexUser?.email || null,
+        userEmail: convexUser?.email || null,
+        userAvatarUrl: convexUser?.profileImageUrl,
+    })
 
     // File tree ref for refresh functionality
     const fileTreeRef = useRef<FileTreeHandle>(null)
@@ -124,6 +134,7 @@ export function ProjectLayout({
                     { label: "Projects", href: "/projects" },
                     ...(project?.name ? [{ label: project.name }] : []),
                 ]}
+                presenceUsers={presenceUsers}
             />
             {/* Main content - mt-9 accounts for fixed h-9 header */}
             <div className="flex-1 flex min-h-0 overflow-hidden mt-9">

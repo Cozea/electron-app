@@ -10,12 +10,15 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
+import type { PresenceUser } from "@/hooks/useProjectPresence"
 
 interface SiteHeaderProps {
   breadcrumbs?: { label: string; href?: string }[]
+  presenceUsers?: PresenceUser[]
 }
 
-export function SiteHeader({ breadcrumbs = [] }: SiteHeaderProps) {
+export function SiteHeader({ breadcrumbs = [], presenceUsers }: SiteHeaderProps) {
   return (
     <TitleBar>
       <div className="flex items-center justify-between w-full">
@@ -41,7 +44,10 @@ export function SiteHeader({ breadcrumbs = [] }: SiteHeaderProps) {
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {presenceUsers && presenceUsers.length > 0 && (
+            <PresenceAvatarGroup users={presenceUsers} maxVisible={4} />
+          )}
           <AssistantToggleButton />
         </div>
       </div>
