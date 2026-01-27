@@ -1,4 +1,5 @@
-import { AlertCircle, CreditCard, Key, ArrowRight, AlertTriangle, Ban } from 'lucide-react'
+import { AlertCircle, CreditCard, ArrowRight, AlertTriangle, Ban } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -49,79 +50,89 @@ const errorColors: Record<string, string> = {
 }
 
 export function BillingError({ error, onAction, className }: BillingErrorProps) {
+  const navigate = useNavigate()
   const code = error.code || 'UNKNOWN'
   const Icon = errorIcons[code] || AlertCircle
   const colorClass = errorColors[code] || 'text-muted-foreground bg-muted/50 border-border'
 
   const handleAction = () => {
-    if (error.action?.href && onAction) {
-      onAction(error.action.href)
+    if (error.action?.href) {
+      if (onAction) {
+        onAction(error.action.href)
+      } else {
+        navigate(error.action.href)
+      }
+    }
+  }
+
+  const handleSecondaryAction = () => {
+    if (error.secondaryAction?.href) {
+      if (onAction) {
+        onAction(error.secondaryAction.href)
+      } else {
+        navigate(error.secondaryAction.href)
+      }
     }
   }
 
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-lg border p-4',
+        'rounded-lg border p-3',
         colorClass,
         className
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5">
+        <div className="mt-0.5 shrink-0">
           <Icon className="h-5 w-5" />
         </div>
-        <div className="flex-1 space-y-1">
-          <p className="font-medium leading-tight">
-            {error.title || 'Error'}
-          </p>
-          <p className="text-sm opacity-90">
-            {error.message}
-          </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <p className="font-medium leading-tight text-sm">
+                {error.title || 'Error'}
+              </p>
+              {code !== 'INSUFFICIENT_CREDITS' && (
+                <p className="text-sm opacity-90 leading-snug">
+                  {error.message}
+                </p>
+              )}
+            </div>
+            {error.action && (
+              <div className="shrink-0 flex items-center gap-2">
+                {error.secondaryAction && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs px-2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                    onClick={handleSecondaryAction}
+                  >
+                    {error.secondaryAction.label}
+                  </Button>
+                )}
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5 px-3"
+                  onClick={handleAction}
+                >
+                  Billing
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+
           {error.hint && (
-            <p className="text-xs opacity-70 mt-2">
+            <p className="text-xs opacity-80 mt-1.5">
               {error.hint}
             </p>
           )}
+
+
         </div>
       </div>
-
-      {error.action && (
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full justify-between"
-            onClick={handleAction}
-          >
-            {error.action.label}
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-          {error.secondaryAction && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full text-muted-foreground"
-              onClick={() => onAction?.(error.secondaryAction!.href)}
-            >
-              {error.secondaryAction.label}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {error.details && error.code === 'INSUFFICIENT_CREDITS' && (
-        <div className="text-xs opacity-60 border-t border-current/10 pt-2 mt-1">
-          <div className="flex justify-between">
-            <span>Plan:</span>
-            <span className="font-medium capitalize">{error.details.plan}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Remaining:</span>
-            <span className="font-medium">{error.details.totalAvailable?.toLocaleString()} credits</span>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -137,6 +148,10 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
     try {
       const parsed = JSON.parse(err.message)
       if (parsed.code || parsed.title || parsed.error) {
+        // Fix incorrect billing URL
+        if (parsed.action?.href === '/workspace/billing/credits') {
+          parsed.action.href = '/workspace/billing'
+        }
         return parsed as BillingErrorData
       }
     } catch {
@@ -165,7 +180,7 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
   if (typeof err === 'object' && err !== null) {
     const obj = err as Record<string, unknown>
     if (obj.code || obj.title || obj.error) {
-      return obj as BillingErrorData
+      return obj as unknown as BillingErrorData
     }
   }
 

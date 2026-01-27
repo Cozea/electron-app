@@ -219,6 +219,44 @@ export const listForOrganization = query({
   },
 })
 
+// List projects for organization with the current user's local path from their membership
+// Used for background diff checking where we need per-user local paths
+export const listForOrganizationWithMemberPath = query({
+  args: {
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .collect()
+
+    // Get all memberships for this user in one query
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    // Create a map of projectId -> localPath
+    const memberPathMap = new Map(
+      memberships.map((m) => [m.projectId.toString(), m.localPath])
+    )
+
+    // Return non-deleted projects with the user's localPath from their membership
+    return projects
+      .filter((p) => p.status !== "deleted")
+      .map((p) => ({
+        _id: p._id,
+        slug: p.slug,
+        name: p.name,
+        lastSyncAt: p.lastSyncAt,
+        // Use per-user localPath from membership, not the deprecated project.localPath
+        localPath: memberPathMap.get(p._id.toString()) ?? null,
+      }))
+  },
+})
+
 // List projects the user is a member of
 export const listForUser = query({
   args: { userId: v.id("users") },
@@ -458,16 +496,29 @@ export const deleteProject = mutation({
       throw new Error("Project name does not match")
     }
 
-    // Verify user has permission
+    // Verify user has permission (project_manager role OR project creator OR org admin/owner)
+    const isCreator = project.createdBy === args.userId
+
+    // Check project membership
     const membership = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_and_user", (q) =>
         q.eq("projectId", args.projectId).eq("userId", args.userId)
       )
       .first()
+    const isProjectManager = membership?.role === "project_manager"
 
-    if (!membership || membership.role !== "project_manager") {
-      throw new Error("Only project managers can delete projects")
+    // Check org membership (admin can also delete)
+    const orgMembership = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", project.organizationId).eq("userId", args.userId)
+      )
+      .first()
+    const isOrgAdmin = orgMembership?.role === "admin"
+
+    if (!isCreator && !isProjectManager && !isOrgAdmin) {
+      throw new Error("Only project creators, managers, or organization admins can delete projects")
     }
 
     // Delete all project members

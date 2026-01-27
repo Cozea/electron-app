@@ -51,6 +51,11 @@ export interface ListFilesResult {
   error?: string
 }
 
+export interface PreviewInjectBridgeResult {
+  success: boolean
+  error?: string
+}
+
 // Sync types
 export interface FileManifestEntry {
   path: string
@@ -124,6 +129,9 @@ export interface ElectronAPI {
   window: {
     isFullScreen: () => Promise<boolean>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
+  }
+  preview: {
+    injectBridge: (options: { url: string }) => Promise<PreviewInjectBridgeResult>
   }
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>

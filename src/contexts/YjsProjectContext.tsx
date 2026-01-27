@@ -6,11 +6,14 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
+import * as Y from 'yjs'
 import { useQuery, useConvex } from 'convex/react'
+import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import { YConvexProvider } from '@/lib/yjs/YConvexProvider'
+import { ProjectFilesPersistence } from '@/lib/yjs/ProjectFilesPersistence'
 import type { Awareness } from 'y-protocols/awareness'
 
 interface YjsProjectContextValue {
@@ -63,8 +66,15 @@ export function YjsProjectProvider({
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
   const [lastSyncTime, setLastSyncTime] = useState(0)
+  const [hasher, setHasher] = useState<XXHashAPI | null>(null)
   const providerRef = useRef<YConvexProvider | null>(null)
+  const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
   const convex = useConvex()
+
+  // Initialize xxhash
+  useEffect(() => {
+    xxhashInit().then(setHasher)
+  }, [])
 
   // Subscribe to Yjs updates since lastSyncTime
   const updates = useQuery(api.yjs.getUpdatesSince, {
@@ -74,24 +84,45 @@ export function YjsProjectProvider({
 
   // Initialize Y.Doc and provider on mount
   useEffect(() => {
-    const doc = new YjsProjectDoc(projectId)
-    setYjsDoc(doc)
+    if (!hasher) return
 
-    // Set local awareness state with user info
-    doc.awareness.setLocalStateField('user', {
-      id: userId,
-      name: userName,
-      color: generateColor(userId),
-    })
+    const initDoc = async () => {
+      const doc = new YjsProjectDoc(projectId)
 
-    // Create provider to sync with Convex
-    providerRef.current = new YConvexProvider(doc.doc, projectId, convex)
+      // Try to load existing snapshot
+      const snapshot = await convex.query(api.yjs.getLatestSnapshot, { projectId })
+      if (snapshot?.snapshot) {
+        Y.applyUpdate(doc.doc, new Uint8Array(snapshot.snapshot), 'snapshot')
+      }
+
+      // Set local awareness state with user info
+      doc.awareness.setLocalStateField('user', {
+        id: userId,
+        name: userName,
+        color: generateColor(userId),
+      })
+
+      // Create provider to sync with Convex
+      providerRef.current = new YConvexProvider(doc.doc, projectId, convex)
+
+      // Create persistence provider to sync with projectFiles
+      persistenceRef.current = new ProjectFilesPersistence(
+        doc.files,
+        projectId,
+        convex,
+        hasher
+      )
+
+      setYjsDoc(doc)
+    }
+
+    initDoc()
 
     return () => {
       providerRef.current?.destroy()
-      doc.destroy()
+      persistenceRef.current?.destroy()
     }
-  }, [projectId, userId, userName, convex])
+  }, [projectId, userId, userName, convex, hasher])
 
   // Apply remote updates when they arrive from Convex
   useEffect(() => {
@@ -102,6 +133,37 @@ export function YjsProjectProvider({
       setLastSyncTime(newestTimestamp)
     }
   }, [updates])
+
+  // Periodic snapshot saving
+  useEffect(() => {
+    if (!yjsDoc) return
+
+    const saveSnapshot = async () => {
+      const snapshot = Y.encodeStateAsUpdate(yjsDoc.doc)
+      // Create a clean ArrayBuffer copy to avoid SharedArrayBuffer type issues
+      const snapshotBuffer = new ArrayBuffer(snapshot.byteLength)
+      new Uint8Array(snapshotBuffer).set(snapshot)
+      await convex.mutation(api.yjs.saveSnapshot, {
+        projectId,
+        snapshot: snapshotBuffer,
+        version: Date.now(),
+      })
+
+      // Cleanup old updates
+      await convex.mutation(api.yjs.cleanupOldUpdates, {
+        projectId,
+        olderThan: Date.now() - 5 * 60 * 1000, // 5 minutes ago
+      })
+    }
+
+    // Save every 5 minutes
+    const interval = setInterval(saveSnapshot, 5 * 60 * 1000)
+
+    return () => {
+      clearInterval(interval)
+      saveSnapshot() // Save on unmount
+    }
+  }, [yjsDoc, projectId, convex])
 
   return (
     <YjsProjectContext.Provider

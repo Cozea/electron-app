@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
+// Style state for pseudo-class editing
+export type StyleState = 'default' | ':hover' | ':active' | ':focus'
+
+// Active tab in the visual editor
+export type EditorTab = 'styling' | 'attributes' | 'events'
+
 // Element styles that can be edited via the visual editor
 export interface ElementStyles {
   // Layout
@@ -37,6 +43,7 @@ export interface ElementStyles {
   // Typography
   fontSize: string
   fontWeight: string
+  fontStyle: string
   fontFamily: string
   lineHeight: string
   letterSpacing: string
@@ -97,6 +104,15 @@ interface VisualEditorState {
   // Pending text change
   pendingTextChange: string | null
 
+  // Current style state (default, :hover, :active, :focus)
+  styleState: StyleState
+
+  // Active tab in the editor
+  activeTab: EditorTab
+
+  // Search query for filtering properties
+  searchQuery: string
+
   // Actions
   open: () => void
   close: () => void
@@ -120,6 +136,15 @@ interface VisualEditorState {
   // Clear all pending changes
   clearPendingChanges: () => void
 
+  // Set style state
+  setStyleState: (state: StyleState) => void
+
+  // Set active tab
+  setActiveTab: (tab: EditorTab) => void
+
+  // Set search query
+  setSearchQuery: (query: string) => void
+
   // Reset the store
   reset: () => void
 }
@@ -129,6 +154,9 @@ const initialState = {
   selectedElement: null,
   pendingChanges: {},
   pendingTextChange: null,
+  styleState: 'default' as StyleState,
+  activeTab: 'styling' as EditorTab,
+  searchQuery: '',
 }
 
 export const useVisualEditorStore = create<VisualEditorState>()(
@@ -194,6 +222,18 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     clearPendingChanges: () => set((state) => {
       state.pendingChanges = {}
       state.pendingTextChange = null
+    }),
+
+    setStyleState: (styleState) => set((state) => {
+      state.styleState = styleState
+    }),
+
+    setActiveTab: (activeTab) => set((state) => {
+      state.activeTab = activeTab
+    }),
+
+    setSearchQuery: (searchQuery) => set((state) => {
+      state.searchQuery = searchQuery
     }),
 
     reset: () => set(() => initialState),

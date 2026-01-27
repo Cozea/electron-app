@@ -52,7 +52,23 @@ export function computeSyncPlan(
       if (localFile.hash === cloudFile.hash) {
         // Files are identical
         plan.noChange++
+      } else if (!cloudFile.hash) {
+        // Cloud has no checksum (legacy data) - upload to populate it
+        console.log(`[SyncEngine] Cloud missing checksum for ${path}, will upload to populate`)
+        const operation: SyncOperation = {
+          type: "upload",
+          path,
+          localEntry: localFile,
+          cloudEntry: cloudFile,
+          reason: "Cloud checksum missing - uploading to populate",
+        }
+        plan.uploads.push(operation)
       } else {
+        // Files differ - log the mismatch for debugging
+        console.log(`[SyncEngine] Hash mismatch for ${path}:`)
+        console.log(`  Local:  ${localFile.hash} (mtime: ${new Date(localFile.mtime).toISOString()})`)
+        console.log(`  Cloud:  ${cloudFile.hash} (uploaded: ${new Date(cloudFile.uploadedAt).toISOString()})`)
+
         // Files differ - determine which to use
         const operation = resolveFileDifference(
           path,

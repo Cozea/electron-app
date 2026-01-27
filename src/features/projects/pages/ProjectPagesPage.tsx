@@ -1,16 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
 import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
+import { usePageContextStore } from '@/stores/usePageContextStore'
+import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
+import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
 import { scanForRoutes } from '@/utils/routeScanner'
+import {
+    injectBridgeScript,
+    sendBridgeMessage,
+    type BridgeMessage,
+    type SelectedElementData,
+    type ElementContextMenuData,
+} from '@/utils/previewBridge'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
+import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
     FileText,
     Monitor,
@@ -25,6 +43,11 @@ import {
     ExternalLink,
     Sparkles,
     Terminal,
+    Camera,
+    MousePointer2,
+    RotateCcw,
+    AlertCircle,
+    CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -38,9 +61,18 @@ export function ProjectPagesPage() {
     const { routes, serverStatus, serverPort, actions } = useProjectPagesStore()
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
     const { togglePanel } = useTerminalActions()
+    const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
+    const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
+    const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
+    const { openWithScreenshot } = useAssistantPanelStore()
 
     // Local state
     const [isScanningAI, setIsScanningAI] = useState(false)
+    const [inspectorEnabled, setInspectorEnabled] = useState(false)
+    const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
+    const [bridgeReady, setBridgeReady] = useState(false)
+    const [bridgeError, setBridgeError] = useState<string | null>(null)
+    const [bridgeLogs, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
         const focus = searchParams.get('focus')
@@ -48,8 +80,19 @@ export function ProjectPagesPage() {
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const [zoom, setZoom] = useState(100)
+    const [inspectorContextMenu, setInspectorContextMenu] = useState<{
+        open: boolean
+        x: number
+        y: number
+        element: SelectedElementData
+        reactComponentStack?: string[]
+        reactSource?: { fileName?: string; lineNumber?: number; columnNumber?: number } | null
+    } | null>(null)
     const thumbnailStripRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
+
+    // Derived state - must be before any effects that use it
+    const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
 
     // Get Convex organization
     const convexOrg = useQuery(
@@ -120,6 +163,306 @@ export function ProjectPagesPage() {
         }
     }, [focusedPageIndex])
 
+    // Update page context when focused route changes
+    useEffect(() => {
+        if (focusedRoute) {
+            setCurrentPage({
+                route: focusedRoute.path,
+                filePath: focusedRoute.file,
+                componentName: focusedRoute.name,
+                serverPort: serverPort ?? undefined,
+                lastUpdated: Date.now(),
+            })
+        } else {
+            setCurrentPage(null)
+        }
+    }, [focusedRoute, serverPort, setCurrentPage])
+
+    // Listen for bridge messages from iframe
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent<BridgeMessage>) => {
+            const { type, payload } = event.data || {}
+
+            switch (type) {
+                case 'bridge:ready':
+                    // Bridge is ready
+                    setBridgeReady(true)
+                    setBridgeError(null)
+                    setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message: 'Bridge connected successfully!', type: 'success' }])
+                    // Enable inspector if it was already enabled
+                    if (inspectorEnabled && iframeRef.current) {
+                        sendBridgeMessage(iframeRef.current, { type: 'host:enable-inspector' })
+                    }
+                    break
+
+                case 'bridge:element-selected':
+                    setSelectedElement(payload as SelectedElementData)
+                    break
+
+                case 'bridge:element-contextmenu': {
+                    const data = payload as ElementContextMenuData
+
+                    // Keep visual editor selection in sync
+                    setSelectedElement(data as unknown as SelectedElementData)
+
+                    // Inject inspected element context for AI
+                    setInspectedElement({
+                        selector: data.selector,
+                        tagName: data.tagName,
+                        className: data.className,
+                        id: data.id,
+                        textContent: data.textContent,
+                        htmlSnippet: data.htmlSnippet,
+                        reactComponentStack: data.react?.componentStack ?? undefined,
+                        reactSource: data.react?.source ?? null,
+                        capturedAt: Date.now(),
+                    })
+
+                    // Open a context menu at the cursor position (translated into host coords)
+                    const iframe = iframeRef.current
+                    const rect = iframe?.getBoundingClientRect()
+                    const scaleX = rect && iframe?.offsetWidth ? rect.width / iframe.offsetWidth : 1
+                    const scaleY = rect && iframe?.offsetHeight ? rect.height / iframe.offsetHeight : 1
+                    const x = rect ? rect.left + data.clientX * scaleX : data.clientX
+                    const y = rect ? rect.top + data.clientY * scaleY : data.clientY
+
+                    setInspectorContextMenu({
+                        open: true,
+                        x,
+                        y,
+                        element: data,
+                        reactComponentStack: data.react?.componentStack ?? undefined,
+                        reactSource: data.react?.source ?? undefined,
+                    })
+
+                    break
+                }
+
+                case 'bridge:screenshot-ready': {
+                    const data = payload as { dataUrl?: string; error?: string }
+                    if (data.error) {
+                        setBridgeError(data.error)
+                    } else if (data.dataUrl && focusedRoute) {
+                        const attachment: PendingAttachment = {
+                            type: 'image',
+                            data: data.dataUrl,
+                            name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
+                            context: {
+                                pagePath: focusedRoute.path,
+                                pageFile: focusedRoute.file,
+                                projectName: project?.name,
+                                serverPort: serverPort ?? undefined,
+                            },
+                        }
+                        openWithScreenshot(attachment)
+                    }
+                    setIsCapturingScreenshot(false)
+                    break
+                }
+            }
+        }
+
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot])
+
+    // Toggle inspector in iframe when inspectorEnabled changes
+    useEffect(() => {
+        if (iframeRef.current) {
+            sendBridgeMessage(iframeRef.current, {
+                type: inspectorEnabled ? 'host:enable-inspector' : 'host:disable-inspector',
+            })
+        }
+    }, [inspectorEnabled])
+
+    // Add a log entry
+    const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
+        setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message, type }])
+        console.log(`[Bridge] ${message}`)
+    }, [])
+
+    // Inject bridge script when iframe loads
+    const handleIframeLoad = useCallback(async () => {
+        // Reset bridge state before injection
+        setBridgeReady(false)
+        setBridgeError(null)
+        addBridgeLog('Iframe loaded, attempting injection...')
+
+        if (iframeRef.current) {
+            try {
+                const success = await injectBridgeScript(iframeRef.current)
+                if (success) {
+                    addBridgeLog('Script injected, waiting for bridge:ready...')
+                } else {
+                    setBridgeError('Cannot inject into preview (cross-origin)')
+                    addBridgeLog('Injection failed: cross-origin restriction', 'error')
+                }
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Unknown error'
+                setBridgeError(`Injection error: ${msg}`)
+                addBridgeLog(`Injection error: ${msg}`, 'error')
+            }
+        }
+    }, [addBridgeLog])
+
+    // Attempt to reinject bridge if not ready
+    const retryBridgeInjection = useCallback(async () => {
+        if (!iframeRef.current) {
+            addBridgeLog('No iframe available', 'error')
+            return false
+        }
+
+        addBridgeLog('Retrying injection...')
+        setBridgeError(null)
+
+        try {
+            const success = await injectBridgeScript(iframeRef.current)
+            if (success) {
+                addBridgeLog('Script injected, waiting for bridge:ready...')
+                return true
+            } else {
+                setBridgeError('Cannot inject into preview (cross-origin)')
+                addBridgeLog('Injection failed: cross-origin restriction', 'error')
+                return false
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Unknown error'
+            setBridgeError(`Injection error: ${msg}`)
+            addBridgeLog(`Injection error: ${msg}`, 'error')
+            return false
+        }
+    }, [addBridgeLog])
+
+    // Attempt to reinject bridge if not ready
+    const ensureBridgeReady = useCallback((): boolean => {
+        if (bridgeReady) return true
+        void retryBridgeInjection()
+        return false
+    }, [bridgeReady, retryBridgeInjection])
+
+    // Handle screenshot capture
+    const handleCaptureScreenshot = useCallback(() => {
+        if (!iframeRef.current || serverStatus !== 'running') return
+
+        if (!bridgeReady) {
+            ensureBridgeReady()
+            setBridgeError('Preview bridge not ready. Try again in a moment.')
+            return
+        }
+
+        setIsCapturingScreenshot(true)
+        setBridgeError(null)
+        sendBridgeMessage(iframeRef.current, { type: 'host:request-screenshot' })
+
+        // Timeout in case bridge doesn't respond
+        setTimeout(() => {
+            setIsCapturingScreenshot(capturing => {
+                if (capturing) {
+                    setBridgeError('Screenshot timed out. Try refreshing the preview.')
+                }
+                return false
+            })
+        }, 10000)
+    }, [serverStatus, bridgeReady, ensureBridgeReady])
+
+    // Toggle inspector mode
+    const toggleInspector = useCallback(() => {
+        if (!inspectorEnabled && !bridgeReady) {
+            ensureBridgeReady()
+            setBridgeError('Preview bridge not ready. Try again in a moment.')
+            return
+        }
+        setInspectorEnabled((prev) => !prev)
+    }, [bridgeReady, inspectorEnabled, ensureBridgeReady])
+
+    // Handle visual editor style preview
+    const handlePreviewStyle = useCallback((styles: Record<string, string>) => {
+        if (iframeRef.current) {
+            sendBridgeMessage(iframeRef.current, {
+                type: 'host:update-style',
+                payload: { styles },
+            })
+        }
+    }, [])
+
+    // Handle visual editor text preview
+    const handlePreviewText = useCallback((text: string) => {
+        if (iframeRef.current) {
+            sendBridgeMessage(iframeRef.current, {
+                type: 'host:update-text',
+                payload: { text },
+            })
+        }
+    }, [])
+
+    // Handle apply changes from visual editor
+    const handleApplyChanges = useCallback(() => {
+        // This would generate a prompt for the AI to apply the CSS changes
+        const { pendingChanges, pendingTextChange, selectedElement } = useVisualEditorStore.getState()
+        if (!selectedElement) return
+
+        const changes = Object.entries(pendingChanges)
+            .map(([prop, value]) => `${prop}: ${value}`)
+            .join('; ')
+
+        const prompt = pendingTextChange
+            ? `Update the element "${selectedElement.selector}" with styles: ${changes} and text content: "${pendingTextChange}"`
+            : `Update the element "${selectedElement.selector}" with styles: ${changes}`
+
+        // Open assistant with the prompt
+        useAssistantPanelStore.getState().openWithPrompt(prompt)
+    }, [])
+
+    const closeInspectorContextMenu = useCallback(() => {
+        setInspectorContextMenu(null)
+    }, [])
+
+    const handleAskAIAboutInspectedElement = useCallback(() => {
+        if (!inspectorContextMenu) return
+
+        const stack = inspectorContextMenu.reactComponentStack?.join(' > ')
+        const pageInfo = focusedRoute ? `${focusedRoute.path} (${focusedRoute.file})` : undefined
+        const selector = inspectorContextMenu.element.selector
+
+        const prompt = [
+            'I right-clicked an element in the preview inspector.',
+            pageInfo ? `Page: ${pageInfo}` : null,
+            `Selector: ${selector}`,
+            stack ? `React component stack: ${stack}` : null,
+            '',
+            'What I want to change:',
+        ].filter(Boolean).join('\n')
+
+        useAssistantPanelStore.getState().openWithPrompt(prompt)
+        closeInspectorContextMenu()
+    }, [inspectorContextMenu, focusedRoute, closeInspectorContextMenu])
+
+    const handleCopyInspectedSelector = useCallback(async () => {
+        if (!inspectorContextMenu) return
+        try {
+            await navigator.clipboard.writeText(inspectorContextMenu.element.selector)
+        } finally {
+            closeInspectorContextMenu()
+        }
+    }, [inspectorContextMenu, closeInspectorContextMenu])
+
+    const handleCopyInspectedComponentStack = useCallback(async () => {
+        const stack = inspectorContextMenu?.reactComponentStack?.join(' > ')
+        if (!stack) return
+        try {
+            await navigator.clipboard.writeText(stack)
+        } finally {
+            closeInspectorContextMenu()
+        }
+    }, [inspectorContextMenu, closeInspectorContextMenu])
+
+    const handleOpenInspectedSource = useCallback(() => {
+        const fileName = inspectorContextMenu?.reactSource?.fileName
+        if (!fileName || !slug) return
+        navigate(`/projects/${slug}?path=${encodeURIComponent(fileName)}`)
+        closeInspectorContextMenu()
+    }, [inspectorContextMenu, closeInspectorContextMenu, navigate, slug])
+
     const refreshRoutes = async () => {
         if (!project?.localPath) return
         const result = await scanForRoutes(project.localPath, storedFrameworkInfo)
@@ -130,8 +473,6 @@ export function ProjectPagesPage() {
         // Navigate to editor with file path
         navigate(`/projects/${slug}?path=${encodeURIComponent(file)}`)
     }
-
-    const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
 
     if (project === undefined) {
         return (
@@ -279,6 +620,129 @@ export function ProjectPagesPage() {
                             </TooltipTrigger>
                             <TooltipContent side="bottom">Refresh routes</TooltipContent>
                         </Tooltip>
+                        {focusedPageIndex !== null && serverStatus === 'running' && (
+                            <>
+                                {/* Screenshot button with dropdown */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 relative"
+                                            disabled={isCapturingScreenshot}
+                                        >
+                                            <Camera className={cn(
+                                                "h-3.5 w-3.5",
+                                                isCapturingScreenshot ? "animate-pulse text-primary" : "text-muted-foreground"
+                                            )} />
+                                            {!bridgeReady && (
+                                                <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                            )}
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-56">
+                                        <DropdownMenuItem onClick={handleCaptureScreenshot} disabled={!bridgeReady}>
+                                            <Camera className="h-4 w-4 mr-2" />
+                                            Take Screenshot
+                                            {bridgeReady && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={retryBridgeInjection}>
+                                            <RotateCcw className="h-4 w-4 mr-2" />
+                                            Retry Bridge Connection
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <div className="px-2 py-1.5">
+                                            <div className="flex items-center gap-2 text-xs font-medium mb-1">
+                                                {bridgeReady ? (
+                                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                                ) : (
+                                                    <AlertCircle className="h-3 w-3 text-amber-500" />
+                                                )}
+                                                Bridge {bridgeReady ? 'Connected' : 'Not Connected'}
+                                            </div>
+                                            {bridgeError && (
+                                                <p className="text-[10px] text-red-400 mb-1">
+                                                    {bridgeError}
+                                                </p>
+                                            )}
+                                            <div className="text-[10px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+                                                {bridgeLogs.length === 0 ? (
+                                                    <p>No logs yet</p>
+                                                ) : (
+                                                    bridgeLogs.slice(-5).map((log, i) => (
+                                                        <p key={i} className={cn(
+                                                            log.type === 'error' && 'text-red-400',
+                                                            log.type === 'success' && 'text-green-400'
+                                                        )}>
+                                                            {log.time.toLocaleTimeString()}: {log.message}
+                                                        </p>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+
+                                {/* Inspector button with dropdown */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant={inspectorEnabled ? "secondary" : "ghost"}
+                                            size="icon"
+                                            className="h-7 w-7 relative"
+                                        >
+                                            <MousePointer2 className={cn("h-3.5 w-3.5", inspectorEnabled ? "text-foreground" : "text-muted-foreground")} />
+                                            {!bridgeReady && !inspectorEnabled && (
+                                                <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                            )}
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-56">
+                                        <DropdownMenuItem onClick={toggleInspector} disabled={!bridgeReady && !inspectorEnabled}>
+                                            <MousePointer2 className="h-4 w-4 mr-2" />
+                                            {inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector'}
+                                            {bridgeReady && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={retryBridgeInjection}>
+                                            <RotateCcw className="h-4 w-4 mr-2" />
+                                            Retry Bridge Connection
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <div className="px-2 py-1.5">
+                                            <div className="flex items-center gap-2 text-xs font-medium mb-1">
+                                                {bridgeReady ? (
+                                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                                ) : (
+                                                    <AlertCircle className="h-3 w-3 text-amber-500" />
+                                                )}
+                                                Bridge {bridgeReady ? 'Connected' : 'Not Connected'}
+                                            </div>
+                                            {bridgeError && (
+                                                <p className="text-[10px] text-red-400 mb-1">
+                                                    {bridgeError}
+                                                </p>
+                                            )}
+                                            <div className="text-[10px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+                                                {bridgeLogs.length === 0 ? (
+                                                    <p>No logs yet</p>
+                                                ) : (
+                                                    bridgeLogs.slice(-5).map((log, i) => (
+                                                        <p key={i} className={cn(
+                                                            log.type === 'error' && 'text-red-400',
+                                                            log.type === 'success' && 'text-green-400'
+                                                        )}>
+                                                            {log.time.toLocaleTimeString()}: {log.message}
+                                                        </p>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </>
+                        )}
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
@@ -340,9 +804,10 @@ export function ProjectPagesPage() {
                     </div>
                 ) : focusedPageIndex !== null && focusedRoute ? (
                     /* Focused/Slide View */
-                    <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-9 bg-sidebar/60">
-                        {/* Preview area */}
-                        <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
+                    <div className="flex-1 flex overflow-hidden min-h-0 pt-9 bg-sidebar/60">
+                        <div className="flex-1 flex flex-col min-h-0">
+                            {/* Preview area */}
+                            <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
                             <div
                                 className={cn(
                                     "relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
@@ -360,6 +825,7 @@ export function ProjectPagesPage() {
                                         ref={iframeRef}
                                         src={`http://localhost:${serverPort}${focusedRoute.path}`}
                                         className="w-full h-full border-none"
+                                        onLoad={handleIframeLoad}
                                     />
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -458,6 +924,13 @@ export function ProjectPagesPage() {
                                 </div>
                             </div>
                         </div>
+                        </div>
+                        {/* Visual Editor Sidebar */}
+                        <VisualEditorSidebar
+                            onPreviewStyle={handlePreviewStyle}
+                            onPreviewText={handlePreviewText}
+                            onApplyChanges={handleApplyChanges}
+                        />
                     </div>
                 ) : (
                     /* Grid View */
@@ -466,13 +939,13 @@ export function ProjectPagesPage() {
                             {routes.map((route, index) => (
                                 <div key={route.path} className="group relative">
                                     <Card
-                                        className="group relative overflow-hidden border-border/40 bg-card/50 hover:bg-card hover:border-sidebar-primary/20 transition-all duration-300 shadow-sm hover:shadow-md h-[220px] flex flex-col cursor-pointer"
+                                        className="group relative overflow-hidden border-border/40 bg-card/50 hover:bg-card hover:border-sidebar-primary/20 transition-all duration-300 shadow-sm hover:shadow-md h-[220px] flex flex-col cursor-pointer p-0 gap-0"
                                         onClick={() => setFocusedPageIndex(index)}
                                     >
                                         {/* Preview Area */}
-                                        <div className="flex-1 bg-muted/20 relative flex flex-col items-center justify-center overflow-hidden">
+                                        <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
                                             {serverStatus === 'running' && serverPort ? (
-                                                <div className="absolute inset-0 z-10">
+                                                <div className="absolute inset-0">
                                                     <div className="w-full h-full bg-white relative overflow-hidden">
                                                         <iframe
                                                             src={`http://localhost:${serverPort}${route.path}`}
@@ -483,8 +956,8 @@ export function ProjectPagesPage() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="text-center p-4">
-                                                    <AppWindow className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                    <AppWindow className="h-8 w-8 mb-2 text-muted-foreground/20" />
                                                     <span className="text-xs text-muted-foreground/40 font-medium">Start server to preview</span>
                                                 </div>
                                             )}
@@ -528,7 +1001,7 @@ export function ProjectPagesPage() {
                                         </div>
 
                                         {/* Footer Info */}
-                                        <div className="px-3 py-2.5 border-t border-border/40 bg-card/30 backdrop-blur-[2px]">
+                                        <div className="px-3 py-2 mt-auto">
                                             <div className="flex items-center justify-between gap-2">
                                                 <h3 className="font-medium text-sm text-foreground/90 truncate" title={route.path}>
                                                     {route.name}
@@ -550,6 +1023,52 @@ export function ProjectPagesPage() {
                     </div>
                 )}
             </div>
+
+            {/* Inspector right-click menu */}
+            {inspectorContextMenu && (
+                <DropdownMenu
+                    open={inspectorContextMenu.open}
+                    onOpenChange={(open) => {
+                        if (!open) setInspectorContextMenu(null)
+                    }}
+                >
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            className="fixed"
+                            style={{
+                                left: inspectorContextMenu.x,
+                                top: inspectorContextMenu.y,
+                                width: 1,
+                                height: 1,
+                                opacity: 0,
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-64">
+                        <DropdownMenuItem onClick={handleAskAIAboutInspectedElement}>
+                            Ask AI about this element
+                        </DropdownMenuItem>
+                        {inspectorContextMenu.reactSource?.fileName && (
+                            <DropdownMenuItem onClick={handleOpenInspectedSource}>
+                                Open component source
+                            </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => void handleCopyInspectedSelector()}>
+                            Copy selector
+                        </DropdownMenuItem>
+                        {inspectorContextMenu.reactComponentStack?.length ? (
+                            <DropdownMenuItem onClick={() => void handleCopyInspectedComponentStack()}>
+                                Copy component stack
+                            </DropdownMenuItem>
+                        ) : null}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )}
 
             {/* Terminal Panel */}
             {project?.localPath && (

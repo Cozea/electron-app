@@ -20,6 +20,7 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
+import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -70,10 +71,7 @@ interface Project {
     model: string
     agentType: 'agent' | 'assistant'
     reasoningDepth: 'low' | 'medium' | 'high'
-    toolsEnabled: boolean
-    webSearchEnabled: boolean
     thinkingEffort?: 'low' | 'medium' | 'high'
-    providerOptions?: Record<string, unknown>
   }
 }
 
@@ -127,13 +125,16 @@ export function BuilderConversation({
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
   const completedRef = useRef(false)
+  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
 
   const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const promptSettings = project.promptSettings
-  const model = promptSettings?.model ?? 'claude-sonnet-4-5'
+  console.log('[Builder] Project promptSettings:', promptSettings)
+  console.log('[Builder] Using model:', promptSettings?.model ?? 'gemini-3-pro (default)')
+  const model = promptSettings?.model ?? 'gemini-3-pro'
   const requestedReasoningDepth = promptSettings?.reasoningDepth ?? 'high'
   const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? requestedReasoningDepth
   const effectiveReasoningDepth = useMemo(() => {
@@ -144,12 +145,10 @@ export function BuilderConversation({
   }, [requestedReasoningDepth, maxReasoningDepth])
   // Builder always needs tools to create files and track progress
   const enableTools = true
-  const enableWebSearch = Boolean(promptSettings?.webSearchEnabled ?? true)
-    && (toolPolicy?.allowWebSearch ?? true)
-    && (toolPolicy?.allowProviderTools ?? true)
+  // Web search always enabled for builder
+  const enableWebSearch = true
   const actionType = promptSettings?.agentType ?? 'agent'
   const thinkingEffort = promptSettings?.thinkingEffort
-  const providerOptions = promptSettings?.providerOptions
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
@@ -254,7 +253,6 @@ Start by calling build_tasks to define your task list, then create the project s
         enableWebSearch,
         reasoningDepth: effectiveReasoningDepth,
         thinkingEffort,
-        providerOptions,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
         const api = `${AI_BASE_URL}/agent`
@@ -267,7 +265,7 @@ Start by calling build_tasks to define your task list, then create the project s
         return { api, body: nextBody }
       },
     })
-  }, [model, actionType, enableTools, enableWebSearch, effectiveReasoningDepth, thinkingEffort, providerOptions])
+  }, [model, actionType, enableTools, enableWebSearch, effectiveReasoningDepth, thinkingEffort])
 
   const isAgentMode = actionType === 'agent'
 
@@ -321,7 +319,21 @@ Start by calling build_tasks to define your task list, then create the project s
 
     try {
       if (toolName === 'build_tasks') {
-        const tasks = input.tasks as BuildTask[]
+        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
+        let tasks: BuildTask[]
+        if (input.tasks) {
+          tasks = input.tasks as BuildTask[]
+        } else if (input.tasks_json) {
+          try {
+            tasks = JSON.parse(input.tasks_json as string) as BuildTask[]
+          } catch (e) {
+            console.error('[Builder] Failed to parse tasks_json:', e)
+            tasks = []
+          }
+        } else {
+          console.warn('[Builder] build_tasks called without tasks or tasks_json')
+          tasks = []
+        }
         onTasksUpdate(tasks)
 
         const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'completed')
@@ -600,8 +612,16 @@ Start by calling build_tasks to define your task list, then create the project s
     onToolCall: handleToolCall,
     onError: (err: any) => {
       console.error('Builder chat error:', err)
-      const message = err?.message || 'Build failed'
-      onError(message)
+
+      const billingErr = parseBillingError(err)
+      if (billingErr) {
+        setBillingError(billingErr)
+        // Pass a cleaner message to the parent
+        onError(billingErr.title || 'Billing Error')
+      } else {
+        const message = err?.message || 'Build failed'
+        onError(message)
+      }
     },
   })
 
@@ -618,8 +638,14 @@ Start by calling build_tasks to define your task list, then create the project s
   // Track error state
   useEffect(() => {
     if (error) {
-      const message = (error as { message?: string }).message || 'Build failed'
-      onError(message)
+      const billingErr = parseBillingError(error)
+      if (billingErr) {
+        setBillingError(billingErr)
+        onError(billingErr.title || 'Billing Error')
+      } else {
+        const message = (error as { message?: string }).message || 'Build failed'
+        onError(message)
+      }
     }
   }, [error, onError])
 
@@ -640,9 +666,18 @@ Start by calling build_tasks to define your task list, then create the project s
           : part.type.replace(/^tool-/, '')
         if (toolName !== 'build_tasks') continue
 
+        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
         if (toolPart.input?.tasks) {
           latestTasks = toolPart.input.tasks as BuildTask[]
           break
+        }
+        if (toolPart.input?.tasks_json) {
+          try {
+            latestTasks = JSON.parse(toolPart.input.tasks_json) as BuildTask[]
+            break
+          } catch {
+            // ignore parse errors
+          }
         }
 
         if (typeof toolPart.output === 'string') {
@@ -680,6 +715,92 @@ Start by calling build_tasks to define your task list, then create the project s
     }
   }, [messages, onTasksUpdate, onComplete])
 
+  // Track latest tasks for continuation logic
+  const latestTasksRef = useRef<BuildTask[]>([])
+  useEffect(() => {
+    // Extract latest tasks from messages (same logic as above effect)
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i]
+      if (message.role !== 'assistant') continue
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
+        const toolPart = part as any
+        const toolName = part.type === 'dynamic-tool' ? toolPart.toolName : part.type.replace(/^tool-/, '')
+        if (toolName !== 'build_tasks') continue
+        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
+        if (toolPart.input?.tasks) {
+          latestTasksRef.current = toolPart.input.tasks as BuildTask[]
+          return
+        }
+        if (toolPart.input?.tasks_json) {
+          try {
+            latestTasksRef.current = JSON.parse(toolPart.input.tasks_json) as BuildTask[]
+            return
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+    }
+  }, [messages])
+
+  // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
+  const continuationSentRef = useRef(false)
+  const continuationCountRef = useRef(0)
+  const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
+
+  useEffect(() => {
+    // Only check when not loading and not completed
+    if (status === 'streaming' || status === 'submitted' || completedRef.current) {
+      continuationSentRef.current = false
+      return
+    }
+
+    // Check if there are incomplete tasks
+    const tasks = latestTasksRef.current
+    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
+
+    // Safety check - don't continue forever
+    if (continuationCountRef.current >= MAX_CONTINUATIONS) {
+      console.log('[Builder] Max continuations reached, stopping auto-continue')
+      return
+    }
+
+    if (!continuationSentRef.current && messages.length > 0 && hasIncompleteTasks) {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage?.role === 'assistant') {
+        // Check if message only has reasoning/metadata (no actual output)
+        const hasOnlyReasoning = lastMessage.parts.length > 0 &&
+          lastMessage.parts.every(p =>
+            p.type === 'reasoning' ||
+            p.type === 'step-start' ||
+            p.type === 'data-usage' ||
+            (p.type === 'text' && !(p as { type: 'text'; text: string }).text?.trim())
+          )
+
+        // Always continue if there are incomplete tasks and model stopped
+        // This handles both: MALFORMED_FUNCTION_CALL (only reasoning) and normal stops after tool calls
+        console.log('[Builder] Model stopped with incomplete tasks, forcing continuation', {
+          hasOnlyReasoning,
+          taskCount: tasks.length,
+          incompleteTasks: tasks.filter((t: BuildTask) => t.status !== 'completed').length,
+          continuationCount: continuationCountRef.current
+        })
+
+        continuationSentRef.current = true
+        continuationCountRef.current += 1
+
+        const prompt = hasOnlyReasoning
+          ? 'You stopped mid-thought. Continue and use tools to complete the current task.'
+          : 'Continue with the next task. Use tools to create files and update build_tasks.'
+
+        setTimeout(() => {
+          void sendMessage({ text: prompt })
+        }, 500)
+      }
+    }
+  }, [status, messages, sendMessage])
+
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()
     for (const tool of availableTools) {
@@ -699,7 +820,7 @@ Start by calling build_tasks to define your task list, then create the project s
     <div className={cn('flex flex-col overflow-hidden w-full', className)}>
       <div className="flex-1 min-h-0 relative w-full">
         <Conversation className="h-full">
-          <ConversationContent className="max-w-2xl mx-auto pt-4 pb-4">
+          <ConversationContent className="w-full max-w-none px-4 pt-4 pb-4">
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}
@@ -711,6 +832,11 @@ Start by calling build_tasks to define your task list, then create the project s
                 onDenyTool={handleDeniedTool}
               />
             ))}
+            {billingError && (
+              <div className="py-4 px-2">
+                <BillingError error={billingError} />
+              </div>
+            )}
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />

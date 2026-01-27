@@ -1,10 +1,11 @@
-import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog, type WebFrameMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { exec, type ChildProcess } from 'node:child_process'
+import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { runTool } from './tools'
+import { BRIDGE_SCRIPT } from '../shared/previewBridgeScript'
 import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import * as pty from 'node-pty'
 
@@ -471,6 +472,99 @@ ipcMain.handle('shell:openExternal', async (_event, url: string) => {
 ipcMain.handle('window:isFullScreen', () => {
   return win?.isFullScreen() ?? false
 })
+
+interface PreviewInjectBridgeResult {
+  success: boolean
+  error?: string
+}
+
+function isAllowedPreviewUrl(url: URL): boolean {
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+  return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
+}
+
+async function findFrameByUrl(
+  targetUrl: string,
+  options?: { attempts?: number; delayMs?: number }
+): Promise<WebFrameMain | null> {
+  const attempts = options?.attempts ?? 15
+  const delayMs = options?.delayMs ?? 50
+
+  if (!win) return null
+
+  let targetOrigin: string | null = null
+  try {
+    targetOrigin = new URL(targetUrl).origin
+  } catch {
+    targetOrigin = null
+  }
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const frames = win.webContents.mainFrame.frames.filter((f) => f !== win?.webContents.mainFrame)
+
+    const exact = frames.find((f) => f.url === targetUrl)
+    if (exact) return exact
+
+    if (targetOrigin) {
+      const sameOrigin = frames.find((f) => {
+        try {
+          return new URL(f.url).origin === targetOrigin
+        } catch {
+          return false
+        }
+      })
+      if (sameOrigin) return sameOrigin
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+
+  return null
+}
+
+// Inject the preview bridge into the project's dev-server iframe (cross-origin safe via WebFrameMain)
+ipcMain.handle(
+  'preview:injectBridge',
+  async (_event, { url }: { url: string }): Promise<PreviewInjectBridgeResult> => {
+    if (!win) return { success: false, error: 'No window available' }
+    if (!url || typeof url !== 'string') return { success: false, error: 'Missing url' }
+
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      return { success: false, error: 'Invalid url' }
+    }
+
+    if (!isAllowedPreviewUrl(parsedUrl)) {
+      return { success: false, error: 'Only localhost preview URLs are supported' }
+    }
+
+    // Avoid injecting into the app's own main frame origin.
+    try {
+      const mainUrl = win.webContents.getURL()
+      const mainOrigin = new URL(mainUrl).origin
+      if (mainOrigin === parsedUrl.origin) {
+        return { success: false, error: 'Refusing to inject into main frame origin' }
+      }
+    } catch {
+      // ignore parse errors (e.g. about:blank during startup)
+    }
+
+    const frame = await findFrameByUrl(url)
+    if (!frame) {
+      return { success: false, error: 'Preview frame not found' }
+    }
+
+    try {
+      await frame.executeJavaScript(BRIDGE_SCRIPT)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to inject preview bridge'
+      return { success: false, error: message }
+    }
+  }
+)
 
 // Settings handlers
 ipcMain.handle('settings:get', () => {

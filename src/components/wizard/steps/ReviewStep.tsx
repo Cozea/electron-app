@@ -12,14 +12,9 @@ interface ReviewStepProps {
 export function ReviewStep({ state, onEditStep }: ReviewStepProps) {
   return (
     <div className="space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold">Review Configuration</h2>
-        <p className="text-muted-foreground">
-          Everything looks good! Click "Generate Plan" to have AI create your project structure.
-        </p>
-      </div>
 
-      <div className="space-y-4 max-w-2xl mx-auto">
+
+      <div className="space-y-4 max-w-2xl">
         {/* Project Info */}
         <Card>
           <CardHeader className="pb-2">

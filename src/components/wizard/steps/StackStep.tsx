@@ -1,6 +1,8 @@
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import type { WizardStack } from '@/hooks/useWizardState'
+import { motion } from 'framer-motion'
+import { cn } from '@/lib/utils'
+import { Check } from 'lucide-react'
 
 interface StackStepProps {
   stack: WizardStack
@@ -9,101 +11,161 @@ interface StackStepProps {
 
 const BACKEND_OPTIONS = [
   { id: 'supabase', name: 'Supabase', description: 'Auth + DB + Storage' },
-  { id: 'convex', name: 'Convex', description: 'Real-time sync' },
   { id: 'firebase', name: 'Firebase', description: 'Google ecosystem' },
+  { id: 'convex', name: 'Convex', description: 'Real-time sync' },
+  { id: 'appwrite', name: 'Appwrite', description: 'Open source backend' },
   { id: 'postgres', name: 'PostgreSQL', description: 'Self-hosted + Prisma' },
+  { id: 'none', name: 'None', description: 'Custom backend' },
 ]
 
 const HOSTING_OPTIONS = [
-  { id: 'vercel', name: 'Vercel', icon: '▲' },
-  { id: 'netlify', name: 'Netlify', icon: '◆' },
-  { id: 'railway', name: 'Railway', icon: '🚂' },
-  { id: 'aws', name: 'AWS Amplify', icon: '☁️' },
+  { id: 'vercel', name: 'Vercel', icon: '▲', description: 'Zero-config deployment' },
+  { id: 'netlify', name: 'Netlify', icon: '◆', description: 'Global edge network' },
+  { id: 'firebase', name: 'Firebase', icon: '🔥', description: 'Fast CDN + Hosting' },
+  { id: 'railway', name: 'Railway', icon: '🚂', description: 'Infrastructure platform' },
+  { id: 'fly', name: 'Fly.io', icon: '✈️', description: 'Global application platform' },
+  { id: 'aws', name: 'AWS Amplify', icon: '☁️', description: 'Full-stack AWS' },
+  { id: 'none', name: 'None', icon: '🚫', description: 'Self-hosted' },
 ]
 
 const AI_PROVIDER_OPTIONS = [
-  { id: 'openai', name: 'OpenAI', icon: '🤖' },
-  { id: 'anthropic', name: 'Anthropic', icon: '🧠' },
-  { id: 'byok', name: 'BYOK', icon: '🔑' },
-  { id: 'none', name: 'Skip', icon: '⏭️' },
+  { id: 'openai', name: 'OpenAI', icon: '🤖', description: 'GPT-4 & DALL-E' },
+  { id: 'anthropic', name: 'Anthropic', icon: '🧠', description: 'Claude Sonnet/Opus' },
+  { id: 'none', name: 'No AI', icon: '🚫', description: 'Standard application' },
+  { id: 'byok', name: 'BYOK', icon: '🔑', description: 'Bring your own keys' },
 ]
 
 export function StackStep({ stack, onUpdate }: StackStepProps) {
-  return (
-    <div className="space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold">Choose your tech stack</h2>
-        <p className="text-muted-foreground">
-          Select the technologies that power your project
-        </p>
-      </div>
+  const container = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05
+      }
+    }
+  }
 
-      <div className="space-y-8 max-w-2xl mx-auto">
+  const item = {
+    hidden: { opacity: 0, y: 10 },
+    show: { opacity: 1, y: 0 }
+  }
+
+  return (
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="space-y-12"
+    >
+
+
+      <div className="space-y-10 max-w-4xl">
         {/* Backend / Database */}
-        <div className="space-y-3">
-          <Label>
-            Backend / Database <span className="text-destructive">*</span>
+        <div className="space-y-4">
+          <Label className="text-base font-medium flex items-center gap-2">
+            Backend & Database <span className="text-destructive">*</span>
           </Label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {BACKEND_OPTIONS.map((option) => (
-              <button
+              <OptionCard
                 key={option.id}
-                type="button"
+                title={option.name}
+                description={option.description}
+                selected={stack.backend === option.id}
                 onClick={() => onUpdate({ backend: option.id })}
-                className={`p-4 rounded-lg border text-left transition-all ${
-                  stack.backend === option.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                }`}
-              >
-                <p className="font-medium text-sm">{option.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
-              </button>
+                variants={item}
+              />
             ))}
           </div>
         </div>
 
         {/* Hosting */}
-        <div className="space-y-3">
-          <Label>
-            Hosting <span className="text-destructive">*</span>
+        <div className="space-y-4">
+          <Label className="text-base font-medium flex items-center gap-2">
+            Hosting Provider <span className="text-destructive">*</span>
           </Label>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {HOSTING_OPTIONS.map((option) => (
-              <Badge
+              <OptionCard
                 key={option.id}
-                variant={stack.hosting === option.id ? 'default' : 'outline'}
-                className="cursor-pointer px-4 py-2 text-sm"
+                icon={option.icon}
+                title={option.name}
+                description={option.description}
+                selected={stack.hosting === option.id}
                 onClick={() => onUpdate({ hosting: option.id })}
-              >
-                <span className="mr-1">{option.icon}</span>
-                {option.name}
-              </Badge>
+                variants={item}
+              />
             ))}
           </div>
         </div>
 
         {/* AI Provider */}
-        <div className="space-y-3">
-          <Label>AI Provider (optional)</Label>
-          <div className="flex flex-wrap gap-2">
+        <div className="space-y-4">
+          <Label className="text-base font-medium flex items-center gap-2">
+            AI Capabilities <span className="text-muted-foreground font-normal text-sm ml-auto">(Optional)</span>
+          </Label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {AI_PROVIDER_OPTIONS.map((option) => (
-              <Badge
+              <OptionCard
                 key={option.id}
-                variant={stack.aiProvider === option.id ? 'default' : 'outline'}
-                className="cursor-pointer px-4 py-2 text-sm"
+                icon={option.icon}
+                title={option.name}
+                description={option.description}
+                selected={stack.aiProvider === option.id}
                 onClick={() => onUpdate({ aiProvider: option.id })}
-              >
-                <span className="mr-1">{option.icon}</span>
-                {option.name}
-              </Badge>
+                variants={item}
+              />
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            If your app needs AI capabilities, select a provider
-          </p>
         </div>
       </div>
-    </div>
+    </motion.div>
+  )
+}
+
+function OptionCard({
+  icon,
+  title,
+  description,
+  selected,
+  onClick,
+  variants
+}: {
+  icon?: string,
+  title: string,
+  description: string,
+  selected: boolean,
+  onClick: () => void,
+  variants?: any
+}) {
+  return (
+    <motion.button
+      variants={variants}
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex flex-col items-start text-left p-5 h-full rounded-xl border-2 transition-all duration-200 outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+        selected
+          ? "border-primary bg-primary/5 shadow-sm"
+          : "border-muted bg-card hover:border-primary/50 hover:bg-accent/50"
+      )}
+    >
+      {selected && (
+        <div className="absolute top-3 right-3 text-primary">
+          <div className="bg-primary text-primary-foreground rounded-full p-0.5">
+            <Check className="w-3 h-3" strokeWidth={3} />
+          </div>
+        </div>
+      )}
+
+      {icon && <span className="text-2xl mb-3 block">{icon}</span>}
+      <p className={cn("font-semibold text-sm", selected ? "text-primary" : "text-foreground")}>
+        {title}
+      </p>
+      <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+        {description}
+      </p>
+    </motion.button>
   )
 }

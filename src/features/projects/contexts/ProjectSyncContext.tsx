@@ -9,7 +9,7 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { computeSyncPlan, hasSyncOperations, createEmptySyncPlan } from "@/lib/sync/syncEngine"
+import { computeSyncPlan, hasSyncOperations } from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 import { SyncScreen } from "../components/SyncScreen"
@@ -77,9 +77,13 @@ export function ProjectSyncProvider({
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
     initialLastSyncAt ?? null
   )
-  const [showSyncScreen, setShowSyncScreen] = useState(true)
+  // Don't show sync screen initially - only show if there are actual changes
+  const [showSyncScreen, setShowSyncScreen] = useState(false)
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
+  // Prevent concurrent sync runs
+  const [isSyncRunning, setIsSyncRunning] = useState(false)
+  const [hasRunInitialSync, setHasRunInitialSync] = useState(false)
 
   const [progress, setProgress] = useState<SyncProgress>({
     status: "idle",
@@ -105,7 +109,8 @@ export function ProjectSyncProvider({
   const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
   const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
-  const updateLocalPath = useMutation(api.projects.updateLocalPath)
+  // Use per-user local path (stored in projectMembers, not projects)
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   /**
    * Run initial sync check when component mounts.
@@ -116,7 +121,14 @@ export function ProjectSyncProvider({
       return
     }
 
+    // Prevent re-running if already synced or sync in progress
+    if (hasRunInitialSync || isSyncRunning) {
+      return
+    }
+
     const runInitialSync = async () => {
+      setIsSyncRunning(true)
+      setHasRunInitialSync(true)
       setProgress({
         status: "checking",
         message: "Checking project files...",
@@ -126,11 +138,9 @@ export function ProjectSyncProvider({
       })
 
       try {
-        // Check if local folder exists
+        // Check if local folder exists (always check, even if localPath not stored)
         let effectiveLocalPath = currentLocalPath
-        const folderExists = effectiveLocalPath
-          ? await window.electronAPI.project.exists(projectSlug)
-          : false
+        const folderExists = await window.electronAPI.project.exists(projectSlug)
 
         if (!folderExists) {
           // Create local folder
@@ -152,13 +162,26 @@ export function ProjectSyncProvider({
           effectiveLocalPath = result.localPath!
           setCurrentLocalPath(effectiveLocalPath)
 
-          // Update project with local path
-          await updateLocalPath({ projectId, localPath: effectiveLocalPath })
+          // Update per-user local path (machine-specific)
+          await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
 
           setProgress((prev) => ({
             ...prev,
             logs: [...prev.logs, `Created folder at: ${effectiveLocalPath}`],
           }))
+        } else if (!effectiveLocalPath) {
+          // Folder exists but we don't have the path stored - get it from electron
+          const localPath = await window.electronAPI.project.getLocalPath(projectSlug)
+          if (localPath) {
+            effectiveLocalPath = localPath
+            setCurrentLocalPath(effectiveLocalPath)
+            // Update per-user local path (machine-specific)
+            await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
+            setProgress((prev) => ({
+              ...prev,
+              logs: [...prev.logs, `Found existing folder at: ${effectiveLocalPath}`],
+            }))
+          }
         }
 
         if (!effectiveLocalPath) {
@@ -204,40 +227,36 @@ export function ProjectSyncProvider({
           syncPlan.cloudDeletes.length
 
         if (totalChanges === 0) {
-          // Already synced
+          // Already synced - no screen needed
           setProgress({
             status: "complete",
             message: "Everything up to date!",
             current: 0,
             total: 0,
-            logs: [
-              ...progress.logs,
-              `${syncPlan.noChange} files in sync`,
-              "✓ No changes needed",
-            ],
+            logs: [],
           })
           setIsSynced(true)
-          setShowSyncScreen(false)
+          setIsSyncRunning(false)
+          // showSyncScreen is already false
         } else if (syncPlan.conflicts.length === 0) {
-          // No conflicts - auto-sync
+          // No conflicts - auto-sync silently
           setProgress((prev) => ({
             ...prev,
+            status: "syncing",
             message: `Syncing ${totalChanges} files...`,
-            logs: [
-              ...prev.logs,
-              `Plan: ${syncPlan.downloads.length} downloads, ${syncPlan.uploads.length} uploads`,
-            ],
+            logs: [],
           }))
 
           await executeSync(effectiveLocalPath, syncPlan)
         } else {
           // Conflicts exist - show sync screen for manual resolution
+          setShowSyncScreen(true)
+          setIsSyncRunning(false)
           setProgress((prev) => ({
             ...prev,
             status: "planning",
             message: `${syncPlan.conflicts.length} conflicts detected`,
             logs: [
-              ...prev.logs,
               `⚠ ${syncPlan.conflicts.length} files have conflicts`,
               "Manual resolution required",
             ],
@@ -246,18 +265,20 @@ export function ProjectSyncProvider({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Unknown error"
         console.error("[Sync] Initial sync failed:", error)
+        setShowSyncScreen(true)
+        setIsSyncRunning(false)
         setProgress({
           status: "error",
           message: errorMsg,
           current: 0,
           total: 0,
-          logs: [...progress.logs, `Error: ${errorMsg}`],
+          logs: [`Error: ${errorMsg}`],
         })
       }
     }
 
     runInitialSync()
-  }, [cloudManifest, filesWithUrls]) // Re-run when cloud data loads
+  }, [cloudManifest, filesWithUrls, hasRunInitialSync, isSyncRunning])
 
   /**
    * Execute sync plan.
@@ -266,6 +287,7 @@ export function ProjectSyncProvider({
     if (!hasSyncOperations(syncPlan)) {
       setIsSynced(true)
       setShowSyncScreen(false)
+      setIsSyncRunning(false)
       return
     }
 
@@ -309,6 +331,9 @@ export function ProjectSyncProvider({
       // Clear the diff badge for this project
       clearDiff(projectSlug)
     }
+
+    // Mark sync as complete regardless of result
+    setIsSyncRunning(false)
   }
 
   /**

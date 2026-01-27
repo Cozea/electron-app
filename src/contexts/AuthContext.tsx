@@ -4,6 +4,55 @@ import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import type { User, Session, OrganizationMembership } from '../types/electron'
 
+// ============================================================================
+// Token Management Utilities
+// ============================================================================
+
+interface TokenPayload {
+  sub: string
+  exp?: number
+  iat?: number
+}
+
+/**
+ * Decode a JWT token without verification (client-side only)
+ * Used to check expiry before making requests
+ */
+function decodeToken(token: string): TokenPayload | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return payload
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if a token is expired or will expire within the buffer time
+ * @param token JWT access token
+ * @param bufferSeconds Seconds before actual expiry to consider as "expired" (default 30s)
+ */
+function isTokenExpired(token: string | null, bufferSeconds = 30): boolean {
+  if (!token) return true
+  const payload = decodeToken(token)
+  if (!payload?.exp) return true
+  const expiresAt = payload.exp * 1000 // Convert to ms
+  const bufferMs = bufferSeconds * 1000
+  return Date.now() >= expiresAt - bufferMs
+}
+
+/**
+ * Get time until token expires in milliseconds
+ */
+function getTokenTimeToExpiry(token: string | null): number {
+  if (!token) return 0
+  const payload = decodeToken(token)
+  if (!payload?.exp) return 0
+  return Math.max(0, payload.exp * 1000 - Date.now())
+}
+
 interface AuthContextType {
   user: User | null
   convexUserId: Id<"users"> | null
@@ -161,25 +210,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex])
 
   useEffect(() => {
-    // Load initial session
-    const sessionPromise = window.electronAPI.auth.getSession()
+    // Load initial session with smart token refresh
+    const loadSession = async () => {
+      try {
+        const session = await window.electronAPI.auth.getSession()
+
+        if (!session) {
+          // No stored session
+          handleSession(null)
+          return
+        }
+
+        // Check if token is expired or about to expire (within 60 seconds)
+        if (isTokenExpired(session.accessToken, 60)) {
+          console.log('[Auth] Token expired or expiring soon, refreshing on startup...')
+          const refreshedSession = await window.electronAPI.auth.refresh()
+          if (refreshedSession) {
+            console.log('[Auth] Token refreshed successfully on startup')
+            handleSession(refreshedSession)
+          } else {
+            // Refresh failed - session fully expired, need to re-login
+            console.log('[Auth] Token refresh failed, session expired')
+            handleSession(null)
+          }
+        } else {
+          // Token is still valid
+          const ttl = getTokenTimeToExpiry(session.accessToken)
+          console.log(`[Auth] Token valid, expires in ${Math.round(ttl / 1000)}s`)
+          handleSession(session)
+        }
+      } catch (error) {
+        console.error('[Auth] Failed to load session:', error)
+        setIsLoading(false)
+      }
+    }
 
     // Add timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
-      console.warn('Session loading timed out, assuming no session')
+      console.warn('[Auth] Session loading timed out, assuming no session')
       setIsLoading(false)
-    }, 5000)
+    }, 10000) // Increased to 10s to allow for refresh
 
-    sessionPromise
-      .then((session) => {
-        clearTimeout(timeoutId)
-        handleSession(session)
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId)
-        console.error('Failed to get session:', error)
-        setIsLoading(false)
-      })
+    loadSession().finally(() => clearTimeout(timeoutId))
 
     // Listen for auth callbacks
     const cleanupSuccess = window.electronAPI.auth.onSuccess((session) => {
@@ -238,25 +310,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Auto-refresh token every 4 minutes (tokens expire after 5 min)
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Smart auto-refresh: refresh when 80% of token lifetime has passed
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (accessToken && user) {
-      // Clear any existing interval
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current)
+      // Clear any existing timeout
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
       }
 
-      // Set up periodic refresh (every 4 minutes)
-      refreshIntervalRef.current = setInterval(() => {
-        console.log('Auto-refreshing token...')
+      // Calculate when to refresh (at 80% of token lifetime, minimum 30 seconds before expiry)
+      const timeToExpiry = getTokenTimeToExpiry(accessToken)
+      const refreshIn = Math.max(
+        timeToExpiry * 0.8, // Refresh at 80% of lifetime
+        Math.min(timeToExpiry - 30000, 0) // Or 30 seconds before expiry, whichever is sooner
+      )
+
+      if (refreshIn > 0) {
+        console.log(`[Auth] Scheduling token refresh in ${Math.round(refreshIn / 1000)}s`)
+        refreshTimeoutRef.current = setTimeout(async () => {
+          console.log('[Auth] Auto-refreshing token...')
+          const success = await refreshToken()
+          if (!success) {
+            console.log('[Auth] Auto-refresh failed')
+          }
+        }, refreshIn)
+      } else {
+        // Token is already expired or about to expire, refresh immediately
+        console.log('[Auth] Token expiring, refreshing immediately...')
         refreshToken()
-      }, 4 * 60 * 1000) // 4 minutes
+      }
 
       return () => {
-        if (refreshIntervalRef.current) {
-          clearInterval(refreshIntervalRef.current)
+        if (refreshTimeoutRef.current) {
+          clearTimeout(refreshTimeoutRef.current)
         }
       }
     }

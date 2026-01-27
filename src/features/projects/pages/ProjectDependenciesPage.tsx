@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -19,7 +18,6 @@ import {
   Package,
   RefreshCw,
   Plus,
-  Search,
   Loader2,
   ArrowUp,
   Trash2,
@@ -33,23 +31,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ButtonGroup } from '@/components/ui/button-group'
 
-// Mock dependencies data
-const mockDependencies = [
-  { name: 'react', version: '^18.2.0', type: 'dependency' },
-  { name: 'react-dom', version: '^18.2.0', type: 'dependency' },
-  { name: 'react-router-dom', version: '^6.20.0', type: 'dependency' },
-  { name: 'typescript', version: '^5.3.0', type: 'devDependency' },
-  { name: 'vite', version: '^5.0.0', type: 'devDependency' },
-  { name: 'tailwindcss', version: '^3.4.0', type: 'devDependency' },
-]
+interface Dependency {
+  name: string
+  version: string
+  type: 'dependency' | 'devDependency'
+}
 
 export function ProjectDependenciesPage() {
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization } = useAuth()
-  const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'dependencies' | 'devDependencies'>('all')
   const [isLoading, setIsLoading] = useState(false)
+  const [dependencies, setDependencies] = useState<Dependency[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -63,18 +59,68 @@ export function ProjectDependenciesPage() {
     convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
   )
 
-  const filteredDeps = mockDependencies
-    .filter((dep) => {
-      if (filter === 'dependencies') return dep.type === 'dependency'
-      if (filter === 'devDependencies') return dep.type === 'devDependency'
-      return true
-    })
-    .filter((dep) =>
-      dep.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  const loadDependencies = useCallback(async () => {
+    if (!project?.localPath) return
 
-  const prodCount = mockDependencies.filter(d => d.type === 'dependency').length
-  const devCount = mockDependencies.filter(d => d.type === 'devDependency').length
+    setIsLoading(true)
+    setError(null)
+    try {
+      const result = await window.electronAPI.project.readFile({
+        projectPath: project.localPath,
+        filePath: 'package.json',
+      })
+
+      if (result.success && result.content) {
+        try {
+          const pkg = JSON.parse(result.content)
+          const deps: Dependency[] = []
+
+          if (pkg.dependencies) {
+            Object.entries(pkg.dependencies).forEach(([name, version]) => {
+              deps.push({ name, version: version as string, type: 'dependency' })
+            })
+          }
+
+          if (pkg.devDependencies) {
+            Object.entries(pkg.devDependencies).forEach(([name, version]) => {
+              deps.push({ name, version: version as string, type: 'devDependency' })
+            })
+          }
+
+          // Sort alphabetically
+          deps.sort((a, b) => a.name.localeCompare(b.name))
+          setDependencies(deps)
+        } catch (e) {
+          setError('Failed to parse package.json')
+          console.error('Failed to parse package.json', e)
+        }
+      } else {
+        setError('package.json not found')
+        setDependencies([])
+      }
+    } catch (err) {
+      setError('Failed to read package.json')
+      console.error('Failed to read package.json', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [project?.localPath])
+
+  // Initial load
+  useEffect(() => {
+    if (project?.localPath) {
+      loadDependencies()
+    }
+  }, [project?.localPath, loadDependencies])
+
+  const filteredDeps = dependencies.filter((dep) => {
+    if (filter === 'dependencies') return dep.type === 'dependency'
+    if (filter === 'devDependencies') return dep.type === 'devDependency'
+    return true
+  })
+
+  const prodCount = dependencies.filter(d => d.type === 'dependency').length
+  const devCount = dependencies.filter(d => d.type === 'devDependency').length
 
   if (project === undefined) {
     return (
@@ -94,9 +140,30 @@ export function ProjectDependenciesPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setIsLoading(true)}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+          <ButtonGroup>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2 rounded-r-none border-r-0">
+                  <Package className="h-3.5 w-3.5" />
+                  {filter === 'all' ? `All (${dependencies.length})` : filter === 'dependencies' ? `Dependencies (${prodCount})` : `Dev (${devCount})`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setFilter('all')}>All ({dependencies.length})</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setFilter('dependencies')}>Dependencies ({prodCount})</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadDependencies}
+              disabled={isLoading}
+              className="rounded-l-none px-2"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </ButtonGroup>
           <Button size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Package
@@ -106,42 +173,13 @@ export function ProjectDependenciesPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {/* Filters and Search */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Button
-              variant={filter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter('all')}
-            >
-              All ({mockDependencies.length})
-            </Button>
-            <Button
-              variant={filter === 'dependencies' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter('dependencies')}
-            >
-              Dependencies ({prodCount})
-            </Button>
-            <Button
-              variant={filter === 'devDependencies' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter('devDependencies')}
-            >
-              Dev ({devCount})
-            </Button>
-          </div>
 
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search packages..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        </div>
+        {/* Error State */}
+        {error && (
+          <Card className="p-4 mb-6 border-destructive/50 bg-destructive/10 text-destructive text-sm text-center">
+            {error}
+          </Card>
+        )}
 
         {/* Dependencies Table */}
         {filteredDeps.length === 0 ? (
@@ -149,13 +187,13 @@ export function ProjectDependenciesPage() {
             <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <h3 className="text-lg font-medium mb-2">No packages found</h3>
             <p className="text-sm text-muted-foreground">
-              {searchQuery ? 'No matching packages.' : 'No dependencies in this project.'}
+              No dependencies found in package.json.
             </p>
           </Card>
         ) : (
           <Card className="border-0 shadow-none bg-transparent">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead className="w-[350px]">Package</TableHead>
                   <TableHead>Version</TableHead>

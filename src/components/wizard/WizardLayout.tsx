@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Check } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { WizardStepDef } from '@/hooks/useWizardState'
 
@@ -8,9 +8,10 @@ interface WizardLayoutProps {
   steps: WizardStepDef[]
   currentStep: number
   title?: string
+  fullHeight?: boolean
+  // Navigation props formerly used by sidebar, kept optional for compatibility if needed elsewhere
   onStepClick?: (step: number) => void
   canNavigateToStep?: (step: number) => boolean
-  fullHeight?: boolean // For conversation mode - fills available space
 }
 
 export function WizardLayout({
@@ -18,101 +19,75 @@ export function WizardLayout({
   steps,
   currentStep,
   title = 'New Project',
-  onStepClick,
-  canNavigateToStep,
   fullHeight = false,
 }: WizardLayoutProps) {
-  // Skip the entry step (index 0) in the sidebar
-  const sidebarSteps = steps.slice(1)
+  // Current step index (0-based)
+  // Step 0 is entry, so "Step 1" for user is actually step index 1
+  const effectiveStepIndex = currentStep
+  const totalSteps = steps.length - 1 // Exclude entry step from total count if typically 0 is entry
 
-  const showSidebar = currentStep > 0
+  // Calculate progress percentage for the bar
+  // If currentStep is 0 (Entry), progress is 0. If currentStep is 1, progress is 1/total
+  const progressPercent = Math.min(100, Math.max(0, (effectiveStepIndex / totalSteps) * 100))
 
   return (
     <div className={cn(
-      "flex -m-4",
+      "flex flex-col -m-4",
       fullHeight ? "h-[calc(100vh-56px)]" : "min-h-[calc(100vh-56px)]"
     )}>
-      {/* Secondary Sidebar for Steps */}
-      {showSidebar && (
-      <div className="w-56 border-r bg-muted/30 flex flex-col shrink-0">
-        {/* Header */}
-        <div className="p-4 border-b shrink-0">
-          <h1 className="text-base font-semibold">{title}</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Step {currentStep} of {steps.length - 1}
-          </p>
+      {!fullHeight && currentStep > 0 && (
+        <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b">
+          <div className="w-full px-8 py-4 flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Step {currentStep} of {totalSteps}
+              </span>
+              <h1 className="text-lg font-semibold text-foreground tracking-tight">
+                {steps[currentStep]?.title || title}
+              </h1>
+            </div>
+            {/* Simple numeric indicator or small circular progress could go here if needed */}
+          </div>
+          {/* Progress Line */}
+          <div className="h-0.5 w-full bg-muted overflow-hidden">
+            <motion.div
+              className="h-full bg-primary"
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercent}%` }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            />
+          </div>
         </div>
-
-        {/* Step Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto">
-          <ul className="space-y-0.5">
-            {sidebarSteps.map((step, index) => {
-              const stepIndex = index + 1 // Account for skipped entry step
-              const isActive = stepIndex === currentStep
-              const isCompleted = stepIndex < currentStep
-              const isFuture = stepIndex > currentStep
-              const canNavigate = canNavigateToStep ? canNavigateToStep(stepIndex) : isCompleted
-
-              return (
-                <li key={step.id}>
-                  <button
-                    onClick={() => canNavigate && onStepClick?.(stepIndex)}
-                    disabled={!canNavigate && !isActive}
-                    className={cn(
-                      'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors',
-                      isActive && 'bg-primary text-primary-foreground',
-                      isCompleted && !isActive && 'text-foreground hover:bg-muted cursor-pointer',
-                      isFuture && 'text-muted-foreground/50 cursor-not-allowed'
-                    )}
-                  >
-                    {/* Step indicator */}
-                    <div
-                      className={cn(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0',
-                        isActive && 'bg-primary-foreground/20 text-primary-foreground',
-                        isCompleted && !isActive && 'bg-primary/20 text-primary',
-                        isFuture && 'bg-muted text-muted-foreground/50'
-                      )}
-                    >
-                      {isCompleted && !isActive ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <step.icon className="h-3 w-3" />
-                      )}
-                    </div>
-
-                    {/* Step info */}
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={cn(
-                          'text-sm font-medium truncate',
-                          isFuture && 'text-muted-foreground/50'
-                        )}
-                      >
-                        {step.title}
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
-      </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <div className={cn(
-        "flex-1",
-        !fullHeight && "overflow-auto",
-        fullHeight && "flex flex-col overflow-hidden",
-        !showSidebar && !fullHeight && "flex items-center justify-center"
+        "flex-1 w-full flex flex-col",
+        fullHeight && "min-h-0"
       )}>
         <div className={cn(
-          "p-6 mx-auto",
-          fullHeight && "flex-1 flex flex-col min-h-0",
-          showSidebar ? "w-full max-w-4xl" : "w-full max-w-3xl"
-        )}>{children}</div>
+          "flex-1 w-full px-8 py-8 flex flex-col",
+          fullHeight ? "max-w-full p-0 min-h-0" :
+            currentStep === 0 ? "max-w-2xl mx-auto justify-center" : "max-w-2xl"
+        )}>
+          {fullHeight ? (
+            // No animation wrapper in fullHeight mode to preserve flex layout
+            children
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="w-full"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
       </div>
     </div>
   )

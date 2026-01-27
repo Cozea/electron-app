@@ -219,6 +219,49 @@ export const saveFiles = mutation({
   },
 })
 
+// Save file content directly (for Yjs persistence - no storage upload)
+// This updates the checksum/mtime when content changes via Yjs
+export const saveFileContent = mutation({
+  args: {
+    projectId: v.id("projects"),
+    path: v.string(),
+    content: v.string(),
+    checksum: v.string(),
+    mtime: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Find existing file at this path
+    const existing = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project_and_path", (q) =>
+        q.eq("projectId", args.projectId).eq("filePath", args.path)
+      )
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .first()
+
+    if (!existing) {
+      // File doesn't exist in projectFiles yet - this can happen
+      // if Yjs has the file but it wasn't synced to projectFiles
+      // For now, just log and skip (the sync will catch it)
+      console.log(`[saveFileContent] File not found: ${args.path}`)
+      return { updated: false, reason: "file_not_found" }
+    }
+
+    // Check if checksum actually changed
+    if (existing.checksum === args.checksum) {
+      return { updated: false, reason: "unchanged" }
+    }
+
+    // Update the existing file record with new checksum
+    await ctx.db.patch(existing._id, {
+      checksum: args.checksum,
+      uploadedAt: args.mtime,
+    })
+
+    return { updated: true, fileId: existing._id }
+  },
+})
+
 // Mark files as deleted (for sync deletions)
 export const markFilesDeleted = mutation({
   args: {

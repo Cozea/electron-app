@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import {
   DefaultChatTransport,
@@ -27,10 +26,10 @@ import {
   IconArrowUp,
   IconBolt,
   IconBrain,
+  IconCheck,
   IconChevronDown,
   IconCircle,
   IconCircleDashed,
-  IconCode,
   IconHistory,
   IconPaperclip,
   IconPlus,
@@ -38,8 +37,6 @@ import {
   IconRobot,
   IconSquare,
   IconUser,
-  IconWorld,
-  IconCheck,
   IconX,
 } from '@tabler/icons-react'
 import {
@@ -56,11 +53,13 @@ import {
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
+import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useAuth } from '@/contexts/AuthContext'
+import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachment'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
-import { ProviderOptions, type ProviderOptionsState } from './ProviderOptions'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
+import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 
 // AI Elements components
 import {
@@ -68,7 +67,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import { Suggestions, Suggestion } from '@/components/ai-elements/suggestion'
+
 import { Loader } from '@/components/ai-elements/loader'
 import {
   Context,
@@ -100,6 +99,16 @@ interface ToolMeta {
   providerToolArgs?: Record<string, unknown>
   supportsDeferredResults?: boolean
 }
+
+// Tool categories for context-based gating
+const READ_ONLY_TOOLS = new Set([
+  'read_file', 'list_dir', 'file_search', 'grep_search'
+])
+
+const WRITE_TOOLS = new Set([
+  'create_file', 'create_directory', 'replace_string_in_file',
+  'multi_replace_string_in_file', 'run_in_terminal', 'get_terminal_output', 'apply_patch'
+])
 
 // AI Gateway endpoint - Railway server
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
@@ -184,16 +193,26 @@ const defaultModels = [
 ]
 
 export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
-  const navigate = useNavigate()
-  const { triggerClearChat } = useAssistantPanelStore()
+  const {
+    triggerClearChat,
+    pendingPrompt,
+    setPendingPrompt,
+    pendingAttachments,
+    removePendingAttachment,
+    clearPendingAttachments,
+  } = useAssistantPanelStore()
+  const currentPage = usePageContextStore((state) => state.currentPage)
+  const inspectedElement = usePageContextStore((state) => state.inspectedElement)
   const { accessToken, currentOrganization } = useAuth()
+
+  // Context-based tool availability
+  const hasProjectContext = !!projectPath
 
   // Input State
   const [input, setInput] = useState("")
   const [availableModels, setAvailableModels] = useState(defaultModels)
-  const [model, setModel] = useState<string>(defaultModels[0].id)
+  const [model, setModel] = useState<string>('gemini-3-pro')
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolsLoaded, setToolsLoaded] = useState(false)
   const [toolPolicy, setToolPolicy] = useState<{
     allowProviderTools: boolean
     allowWebSearch: boolean
@@ -202,9 +221,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<"Agent" | "Assistant">("Agent")
   const [selectedPerformance, setSelectedPerformance] = useState<"High" | "Medium" | "Low">("High")
-  const [toolsEnabled, setToolsEnabled] = useState(true)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
-  const [providerOptions, setProviderOptions] = useState<ProviderOptionsState>({})
+  const [thinkingEffort, setThinkingEffort] = useState<"low" | "medium" | "high">("medium")
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
@@ -221,12 +238,31 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const recordedApprovalIdsRef = useRef<Set<string>>(new Set())
 
   const selectedModelData = availableModels.find((m) => m.id === model)
-  const selectedProvider = selectedModelData?.chefSlug
+
+  // Apply pending prompt injections (e.g. from screenshot capture or inspector actions)
+  useEffect(() => {
+    if (!pendingPrompt) return
+    setInput((prev) => (prev ? `${prev}\n\n${pendingPrompt}` : pendingPrompt))
+    setPendingPrompt(null)
+  }, [pendingPrompt, setPendingPrompt])
 
   // Get capabilities for the selected model
   const selectedModelCapabilities = useMemo(() => {
     return modelCapabilities[model] ?? null
   }, [model, modelCapabilities])
+
+  // Determine which controls to show based on model capabilities
+  const showPerformanceControl = useMemo(() => {
+    if (!selectedModelCapabilities) return true // Default to showing
+    // Show for effort-based models (OpenAI) OR models with supportsEffortParameter (Opus 4.5)
+    return selectedModelCapabilities.reasoningType === 'effort' ||
+      selectedModelCapabilities.supportsEffortParameter === true
+  }, [selectedModelCapabilities])
+
+  const showThinkingControl = useMemo(() => {
+    if (!selectedModelCapabilities) return false // Don't show by default
+    return selectedModelCapabilities.supportsExtendedThinking === true
+  }, [selectedModelCapabilities])
 
   const modelSettingsRef = useRef(modelSettings)
   useEffect(() => {
@@ -238,32 +274,26 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (stored) {
       setSelectedAgent(stored.selectedAgent ?? "Agent")
       setSelectedPerformance(stored.selectedPerformance ?? "High")
-      setToolsEnabled(stored.toolsEnabled ?? true)
-      setWebSearchEnabled(stored.webSearchEnabled ?? false)
-      setProviderOptions(stored.providerOptions ?? {})
+      setThinkingEffort(stored.thinkingEffort ?? "medium")
       return
     }
     setSelectedAgent("Agent")
     setSelectedPerformance("High")
-    setToolsEnabled(true)
-    setWebSearchEnabled(false)
-    setProviderOptions({})
+    setThinkingEffort("medium")
   }, [model])
 
   useEffect(() => {
     const nextSettings: StoredModelSettings = {
       selectedAgent,
       selectedPerformance,
-      toolsEnabled,
-      webSearchEnabled,
-      providerOptions,
+      thinkingEffort,
     }
     setModelSettings((prev) => {
       const updated = { ...prev, [model]: nextSettings }
       saveModelSettings(updated)
       return updated
     })
-  }, [model, selectedAgent, selectedPerformance, toolsEnabled, webSearchEnabled, providerOptions])
+  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
@@ -291,15 +321,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return map
   }, [availableTools])
 
-  const canUseWebSearch = useMemo(() => {
-    if (!toolPolicy?.allowProviderTools || !toolPolicy.allowWebSearch) return false
-    return Boolean(selectedModelCapabilities?.supportsWebSearch)
-  }, [toolPolicy, selectedModelCapabilities])
-
-  const canUseLocalTools = useMemo(() => {
-    return availableTools.some((tool) => tool.executionEnvironment === 'local')
-  }, [availableTools])
-
   const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? 'medium'
 
   // Map performance labels for display and server
@@ -323,21 +344,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       availableTools.map((tool) => [tool.name, tool])
     )
   }, [availableTools])
-
-  useEffect(() => {
-    if (!canUseWebSearch && webSearchEnabled) {
-      setWebSearchEnabled(false)
-    }
-  }, [canUseWebSearch, webSearchEnabled])
-
-  useEffect(() => {
-    // Only disable tools after we've loaded the tools list
-    // This prevents the race condition where tools are disabled before the API returns
-    if (toolsLoaded && !canUseLocalTools && toolsEnabled) {
-      setToolsEnabled(false)
-    }
-  }, [toolsLoaded, canUseLocalTools, toolsEnabled])
-
 
   // Fetch allowed models from AI Gateway
   useEffect(() => {
@@ -418,13 +424,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         setAvailableTools(data.tools as ToolMeta[])
         setToolPolicy(data.policy ?? null)
         setToolsError(null)
-        setToolsLoaded(true)
       })
       .catch((err) => {
         if ((err as { name?: string }).name === 'AbortError') return
         const message = err instanceof Error && err.message ? err.message : 'Failed to load tools'
         setToolsError(message)
-        setToolsLoaded(true)
         console.warn('Failed to fetch tools:', err)
       })
 
@@ -437,15 +441,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     model,
     conversationId,
     actionType: selectedAgent.toLowerCase(),
-    toolsEnabled,
-    webSearchEnabled,
     reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    providerOptions,
+    thinkingEffort,
     // Project context for AI awareness
     projectContext: projectName && projectSlug ? {
       name: projectName,
       slug: projectSlug,
       localPath: projectPath ?? undefined,
+      // Current page context (invisible to user, sent to AI)
+      currentPage: currentPage ?? undefined,
+      // Last inspected element context (invisible to user, sent to AI)
+      inspectedElement: inspectedElement ?? undefined,
     } : null,
   })
 
@@ -456,15 +462,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       model,
       conversationId,
       actionType: selectedAgent.toLowerCase(),
-      toolsEnabled,
-      webSearchEnabled,
       reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-      providerOptions,
+      thinkingEffort,
       // Project context for AI awareness
       projectContext: projectName && projectSlug ? {
         name: projectName,
         slug: projectSlug,
         localPath: projectPath ?? undefined,
+        // Current page context (invisible to user, sent to AI)
+        currentPage: currentPage ?? undefined,
+        // Last inspected element context (invisible to user, sent to AI)
+        inspectedElement: inspectedElement ?? undefined,
       } : null,
     }
   }, [
@@ -474,12 +482,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     conversationId,
     selectedAgent,
     selectedPerformance,
-    toolsEnabled,
-    webSearchEnabled,
-    providerOptions,
+    thinkingEffort,
     projectName,
     projectSlug,
     projectPath,
+    currentPage,
+    inspectedElement,
   ])
 
   const chatTransport = useMemo(() => {
@@ -495,11 +503,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         conversationId: requestConfigRef.current.conversationId,
         feature: 'assistant',
         actionType: requestConfigRef.current.actionType,
-        enableTools: requestConfigRef.current.toolsEnabled,
-        enableWebSearch: requestConfigRef.current.webSearchEnabled,
+        // Always enable tools and web search - context-based gating happens client-side
+        enableTools: true,
+        enableWebSearch: true,
         reasoningDepth: requestConfigRef.current.reasoningDepth,
-        // Provider-specific options
-        providerOptions: requestConfigRef.current.providerOptions,
+        thinkingEffort: requestConfigRef.current.thinkingEffort,
         // Project context for AI awareness
         projectContext: requestConfigRef.current.projectContext,
       }),
@@ -524,12 +532,34 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return toolMeta.requiresApproval ?? false
   }, [isAgentMode])
 
+  // Check if a tool is allowed in the current context
+  const isToolAllowedInContext = useCallback((toolName: string) => {
+    // If we have project context, all tools are allowed
+    if (hasProjectContext) return true
+    // Without project context, only read-only tools are allowed
+    return READ_ONLY_TOOLS.has(toolName) || !WRITE_TOOLS.has(toolName)
+  }, [hasProjectContext])
+
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: any }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
     const toolMeta = toolsByNameRef.current[toolCall.toolName]
     if (!toolMeta || toolMeta.executionEnvironment !== 'local') {
+      return
+    }
+
+    // Context-based gating: block write tools when not in project context
+    if (!isToolAllowedInContext(toolCall.toolName)) {
+      const addToolOutput = addToolOutputRef.current
+      if (addToolOutput) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          errorText: 'This tool requires a project context. Please open a project first.',
+        })
+      }
       return
     }
 
@@ -581,7 +611,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         errorText: err instanceof Error ? err.message : 'Tool failed',
       })
     }
-  }, [shouldRequireLocalApproval, localRuntime, conversationId, projectPath])
+  }, [shouldRequireLocalApproval, isToolAllowedInContext, localRuntime, conversationId, projectPath])
 
   // Chat hook with auth transport
   const {
@@ -748,6 +778,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [accessToken])
 
   const runLocalTool = useCallback(async (toolName: string, toolCallId: string, input: any) => {
+    // Context-based gating
+    if (!isToolAllowedInContext(toolName)) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: 'This tool requires a project context. Please open a project first.',
+      })
+      return
+    }
+
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta && toolMeta.executionEnvironment !== 'local') {
       void addToolOutput({
@@ -792,7 +833,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         errorText: result.error || 'Tool failed',
       })
     }
-  }, [addToolOutput, localRuntime, conversationId, projectPath])
+  }, [addToolOutput, isToolAllowedInContext, localRuntime, conversationId, projectPath])
 
   const handleApprovedTool = useCallback(async (
     toolName: string,
@@ -924,12 +965,27 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() && pendingAttachments.length === 0) return;
 
     // Clear any previous billing error when trying again
     setBillingError(null)
-    await sendMessage({ text: input })
+
+    // Build message with optional attachments
+    const messageOptions: { text: string; experimental_attachments?: Array<{ url: string; contentType: string }> } = {
+      text: input || 'Analyze this screenshot',
+    }
+
+    // Include attachments if any
+    if (pendingAttachments.length > 0) {
+      messageOptions.experimental_attachments = pendingAttachments.map((attachment) => ({
+        url: attachment.data,
+        contentType: 'image/png',
+      }))
+    }
+
+    await sendMessage(messageOptions)
     setInput("")
+    clearPendingAttachments()
   };
 
   const handleStop = (e: React.MouseEvent) => {
@@ -956,9 +1012,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           <ConversationContent className={cn(messages.length === 0 && "h-full p-0")}>
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center">
-                <EmptyState onSuggestionClick={(text) => {
-                  setInput(text)
-                }} />
+                <EmptyState />
               </div>
             ) : (
               messages.map((message) => (
@@ -979,16 +1033,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                 <span className="text-sm">Thinking...</span>
               </div>
             )}
-            {billingError && (
-              <BillingError
-                error={billingError}
-                onAction={(href) => {
-                  setBillingError(null)
-                  navigate(href)
-                }}
-                className="max-w-md mx-auto"
-              />
-            )}
+
             <div ref={messagesEndRef} />
           </ConversationContent>
           <ConversationScrollButton />
@@ -1003,7 +1048,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         )}
       >
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
-          {showGenericError && surfaceErrorMessage && (
+          {billingError ? (
+            <BillingError
+              error={billingError}
+              className="border-0 border-b rounded-none p-3"
+            />
+          ) : showGenericError && surfaceErrorMessage && (
             <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
               <p className="text-xs leading-relaxed flex-1">
                 {surfaceErrorMessage}
@@ -1027,6 +1077,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
               // Handle file selection
               console.log(e.target.files)
             }}
+          />
+
+          {/* Pending screenshot attachments */}
+          <ScreenshotAttachments
+            attachments={pendingAttachments}
+            onRemove={removePendingAttachment}
           />
 
           <div className="px-3 pt-3 pb-2 grow">
@@ -1071,24 +1127,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                     >
                       <IconPaperclip size={16} className="opacity-60" />
                       Attach Files
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setToolsEnabled((prev) => !prev)}
-                      disabled={!canUseLocalTools}
-                    >
-                      <IconCode size={16} className="opacity-60" />
-                      <span className="flex-1">Tool Access</span>
-                      {toolsEnabled && <IconCheck className="size-3 opacity-60" />}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setWebSearchEnabled((prev) => !prev)}
-                      disabled={!canUseWebSearch}
-                    >
-                      <IconWorld size={16} className="opacity-60" />
-                      <span className="flex-1">Web Search</span>
-                      {webSearchEnabled && <IconCheck className="size-3 opacity-60" />}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="rounded-[calc(1rem-6px)] text-xs"
@@ -1168,7 +1206,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             <div>
               <Button
                 type="submit"
-                disabled={!input.trim() && !isLoading}
+                disabled={!input.trim() && pendingAttachments.length === 0 && !isLoading}
                 className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
               >
@@ -1220,52 +1258,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-              >
-                <IconBolt className="size-3" />
-                <span>{performanceToDisplay[selectedPerformance]}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
-            >
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance("High")}
-                  disabled={maxReasoningDepth !== 'high'}
-                >
-                  <IconCircle size={16} className="opacity-60" />
-                  High
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance("Medium")}
-                  disabled={maxReasoningDepth === 'low'}
-                >
-                  <IconProgress size={16} className="opacity-60" />
-                  Medium
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance("Low")}
-                >
-                  <IconCircleDashed size={16} className="opacity-60" />
-                  Low
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Opus 4.5 Thinking Effort - only shows for Opus */}
-          {selectedModelCapabilities?.supportsEffortParameter && (
+          {/* Performance Control - Show for OpenAI and Opus 4.5 */}
+          {showPerformanceControl && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1273,8 +1267,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                   size="sm"
                   className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
                 >
-                  <IconBrain className="size-3" />
-                  <span>{providerOptions.thinkingEffort ? providerOptions.thinkingEffort.charAt(0).toUpperCase() + providerOptions.thinkingEffort.slice(1) : 'Medium'}</span>
+                  <IconBolt className="size-3" />
+                  <span>{performanceToDisplay[selectedPerformance]}</span>
                   <IconChevronDown className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1285,46 +1279,95 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                 <DropdownMenuGroup className="space-y-1">
                   <DropdownMenuItem
                     className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'high' })}
+                    onClick={() => setSelectedPerformance("High")}
+                    disabled={maxReasoningDepth !== 'high'}
                   >
                     <IconCircle size={16} className="opacity-60" />
-                    High (deeper reasoning)
+                    High
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'medium' })}
+                    onClick={() => setSelectedPerformance("Medium")}
+                    disabled={maxReasoningDepth === 'low'}
                   >
                     <IconProgress size={16} className="opacity-60" />
-                    Medium (balanced)
+                    Medium
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'low' })}
+                    onClick={() => setSelectedPerformance("Low")}
                   >
                     <IconCircleDashed size={16} className="opacity-60" />
-                    Low (faster, fewer tokens)
+                    Low
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
 
-          {/* Provider-specific tool options */}
-          {selectedProvider && selectedModelCapabilities && (
-            <ProviderOptions
-              provider={selectedProvider as 'anthropic' | 'openai' | 'google'}
-              capabilities={selectedModelCapabilities}
-              options={providerOptions}
-              onChange={setProviderOptions}
-              disabled={status === 'streaming'}
-            />
-          )}
+          {/* Thinking Effort - shows for models with extended thinking */}
+          {showThinkingControl && (() => {
+            // Get supported levels from model capabilities
+            const reasoningRange = selectedModelCapabilities?.reasoningRange
+            const supportedLevels: string[] = Array.isArray(reasoningRange)
+              ? reasoningRange
+              : ['low', 'medium', 'high'] // Default for effort-based models
+
+            // Ensure current selection is valid, otherwise use highest available
+            const effectiveLevel = supportedLevels.includes(thinkingEffort)
+              ? thinkingEffort
+              : supportedLevels[supportedLevels.length - 1] || 'high'
+
+            const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
+              minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
+              low: { label: 'Low (faster)', icon: IconCircleDashed },
+              medium: { label: 'Medium (balanced)', icon: IconProgress },
+              high: { label: 'High (deeper reasoning)', icon: IconCircle },
+            }
+
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                  >
+                    <IconBrain className="size-3" />
+                    <span>{effectiveLevel.charAt(0).toUpperCase() + effectiveLevel.slice(1)}</span>
+                    <IconChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
+                >
+                  <DropdownMenuGroup className="space-y-1">
+                    {/* Show levels in reverse order (high first) */}
+                    {[...supportedLevels].reverse().map((level) => {
+                      const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
+                      return (
+                        <DropdownMenuItem
+                          key={level}
+                          className="rounded-[calc(1rem-6px)] text-xs"
+                          onClick={() => setThinkingEffort(level as 'low' | 'medium' | 'high')}
+                        >
+                          <Icon size={16} className="opacity-60" />
+                          {label}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          })()}
 
           <div className="flex-1" />
 
           {/* Context window usage display - right aligned */}
           <Context
-            maxTokens={200_000}
+            maxTokens={getContextWindowSize(model)}
             usedTokens={accumulatedUsage.usedTokens}
             usage={accumulatedUsage.usage}
             modelId={model}
@@ -1341,18 +1384,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   )
 }
 
-interface EmptyStateProps {
-  onSuggestionClick?: (text: string) => void
-}
-
-function EmptyState({ onSuggestionClick }: EmptyStateProps) {
-  const suggestions = [
-    "Help me understand this codebase",
-    "Find and fix bugs in my code",
-    "Explain how authentication works",
-    "Write tests for the API routes",
-  ]
-
+function EmptyState() {
   return (
     <div className="flex flex-col h-full w-full">
       <div className="flex-1 flex flex-col items-center justify-center py-12 text-center gap-6">
@@ -1364,19 +1396,6 @@ function EmptyState({ onSuggestionClick }: EmptyStateProps) {
           Ask questions, get help with code, or explore ideas together.
         </p>
       </div>
-      {onSuggestionClick && (
-        <div className="w-full max-w-2xl mx-auto px-3 pb-1">
-          <Suggestions>
-            {suggestions.map((text) => (
-              <Suggestion
-                key={text}
-                suggestion={text}
-                onClick={() => onSuggestionClick(text)}
-              />
-            ))}
-          </Suggestions>
-        </div>
-      )}
     </div>
   )
 }

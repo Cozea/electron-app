@@ -21,15 +21,19 @@ const MIN_CHECK_INTERVAL = 30 * 1000
 /**
  * Hook to run background diff checking for all projects in an organization.
  * This checks local files against cloud files periodically and updates the diff store.
+ * Uses per-user local paths from projectMembers (not the deprecated project.localPath).
  */
-export function useBackgroundDiffChecker(organizationId: Id<"organizations"> | undefined) {
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+export function useBackgroundDiffChecker(
+  organizationId: Id<"organizations"> | undefined,
+  userId: Id<"users"> | undefined
+) {
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const checkingRef = useRef<Set<string>>(new Set())
 
-  // Get all projects for the organization
+  // Get all projects for the organization with the current user's local paths
   const projects = useQuery(
-    api.projects.list,
-    organizationId ? { organizationId } : "skip"
+    api.projects.listForOrganizationWithMemberPath,
+    organizationId && userId ? { organizationId, userId } : "skip"
   )
 
   const { diffs, setDiffStatus, setChecking } = useProjectDiffStore()
@@ -38,7 +42,7 @@ export function useBackgroundDiffChecker(organizationId: Id<"organizations"> | u
    * Check diff for a single project
    */
   const checkProjectDiff = useCallback(async (project: ProjectInfo) => {
-    const { slug, localPath, lastSyncAt, _id: projectId } = project
+    const { slug, localPath } = project
 
     // Skip if no local path
     if (!localPath) return
@@ -109,21 +113,23 @@ export function useBackgroundDiffChecker(organizationId: Id<"organizations"> | u
   }, [diffs, setChecking, setDiffStatus])
 
   /**
-   * Check all projects
+   * Check all projects in parallel
    */
   const checkAllProjects = useCallback(async () => {
     if (!projects) return
 
-    for (const project of projects) {
-      if (project.localPath) {
-        await checkProjectDiff({
+    const projectsWithPath = projects.filter((p) => p.localPath)
+
+    await Promise.all(
+      projectsWithPath.map((project) =>
+        checkProjectDiff({
           _id: project._id,
           slug: project.slug,
           localPath: project.localPath,
           lastSyncAt: project.lastSyncAt,
         })
-      }
-    }
+      )
+    )
   }, [projects, checkProjectDiff])
 
   // Run initial check and set up interval

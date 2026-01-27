@@ -730,6 +730,8 @@ export default defineSchema({
     ),
     addedAt: v.number(),
     addedBy: v.id("users"),
+    // Per-user local path for this project (machine-specific)
+    localPath: v.optional(v.string()),
   })
     .index("by_project", ["projectId"])
     .index("by_user", ["userId"])

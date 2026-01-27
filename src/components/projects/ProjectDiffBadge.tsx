@@ -136,7 +136,7 @@ export function ProjectDiffBadge({
           variant={variant}
           className={cn(
             "flex size-6 items-center justify-center rounded-full p-0 text-xs font-medium",
-            !hasConflicts && "bg-blue-600 hover:bg-blue-700",
+            !hasConflicts && "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700",
             className
           )}
         >

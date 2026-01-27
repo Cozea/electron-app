@@ -1,11 +1,6 @@
-import type { ProviderOptionsState } from "@/components/assistant/ProviderOptions";
-
 export type StoredModelSettings = {
   selectedAgent?: "Agent" | "Assistant";
   selectedPerformance?: "High" | "Medium" | "Low";
-  toolsEnabled?: boolean;
-  webSearchEnabled?: boolean;
-  providerOptions?: ProviderOptionsState;
   thinkingEffort?: "low" | "medium" | "high";
 };
 

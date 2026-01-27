@@ -10,7 +10,7 @@ export default defineConfig({
         entry: 'electron/main.ts',
       },
       rollupOptions: {
-        external: ['@vscode/ripgrep'],
+        external: ['electron', '@vscode/ripgrep', 'node-pty', 'xxhash-wasm'],
         output: {
           format: 'cjs',
           entryFileNames: 'index.js',
@@ -35,7 +35,7 @@ export default defineConfig({
     root: '.',
     plugins: [react(), tailwindcss()],
     server: {
-      host: '127.0.0.1',
+      host: 'localhost',
       port: 5183,
     },
     resolve: {

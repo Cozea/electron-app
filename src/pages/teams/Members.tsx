@@ -8,7 +8,6 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Label } from '../../components/ui/label'
 import { Badge } from '../../components/ui/badge'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
@@ -39,7 +38,6 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
-  Search,
   UserPlus,
   MoreVertical,
   Users,
@@ -51,16 +49,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  SlidersHorizontal,
   Send,
   Trash2,
-  ArrowUp,
-  ArrowDown,
-  X,
+  ArrowUpDown,
   AlertCircle,
   AlertTriangle,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
+import { ButtonGroup } from '../../components/ui/button-group'
+import { IconFilter } from '@tabler/icons-react'
 
 type TableRowData = {
   id: string
@@ -75,7 +72,6 @@ type TableRowData = {
   workosMembershipId?: string // For removing members via WorkOS
 }
 
-type FilterTab = 'all' | 'active' | 'pending'
 type SortField = 'name' | 'role' | 'date'
 type SortDirection = 'asc' | 'desc'
 
@@ -100,8 +96,6 @@ export function Members() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
   const { inviteMember, revokeInvitation: revokeWorkosInvitation, removeMember: removeWorkosMember, updateMemberRole: updateWorkosMemberRole } = useOrganization()
   const [selected, setSelected] = useState<string[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterTab, setFilterTab] = useState<FilterTab>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [isInviteOpen, setIsInviteOpen] = useState(false)
@@ -110,9 +104,8 @@ export function Members() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
 
-  // Filter dialog state
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [roleFilters, setRoleFilters] = useState<Role[]>([])
+  // Filter state
+  const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
@@ -180,27 +173,14 @@ export function Members() {
     })),
   ]
 
-  // Calculate counts for tabs
-  const activeCount = tableRows.filter(r => r.status === 'active').length
-  const pendingCount = tableRows.filter(r => r.status === 'pending').length
-
-  // Filter by tab
-  const tabFilteredRows = tableRows.filter((row) => {
-    if (filterTab === 'all') return true
-    return row.status === filterTab
-  })
-
   // Filter by role
-  const roleFilteredRows = tabFilteredRows.filter((row) => {
-    if (roleFilters.length === 0) return true
-    return roleFilters.includes(row.role as Role)
+  const roleFilteredRows = tableRows.filter((row) => {
+    if (roleFilter === 'all') return true
+    return row.role === roleFilter
   })
 
-  // Filter by search
-  const searchFilteredRows = roleFilteredRows.filter((row) =>
-    row.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.email.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Use role filtered rows directly (search removed)
+  const searchFilteredRows = roleFilteredRows
 
   // Sort rows
   const filteredRows = [...searchFilteredRows].sort((a, b) => {
@@ -219,9 +199,6 @@ export function Members() {
     return sortDirection === 'asc' ? comparison : -comparison
   })
 
-  // Calculate active filter count for badge
-  const activeFilterCount = roleFilters.length + (sortField !== 'date' || sortDirection !== 'desc' ? 1 : 0)
-
   // Pagination
   const totalPages = Math.ceil(filteredRows.length / pageSize)
   const startIndex = (currentPage - 1) * pageSize
@@ -235,24 +212,6 @@ export function Members() {
       day: '2-digit',
     }).replace(/\//g, '-')
   }
-
-  const toggleRoleFilter = (role: Role) => {
-    setRoleFilters(prev =>
-      prev.includes(role)
-        ? prev.filter(r => r !== role)
-        : [...prev, role]
-    )
-    setCurrentPage(1)
-  }
-
-  const resetFilters = () => {
-    setRoleFilters([])
-    setSortField('date')
-    setSortDirection('desc')
-    setCurrentPage(1)
-  }
-
-  const hasActiveFilters = roleFilters.length > 0 || sortField !== 'date' || sortDirection !== 'desc'
 
   const toggleAll = () => {
     setSelected(selected.length === paginatedRows.length ? [] : paginatedRows.map((d) => d.id))
@@ -449,142 +408,223 @@ export function Members() {
     return pages
   }
 
+  // Circular progress component for seat usage
+  const seatPercentage = seatStatus && seatStatus.limit > 0
+    ? Math.min((seatStatus.current / seatStatus.limit) * 100, 100)
+    : 0
+  const circumference = 2 * Math.PI * 8 // radius = 8
+  const strokeDashoffset = circumference - (seatPercentage / 100) * circumference
+
+  const headerContent = (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <h1 className="text-lg font-semibold">Members</h1>
+        {seatStatus && seatStatus.limit > 0 && (
+          <Badge
+            variant="secondary"
+            className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
+            title={`${seatStatus.current} / ${seatStatus.limit} seats used`}
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
+              {/* Background circle */}
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="text-muted-foreground/30"
+              />
+              {/* Progress circle */}
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                className={seatStatus.current >= seatStatus.limit ? 'text-destructive' : seatStatus.current >= seatStatus.limit - 1 ? 'text-amber-500' : 'text-primary'}
+              />
+            </svg>
+            <span>{seatStatus.current}/{seatStatus.limit}</span>
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {selected.length > 0 && (
+          <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+            <Trash className="mr-2 h-4 w-4" />
+            Delete ({selected.length})
+          </Button>
+        )}
+        <ButtonGroup>
+          {/* Role Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-r-none border-r-0 focus:z-10">
+                <IconFilter className="h-3.5 w-3.5" />
+                {roleFilter === 'all' ? 'All Roles' : roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setRoleFilter('admin'); setCurrentPage(1) }}>Admin</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setRoleFilter('member'); setCurrentPage(1) }}>Member</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setRoleFilter('viewer'); setCurrentPage(1) }}>Viewer</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sort By */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-none border-r-0 focus:z-10">
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sort Direction */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-l-none focus:z-10">
+                {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ButtonGroup>
+        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2 h-8 px-2 text-xs" disabled={!canInvite}>
+              <UserPlus className="h-3.5 w-3.5" />
+              Invite
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Invite members</DialogTitle>
+              <DialogDescription>
+                Invited members will receive an invitation to join your workspace
+              </DialogDescription>
+            </DialogHeader>
+
+            {inviteError && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                {inviteError}
+              </div>
+            )}
+
+            {/* Email input */}
+            <div className="relative">
+              <Input
+                type="email"
+                placeholder="Enter email addresses..."
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                onKeyDown={handleAddEmail}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Members list with role dropdowns */}
+            {inviteMembers.length > 0 && (
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background to-transparent z-10" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-background to-transparent z-10" />
+                <div className="max-h-64 overflow-y-auto py-2 space-y-1">
+                  {inviteMembers.map((member, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 px-1"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="text-sm">
+                            {member.email.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{member.email.split('@')[0]}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+                              {member.role}
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'admin')}>
+                              admin
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'member')}>
+                              member
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'viewer')}>
+                              viewer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFromInviteList(i)}
+                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer with count and button */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
+              </span>
+              <Button
+                onClick={handleSendInvites}
+                disabled={inviteMembers.length === 0 || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Send invites
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  )
+
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Teams' }, { label: 'Members' }]}
+      header={headerContent}
     >
       <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">Members</h1>
-            {seatStatus && (
-              <p className="text-sm text-muted-foreground mt-1">
-                {seatStatus.limit > 0
-                  ? `${seatStatus.current} / ${seatStatus.limit} seats used`
-                  : `${seatStatus.current} members`
-                }
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {selected.length > 0 && (
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                <Trash className="mr-2 h-4 w-4" />
-                Delete ({selected.length})
-              </Button>
-            )}
-            <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2" disabled={!canInvite}>
-                  <UserPlus className="h-4 w-4" />
-                  Invite
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Invite members</DialogTitle>
-                  <DialogDescription>
-                    Invited members will receive an invitation to join your workspace
-                  </DialogDescription>
-                </DialogHeader>
-
-                {inviteError && (
-                  <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                    {inviteError}
-                  </div>
-                )}
-
-                {/* Email input */}
-                <div className="relative">
-                  <Input
-                    type="email"
-                    placeholder="Enter email addresses..."
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    onKeyDown={handleAddEmail}
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                {/* Members list with role dropdowns */}
-                {inviteMembers.length > 0 && (
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background to-transparent z-10" />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-background to-transparent z-10" />
-                    <div className="max-h-64 overflow-y-auto py-2 space-y-1">
-                      {inviteMembers.map((member, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between py-2 px-1"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                              <AvatarFallback className="text-sm">
-                                {member.email.slice(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium">{member.email.split('@')[0]}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
-                                  {member.role}
-                                  <ChevronDown className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleUpdateRole(i, 'admin')}>
-                                  admin
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleUpdateRole(i, 'member')}>
-                                  member
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleUpdateRole(i, 'viewer')}>
-                                  viewer
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFromInviteList(i)}
-                              className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                              disabled={isSubmitting}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Footer with count and button */}
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
-                  </span>
-                  <Button
-                    onClick={handleSendInvites}
-                    disabled={inviteMembers.length === 0 || isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Send className="h-4 w-4 mr-2" />
-                    )}
-                    Send invites
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
         {/* Seat limit warnings */}
         {seatStatus && seatStatus.limit > 0 && (
           <>
@@ -632,165 +672,6 @@ export function Members() {
           </>
         )}
 
-        {/* Filter tabs and search row */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
-            <button
-              onClick={() => { setFilterTab('all'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                filterTab === 'all'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => { setFilterTab('active'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                filterTab === 'active'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Active ({activeCount})
-            </button>
-            <button
-              onClick={() => { setFilterTab('pending'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                filterTab === 'pending'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Pending ({pendingCount})
-            </button>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-                className="pl-10"
-              />
-            </div>
-            <Dialog open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon" className="relative">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  {hasActiveFilters && (
-                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Filter & Sort</DialogTitle>
-                  <DialogDescription>
-                    Filter members by role and customize sorting
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-6 py-4">
-                  {/* Role Filter */}
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium">Filter by Role</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {(['admin', 'member', 'viewer'] as Role[]).map((role) => (
-                        <button
-                          key={role}
-                          onClick={() => toggleRoleFilter(role)}
-                          className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                            roleFilters.includes(role)
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-background hover:bg-muted border-border'
-                          }`}
-                        >
-                          {role.charAt(0).toUpperCase() + role.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Sort Options */}
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium">Sort by</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {([
-                        { value: 'name', label: 'Name' },
-                        { value: 'role', label: 'Role' },
-                        { value: 'date', label: 'Date Joined' },
-                      ] as { value: SortField; label: string }[]).map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => { setSortField(option.value); setCurrentPage(1) }}
-                          className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                            sortField === option.value
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-background hover:bg-muted border-border'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Sort Direction */}
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium">Sort Direction</Label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}
-                        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                          sortDirection === 'asc'
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                        Ascending
-                      </button>
-                      <button
-                        onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}
-                        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                          sortDirection === 'desc'
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted border-border'
-                        }`}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                        Descending
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between pt-4 border-t">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetFilters}
-                    disabled={!hasActiveFilters}
-                    className="text-muted-foreground"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Reset
-                  </Button>
-                  <Button onClick={() => setIsFilterOpen(false)}>
-                    Apply
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
         {/* Table */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -801,12 +682,12 @@ export function Members() {
             <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <h3 className="font-medium">No members found</h3>
             <p className="text-sm text-muted-foreground">
-              {searchQuery ? 'Try a different search term' : 'Invite members to get started'}
+              Invite members to get started
             </p>
           </div>
         ) : (
           <>
-            <div className="border rounded-lg overflow-hidden">
+            <div className="overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">

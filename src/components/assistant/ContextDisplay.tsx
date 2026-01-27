@@ -16,7 +16,11 @@ import {
 
 // Model context window sizes (in tokens)
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI
+  // OpenAI - GPT-5.x series (400K context)
+  "gpt-5.1": 400_000,
+  "gpt-5.1-mini": 400_000,
+  "gpt-5.2": 400_000,
+  // OpenAI - Legacy models
   "gpt-4o": 128_000,
   "gpt-4o-mini": 128_000,
   "gpt-4-turbo": 128_000,
@@ -26,7 +30,11 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "o1-mini": 128_000,
   "o1-preview": 128_000,
   "o3-mini": 200_000,
-  // Anthropic
+  // Anthropic - Claude 4.5 series (200K context)
+  "claude-haiku-4-5": 200_000,
+  "claude-sonnet-4-5": 200_000,
+  "claude-opus-4-5": 200_000,
+  // Anthropic - Legacy models
   "claude-3-5-sonnet-20241022": 200_000,
   "claude-3-5-haiku-20241022": 200_000,
   "claude-3-opus-20240229": 200_000,
@@ -34,7 +42,13 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-3-haiku-20240307": 200_000,
   "claude-sonnet-4-20250514": 200_000,
   "claude-opus-4-20250514": 200_000,
-  // Google
+  // Google - Gemini 3 series (1M context)
+  "gemini-3-flash": 1_000_000,
+  "gemini-3-pro": 1_000_000,
+  // Google - Gemini 2.5 series
+  "gemini-2.5-flash": 1_000_000,
+  "gemini-2.5-pro": 1_000_000,
+  // Google - Legacy models
   "gemini-2.0-flash-exp": 1_048_576,
   "gemini-2.0-flash": 1_048_576,
   "gemini-1.5-pro": 2_097_152,
@@ -49,10 +63,10 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "grok-2": 131_072,
   "grok-beta": 131_072,
   // Default fallback
-  default: 128_000,
+  default: 200_000,
 };
 
-function getContextWindowSize(modelId: string): number {
+export function getContextWindowSize(modelId: string): number {
   // Try exact match first
   if (MODEL_CONTEXT_WINDOWS[modelId]) {
     return MODEL_CONTEXT_WINDOWS[modelId];

@@ -116,6 +116,7 @@ export function NewProject() {
   }
 
   const handlePromptSubmit = async (settings: PromptSettings, promptText: string) => {
+    console.log('[NewProject] handlePromptSubmit received settings:', settings)
     // Don't create project yet - just start conversation mode
     // Project will be created when user selects a plan
     setOriginalPrompt(promptText)
@@ -130,6 +131,8 @@ export function NewProject() {
       alert('Unable to create project. Please try again or refresh the page.')
       return
     }
+
+    console.log('[NewProject] Creating project with promptSettings:', conversationPromptSettings)
 
     try {
       // NOW create the project with the selected plan configuration
@@ -149,10 +152,9 @@ export function NewProject() {
           model: conversationPromptSettings.model,
           agentType: conversationPromptSettings.agentType,
           reasoningDepth: conversationPromptSettings.reasoningDepth,
-          toolsEnabled: conversationPromptSettings.toolsEnabled,
-          webSearchEnabled: conversationPromptSettings.webSearchEnabled,
+          toolsEnabled: true,
+          webSearchEnabled: true,
           thinkingEffort: conversationPromptSettings.thinkingEffort,
-          providerOptions: conversationPromptSettings.providerOptions as Record<string, unknown> | undefined,
         } : undefined,
       })
 
@@ -224,7 +226,6 @@ export function NewProject() {
         return (
           <TeamStep
             team={state.team}
-            currentUserEmail={user?.email || ''}
             onAddMember={addTeamMember}
             onRemoveMember={removeTeamMember}
           />
@@ -299,6 +300,34 @@ export function NewProject() {
   // Don't show navigation at all in conversation mode
   const showNavigation = state.step > 0 && !isConversationMode
 
+  // Navigation Footer
+  const footerContent = showNavigation ? (
+    <div className="flex items-center justify-between py-3 px-6 md:px-8 max-w-7xl mx-auto w-full">
+      <Button variant="outline" size="sm" onClick={handleBack} className="gap-2">
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Button>
+
+      {showNextButton && (
+        <Button
+          onClick={handleNext}
+          size="sm"
+          disabled={!canProceed || state.isSaving}
+          className="gap-2"
+        >
+          {state.isSaving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
+            <Rocket className="h-4 w-4" />
+          ) : (
+            <ArrowRight className="h-4 w-4" />
+          )}
+          {nextButtonText}
+        </Button>
+      )}
+    </div>
+  ) : null
+
   return (
     <DashboardLayout
       user={user}
@@ -307,6 +336,7 @@ export function NewProject() {
         { label: 'Projects', href: '/projects' },
         { label: 'New Project' },
       ]}
+      footer={footerContent}
     >
       <WizardLayout
         steps={steps}
@@ -320,33 +350,6 @@ export function NewProject() {
         <div className={isConversationMode ? "flex-1 flex flex-col min-h-0" : "min-h-[300px]"}>
           {renderStepContent()}
         </div>
-
-        {/* Navigation - hidden on entry step and in conversation mode */}
-        {showNavigation && (
-        <div className="flex items-center justify-between mt-6 pt-4 border-t">
-          <Button variant="outline" onClick={handleBack} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-
-          {showNextButton && (
-            <Button
-              onClick={handleNext}
-              disabled={!canProceed || state.isSaving}
-              className="gap-2"
-            >
-              {state.isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
-                <Rocket className="h-4 w-4" />
-              ) : (
-                <ArrowRight className="h-4 w-4" />
-              )}
-              {nextButtonText}
-            </Button>
-          )}
-        </div>
-        )}
       </WizardLayout>
     </DashboardLayout>
   )

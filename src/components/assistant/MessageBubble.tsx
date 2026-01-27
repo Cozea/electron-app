@@ -159,7 +159,7 @@ export function MessageBubble({
                 />
                 <ToolContent>
                   {/* For task tools, show TaskProgress from input while running/streaming */}
-                  {isTaskTool && toolPart.state !== 'output-available' && toolPart.input?.tasks && (
+                  {isTaskTool && toolPart.state !== 'output-available' && (toolPart.input?.tasks || toolPart.input?.tasks_json) && (
                     <TaskProgress tasks={extractTasksFromInput(toolPart.input)} showSummary />
                   )}
 
@@ -206,10 +206,10 @@ export function MessageBubble({
                         })()
                         : isTerminalTool
                           ? <Terminal
-                              output={extractTerminalOutput(toolPart.output)}
-                              isStreaming={false}
-                              className="mx-4 mb-4"
-                            />
+                            output={extractTerminalOutput(toolPart.output)}
+                            isStreaming={false}
+                            className="mx-4 mb-4"
+                          />
                           : <ToolOutput output={formatToolPayload(toolPart.output)} />}
                       {(() => {
                         const sources = extractSourcesFromToolOutput(toolPart.output, toolName)
@@ -309,7 +309,17 @@ function extractTerminalOutput(output: unknown): string {
 
 function extractTasksFromInput(input: unknown): TaskData[] {
   const payload = input as any
-  const tasks = Array.isArray(payload?.tasks) ? payload.tasks : []
+  // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
+  let tasks: any[] = []
+  if (Array.isArray(payload?.tasks)) {
+    tasks = payload.tasks
+  } else if (payload?.tasks_json) {
+    try {
+      tasks = JSON.parse(payload.tasks_json)
+    } catch {
+      // ignore parse errors
+    }
+  }
   return tasks
     .filter((task: any) => task && typeof task === 'object')
     .map((task: any) => {

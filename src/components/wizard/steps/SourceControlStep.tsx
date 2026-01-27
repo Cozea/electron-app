@@ -30,14 +30,9 @@ const MERGE_QUEUES = [
 export function SourceControlStep({ sourceControl, onUpdate }: SourceControlStepProps) {
   return (
     <div className="space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold">Source Control & CI/CD</h2>
-        <p className="text-muted-foreground">
-          Configure how your code is stored and deployed
-        </p>
-      </div>
 
-      <div className="space-y-8 max-w-2xl mx-auto">
+
+      <div className="space-y-8 max-w-2xl">
         {/* Git Provider */}
         <div className="space-y-3">
           <Label>
@@ -90,11 +85,10 @@ export function SourceControlStep({ sourceControl, onUpdate }: SourceControlStep
                 key={option.id}
                 type="button"
                 onClick={() => onUpdate({ mergeStrategy: option.id })}
-                className={`p-3 rounded-lg border text-left transition-all ${
-                  sourceControl.mergeStrategy === option.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                }`}
+                className={`p-3 rounded-lg border text-left transition-all ${sourceControl.mergeStrategy === option.id
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:border-primary/50'
+                  }`}
               >
                 <p className="font-medium text-sm">{option.name}</p>
                 <p className="text-xs text-muted-foreground mt-1">{option.description}</p>

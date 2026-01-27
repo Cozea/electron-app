@@ -1,19 +1,20 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
-import { Badge } from '../components/ui/badge'
 import { ProjectCard } from '../features/projects/components/ProjectCard'
+import { ProjectListRow } from '../features/projects/components/ProjectListRow'
 import {
   Plus,
   ArrowUpDown,
   Loader2,
   FileCode,
-  Hammer,
-  Archive,
+  LayoutGrid,
+  List,
+  Search,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -30,72 +31,71 @@ import {
   EmptyContent,
 } from '../components/ui/empty'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { ButtonGroup } from '../components/ui/button-group'
+import { Badge } from '../components/ui/badge'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '../components/ui/pagination'
 import { IconFolderCode } from '@tabler/icons-react'
 
 type SortOption = 'last_modified' | 'name' | 'created'
 type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
-
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`
-  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`
-  if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
-  return 'Just now'
-}
-
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'active':
-      return <Badge variant="default" className="bg-green-600">Active</Badge>
-    case 'draft':
-      return <Badge variant="secondary">Draft</Badge>
-    case 'generating':
-    case 'building':
-      return (
-        <Badge variant="secondary" className="bg-blue-600 text-white">
-          <Hammer className="h-3 w-3 mr-1 animate-pulse" />
-          Building
-        </Badge>
-      )
-    case 'archived':
-      return (
-        <Badge variant="outline" className="text-muted-foreground">
-          <Archive className="h-3 w-3 mr-1" />
-          Archived
-        </Badge>
-      )
-    default:
-      return <Badge variant="outline">{status}</Badge>
-  }
-}
-
-function getStackBadges(project: { stack?: { backend?: string; hosting?: string; aiProvider?: string } }) {
-  const badges: string[] = []
-  if (project.stack?.backend) badges.push(project.stack.backend)
-  if (project.stack?.hosting) badges.push(project.stack.hosting)
-  if (project.stack?.aiProvider && project.stack.aiProvider !== 'none') {
-    badges.push(project.stack.aiProvider)
-  }
-  return badges
-}
 
 export function Projects() {
   const { user, logout, currentOrganization } = useAuth()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortOption>('last_modified')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const effectiveViewMode = isMobile ? 'list' : viewMode
+  const ITEMS_PER_PAGE = 20
 
   // Get Convex organization by WorkOS ID
   const convexOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
   )
+
+  // Get Convex user by WorkOS ID (needed for delete)
+  const convexUser = useQuery(
+    api.users.getByWorkosId,
+    user?.id ? { workosId: user.id } : 'skip'
+  )
+
+  // Get organization members to display names
+  const members = useQuery(
+    api.organizations.getMembers,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+
+  const userMap = useMemo(() => {
+    if (!members) return {}
+    const map: Record<string, { name: string; image?: string }> = {}
+    members.forEach((m) => {
+      if (m.user) {
+        map[m.userId] = {
+          name: m.user.firstName || m.user.email.split('@')[0],
+          image: m.user.profileImageUrl,
+        }
+      }
+    })
+    return map
+  }, [members])
 
   // Query projects from Convex using the Convex org ID
   const projects = useQuery(
@@ -132,102 +132,213 @@ export function Projects() {
     })
 
     return result
+    return result
   }, [projects, statusFilter, sortBy])
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredProjects.length / ITEMS_PER_PAGE)
+  const paginatedProjects = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return filteredProjects.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredProjects, currentPage])
+
+  // Reset page when filter/sort changes
+  useMemo(() => {
+    setCurrentPage(1)
+  }, [statusFilter, sortBy])
 
   const isLoading = convexOrg === undefined || (convexOrg && projects === undefined)
   const hasProjects = projects && projects.length > 0
   const isEmptyState = !isLoading && !hasProjects
+
+  const headerContent = !isEmptyState && (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <h1 className="text-lg font-semibold">Projects</h1>
+        {projects && projects.length > 0 && (
+          <Badge variant="secondary" className="text-xs font-normal">
+            {projects.length}
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <ButtonGroup>
+          {/* Status Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-r-none border-r-0 focus:z-10">
+                <FileCode className="h-3.5 w-3.5" />
+                {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sort */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-none border-r-0 focus:z-10">
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                Sort
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* View Mode Toggle */}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 px-0 rounded-l-none focus:z-10"
+            onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
+            disabled={isMobile}
+            title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
+          >
+            {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+          </Button>
+        </ButtonGroup>
+
+        <Button className="gap-2 h-8 px-2 text-xs" onClick={() => navigate('/projects/new')}>
+          <Plus className="h-3.5 w-3.5" />
+          New Project
+        </Button>
+      </div>
+    </div>
+  )
+
+  // Generate page numbers with ellipsis
+  const getPageNumbers = () => {
+    const pages: (number | 'ellipsis')[] = []
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i)
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 'ellipsis', totalPages)
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, 'ellipsis', totalPages - 2, totalPages - 1, totalPages)
+      } else {
+        pages.push(1, 'ellipsis', currentPage, 'ellipsis', totalPages)
+      }
+    }
+    return pages
+  }
+
+  const paginationContent = !isLoading && filteredProjects.length > ITEMS_PER_PAGE ? (
+    <Pagination>
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+          />
+        </PaginationItem>
+        {getPageNumbers().map((page, i) =>
+          page === 'ellipsis' ? (
+            <PaginationItem key={`ellipsis-${i}`}>
+              <PaginationEllipsis />
+            </PaginationItem>
+          ) : (
+            <PaginationItem key={page}>
+              <PaginationLink
+                onClick={() => setCurrentPage(page)}
+                isActive={currentPage === page}
+                className="cursor-pointer"
+              >
+                {page}
+              </PaginationLink>
+            </PaginationItem>
+          )
+        )}
+        <PaginationItem>
+          <PaginationNext
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  ) : undefined
 
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Projects' }]}
+      header={headerContent || undefined}
+      footer={paginationContent}
     >
       <TooltipProvider>
-      {/* Page Header with Filters - hidden in empty state */}
-      {!isEmptyState && (
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">Projects</h1>
-            <p className="text-muted-foreground">
-              Create and manage your AI-powered projects
-            </p>
+
+        {/* Loading State */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-          <div className="flex items-center gap-2">
-            {/* Status Filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <FileCode className="h-4 w-4" />
-                  {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Sort */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <ArrowUpDown className="h-4 w-4" />
-                  Sort
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-              <Plus className="h-4 w-4" />
-              New Project
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Loading State */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : filteredProjects.length === 0 ? (
-        /* Empty State */
-        <Empty className="h-[calc(100vh-12rem)]">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <IconFolderCode />
-            </EmptyMedia>
-            <EmptyTitle>No Projects Yet</EmptyTitle>
-            <EmptyDescription>
-              You haven't created any projects yet. Get started by creating your first project.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-              <Plus className="h-4 w-4" />
-              Create Project
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : (
-        /* Grid View */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
-          {filteredProjects.map((project) => (
-            <ProjectCard key={project._id} project={project} />
-          ))}
-        </div>
-      )}
-    </TooltipProvider>
-  </DashboardLayout>
-)
+        ) : filteredProjects.length === 0 ? (
+          /* Empty State */
+          <Empty className="h-[calc(100vh-12rem)]">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <IconFolderCode />
+              </EmptyMedia>
+              <EmptyTitle>No Projects Yet</EmptyTitle>
+              <EmptyDescription>
+                You haven't created any projects yet. Get started by creating your first project.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button className="gap-2" onClick={() => navigate('/projects/new')}>
+                <Plus className="h-4 w-4" />
+                Create Project
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          /* Projects List */
+          effectiveViewMode === 'grid' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
+              {paginatedProjects.map((project) => (
+                <ProjectCard key={project._id} project={project} userId={convexUser?._id} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col pb-10">
+              <div className="sticky top-12 z-10 bg-background grid grid-cols-12 gap-4 py-2 px-4 border-b text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <div className="col-span-8 sm:col-span-6 md:col-span-5 lg:col-span-4">Name</div>
+                <div className="col-span-2 sm:col-span-2 md:col-span-1 text-center">Status</div>
+                <div className="hidden md:block md:col-span-4 lg:col-span-3 text-left">Last modified by</div>
+                <div className="hidden lg:block lg:col-span-1 text-center">Sync</div>
+                <div className="hidden sm:block sm:col-span-3 md:col-span-2 text-right pr-4">Last modified</div>
+                <div className="col-span-2 sm:col-span-1"></div>
+              </div>
+              {/* List Items */}
+              {paginatedProjects.map((project) => {
+                const modifier = userMap[project.lastSyncBy || project.createdBy]
+                return (
+                  <ProjectListRow
+                    key={project._id}
+                    project={project}
+                    userId={convexUser?._id}
+                    creatorName={modifier?.name || 'Unknown'}
+                    creatorImage={modifier?.image}
+                  />
+                )
+              })}
+            </div>
+          )
+        )}
+      </TooltipProvider>
+    </DashboardLayout>
+  )
 }

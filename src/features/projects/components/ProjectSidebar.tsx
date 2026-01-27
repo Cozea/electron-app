@@ -29,6 +29,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarGroup,
+    SidebarGroupLabel,
     SidebarGroupContent,
     SidebarRail,
 } from "@/components/ui/sidebar"
@@ -131,6 +132,7 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                     <SidebarContent className="group-data-[collapsible=icon]:mt-9">
                         {navGroups.map((group) => (
                             <SidebarGroup key={group.title}>
+                                <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                                 <SidebarGroupContent>
                                     <SidebarMenu>
                                         {group.items.map((item) => {

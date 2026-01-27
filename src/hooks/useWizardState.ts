@@ -32,6 +32,7 @@ export interface WizardIntent {
   description: string
   audience: string
   targetLaunchDate?: number
+  successCriteria?: 'working_feature' | 'mvp_launch' | 'production_ready' | 'internal_tool'
 }
 
 export interface WizardStack {
@@ -103,10 +104,9 @@ export interface WizardPromptSettings {
   model: string
   agentType: 'agent' | 'assistant'
   reasoningDepth: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high'
   toolsEnabled: boolean
   webSearchEnabled: boolean
-  thinkingEffort?: 'low' | 'medium' | 'high'
-  providerOptions?: Record<string, unknown>
 }
 
 export interface WizardState {
@@ -152,7 +152,7 @@ export interface WizardStepDef {
 export const FRESH_STEPS: WizardStepDef[] = [
   { id: 'entry', title: 'Start', description: 'Choose how to create', icon: Sparkles },
   { id: 'intent', title: 'Intent', description: 'Tell us about your project', icon: Lightbulb },
-  { id: 'template', title: 'Template', description: 'Choose a starting point', icon: LayoutTemplate },
+  { id: 'template', title: 'Architecture', description: 'Choose a starting point', icon: LayoutTemplate },
   { id: 'stack', title: 'Stack', description: 'Choose your tech stack', icon: Wrench },
   { id: 'source', title: 'Source', description: 'Source control & CI/CD', icon: FolderGit2 },
   { id: 'visuals', title: 'Visuals', description: 'Visual style & branding', icon: Palette },

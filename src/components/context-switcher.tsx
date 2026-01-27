@@ -1,7 +1,7 @@
 "use client"
 
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronsUpDown, FolderOpen, Home, Plus } from 'lucide-react'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2 } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import {
@@ -50,8 +50,8 @@ export function ContextSwitcher() {
   // Get recent projects (up to 4, sorted by last updated)
   const recentProjects = projects
     ? [...projects]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 4)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 4)
     : []
 
   // Determine if we're in a project context
@@ -87,13 +87,11 @@ export function ContextSwitcher() {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-accent-foreground">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 {isInProject ? (
                   <FolderOpen className="size-4" />
                 ) : (
-                  <span className="text-xs font-bold">
-                    {organization.name.charAt(0).toUpperCase()}
-                  </span>
+                  <Building2 className="size-4" />
                 )}
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">

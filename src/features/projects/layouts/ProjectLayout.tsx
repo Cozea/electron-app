@@ -59,6 +59,17 @@ export function ProjectLayout({
             : "skip"
     )
 
+    // Get per-user local path for this project (machine-specific)
+    const memberLocalPath = useQuery(
+        api.projectMembers.getMemberLocalPath,
+        project?._id && convexUser?._id
+            ? { projectId: project._id, userId: convexUser._id }
+            : "skip"
+    )
+
+    // Per-user local path only (no fallback to shared project.localPath)
+    const effectiveLocalPath = memberLocalPath ?? null
+
     // File tree ref for refresh functionality
     const fileTreeRef = useRef<FileTreeHandle>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
@@ -140,7 +151,7 @@ export function ProjectLayout({
                     </div>
                     <ChatPanel />
                     <AssistantPanel
-                      projectPath={project?.localPath}
+                      projectPath={effectiveLocalPath ?? undefined}
                       projectName={project?.name}
                       projectSlug={slug}
                     />
@@ -159,7 +170,7 @@ export function ProjectLayout({
                 userId={convexUser._id}
                 userName={convexUser.firstName || convexUser.email}
                 projectSlug={slug}
-                localPath={project.localPath ?? null}
+                localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
             >
                 {layoutContent}

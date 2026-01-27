@@ -12,6 +12,12 @@ export interface PendingAttachment {
   type: 'image'
   data: string // base64 data URL
   name: string
+  context?: {
+    pagePath?: string
+    pageFile?: string
+    projectName?: string
+    serverPort?: number
+  }
 }
 
 interface AssistantPanelState {
@@ -32,7 +38,9 @@ interface AssistantPanelState {
   setPendingPrompt: (prompt: string | null) => void
   openWithPrompt: (prompt: string) => void
   addPendingAttachment: (attachment: PendingAttachment) => void
+  removePendingAttachment: (index: number) => void
   clearPendingAttachments: () => void
+  openWithScreenshot: (screenshot: PendingAttachment, prompt?: string) => void
   requestClearChat: () => void
   setPanelWidth: (width: number) => void
   resetPanelWidth: () => void
@@ -71,7 +79,17 @@ export const useAssistantPanelStore = create<AssistantPanelState>()(
         pendingAttachments: [...state.pendingAttachments, attachment]
       })),
 
+      removePendingAttachment: (index) => set((state) => ({
+        pendingAttachments: state.pendingAttachments.filter((_, i) => i !== index)
+      })),
+
       clearPendingAttachments: () => set({ pendingAttachments: [] }),
+
+      openWithScreenshot: (screenshot, prompt) => set({
+        mode: 'panel',
+        pendingAttachments: [screenshot],
+        pendingPrompt: prompt || null,
+      }),
 
       requestClearChat: () => set((state) => ({
         triggerClearChat: state.triggerClearChat + 1,

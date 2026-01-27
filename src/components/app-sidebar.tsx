@@ -1,11 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { useLocation } from "react-router-dom"
 import {
-  Home,
   Users,
-  Building2,
+  Shield,
+  Settings,
+  CreditCard,
+  Sparkles,
+  Plug,
+  Cloud,
 } from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
 
@@ -31,45 +34,21 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
-  const location = useLocation()
-  const currentPath = location.pathname
+  const platformItems = [
+    { title: "Projects", url: "/projects", icon: IconFolderCode },
+  ]
 
-  const navMain = [
-    {
-      title: "Dashboard",
-      url: "/",
-      icon: Home,
-      isActive: currentPath === "/",
-    },
-    {
-      title: "Projects",
-      url: "/projects",
-      icon: IconFolderCode,
-      isActive: currentPath.startsWith("/projects"),
-    },
-    {
-      title: "Teams",
-      url: "/teams",
-      icon: Users,
-      isActive: currentPath.startsWith("/teams"),
-      items: [
-        { title: "Members", url: "/teams" },
-        { title: "Roles", url: "/teams/roles" },
-      ],
-    },
-    {
-      title: "Workspace",
-      url: "/workspace/general",
-      icon: Building2,
-      isActive: currentPath.startsWith("/workspace"),
-      items: [
-        { title: "General", url: "/workspace/general" },
-        { title: "Billing", url: "/workspace/billing" },
-        { title: "AI", url: "/workspace/ai" },
-        { title: "Integrations", url: "/workspace/integrations" },
-        { title: "Cloud Sync", url: "/workspace/sync" },
-      ],
-    },
+  const teamItems = [
+    { title: "Members", url: "/teams", icon: Users },
+    { title: "Roles", url: "/teams/roles", icon: Shield },
+  ]
+
+  const workspaceItems = [
+    { title: "General", url: "/workspace/general", icon: Settings },
+    { title: "Billing", url: "/workspace/billing", icon: CreditCard },
+    { title: "AI", url: "/workspace/ai", icon: Sparkles },
+    { title: "Integrations", url: "/workspace/integrations", icon: Plug },
+    { title: "Cloud Sync", url: "/workspace/sync", icon: Cloud },
   ]
 
   return (
@@ -78,7 +57,9 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
         <ContextSwitcher />
       </SidebarHeader>
       <SidebarContent className="group-data-[collapsible=icon]:mt-9">
-        <NavMain items={navMain} />
+        <NavMain label="Platform" items={platformItems} />
+        <NavMain label="Team" items={teamItems} />
+        <NavMain label="Workspace" items={workspaceItems} />
       </SidebarContent>
       <SidebarFooter className="pb-6">
         <NavUser user={user} onLogout={onLogout} />

@@ -1,0 +1,443 @@
+/**
+ * Preview Bridge Script
+ *
+ * Shared string injected into preview iframes to enable:
+ * - Element inspection (click-to-select with highlight overlay)
+ * - Computed style extraction
+ * - Screenshot capture via html2canvas
+ * - Live style updates via postMessage
+ *
+ * Kept in `shared/` so both the Electron main process and the renderer can use
+ * the exact same script source.
+ */
+
+/** CSS properties we extract from computed styles */
+const STYLE_PROPERTIES = [
+  'display', 'position', 'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+  'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+  'overflow', 'cursor', 'zIndex',
+  'fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'letterSpacing', 'textAlign',
+  'textDecoration', 'textTransform',
+  'color', 'backgroundColor',
+  'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat',
+  'border', 'borderWidth', 'borderStyle', 'borderColor', 'borderRadius',
+  'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
+  'boxShadow', 'opacity', 'transform', 'transition',
+  'flexDirection', 'justifyContent', 'alignItems', 'gap', 'flexWrap', 'flexGrow', 'flexShrink',
+] as const
+
+/**
+ * Bridge script to inject into preview iframes (as string)
+ * Self-contained - no external dependencies except html2canvas loaded dynamically.
+ */
+export const BRIDGE_SCRIPT = `
+(function() {
+  // Prevent double initialization
+  if (window.__COZEA_BRIDGE_LOADED__) return;
+  window.__COZEA_BRIDGE_LOADED__ = true;
+
+  let inspectorEnabled = false;
+  let highlightOverlay = null;
+  let selectedOverlay = null;
+  let currentSelectedElement = null;
+  let lastContextMenuTime = 0;
+
+  // Create highlight overlay element
+  function createOverlay(id, color) {
+    const overlay = document.createElement('div');
+    overlay.id = id;
+    overlay.style.cssText = \`
+      position: fixed;
+      pointer-events: none;
+      z-index: 999999;
+      border: 2px solid \${color};
+      background: \${color}22;
+      transition: all 0.05s ease;
+      display: none;
+      box-sizing: border-box;
+    \`;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  // Position overlay over element
+  function positionOverlay(overlay, rect) {
+    if (!overlay) return;
+    overlay.style.display = 'block';
+    overlay.style.left = rect.x + 'px';
+    overlay.style.top = rect.y + 'px';
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+  }
+
+  // Generate CSS selector for element
+  function getSelector(el) {
+    if (!el || el === document.body) return 'body';
+    if (el.id) return '#' + CSS.escape(el.id);
+
+    const parts = [];
+    while (el && el !== document.body && el !== document.documentElement) {
+      let selector = el.tagName.toLowerCase();
+
+      // Add first meaningful class if available
+      if (el.className && typeof el.className === 'string') {
+        const classes = el.className.split(' ')
+          .filter(c => c && !c.startsWith('_') && c.length < 30)
+          .slice(0, 2);
+        if (classes.length) {
+          selector += '.' + classes.map(c => CSS.escape(c)).join('.');
+        }
+      }
+
+      // Add nth-child if needed for uniqueness
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(el) + 1;
+          selector += ':nth-of-type(' + index + ')';
+        }
+      }
+
+      parts.unshift(selector);
+      el = el.parentElement;
+    }
+
+    return parts.join(' > ');
+  }
+
+  // Get computed styles for element
+  function getComputedStylesMap(el) {
+    const computed = window.getComputedStyle(el);
+    const props = ${JSON.stringify(STYLE_PROPERTIES)};
+    const styles = {};
+    for (const prop of props) {
+      try {
+        styles[prop] = computed[prop] || '';
+      } catch (e) {
+        styles[prop] = '';
+      }
+    }
+    return styles;
+  }
+
+  // Get element path (indices) for re-selection
+  function getElementPath(el) {
+    const path = [];
+    while (el && el !== document.body && el !== document.documentElement) {
+      const parent = el.parentElement;
+      if (parent) {
+        const index = Array.from(parent.children).indexOf(el);
+        path.unshift(index);
+      }
+      el = parent;
+    }
+    return path;
+  }
+
+  // Try to extract a React component stack for a DOM element (dev-only, best-effort)
+  function getReactComponentInfo(el) {
+    try {
+      if (!el) return null;
+      const keys = Object.keys(el);
+      const fiberKey = keys.find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+      if (!fiberKey) return null;
+      let fiber = el[fiberKey];
+      if (!fiber) return null;
+
+      function getFiberName(f) {
+        const type = f && (f.type || f.elementType);
+        if (!type) return null;
+        if (typeof type === 'string') return null; // host components (div/span)
+        if (typeof type === 'function') return type.displayName || type.name || 'Anonymous';
+        if (typeof type === 'object') {
+          // memo/forwardRef
+          const render = type.render;
+          return type.displayName || (render && (render.displayName || render.name)) || type.name || 'Anonymous';
+        }
+        return null;
+      }
+
+      const componentStack = [];
+      let debugSource = null;
+      let current = fiber;
+      let depth = 0;
+
+      while (current && depth < 20) {
+        const name = getFiberName(current);
+        if (name) componentStack.push(name);
+        if (!debugSource && current._debugSource) {
+          debugSource = current._debugSource;
+        }
+        current = current.return;
+        depth++;
+      }
+
+      if (!componentStack.length && !debugSource) return null;
+      const safeSource = debugSource ? {
+        fileName: debugSource.fileName,
+        lineNumber: debugSource.lineNumber,
+        columnNumber: debugSource.columnNumber
+      } : null;
+
+      return {
+        componentStack: componentStack.slice(0, 10),
+        source: safeSource
+      };
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  // Send message to parent window
+  function postToParent(message) {
+    try {
+      window.parent.postMessage(message, '*');
+    } catch (e) {
+      console.warn('[Bridge] Failed to post message:', e);
+    }
+  }
+
+  // Handle mouse move during inspection
+  function handleMouseMove(e) {
+    if (!inspectorEnabled) return;
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+
+    const rect = el.getBoundingClientRect();
+    positionOverlay(highlightOverlay, rect);
+
+    postToParent({
+      type: 'bridge:element-hover',
+      payload: {
+        tagName: el.tagName.toLowerCase(),
+        className: el.className || '',
+        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      }
+    });
+  }
+
+  // Handle click during inspection
+  function handleClick(e) {
+    if (!inspectorEnabled) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+
+    currentSelectedElement = el;
+    const rect = el.getBoundingClientRect();
+
+    // Show selection overlay, hide hover
+    positionOverlay(selectedOverlay, rect);
+    if (highlightOverlay) highlightOverlay.style.display = 'none';
+
+    postToParent({
+      type: 'bridge:element-selected',
+      payload: {
+        tagName: el.tagName.toLowerCase(),
+        className: el.className || '',
+        id: el.id || undefined,
+        selector: getSelector(el),
+        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        computedStyles: getComputedStylesMap(el),
+        htmlSnippet: el.outerHTML.slice(0, 500),
+        textContent: el.textContent?.trim().slice(0, 200),
+        path: getElementPath(el)
+      }
+    });
+  }
+
+  // Handle right-click during inspection (captures context)
+  function handleContextMenu(e) {
+    if (!inspectorEnabled) return;
+
+    // Throttle: some apps fire multiple contextmenu events rapidly
+    const now = Date.now();
+    if (now - lastContextMenuTime < 150) return;
+    lastContextMenuTime = now;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+
+    currentSelectedElement = el;
+    const rect = el.getBoundingClientRect();
+
+    // Show selection overlay, hide hover
+    positionOverlay(selectedOverlay, rect);
+    if (highlightOverlay) highlightOverlay.style.display = 'none';
+
+    postToParent({
+      type: 'bridge:element-contextmenu',
+      payload: {
+        tagName: el.tagName.toLowerCase(),
+        className: el.className || '',
+        id: el.id || undefined,
+        selector: getSelector(el),
+        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        computedStyles: getComputedStylesMap(el),
+        htmlSnippet: el.outerHTML.slice(0, 500),
+        textContent: el.textContent?.trim().slice(0, 200),
+        path: getElementPath(el),
+        clientX: e.clientX,
+        clientY: e.clientY,
+        react: getReactComponentInfo(el),
+      }
+    });
+  }
+
+  // Capture screenshot using html2canvas
+  async function captureScreenshot() {
+    try {
+      // Dynamically load html2canvas if not present
+      if (!window.html2canvas) {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load html2canvas'));
+          document.head.appendChild(script);
+        });
+      }
+
+      // Hide overlays during capture
+      if (highlightOverlay) highlightOverlay.style.display = 'none';
+      if (selectedOverlay) selectedOverlay.style.display = 'none';
+
+      const canvas = await window.html2canvas(document.body, {
+        useCORS: true,
+        allowTaint: true,
+        scale: window.devicePixelRatio || 1,
+        logging: false,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+
+      const dataUrl = canvas.toDataURL('image/png');
+      postToParent({
+        type: 'bridge:screenshot-ready',
+        payload: { dataUrl }
+      });
+    } catch (err) {
+      postToParent({
+        type: 'bridge:screenshot-ready',
+        payload: { error: err.message || 'Screenshot capture failed' }
+      });
+    }
+  }
+
+  // Apply style update to selected element
+  function applyStyleUpdate(styles) {
+    if (!currentSelectedElement) {
+      postToParent({
+        type: 'bridge:style-update-ack',
+        payload: { success: false, error: 'No element selected' }
+      });
+      return;
+    }
+
+    try {
+      for (const [prop, value] of Object.entries(styles)) {
+        currentSelectedElement.style[prop] = value;
+      }
+
+      // Update selection overlay position in case size changed
+      const rect = currentSelectedElement.getBoundingClientRect();
+      positionOverlay(selectedOverlay, rect);
+
+      postToParent({
+        type: 'bridge:style-update-ack',
+        payload: { success: true }
+      });
+    } catch (err) {
+      postToParent({
+        type: 'bridge:style-update-ack',
+        payload: { success: false, error: err.message }
+      });
+    }
+  }
+
+  // Clear selection
+  function clearSelection() {
+    currentSelectedElement = null;
+    if (selectedOverlay) selectedOverlay.style.display = 'none';
+    if (highlightOverlay) highlightOverlay.style.display = 'none';
+  }
+
+  // Listen for messages from parent
+  window.addEventListener('message', (e) => {
+    const { type, payload } = e.data || {};
+
+    switch (type) {
+      case 'host:enable-inspector':
+        inspectorEnabled = true;
+        if (!highlightOverlay) {
+          highlightOverlay = createOverlay('cozea-highlight', '#3b82f6');
+          selectedOverlay = createOverlay('cozea-selected', '#22c55e');
+        }
+        document.body.style.cursor = 'crosshair';
+        break;
+
+      case 'host:disable-inspector':
+        inspectorEnabled = false;
+        if (highlightOverlay) highlightOverlay.style.display = 'none';
+        document.body.style.cursor = '';
+        break;
+
+      case 'host:request-screenshot':
+        captureScreenshot();
+        break;
+
+      case 'host:update-style':
+        if (payload && payload.styles) {
+          applyStyleUpdate(payload.styles);
+        }
+        break;
+
+      case 'host:update-text':
+        if (payload && typeof payload.text === 'string' && currentSelectedElement) {
+          currentSelectedElement.textContent = payload.text;
+
+          // Update selection overlay position in case size changed
+          const rect = currentSelectedElement.getBoundingClientRect();
+          positionOverlay(selectedOverlay, rect);
+        }
+        break;
+
+      case 'host:clear-selection':
+        clearSelection();
+        break;
+    }
+  });
+
+  // Attach event listeners (capture phase for inspection)
+  document.addEventListener('mousemove', handleMouseMove, true);
+  document.addEventListener('click', handleClick, true);
+  document.addEventListener('contextmenu', handleContextMenu, true);
+
+  // Prevent default on click during inspection
+  document.addEventListener('click', (e) => {
+    if (inspectorEnabled) {
+      e.preventDefault();
+    }
+  }, false);
+
+  // Prevent default context menu during inspection
+  document.addEventListener('contextmenu', (e) => {
+    if (inspectorEnabled) {
+      e.preventDefault();
+    }
+  }, false);
+
+  // Signal bridge is ready
+  postToParent({ type: 'bridge:ready' });
+  console.log('[Cozea] Preview bridge initialized');
+})();
+`;

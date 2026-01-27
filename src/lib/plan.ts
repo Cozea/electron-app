@@ -18,6 +18,27 @@ export interface GeneratedPlan {
   entities: GeneratedPlanEntity[]
 }
 
+// Normalized types with required fields (after normalization)
+export interface NormalizedPlanPage {
+  id: string
+  name: string
+  route: string
+  type: string
+  purpose?: string
+  actions?: string[]
+}
+
+export interface NormalizedPlanEntity {
+  id: string
+  name: string
+  fields?: string[]
+}
+
+export interface NormalizedGeneratedPlan {
+  pages: NormalizedPlanPage[]
+  entities: NormalizedPlanEntity[]
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -42,7 +63,7 @@ function ensureRoute(name: string, route?: string): string {
   return `/${base || "page"}`
 }
 
-export function normalizeGeneratedPlan(plan: GeneratedPlan): GeneratedPlan {
+export function normalizeGeneratedPlan(plan: GeneratedPlan): NormalizedGeneratedPlan {
   const pages = (plan.pages || []).map((page) => {
     const name = page.name || "Untitled Page"
     return {

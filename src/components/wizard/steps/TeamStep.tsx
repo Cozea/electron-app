@@ -10,13 +10,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Users, X, AlertCircle } from 'lucide-react'
+import { Users, X, AlertCircle, Plus } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { WizardTeamMember, ProjectRole } from '@/hooks/useWizardState'
+import { motion } from 'framer-motion'
 
 interface TeamStepProps {
   team: WizardTeamMember[]
-  currentUserEmail: string
   onAddMember: (member: WizardTeamMember) => void
   onRemoveMember: (email: string) => void
 }
@@ -28,7 +28,7 @@ const ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
   viewer: 'Read-only access',
 }
 
-export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }: TeamStepProps) {
+export function TeamStep({ team, onAddMember, onRemoveMember }: TeamStepProps) {
   const [newMember, setNewMember] = useState({
     name: '',
     email: '',
@@ -51,18 +51,17 @@ export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }
   }
 
   return (
-    <div className="space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold">Team & Roles</h2>
-        <p className="text-muted-foreground">
-          Invite team members to collaborate on this project
-        </p>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-10"
+    >
 
-      <div className="space-y-6 max-w-xl mx-auto">
+
+      <div className="space-y-8 max-w-2xl mx-auto">
         {/* Warning if no PM */}
         {!hasPM && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="border-destructive/20 bg-destructive/10">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               At least one Project Manager is required
@@ -70,24 +69,25 @@ export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }
           </Alert>
         )}
 
-        {/* Current team members */}
-        {team.length > 0 ? (
-          <div className="space-y-2">
-            <Label>Team Members</Label>
-            <div className="border rounded-lg divide-y">
+        {/* Team List & Empty State */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Team Members</Label>
+
+          {team.length > 0 ? (
+            <div className="border rounded-xl divide-y bg-card overflow-hidden">
               {team.map((member) => (
-                <div key={member.email} className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-xs font-medium text-primary">
+                <div key={member.email} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-semibold text-primary">
                         {(member.name || member.email).slice(0, 2).toUpperCase()}
                       </span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium flex items-center gap-2">
                         {member.name || member.email}
                         {member.isCurrentUser && (
-                          <span className="text-muted-foreground ml-1">(you)</span>
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 py-0 font-normal">You</Badge>
                         )}
                       </p>
                       {member.name && (
@@ -95,15 +95,15 @@ export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="secondary" className="font-normal capitalize">
                       {member.role.replace('_', ' ')}
                     </Badge>
                     {!member.isCurrentUser && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
                         onClick={() => onRemoveMember(member.email)}
                       >
                         <X className="h-4 w-4" />
@@ -113,28 +113,36 @@ export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }
                 </div>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="border-2 border-dashed rounded-lg p-8 text-center">
-            <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">No team members added yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              You&apos;ll be added as Project Manager
-            </p>
-          </div>
-        )}
+          ) : (
+            <div className="border-2 border-dashed rounded-xl p-10 text-center space-y-2 bg-muted/20">
+              <div className="bg-muted rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4">
+                <Users className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium">No team members added yet</p>
+              <p className="text-xs text-muted-foreground">
+                You&apos;ll be added as Project Manager automatically
+              </p>
+            </div>
+          )}
+        </div>
 
-        {/* Add member form */}
-        <div className="space-y-3">
-          <Label>Invite by email</Label>
-          <div className="flex gap-2">
+        {/* Add Member Form */}
+        <div className="bg-muted/30 p-6 rounded-xl space-y-4">
+          <Label className="text-base font-medium">Invite New Member</Label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              placeholder="Name (Optional)"
+              value={newMember.name}
+              onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+            />
             <Input
               placeholder="colleague@example.com"
               value={newMember.email}
               onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-              className="flex-1"
               type="email"
             />
+          </div>
+          <div className="flex gap-3 justify-end">
             <Select
               value={newMember.role}
               onValueChange={(value) => setNewMember({ ...newMember, role: value as ProjectRole })}
@@ -149,22 +157,23 @@ export function TeamStep({ team, currentUserEmail, onAddMember, onRemoveMember }
                 <SelectItem value="viewer">Viewer</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={handleAdd} disabled={!newMember.email}>
+            <Button onClick={handleAdd} disabled={!newMember.email} className="gap-2">
+              <Plus className="h-4 w-4" />
               Add
             </Button>
           </div>
         </div>
 
-        {/* Role descriptions */}
-        <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Available Roles:</p>
+        {/* Role Helper */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
           {Object.entries(ROLE_DESCRIPTIONS).map(([role, description]) => (
-            <p key={role} className="text-xs text-muted-foreground">
-              <span className="font-medium capitalize">{role.replace('_', ' ')}</span> — {description}
-            </p>
+            <div key={role} className="flex items-start gap-2 text-xs text-muted-foreground">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/40 mt-1.5 shrink-0" />
+              <span><span className="font-medium text-foreground capitalize">{role.replace('_', ' ')}:</span> {description}</span>
+            </div>
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

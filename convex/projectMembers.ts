@@ -358,3 +358,52 @@ export const getMemberCount = query({
     return members.length
   },
 })
+
+// ============================================
+// LOCAL PATH MANAGEMENT (per-user, per-project)
+// ============================================
+
+// Get the current user's local path for a project
+export const getMemberLocalPath = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
+
+    return membership?.localPath ?? null
+  },
+})
+
+// Update the current user's local path for a project
+export const updateMemberLocalPath = mutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    localPath: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership) {
+      throw new Error("User is not a member of this project")
+    }
+
+    await ctx.db.patch(membership._id, {
+      localPath: args.localPath,
+    })
+
+    return { success: true }
+  },
+})

@@ -1,16 +1,15 @@
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import {
-    FolderKanban,
     Clock,
     MoreHorizontal,
-    ExternalLink,
-    Code2,
-    Globe,
-    Database,
-    CheckCircle2,
-    Circle,
     FileCode,
-    Users
+    Loader2,
+    Trash2,
+    Cloud,
+    Check
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,8 +18,20 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Input } from '@/components/ui/input'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
 
@@ -43,21 +54,140 @@ function formatRelativeTime(timestamp: number): string {
     return 'now'
 }
 
-function getStackIcon(tech: string) {
-    // Simple mapping for now
-    const t = tech.toLowerCase()
-    if (t.includes('react') || t.includes('next')) return <Code2 className="h-3 w-3" />
-    if (t.includes('postgres') || t.includes('convex')) return <Database className="h-3 w-3" />
-    return <Globe className="h-3 w-3" />
-}
 
-export function ProjectCard({ project }: ProjectCardProps) {
+
+type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
+
+export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: string }) {
     const navigate = useNavigate()
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+    const [deleteConfirmName, setDeleteConfirmName] = useState('')
+    const [isDeleting, setIsDeleting] = useState(false)
+    const [deleteError, setDeleteError] = useState<string | null>(null)
+    const [syncState, setSyncState] = useState<SyncState>('idle')
+    const [syncMessage, setSyncMessage] = useState('')
+    const deleteProject = useMutation(api.projects.deleteProject)
+    const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+
+    // Get cloud manifest for sync check
+    const cloudManifest = useQuery(
+        api.projectFiles.getManifestForProject,
+        project.status !== 'draft' ? { projectId: project._id } : 'skip'
+    )
+
+    const handleCardClick = useCallback(async () => {
+        // Draft projects go straight to wizard
+        if (project.status === 'draft') {
+            navigate(`/projects/new?resume=${project._id}`)
+            return
+        }
+
+        // Start sync check
+        setSyncState('checking')
+        setSyncMessage('Preparing project...')
+
+        try {
+            // Check if local folder exists
+            const folderExists = await window.electronAPI.project.exists(project.slug)
+
+            if (!folderExists) {
+                setSyncMessage('Creating local folder...')
+                const result = await window.electronAPI.project.createFolder({
+                    slug: project.slug,
+                    initGit: true,
+                })
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create folder')
+                }
+
+                // Update local path in database
+                if (userId) {
+                    await updateMemberLocalPath({
+                        projectId: project._id,
+                        userId: userId as any,
+                        localPath: result.localPath!,
+                    })
+                }
+            } else if (!project.localPath) {
+                // Folder exists but path not stored - get and save it
+                const localPath = await window.electronAPI.project.getLocalPath(project.slug)
+                if (localPath && userId) {
+                    await updateMemberLocalPath({
+                        projectId: project._id,
+                        userId: userId as any,
+                        localPath,
+                    })
+                }
+            }
+
+            // Quick check if sync is needed
+            const effectiveLocalPath = project.localPath || await window.electronAPI.project.getLocalPath(project.slug)
+
+            if (effectiveLocalPath && cloudManifest) {
+                setSyncMessage('Checking files...')
+                const localResult = await window.electronAPI.sync.getLocalManifest({
+                    projectPath: effectiveLocalPath,
+                })
+
+                const hasChanges = localResult.totalFiles !== cloudManifest.length
+
+                if (hasChanges) {
+                    setSyncState('syncing')
+                    setSyncMessage('Syncing files...')
+                    // Let the actual sync happen after navigation
+                }
+            }
+
+            // Navigate to project
+            setSyncState('ready')
+            setSyncMessage('Opening project...')
+
+            // Small delay to show the ready state
+            setTimeout(() => {
+                navigate(`/projects/${project.slug}`)
+            }, 200)
+
+        } catch (error) {
+            console.error('[ProjectCard] Sync check failed:', error)
+            setSyncState('error')
+            setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
+
+            // Reset after showing error
+            setTimeout(() => {
+                setSyncState('idle')
+                setSyncMessage('')
+            }, 2000)
+        }
+    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath])
+
+    const handleDelete = async () => {
+        if (!userId || deleteConfirmName !== project.name) return
+        setIsDeleting(true)
+        setDeleteError(null)
+        try {
+            await deleteProject({
+                projectId: project._id,
+                userId: userId as any,
+                confirmName: deleteConfirmName,
+            })
+            setShowDeleteDialog(false)
+            setDeleteConfirmName('')
+        } catch (error) {
+            console.error('Failed to delete project:', error)
+            const message = error instanceof Error ? error.message : 'Failed to delete project'
+            // Extract the actual error message from Convex error format
+            const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+            setDeleteError(cleanMessage)
+        } finally {
+            setIsDeleting(false)
+        }
+    }
 
     // Derived state
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
-    const hasPlan = project.generatedPlan?.pages && project.generatedPlan.pages.length > 0
+
     const stackBadges = []
     if (project.stack?.backend) stackBadges.push(project.stack.backend)
     if (project.stack?.hosting) stackBadges.push(project.stack.hosting)
@@ -74,42 +204,91 @@ export function ProjectCard({ project }: ProjectCardProps) {
     return (
         <div className="h-full">
             <Card
-                className="group relative flex flex-col h-full hover:shadow-md transition-all duration-200 border-border/50 bg-card/50 hover:bg-card"
-                onClick={() => {
-                    if (isDraft) {
-                        navigate(`/projects/new?resume=${project._id}`)
-                    } else {
-                        navigate(`/projects/${project.slug}`)
-                    }
-                }}
+                className={cn(
+                    "group relative flex flex-col h-full hover:shadow-md transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
+                    syncState !== 'idle' && "pointer-events-none"
+                )}
+                onClick={handleCardClick}
             >
-                <CardHeader className="pb-3 space-y-4">
-                    {/* Header Row: Tag + Actions */}
-                    <div className="flex items-start justify-between">
-                        <Badge
-                            variant="secondary"
-                            className={cn("rounded-md px-2.5 py-0.5 font-medium border-0", tagColor)}
-                        >
-                            {primaryTag}
-                        </Badge>
+                {/* Preview Section - Top Half */}
+                <div className="h-40 w-full bg-muted/50 flex items-center justify-center relative overflow-hidden group-hover:bg-muted/70 transition-colors rounded-t-xl">
+                    {/* Placeholder for future preview logic */}
+                    <div className="text-muted-foreground/20">
+                        <FileCode className="h-12 w-12" />
+                    </div>
 
-                        {/* Actions Area: Sync Badge + Menu */}
-                        <div className="flex items-center gap-1">
-                            {project.status !== 'draft' && project.localPath && (
-                                <div onClick={(e) => e.stopPropagation()}>
-                                    <ProjectDiffBadge
-                                        projectId={project._id}
-                                        projectSlug={project.slug}
-                                        localPath={project.localPath}
-                                        lastSyncAt={project.lastSyncAt}
-                                    />
-                                </div>
+                    {/* Sync Loader Overlay - only on preview section */}
+                    {syncState !== 'idle' && (
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm rounded-t-xl flex flex-col items-center justify-center gap-2">
+                            {syncState === 'error' ? (
+                                <>
+                                    <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                                        <Cloud className="h-5 w-5 text-destructive" />
+                                    </div>
+                                    <p className="text-xs text-destructive font-medium text-center px-4">{syncMessage}</p>
+                                </>
+                            ) : syncState === 'ready' ? (
+                                <>
+                                    <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                                        <Check className="h-5 w-5 text-green-500" />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground font-medium">{syncMessage}</p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground font-medium">{syncMessage}</p>
+                                </>
                             )}
+                        </div>
+                    )}
+
+                    {/* Sync Badge positioned over preview */}
+                    {project.status !== 'draft' && project.localPath && syncState === 'idle' && (
+                        <div onClick={(e) => e.stopPropagation()} className="absolute top-2 right-2 z-10">
+                            <ProjectDiffBadge
+                                projectId={project._id}
+                                projectSlug={project.slug}
+                                localPath={project.localPath}
+                                lastSyncAt={project.lastSyncAt}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Progress bar at the border between preview and content */}
+                <div className="relative h-0.5 w-full bg-border/50">
+                    {syncState !== 'idle' && syncState !== 'error' && (
+                        <div
+                            className={cn(
+                                "absolute inset-0 h-full transition-all duration-300",
+                                syncState === 'ready' ? "bg-green-500" : "bg-primary"
+                            )}
+                            style={{
+                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%',
+                                animation: syncState !== 'ready' ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                            }}
+                        />
+                    )}
+                </div>
+
+                {/* Content Section - Bottom Half */}
+                <div className="flex flex-col flex-1">
+                    <CardHeader className="px-3 pt-4 pb-0 space-y-0.5">
+                        <div className="flex items-start justify-between">
+                            <Badge
+                                variant="secondary"
+                                className={cn("rounded-md px-2 py-0 text-[10px] font-medium border-0", tagColor)}
+                            >
+                                {primaryTag}
+                            </Badge>
 
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <MoreHorizontal className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground -mr-1 -mt-1">
+                                        <MoreHorizontal className="h-3 w-3" />
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -134,112 +313,104 @@ export function ProjectCard({ project }: ProjectCardProps) {
                                             Archive
                                         </DropdownMenuItem>
                                     )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            setShowDeleteDialog(true)
+                                        }}
+                                        className="text-destructive focus:text-destructive"
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
-                    </div>
 
-                    {/* Title & Description */}
-                    <div>
-                        <CardTitle className="text-xl font-bold leading-tight mb-1">
-                            {project.name}
-                        </CardTitle>
-                        <CardDescription className="line-clamp-2 text-sm">
-                            {project.description || "No description provided."}
-                        </CardDescription>
-                    </div>
-                </CardHeader>
+                        <div>
+                            <CardTitle className="text-base font-bold leading-tight mb-1 truncate">
+                                {project.name}
+                            </CardTitle>
+                            <CardDescription className="line-clamp-2 text-xs h-8">
+                                {project.description || "No description provided."}
+                            </CardDescription>
+                        </div>
+                    </CardHeader>
 
-                <CardContent className="space-y-6 flex flex-col flex-1">
-                    {/* Body Content: Checklist or Status */}
-                    {hasPlan ? (
-                        <div className="space-y-2">
-                            {project.generatedPlan.pages.slice(0, 3).map((page: any, idx: number) => (
-                                <div key={idx} className="flex items-center gap-2 text-sm text-foreground/80">
-                                    {/* Fake checked state for design aesthetic or random for demo */}
-                                    <div className={cn(
-                                        "h-4 w-4 rounded border flex items-center justify-center",
-                                        idx === 0 ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
-                                    )}>
-                                        {idx === 0 && <CheckCircle2 className="h-3 w-3" />}
-                                    </div>
-                                    <span className={idx === 0 ? "line-through text-muted-foreground" : ""}>
-                                        {page.name}
-                                    </span>
+                    <CardContent className="px-3 pb-3 pt-0 mt-auto">
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-2">
+                            {isBuilding ? (
+                                <div className="flex items-center gap-2 text-xs text-blue-500 font-medium animate-pulse">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> Building...
                                 </div>
-                            ))}
-                            {project.generatedPlan.pages.length > 3 && (
-                                <div className="pt-1 text-xs text-muted-foreground font-medium flex items-center gap-1">
-                                    <Plus className="h-3 w-3" />
-                                    Add New List
+                            ) : (
+                                <div className="text-xs text-muted-foreground font-medium">
+                                    {isDraft ? 'Draft' : 'Active'}
                                 </div>
                             )}
-                        </div>
-                    ) : isBuilding ? (
-                        <div className="flex flex-col gap-2 p-3 bg-muted/30 rounded-lg border border-border/50">
-                            <div className="flex items-center gap-2 text-sm font-medium animate-pulse text-blue-600">
-                                <Loader2 className="h-3 w-3 animate-spin slate-spin" />
-                                Building Project...
-                            </div>
-                            <div className="h-1.5 w-full bg-muted overflow-hidden rounded-full">
-                                <div className="h-full bg-blue-500 w-2/3 animate-[shimmer_2s_infinite]" />
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="text-sm text-muted-foreground italic">
-                            Ready to start development.
-                        </div>
-                    )}
 
-                    {/* Link Preview Card (if applicable) */}
-                    {(project.stack?.hosting || project.url) && (
-                        <div className="flex items-center gap-3 p-3 rounded-xl bg-secondary/30 border border-border/50">
-                            <div className="h-8 w-8 rounded-lg bg-background flex items-center justify-center shadow-sm">
-                                <Globe className="h-4 w-4 text-blue-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-xs font-semibold truncate">
-                                    {project.stack?.hosting ? `${project.stack.hosting} Deployment` : 'Live Link'}
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatRelativeTime(project.updatedAt)}
                                 </div>
-                                <div className="text-[10px] text-muted-foreground truncate opacity-70">
-                                    {project.url || 'deployment.app'}
+                                <div className="flex items-center gap-1">
+                                    <FileCode className="h-3 w-3" />
+                                    {project.stats?.fileCount || Math.floor(Math.random() * 20) + 1}
                                 </div>
                             </div>
-                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
                         </div>
-                    )}
-
-                    {/* Footer: Users & Stats */}
-                    <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-auto">
-                        {/* Members area - Mocked for visual alignment with design */}
-                        <div className="flex -space-x-2">
-                            {/* Creator */}
-                            <div className="h-6 w-6 rounded-full ring-2 ring-background bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center text-[10px] text-white font-bold">
-                                {project.createdBy?.slice(0, 1).toUpperCase() || 'U'}
-                            </div>
-                            {/* Fake members for aesthetics if needed, or just show creator */}
-                            {project.teamId && (
-                                <div className="h-6 w-6 rounded-full ring-2 ring-background bg-muted flex items-center justify-center">
-                                    <Users className="h-3 w-3 text-muted-foreground" />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Stats */}
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatRelativeTime(project.updatedAt)}
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <FileCode className="h-3 w-3" />
-                                {project.stats?.fileCount || Math.floor(Math.random() * 20) + 1}
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
+                    </CardContent>
+                </div>
             </Card>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
+                setShowDeleteDialog(open)
+                if (!open) {
+                    setDeleteConfirmName('')
+                    setDeleteError(null)
+                }
+            }}>
+                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Project</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the project
+                            <span className="font-semibold"> {project.name}</span> and all associated data.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="py-4">
+                        <p className="text-sm text-muted-foreground mb-2">
+                            Type <span className="font-mono font-semibold">{project.name}</span> to confirm:
+                        </p>
+                        <Input
+                            value={deleteConfirmName}
+                            onChange={(e) => setDeleteConfirmName(e.target.value)}
+                            placeholder="Project name"
+                            className="w-full"
+                        />
+                        {deleteError && (
+                            <p className="text-sm text-destructive mt-2">
+                                {deleteError}
+                            </p>
+                        )}
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDelete}
+                            disabled={deleteConfirmName !== project.name || isDeleting}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            {isDeleting ? 'Deleting...' : 'Delete Project'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }
-import { Plus, Loader2 } from 'lucide-react'

@@ -21,7 +21,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
-import { Sparkles, FolderGit2 } from 'lucide-react'
+import { FolderGit2 } from 'lucide-react'
 import {
   IconArrowUp,
   IconSquare,
@@ -35,16 +35,12 @@ import {
   IconCircle,
   IconProgress,
   IconCircleDashed,
-  IconCode,
-  IconWorld,
   IconBrain,
 } from '@tabler/icons-react'
 import type { CreationPath } from '@/hooks/useWizardState'
-import { ProviderOptions, type ProviderOptionsState } from '@/components/assistant/ProviderOptions'
 import {
   loadModelSettings,
   saveModelSettings,
-  type StoredModelSettings,
 } from '@/lib/modelSettingsStorage'
 import {
   Context,
@@ -53,15 +49,13 @@ import {
   ContextContentHeader,
   ContextContentFooter,
 } from '@/components/ai-elements/context'
+import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 
 export interface PromptSettings {
   model: string
   agentType: 'agent' | 'assistant'
   reasoningDepth: 'low' | 'medium' | 'high'
-  toolsEnabled: boolean
-  webSearchEnabled: boolean
   thinkingEffort?: 'low' | 'medium' | 'high'
-  providerOptions?: ProviderOptionsState
 }
 
 interface EntryChoiceProps {
@@ -74,34 +68,16 @@ interface EntryChoiceProps {
 
 const GUIDED_OPTIONS = [
   {
-    id: 'fresh' as const,
-    icon: Sparkles,
-    title: 'Fresh Start',
-    description: 'Start from scratch with guided steps',
-    features: ['Full control', '~5 min'],
-  },
-  {
     id: 'repo' as const,
     icon: FolderGit2,
     title: 'Existing Repo',
     description: 'Import from GitHub, GitLab, or local folder',
-    features: ['Auto-detect', '~3 min'],
   },
 ]
 
 // Model catalog per CrossCode Pricing Spec v3
 // Tiers: Fast (1/2 credits), Standard (5/10 credits), Powerful (25/50 credits)
-// Model context window sizes (tokens)
-const MODEL_MAX_TOKENS: Record<string, number> = {
-  'claude-haiku-4-5': 200_000,
-  'claude-sonnet-4-5': 200_000,
-  'claude-opus-4-5': 200_000,
-  'gpt-5.1': 128_000,
-  'gpt-5.1-mini': 128_000,
-  'gpt-5.2': 128_000,
-  'gemini-3-flash': 1_000_000,
-  'gemini-3-pro': 1_000_000,
-}
+// Context window sizes are managed in ContextDisplay.tsx via getContextWindowSize()
 
 const defaultModels = [
   // ============================================
@@ -194,75 +170,25 @@ export function EntryChoice({
   const canSubmitPrompt = trimmedLength > 0
 
   // AI input state
-  const [model, setModel] = useState(defaultModels[0].id)
+  const [model, setModel] = useState('gemini-3-pro')
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState('Agent')
   const [selectedPerformance, setSelectedPerformance] = useState('High')
-  const [toolsEnabled, setToolsEnabled] = useState(true)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(true)
   const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high'>('medium')
-  const [providerOptions, setProviderOptions] = useState<ProviderOptionsState>({})
-  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
+  const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
     () => loadModelSettings()
   )
 
   const selectedModelData = defaultModels.find((m) => m.id === model)
   const isOpusModel = model.includes('opus')
-  const selectedProvider = selectedModelData?.chefSlug as 'anthropic' | 'openai' | 'google' | undefined
   const defaultModelSettings = useMemo(
     () => ({
       selectedAgent: 'Agent' as const,
       selectedPerformance: 'High' as const,
-      toolsEnabled: true,
-      webSearchEnabled: true,
       thinkingEffort: 'medium' as const,
-      providerOptions: {},
     }),
     []
   )
-
-  // Default capabilities per provider (in production these come from the AI gateway)
-  const getDefaultCapabilities = (provider: string | undefined) => {
-    const base = {
-      supportsExtendedThinking: false,
-      reasoningType: 'none' as const,
-      supportsWebSearch: true,
-      supportsFileSearch: false,
-      supportsCodeInterpreter: false,
-      supportsComputerUse: false,
-      supportsShellTool: false,
-      supportsTextEditor: false,
-      supportsApplyPatch: false,
-      supportsEffortParameter: false,
-    }
-
-    if (provider === 'anthropic') {
-      return {
-        ...base,
-        supportsComputerUse: true,
-        supportsShellTool: true,
-        supportsTextEditor: true,
-        supportsEffortParameter: isOpusModel,
-      }
-    }
-    if (provider === 'openai') {
-      return {
-        ...base,
-        supportsCodeInterpreter: true,
-        supportsShellTool: true,
-        supportsApplyPatch: true,
-      }
-    }
-    if (provider === 'google') {
-      return {
-        ...base,
-        supportsCodeInterpreter: true,
-      }
-    }
-    return base
-  }
-
-  const modelCapabilities = getDefaultCapabilities(selectedProvider)
 
   const modelSettingsRef = useRef(modelSettings)
   useEffect(() => {
@@ -274,35 +200,21 @@ export function EntryChoice({
     const next = stored ?? defaultModelSettings
     setSelectedAgent(next.selectedAgent ?? 'Agent')
     setSelectedPerformance(next.selectedPerformance ?? 'High')
-    setToolsEnabled(next.toolsEnabled ?? true)
-    setWebSearchEnabled(next.webSearchEnabled ?? true)
     setThinkingEffort(next.thinkingEffort ?? 'medium')
-    setProviderOptions(next.providerOptions ?? {})
   }, [model, defaultModelSettings])
 
   useEffect(() => {
-    const nextSettings: StoredModelSettings = {
-      selectedAgent,
-      selectedPerformance,
-      toolsEnabled,
-      webSearchEnabled,
-      providerOptions,
-      thinkingEffort,
+    const nextSettings: { selectedAgent: 'Agent' | 'Assistant'; selectedPerformance: 'High' | 'Medium' | 'Low'; thinkingEffort: 'low' | 'medium' | 'high' } = {
+      selectedAgent: selectedAgent as 'Agent' | 'Assistant',
+      selectedPerformance: selectedPerformance as 'High' | 'Medium' | 'Low',
+      thinkingEffort: thinkingEffort as 'low' | 'medium' | 'high',
     }
     setModelSettings((prev) => {
       const updated = { ...prev, [model]: nextSettings }
       saveModelSettings(updated)
       return updated
     })
-  }, [
-    model,
-    selectedAgent,
-    selectedPerformance,
-    toolsEnabled,
-    webSearchEnabled,
-    providerOptions,
-    thinkingEffort,
-  ])
+  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
 
   const performanceToDisplay: Record<string, string> = {
     High: 'x3',
@@ -314,10 +226,7 @@ export function EntryChoice({
     model,
     agentType: selectedAgent.toLowerCase() as 'agent' | 'assistant',
     reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    toolsEnabled,
-    webSearchEnabled,
     thinkingEffort: isOpusModel ? thinkingEffort : undefined,
-    providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions : undefined,
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -395,22 +304,6 @@ export function EntryChoice({
                       <IconPaperclip size={16} className="opacity-60" />
                       Attach Files
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setToolsEnabled((prev) => !prev)}
-                    >
-                      <IconCode size={16} className="opacity-60" />
-                      <span className="flex-1">Tool Access</span>
-                      {toolsEnabled && <IconCheck className="size-3 opacity-60" />}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setWebSearchEnabled((prev) => !prev)}
-                    >
-                      <IconWorld size={16} className="opacity-60" />
-                      <span className="flex-1">Web Search</span>
-                      {webSearchEnabled && <IconCheck className="size-3 opacity-60" />}
-                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -478,7 +371,10 @@ export function EntryChoice({
               type="button"
               disabled={!canSubmitPrompt || isSubmitting}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => onPromptSubmit(getSettings(), safePromptValue.trim())}
+              onClick={() => {
+                console.log('[EntryChoice] Submitting with model:', model)
+                onPromptSubmit(getSettings(), safePromptValue.trim())
+              }}
             >
               {isSubmitting ? (
                 <IconSquare className="size-3 fill-primary-foreground text-primary-foreground" />
@@ -613,19 +509,9 @@ export function EntryChoice({
             </DropdownMenu>
           )}
 
-          {/* Provider-specific tool options */}
-          {selectedProvider && (
-            <ProviderOptions
-              provider={selectedProvider}
-              capabilities={modelCapabilities}
-              options={providerOptions}
-              onChange={setProviderOptions}
-            />
-          )}
-
           {/* Context window usage */}
           <Context
-            maxTokens={MODEL_MAX_TOKENS[model] ?? 200_000}
+            maxTokens={getContextWindowSize(model)}
             usedTokens={0}
             modelId={model}
           >
@@ -668,11 +554,6 @@ export function EntryChoice({
             <div className="flex-1 min-w-0">
               <span className="text-sm block">{option.title}</span>
               <span className="text-xs text-muted-foreground">{option.description}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {option.features.map((feature) => (
-                <span key={feature} className="text-xs text-muted-foreground">{feature}</span>
-              ))}
             </div>
           </button>
         ))}

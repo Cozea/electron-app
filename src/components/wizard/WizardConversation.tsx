@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import {
   DefaultChatTransport,
@@ -32,7 +33,6 @@ import { cn } from '@/lib/utils'
 import {
   loadModelSettings,
   saveModelSettings,
-  type StoredModelSettings,
 } from '@/lib/modelSettingsStorage'
 import {
   IconArrowUp,
@@ -41,20 +41,18 @@ import {
   IconChevronDown,
   IconCircle,
   IconCircleDashed,
-  IconCode,
   IconPlus,
   IconPaperclip,
   IconProgress,
   IconRobot,
   IconSquare,
   IconUser,
-  IconWorld,
   IconCheck,
   IconX,
 } from '@tabler/icons-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
-import { ProviderOptions, type ProviderOptionsState } from '@/components/assistant/ProviderOptions'
+import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 // AI Elements components (same as AIConversation)
@@ -91,6 +89,7 @@ import {
 } from '@/components/ai-elements/context'
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
 import { PlanSelector, type PlanOption } from './PlanSelector'
+import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -99,10 +98,7 @@ interface WizardConversationProps {
     model: string
     agentType: 'agent' | 'assistant'
     reasoningDepth: 'low' | 'medium' | 'high'
-    toolsEnabled: boolean
-    webSearchEnabled: boolean
     thinkingEffort?: 'low' | 'medium' | 'high'
-    providerOptions?: ProviderOptionsState
   }
   onPlanSelected: (plan: PlanOption) => void
   className?: string
@@ -127,6 +123,11 @@ interface ToolMeta {
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
 const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
+// Tools allowed during planning phase (read-only + display_plan)
+const PLANNING_TOOLS = new Set([
+  'read_file', 'list_dir', 'file_search', 'grep_search', 'present_plans'
+])
+
 // Model catalog (same as AIConversation)
 const defaultModels = [
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'fast', providers: ['anthropic'] },
@@ -146,6 +147,7 @@ export function WizardConversation({
   onPlanSelected,
   className,
 }: WizardConversationProps) {
+  const navigate = useNavigate()
   const { accessToken, currentOrganization } = useAuth()
 
   // State
@@ -165,10 +167,10 @@ export function WizardConversation({
   const [selectedPerformance, setSelectedPerformance] = useState<'High' | 'Medium' | 'Low'>(
     (promptSettings.reasoningDepth.charAt(0).toUpperCase() + promptSettings.reasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
   )
-  const [toolsEnabled, setToolsEnabled] = useState(promptSettings.toolsEnabled)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(promptSettings.webSearchEnabled)
-  const [providerOptions, setProviderOptions] = useState<ProviderOptionsState>(promptSettings.providerOptions ?? {})
-  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
+  const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high'>(
+    promptSettings.thinkingEffort ?? 'medium'
+  )
+  const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
     () => loadModelSettings()
   )
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, any>>({})
@@ -177,6 +179,7 @@ export function WizardConversation({
   const [conversationId] = useState(() => crypto.randomUUID())
   const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
+  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const hasSentInitialMessageRef = useRef(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -184,17 +187,28 @@ export function WizardConversation({
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
   const selectedModelData = availableModels.find((m) => m.id === model)
-  const selectedProvider = selectedModelData?.chefSlug
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
+
+  // Determine which controls to show based on model capabilities
+  const showPerformanceControl = useMemo(() => {
+    if (!selectedModelCapabilities) return true // Default to showing
+    // Show for effort-based models (OpenAI) OR models with supportsEffortParameter (Opus 4.5)
+    return selectedModelCapabilities.reasoningType === 'effort' ||
+      selectedModelCapabilities.supportsEffortParameter === true
+  }, [selectedModelCapabilities])
+
+  const showThinkingControl = useMemo(() => {
+    if (!selectedModelCapabilities) return false // Don't show by default
+    return selectedModelCapabilities.supportsExtendedThinking === true
+  }, [selectedModelCapabilities])
+
   const initialModelDefaults = useMemo(
     () => ({
       selectedAgent: promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant',
       selectedPerformance:
         promptSettings.reasoningDepth.charAt(0).toUpperCase() +
         promptSettings.reasoningDepth.slice(1),
-      toolsEnabled: promptSettings.toolsEnabled,
-      webSearchEnabled: promptSettings.webSearchEnabled,
-      providerOptions: promptSettings.providerOptions ?? {},
+      thinkingEffort: promptSettings.thinkingEffort ?? 'medium',
     }),
     [promptSettings]
   )
@@ -202,9 +216,7 @@ export function WizardConversation({
     () => ({
       selectedAgent: 'Agent' as const,
       selectedPerformance: 'High' as const,
-      toolsEnabled: true,
-      webSearchEnabled: true,
-      providerOptions: {},
+      thinkingEffort: 'medium' as const,
     }),
     []
   )
@@ -222,25 +234,21 @@ export function WizardConversation({
     const next = stored ?? defaults
     setSelectedAgent(next.selectedAgent ?? 'Agent')
     setSelectedPerformance(next.selectedPerformance ?? 'High')
-    setToolsEnabled(next.toolsEnabled ?? true)
-    setWebSearchEnabled(next.webSearchEnabled ?? true)
-    setProviderOptions(next.providerOptions ?? {})
+    setThinkingEffort(next.thinkingEffort ?? 'medium')
   }, [model, promptSettings.model, initialModelDefaults, fallbackDefaults])
 
   useEffect(() => {
-    const nextSettings: StoredModelSettings = {
+    const nextSettings = {
       selectedAgent,
       selectedPerformance,
-      toolsEnabled,
-      webSearchEnabled,
-      providerOptions,
+      thinkingEffort,
     }
     setModelSettings((prev) => {
       const updated = { ...prev, [model]: nextSettings }
       saveModelSettings(updated)
       return updated
     })
-  }, [model, selectedAgent, selectedPerformance, toolsEnabled, webSearchEnabled, providerOptions])
+  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
@@ -261,15 +269,6 @@ export function WizardConversation({
     return map
   }, [availableTools])
 
-  const canUseWebSearch = useMemo(() => {
-    if (!toolPolicy?.allowProviderTools || !toolPolicy.allowWebSearch) return false
-    return Boolean(selectedModelCapabilities?.supportsWebSearch)
-  }, [toolPolicy, selectedModelCapabilities])
-
-  const canUseLocalTools = useMemo(() => {
-    return availableTools.some((tool) => tool.executionEnvironment === 'local')
-  }, [availableTools])
-
   const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? 'medium'
 
   const performanceToDisplay: Record<string, string> = {
@@ -287,20 +286,6 @@ export function WizardConversation({
       setSelectedPerformance(capped)
     }
   }, [maxReasoningDepth, selectedPerformance])
-
-  // Disable web search if not available
-  useEffect(() => {
-    if (!canUseWebSearch && webSearchEnabled) {
-      setWebSearchEnabled(false)
-    }
-  }, [canUseWebSearch, webSearchEnabled])
-
-  // Disable tools if not available
-  useEffect(() => {
-    if (!canUseLocalTools && toolsEnabled) {
-      setToolsEnabled(false)
-    }
-  }, [canUseLocalTools, toolsEnabled])
 
   // Sync tools
   useEffect(() => {
@@ -402,10 +387,8 @@ export function WizardConversation({
     model,
     conversationId,
     actionType: selectedAgent.toLowerCase(),
-    toolsEnabled,
-    webSearchEnabled,
     reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    providerOptions,
+    thinkingEffort,
   })
 
   useEffect(() => {
@@ -416,12 +399,10 @@ export function WizardConversation({
       model,
       conversationId,
       actionType: selectedAgent.toLowerCase(),
-      toolsEnabled,
-      webSearchEnabled,
       reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-      providerOptions,
+      thinkingEffort,
     }
-  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, selectedAgent, selectedPerformance, toolsEnabled, webSearchEnabled, providerOptions])
+  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, selectedAgent, selectedPerformance, thinkingEffort])
 
   // Chat transport (same pattern as AIConversation)
   const chatTransport = useMemo(() => {
@@ -439,10 +420,10 @@ export function WizardConversation({
         conversationId: requestConfigRef.current.conversationId,
         feature: 'project-wizard',
         actionType: requestConfigRef.current.actionType,
-        enableTools: requestConfigRef.current.toolsEnabled,
-        enableWebSearch: requestConfigRef.current.webSearchEnabled,
+        enableTools: true, // Always enabled - gated client-side based on planning phase
+        enableWebSearch: true, // Always enabled
         reasoningDepth: requestConfigRef.current.reasoningDepth,
-        providerOptions: requestConfigRef.current.providerOptions,
+        thinkingEffort: requestConfigRef.current.thinkingEffort,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
         const actionType = requestConfigRef.current.actionType
@@ -476,6 +457,17 @@ export function WizardConversation({
 
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
+
+    // Planning-phase gating: only allow read-only tools and present_plans
+    if (!PLANNING_TOOLS.has(toolCall.toolName)) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        errorText: 'This tool is not available during planning. Only search and read tools are available.',
+      })
+      return
+    }
 
     try {
       const result = await localRuntime.requestToolExecution(conversationId, {
@@ -522,7 +514,13 @@ export function WizardConversation({
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onToolCall: handleToolCall,
-    onError: (err: any) => console.error('Chat error:', err),
+    onError: (err: any) => {
+      console.error('Chat error:', err)
+      const billingErr = parseBillingError(err)
+      if (billingErr) {
+        setBillingError(billingErr)
+      }
+    },
   })
 
   addToolOutputRef.current = addToolOutput
@@ -594,51 +592,82 @@ export function WizardConversation({
 
     for (const message of messages) {
       if (message.role !== 'assistant') continue
+
+      // Debug: Log all part types to understand the structure
+      console.log('[Wizard] Message parts:', message.parts.map((p: any) => ({
+        type: p.type,
+        toolName: p.toolName,
+        state: p.state,
+        hasOutput: !!p.output,
+        hasInput: !!p.input,
+      })))
+
       for (const part of message.parts) {
-        // Check for present_plans tool with output
-        if (part.type === 'tool-present_plans' || (part.type as string).includes('present_plans')) {
-          const toolPart = part as any
+        // Check for present_plans tool with output - handle various formats from different providers
+        const partType = part.type as string
+        const toolPart = part as any
+        const isPresntPlans = partType === 'tool-present_plans' ||
+          partType.includes('present_plans') ||
+          toolPart.toolName === 'present_plans' ||
+          (partType === 'tool-invocation' && toolPart.toolName === 'present_plans') ||
+          (partType === 'tool-result' && toolPart.toolName === 'present_plans')
+
+        if (isPresntPlans) {
           console.log('[Wizard] Found present_plans tool part:', {
             type: part.type,
+            toolName: toolPart.toolName,
             state: toolPart.state,
             hasOutput: !!toolPart.output,
+            hasResult: !!toolPart.result,
             hasInput: !!toolPart.input,
+            hasArgs: !!toolPart.args,
             currentExtracted: extractedPlanCountRef.current,
+            rawPart: JSON.stringify(toolPart).substring(0, 500),
           })
 
-          // Prefer output (complete) over input (streaming)
-          if (toolPart.state === 'output-available' && toolPart.output) {
+          // Get output from various possible fields (different providers use different formats)
+          const rawOutput = toolPart.output || toolPart.result
+          const rawInput = toolPart.input || toolPart.args
+
+          // Check if we have output (complete tool result)
+          if ((toolPart.state === 'output-available' || toolPart.state === 'result') && rawOutput) {
             try {
-              const output = typeof toolPart.output === 'string'
-                ? JSON.parse(toolPart.output)
-                : toolPart.output
+              const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
               console.log('[Wizard] Parsed output plans:', output?.plans?.length || 0, 'plans')
               if (output?.plans && Array.isArray(output.plans)) {
                 const validPlans = validatePlans(output.plans)
                 console.log('[Wizard] Valid plans after validation:', validPlans.length)
-                // Only update if we have more plans than before
                 if (validPlans.length > extractedPlanCountRef.current) {
                   extractedPlanCountRef.current = validPlans.length
                   setPlanOptions(validPlans)
                   console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans')
-                  if (validPlans.length >= 3) return // All plans received
+                  if (validPlans.length >= 3) return
                 }
               }
             } catch (e) {
               console.warn('Failed to parse plan output:', e)
             }
           }
-          // Also check input if output not yet available (streaming)
-          // Only use input if we haven't gotten output yet
-          else if (toolPart.input?.plans && Array.isArray(toolPart.input.plans)) {
-            const validPlans = validatePlans(toolPart.input.plans)
-            console.log('[Wizard] Input plans (streaming):', toolPart.input.plans.length, 'raw,', validPlans.length, 'valid')
-            // Only update if we have more plans than before
+          // Also check input/args if output not yet available (streaming or Gemini format)
+          else if (rawInput?.plans && Array.isArray(rawInput.plans)) {
+            const validPlans = validatePlans(rawInput.plans)
+            console.log('[Wizard] Input plans (streaming):', rawInput.plans.length, 'raw,', validPlans.length, 'valid')
             if (validPlans.length > extractedPlanCountRef.current) {
               extractedPlanCountRef.current = validPlans.length
               setPlanOptions(validPlans)
               console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans (from input)')
-              if (validPlans.length >= 3) return // All plans received
+              if (validPlans.length >= 3) return
+            }
+          }
+          // Direct plans field check (some providers put it at top level)
+          else if (toolPart.plans && Array.isArray(toolPart.plans)) {
+            const validPlans = validatePlans(toolPart.plans)
+            console.log('[Wizard] Direct plans field:', toolPart.plans.length, 'raw,', validPlans.length, 'valid')
+            if (validPlans.length > extractedPlanCountRef.current) {
+              extractedPlanCountRef.current = validPlans.length
+              setPlanOptions(validPlans)
+              console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans (direct)')
+              if (validPlans.length >= 3) return
             }
           }
         }
@@ -729,7 +758,7 @@ export function WizardConversation({
   }
 
   return (
-    <div className={cn('flex flex-col overflow-hidden w-full', className)}>
+    <div className={cn('flex flex-col overflow-hidden w-full h-full', className)}>
       {/* Messages Area */}
       <div className="flex-1 min-h-0 relative w-full">
         {/* Top fade */}
@@ -737,7 +766,7 @@ export function WizardConversation({
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className="max-w-2xl mx-auto pt-8 pb-8">
+          <ConversationContent className="w-full max-w-none px-6 pt-8 pb-8">
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}
@@ -765,9 +794,15 @@ export function WizardConversation({
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 pt-2 pb-1 px-3 bg-background w-full max-w-2xl mx-auto">
+      <div className="shrink-0 pt-2 pb-3 px-3 bg-background w-full max-w-2xl mx-auto">
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
-          {showGenericError && surfaceErrorMessage && (
+          {billingError ? (
+            <BillingError
+              error={billingError}
+              onAction={(href) => navigate(href)}
+              className="border-0 border-b rounded-none p-3"
+            />
+          ) : showGenericError && surfaceErrorMessage && (
             <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
               <p className="text-xs leading-relaxed flex-1">
                 {surfaceErrorMessage}
@@ -828,24 +863,6 @@ export function WizardConversation({
                     >
                       <IconPaperclip size={16} className="opacity-60" />
                       Attach Files
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setToolsEnabled((prev) => !prev)}
-                      disabled={!canUseLocalTools}
-                    >
-                      <IconCode size={16} className="opacity-60" />
-                      <span className="flex-1">Tool Access</span>
-                      {toolsEnabled && <IconCheck className="size-3 opacity-60" />}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => setWebSearchEnabled((prev) => !prev)}
-                      disabled={!canUseWebSearch}
-                    >
-                      <IconWorld size={16} className="opacity-60" />
-                      <span className="flex-1">Web Search</span>
-                      {webSearchEnabled && <IconCheck className="size-3 opacity-60" />}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
@@ -948,45 +965,8 @@ export function WizardConversation({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-              >
-                <IconBolt className="size-3" />
-                <span>{performanceToDisplay[selectedPerformance]}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance('High')}
-                  disabled={maxReasoningDepth !== 'high'}
-                >
-                  <IconCircle size={16} className="opacity-60" />
-                  High
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance('Medium')}
-                  disabled={maxReasoningDepth === 'low'}
-                >
-                  <IconProgress size={16} className="opacity-60" />
-                  Medium
-                </DropdownMenuItem>
-                <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedPerformance('Low')}>
-                  <IconCircleDashed size={16} className="opacity-60" />
-                  Low
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {selectedModelCapabilities?.supportsEffortParameter && (
+          {/* Performance Control - Show for OpenAI and Opus 4.5 */}
+          {showPerformanceControl && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -994,42 +974,95 @@ export function WizardConversation({
                   size="sm"
                   className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
                 >
-                  <IconBrain className="size-3" />
-                  <span>{providerOptions.thinkingEffort ? providerOptions.thinkingEffort.charAt(0).toUpperCase() + providerOptions.thinkingEffort.slice(1) : 'Medium'}</span>
+                  <IconBolt className="size-3" />
+                  <span>{performanceToDisplay[selectedPerformance]}</span>
                   <IconChevronDown className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
                 <DropdownMenuGroup className="space-y-1">
-                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'high' })}>
+                  <DropdownMenuItem
+                    className="rounded-[calc(1rem-6px)] text-xs"
+                    onClick={() => setSelectedPerformance('High')}
+                    disabled={maxReasoningDepth !== 'high'}
+                  >
                     <IconCircle size={16} className="opacity-60" />
-                    High (deeper reasoning)
+                    High
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'medium' })}>
+                  <DropdownMenuItem
+                    className="rounded-[calc(1rem-6px)] text-xs"
+                    onClick={() => setSelectedPerformance('Medium')}
+                    disabled={maxReasoningDepth === 'low'}
+                  >
                     <IconProgress size={16} className="opacity-60" />
-                    Medium (balanced)
+                    Medium
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setProviderOptions({ ...providerOptions, thinkingEffort: 'low' })}>
+                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedPerformance('Low')}>
                     <IconCircleDashed size={16} className="opacity-60" />
-                    Low (faster)
+                    Low
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
 
-          {selectedProvider && selectedModelCapabilities && (
-            <ProviderOptions
-              provider={selectedProvider as 'anthropic' | 'openai' | 'google'}
-              capabilities={selectedModelCapabilities}
-              options={providerOptions}
-              onChange={setProviderOptions}
-              disabled={status === 'streaming'}
-            />
-          )}
+          {/* Thinking Effort - shows for models with extended thinking */}
+          {showThinkingControl && (() => {
+            // Get supported levels from model capabilities
+            const reasoningRange = selectedModelCapabilities?.reasoningRange
+            const supportedLevels: string[] = Array.isArray(reasoningRange)
+              ? reasoningRange
+              : ['low', 'medium', 'high'] // Default for effort-based models
+
+            // Ensure current selection is valid, otherwise use highest available
+            const effectiveLevel = supportedLevels.includes(thinkingEffort)
+              ? thinkingEffort
+              : supportedLevels[supportedLevels.length - 1] || 'high'
+
+            const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
+              minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
+              low: { label: 'Low (faster)', icon: IconCircleDashed },
+              medium: { label: 'Medium (balanced)', icon: IconProgress },
+              high: { label: 'High (deeper reasoning)', icon: IconCircle },
+            }
+
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                  >
+                    <IconBrain className="size-3" />
+                    <span>{effectiveLevel.charAt(0).toUpperCase() + effectiveLevel.slice(1)}</span>
+                    <IconChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
+                  <DropdownMenuGroup className="space-y-1">
+                    {/* Show levels in reverse order (high first) */}
+                    {[...supportedLevels].reverse().map((level) => {
+                      const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
+                      return (
+                        <DropdownMenuItem
+                          key={level}
+                          className="rounded-[calc(1rem-6px)] text-xs"
+                          onClick={() => setThinkingEffort(level as 'low' | 'medium' | 'high')}
+                        >
+                          <Icon size={16} className="opacity-60" />
+                          {label}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          })()}
 
           <Context
-            maxTokens={200_000}
+            maxTokens={getContextWindowSize(model)}
             usedTokens={accumulatedUsage.usedTokens}
             usage={accumulatedUsage.usage}
             modelId={model}
