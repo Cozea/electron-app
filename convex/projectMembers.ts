@@ -389,6 +389,11 @@ export const updateMemberLocalPath = mutation({
     localPath: v.string(),
   },
   handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
     const membership = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_and_user", (q) =>
@@ -397,7 +402,38 @@ export const updateMemberLocalPath = mutation({
       .first()
 
     if (!membership) {
-      throw new Error("User is not a member of this project")
+      // If the user is part of the project's organization, create a default
+      // membership so we can store per-user/machine localPath without requiring
+      // explicit project invites.
+      const orgMembership = await ctx.db
+        .query("members")
+        .withIndex("by_organization_and_user", (q) =>
+          q.eq("organizationId", project.organizationId).eq("userId", args.userId)
+        )
+        .first()
+
+      if (!orgMembership) {
+        throw new Error("User is not a member of this organization")
+      }
+
+      const role =
+        orgMembership.role === "admin"
+          ? "project_manager"
+          : orgMembership.role === "member"
+            ? "developer"
+            : "viewer"
+
+      const now = Date.now()
+      await ctx.db.insert("projectMembers", {
+        projectId: args.projectId,
+        userId: args.userId,
+        role,
+        addedAt: now,
+        addedBy: args.userId,
+        localPath: args.localPath,
+      })
+
+      return { success: true }
     }
 
     await ctx.db.patch(membership._id, {

@@ -14,9 +14,7 @@ import { ProjectPagesPage } from './features/projects/pages/ProjectPagesPage'
 import { ProjectDatabasePage } from './features/projects/pages/ProjectDatabasePage'
 import { ProjectDependenciesPage } from './features/projects/pages/ProjectDependenciesPage'
 import { ProjectBackendStudioPage } from './features/projects/pages/ProjectBackendStudioPage'
-import { AgenticFeedPage } from './features/projects/pages/AgenticFeedPage'
-import { MergeQueuePage } from './features/projects/pages/MergeQueuePage'
-import { VersionControlPage } from './features/projects/pages/VersionControlPage'
+import { ChangesPage } from './features/projects/pages/ChangesPage'
 import { TasksPage } from './features/projects/pages/TasksPage'
 import { ProjectSettingsPage } from './features/projects/pages/ProjectSettingsPage'
 // Other pages
@@ -88,9 +86,11 @@ function AppContent() {
         <Route path="database" element={<ProjectDatabasePage />} />
         <Route path="dependencies" element={<ProjectDependenciesPage />} />
         <Route path="backend" element={<ProjectBackendStudioPage />} />
-        <Route path="feed" element={<AgenticFeedPage />} />
-        <Route path="merge-queue" element={<MergeQueuePage />} />
-        <Route path="version-control" element={<VersionControlPage />} />
+        <Route path="changes" element={<ChangesPage />} />
+        {/* Redirects for old routes */}
+        <Route path="feed" element={<Navigate to="../changes" replace />} />
+        <Route path="merge-queue" element={<Navigate to="../changes" replace />} />
+        <Route path="version-control" element={<Navigate to="../changes" replace />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="settings" element={<ProjectSettingsPage />} />
         <Route path="*" element={<ProjectDetailPage />} />

@@ -9,12 +9,15 @@ import { FileText, Loader2, RefreshCw, ExternalLink, AppWindow } from "lucide-re
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
+import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
 export function PagesList() {
     const { slug } = useParams<{ slug: string }>()
     const navigate = useNavigate()
     const { currentOrganization } = useAuth()
     const { serverStatus, serverPort } = useProjectPagesStore()
+    const syncContext = useOptionalProjectSyncContext()
+    const projectPath = syncContext?.projectPath ?? null
 
     const [routes, setRoutes] = useState<ScannedRoute[]>([])
     const [isLoading, setIsLoading] = useState(false)
@@ -40,11 +43,11 @@ export function PagesList() {
     } : null
 
     const refreshRoutes = async () => {
-        if (!project?.localPath) return
+        if (!projectPath) return
 
         setIsLoading(true)
         try {
-            const result = await scanForRoutes(project.localPath, storedFrameworkInfo)
+            const result = await scanForRoutes(projectPath, storedFrameworkInfo)
             setRoutes(result.routes)
             setFramework(result.framework)
         } catch (error) {
@@ -56,10 +59,10 @@ export function PagesList() {
 
     // Scan routes when project loads
     useEffect(() => {
-        if (project?.localPath) {
+        if (projectPath) {
             refreshRoutes()
         }
-    }, [project?.localPath])
+    }, [projectPath])
 
     const handlePageClick = (index: number) => {
         // Navigate to the pages view with this route focused

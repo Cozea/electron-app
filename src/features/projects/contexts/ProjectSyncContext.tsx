@@ -22,6 +22,7 @@ import { useYjsProject } from "@/contexts/YjsProjectContext"
 interface ProjectSyncContextValue {
   isSynced: boolean
   lastSyncAt: number | null
+  projectPath: string | null
   triggerSync: () => Promise<void>
   syncProgress: SyncProgress
 }
@@ -38,6 +39,10 @@ export function useProjectSyncContext() {
   return ctx
 }
 
+export function useOptionalProjectSyncContext() {
+  return useContext(ProjectSyncContext)
+}
+
 interface ProjectSyncProviderProps {
   children: ReactNode
   projectId: Id<"projects">
@@ -46,6 +51,7 @@ interface ProjectSyncProviderProps {
   projectSlug: string
   localPath: string | null
   lastSyncAt?: number
+  onFilesChanged?: () => void
 }
 
 // Inner component that bridges agent file changes to Yjs and writes remote changes to disk
@@ -72,6 +78,7 @@ export function ProjectSyncProvider({
   projectSlug,
   localPath,
   lastSyncAt: initialLastSyncAt,
+  onFilesChanged,
 }: ProjectSyncProviderProps) {
   const [isSynced, setIsSynced] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
@@ -330,6 +337,7 @@ export function ProjectSyncProvider({
       setShowSyncScreen(false)
       // Clear the diff badge for this project
       clearDiff(projectSlug)
+      onFilesChanged?.()
     }
 
     // Mark sync as complete regardless of result
@@ -385,6 +393,7 @@ export function ProjectSyncProvider({
       value={{
         isSynced,
         lastSyncAt,
+        projectPath: currentLocalPath,
         triggerSync,
         syncProgress: progress,
       }}

@@ -1064,4 +1064,48 @@ export default defineSchema({
     .index("by_project_and_user", ["projectId", "userId"])
     .index("by_user", ["userId"])
     .index("by_heartbeat", ["lastHeartbeat"]),
+
+  // ============================================
+  // FILE CHANGE ACTIVITY TRACKING
+  // ============================================
+
+  // File changes - tracks individual file edits for activity feed
+  fileChanges: defineTable({
+    projectId: v.id("projects"),
+    userId: v.optional(v.id("users")), // Optional for agent changes
+
+    // File info
+    filePath: v.string(),
+    changeType: v.union(
+      v.literal("create"),
+      v.literal("modify"),
+      v.literal("delete")
+    ),
+
+    // Content for diff viewing (stored for history)
+    oldContent: v.optional(v.string()),
+    newContent: v.optional(v.string()),
+
+    // Change statistics
+    additions: v.optional(v.number()),
+    deletions: v.optional(v.number()),
+    totalLines: v.optional(v.number()),
+
+    // Origin tracking (matches Yjs origin)
+    origin: v.union(
+      v.literal("user"),
+      v.literal("agent"),
+      v.literal("remote"),
+      v.literal("init")
+    ),
+
+    // User display info (denormalized for fast reads)
+    userName: v.optional(v.string()),
+    userColor: v.optional(v.string()),
+
+    timestamp: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_time", ["projectId", "timestamp"])
+    .index("by_user", ["userId"]),
 })

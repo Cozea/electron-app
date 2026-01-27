@@ -110,7 +110,9 @@ export function YjsProjectProvider({
         doc.files,
         projectId,
         convex,
-        hasher
+        hasher,
+        userId as any, // Cast to Id<"users"> - may be undefined if external user
+        userName
       )
 
       setYjsDoc(doc)

@@ -16,6 +16,7 @@ import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { FileTreeNode } from './FileTreeNode'
 import { Loader2, FolderOpen } from 'lucide-react'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -31,6 +32,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
+  const syncContext = useOptionalProjectSyncContext()
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -56,11 +58,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
     refresh,
     expandedPaths,
   } = useFileExplorer({
-    rootPath: project?.localPath ?? null,
+    rootPath: syncContext?.projectPath ?? null,
   })
 
   // Debug logging
-  console.log('[FileTree] project:', project?.name, 'localPath:', project?.localPath)
+  console.log('[FileTree] project:', project?.name, 'localPath:', syncContext?.projectPath)
   console.log('[FileTree] root:', root?.name, 'children:', root?.sortedChildren.length, 'isLoading:', isLoading, 'error:', error)
 
   // Expose refresh and isLoading via ref
@@ -77,13 +79,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   }, [setSearchParams])
 
   // No local path configured
-  if (!project?.localPath) {
+  if (!syncContext?.projectPath) {
     return (
       <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground p-4">
         <FolderOpen className="h-8 w-8 mb-2 opacity-50" />
-        <span className="text-center">No local folder linked</span>
+        <span className="text-center">Preparing local project folder...</span>
         <span className="text-xs text-center mt-1 opacity-70">
-          Build the project to create a local folder
+          If this is your first time opening the project, syncing will download the files.
         </span>
       </div>
     )

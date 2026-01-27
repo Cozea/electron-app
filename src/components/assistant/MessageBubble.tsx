@@ -63,12 +63,9 @@ export function MessageBubble({
     <Message from={message.role}>
       <MessageContent>
         {message.parts.map((part, index) => {
+          // Skip step-start separators (no visual divider needed)
           if (part.type === 'step-start') {
-            return (
-              <div key={`${message.id}-step-${index}`} className="py-2">
-                <div className="h-px bg-border" />
-              </div>
-            )
+            return null
           }
 
           if (part.type === 'text') {
@@ -81,10 +78,16 @@ export function MessageBubble({
 
           if (part.type === 'reasoning') {
             const reasoningPart = part as any
+            // Only mark as streaming if this is the last reasoning block AND message is still streaming
+            // If there are subsequent parts after this reasoning, it's already complete
+            const hasSubsequentParts = message.parts.slice(index + 1).some(
+              p => p.type !== 'step-start'
+            )
+            const isThisReasoningStreaming = isStreaming && !hasSubsequentParts
             return (
               <Reasoning
                 key={`${message.id}-reasoning-${index}`}
-                isStreaming={isStreaming}
+                isStreaming={isThisReasoningStreaming}
                 duration={reasoningPart.duration}
               >
                 <ReasoningTrigger />

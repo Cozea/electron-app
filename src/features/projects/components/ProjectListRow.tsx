@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -75,12 +75,32 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [showMenu, setShowMenu] = useState(false)
+    const [localPath, setLocalPath] = useState<string | null>(null)
 
     // Get cloud manifest for sync check
     const cloudManifest = useQuery(
         api.projectFiles.getManifestForProject,
         project.status !== 'draft' ? { projectId: project._id } : 'skip'
     )
+
+    useEffect(() => {
+        let cancelled = false
+
+        const loadLocalPath = async () => {
+            if (project.status === 'draft') {
+                if (!cancelled) setLocalPath(null)
+                return
+            }
+
+            const path = await window.electronAPI.project.getLocalPath(project.slug)
+            if (!cancelled) setLocalPath(path)
+        }
+
+        void loadLocalPath()
+        return () => {
+            cancelled = true
+        }
+    }, [project.slug, project.status])
 
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return
@@ -116,43 +136,36 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         setSyncMessage('Preparing project...')
 
         try {
-            // Check if local folder exists
-            const folderExists = await window.electronAPI.project.exists(project.slug)
+            // Determine the real local path for this machine (project.localPath is not per-user).
+            let effectiveLocalPath = await window.electronAPI.project.getLocalPath(project.slug)
 
-            if (!folderExists) {
+            if (!effectiveLocalPath) {
                 setSyncMessage('Creating local folder...')
                 const result = await window.electronAPI.project.createFolder({
                     slug: project.slug,
                     initGit: true,
                 })
 
-                if (!result.success) {
+                if (!result.success || !result.localPath) {
                     throw new Error(result.error || 'Failed to create folder')
                 }
 
-                // Update local path in database
-                if (userId) {
-                    await updateMemberLocalPath({
-                        projectId: project._id,
-                        userId: userId as any,
-                        localPath: result.localPath!,
-                    })
-                }
-            } else if (!project.localPath) {
-                // Folder exists but path not stored - get and save it
-                const localPath = await window.electronAPI.project.getLocalPath(project.slug)
-                if (localPath && userId) {
-                    await updateMemberLocalPath({
-                        projectId: project._id,
-                        userId: userId as any,
-                        localPath,
-                    })
-                }
+                effectiveLocalPath = result.localPath
+                setLocalPath(effectiveLocalPath)
+            } else {
+                setLocalPath(effectiveLocalPath)
+            }
+
+            // Save per-user local path in database (machine-specific)
+            if (effectiveLocalPath && userId) {
+                await updateMemberLocalPath({
+                    projectId: project._id,
+                    userId: userId as any,
+                    localPath: effectiveLocalPath,
+                })
             }
 
             // Quick check if sync is needed
-            const effectiveLocalPath = project.localPath || await window.electronAPI.project.getLocalPath(project.slug)
-
             if (effectiveLocalPath && cloudManifest) {
                 setSyncMessage('Checking files...')
                 const localResult = await window.electronAPI.sync.getLocalManifest({
@@ -257,12 +270,12 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
 
                     {/* Sync Stats */}
                     <div className="hidden lg:flex lg:col-span-1 items-center justify-center">
-                        {project.status !== 'draft' && project.localPath ? (
+                        {project.status !== 'draft' && localPath ? (
                             <div onClick={(e) => e.stopPropagation()}>
                                 <ProjectSyncStats
                                     projectId={project._id}
                                     projectSlug={project.slug}
-                                    localPath={project.localPath}
+                                    localPath={localPath}
                                     lastSyncAt={project.lastSyncAt}
                                 />
                             </div>

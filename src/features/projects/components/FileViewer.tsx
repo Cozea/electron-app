@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
 import { MonacoEditor } from '@/components/editor/MonacoEditor'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { Loader2, AlertCircle, FileX } from 'lucide-react'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import {
   Empty,
   EmptyHeader,
@@ -21,37 +19,27 @@ interface FileViewerProps {
 
 export function FileViewer({ path }: FileViewerProps) {
   const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
   const editorActions = useEditorStore((state) => state.actions)
   const model = useEditorStore((state) => state.models[path])
+  const syncContext = useOptionalProjectSyncContext()
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
 
   // Load file content when path changes and model doesn't exist
   useEffect(() => {
     let mounted = true
 
     const loadFile = async () => {
-      if (!project?.localPath || model) return
+      if (model) return
 
       try {
         setIsLoading(true)
         setError(null)
 
-        const localPath = project.localPath || await window.electronAPI.project.getLocalPath(project.slug)
+        const localPath =
+          syncContext?.projectPath ??
+          (slug ? await window.electronAPI.project.getLocalPath(slug) : null)
         if (!localPath) {
           if (mounted) setError('Project folder not found')
           return
@@ -102,7 +90,7 @@ export function FileViewer({ path }: FileViewerProps) {
     return () => {
       mounted = false
     }
-  }, [path, project?.localPath, model])
+  }, [path, syncContext?.projectPath, slug, model])
 
   const handleRetry = () => {
     setError(null)

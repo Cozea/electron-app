@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import {
   Table,
   TableBody,
@@ -42,6 +43,8 @@ interface Dependency {
 export function ProjectDependenciesPage() {
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization } = useAuth()
+  const syncContext = useOptionalProjectSyncContext()
+  const projectPath = syncContext?.projectPath ?? null
   const [filter, setFilter] = useState<'all' | 'dependencies' | 'devDependencies'>('all')
   const [isLoading, setIsLoading] = useState(false)
   const [dependencies, setDependencies] = useState<Dependency[]>([])
@@ -60,13 +63,13 @@ export function ProjectDependenciesPage() {
   )
 
   const loadDependencies = useCallback(async () => {
-    if (!project?.localPath) return
+    if (!projectPath) return
 
     setIsLoading(true)
     setError(null)
     try {
       const result = await window.electronAPI.project.readFile({
-        projectPath: project.localPath,
+        projectPath,
         filePath: 'package.json',
       })
 
@@ -104,14 +107,14 @@ export function ProjectDependenciesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [project?.localPath])
+  }, [projectPath])
 
   // Initial load
   useEffect(() => {
-    if (project?.localPath) {
+    if (projectPath) {
       loadDependencies()
     }
-  }, [project?.localPath, loadDependencies])
+  }, [projectPath, loadDependencies])
 
   const filteredDeps = dependencies.filter((dep) => {
     if (filter === 'dependencies') return dep.type === 'dependency'

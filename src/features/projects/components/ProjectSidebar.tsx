@@ -7,9 +7,7 @@ import {
     ListTodo,
     AppWindow,
     Files,
-    Cpu,
-    GitMerge,
-    GitBranch,
+    Activity,
     Box,
     Database,
     Server,
@@ -38,8 +36,6 @@ import { ContextSwitcher } from "@/components/context-switcher"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
-import { AgenticFeedPanel } from "./AgenticFeedPanel"
-import { MergeQueuePanel } from "./MergeQueuePanel"
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -63,10 +59,8 @@ const routeMap: Record<string, string> = {
     // Platform group (with secondary panels)
     "Pages": "pages",
     "Files": "",  // Default/index route shows file editor
-    "Agentic Feed": "feed",
-    "Merge Queue": "merge-queue",
+    "Changes": "changes",
     // Development group
-    "Version Control": "version-control",
     "Dependencies": "dependencies",
     "Database": "database",
     "Backend Studio": "backend",
@@ -95,14 +89,12 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
             items: [
                 { title: "Pages", icon: AppWindow },
                 { title: "Files", icon: Files },
-                { title: "Agentic Feed", icon: Cpu },
-                { title: "Merge Queue", icon: GitMerge }
+                { title: "Changes", icon: Activity }
             ]
         },
         {
             title: "Development",
             items: [
-                { title: "Version Control", icon: GitBranch },
                 { title: "Dependencies", icon: Box },
                 { title: "Database", icon: Database },
                 { title: "Backend Studio", icon: Server }
@@ -137,7 +129,7 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                     <SidebarMenu>
                                         {group.items.map((item) => {
                                             // Determine interaction type
-                                            const hasSecondaryPanel = ['Files', 'Pages', 'Agentic Feed', 'Merge Queue'].includes(item.title)
+                                            const hasSecondaryPanel = ['Files', 'Pages'].includes(item.title)
                                             const isActive = activeTab === item.title
 
                                             return (
@@ -222,11 +214,9 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                 fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
                             )}
                             {activeTab === 'Pages' && <PagesList />}
-                            {activeTab === 'Agentic Feed' && <AgenticFeedPanel />}
-                            {activeTab === 'Merge Queue' && <MergeQueuePanel />}
 
                             {/* Fallback for others */}
-                            {!['Files', 'Pages', 'Agentic Feed', 'Merge Queue'].includes(activeTab) && (
+                            {!['Files', 'Pages'].includes(activeTab) && (
                                 <div className="p-4 text-sm text-muted-foreground">
                                     {activeTab} content...
                                 </div>

@@ -183,6 +183,7 @@ export function ProjectLayout({
                 projectSlug={slug}
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
+                onFilesChanged={handleRefreshFiles}
             >
                 {layoutContent}
             </ProjectSyncProvider>

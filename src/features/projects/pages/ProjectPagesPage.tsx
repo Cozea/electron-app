@@ -18,6 +18,7 @@ import {
 } from '@/utils/previewBridge'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -56,6 +57,8 @@ export function ProjectPagesPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const { currentOrganization } = useAuth()
+    const syncContext = useOptionalProjectSyncContext()
+    const projectPath = syncContext?.projectPath ?? null
 
     // Store state
     const { routes, serverStatus, serverPort, actions } = useProjectPagesStore()
@@ -115,10 +118,10 @@ export function ProjectPagesPage() {
 
     // Scan for routes when project loads
     useEffect(() => {
-        if (project?.localPath) {
+        if (projectPath) {
             refreshRoutes()
         }
-    }, [project?.localPath])
+    }, [projectPath])
 
     // Handle focus query param from PagesList clicks
     useEffect(() => {
@@ -464,8 +467,8 @@ export function ProjectPagesPage() {
     }, [inspectorContextMenu, closeInspectorContextMenu, navigate, slug])
 
     const refreshRoutes = async () => {
-        if (!project?.localPath) return
-        const result = await scanForRoutes(project.localPath, storedFrameworkInfo)
+        if (!projectPath) return
+        const result = await scanForRoutes(projectPath, storedFrameworkInfo)
         actions.setRoutes(result.routes.map(r => ({ ...r, status: 'active' as const })))
     }
 
@@ -758,7 +761,7 @@ export function ProjectPagesPage() {
                         </Tooltip>
                         <div className="h-4 w-[1px] bg-sidebar-border" />
                         <ServerControl
-                            projectPath={project?.localPath}
+                            projectPath={projectPath}
                             storedDevCommand={storedFrameworkInfo?.devCommand}
                             storedDevPort={storedFrameworkInfo?.devPort}
                         />
@@ -780,7 +783,7 @@ export function ProjectPagesPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={async () => {
-                                    if (!project?.localPath) return
+                                    if (!projectPath) return
                                     setIsScanningAI(true)
                                     try {
                                         // AI scanning would go here
@@ -1071,8 +1074,8 @@ export function ProjectPagesPage() {
             )}
 
             {/* Terminal Panel */}
-            {project?.localPath && (
-                <TerminalPanel projectPath={project.localPath} />
+            {projectPath && (
+                <TerminalPanel projectPath={projectPath} />
             )}
         </div>
     )
