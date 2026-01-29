@@ -181,7 +181,11 @@ export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
       </div>
 
       {/* Diff Content */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        {/* Top fade gradient */}
+        <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-sidebar to-transparent z-10 pointer-events-none" />
+        {/* Bottom fade gradient */}
+        <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-sidebar to-transparent z-10 pointer-events-none" />
         {change.oldContent === '' && change.newContent === '' ? (
           <div className="flex items-center justify-center h-full text-center text-muted-foreground py-8">
             <div>
