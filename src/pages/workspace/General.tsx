@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
+import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -43,10 +44,14 @@ export function General() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
+  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
+  const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+  const convexOrg = useCachedQuery(
+    `workspace-org-${currentOrganization?.organizationId}`,
+    freshOrg
   )
 
   // Mutations
@@ -168,24 +173,21 @@ export function General() {
     workspaceSlug !== convexOrg?.slug ||
     description !== (convexOrg?.description || '')
 
+  const headerContent = (
+    <h1 className="text-lg font-semibold">Workspace Details</h1>
+  )
+
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
+      header={headerContent}
     >
-
-
       <div className="max-w-2xl space-y-6">
         {/* Workspace Details */}
         <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle>Workspace Details</CardTitle>
-            <CardDescription>
-              Basic information about your workspace
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-0">
             <div className="space-y-2">
               <Label htmlFor="name">Workspace Name</Label>
               <Input

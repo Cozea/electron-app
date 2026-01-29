@@ -52,7 +52,7 @@ export function getFileIcon(
  */
 export function getFolderIcon(
   folderName: string,
-  isOpen: boolean = false,
+  _isOpen: boolean = false,
   props: IconProps = {}
 ): React.ReactNode {
   const { className = '', width = ICON_SIZE, height = ICON_SIZE } = props

@@ -36,7 +36,7 @@ export function useCollaborators(awareness: Awareness | null): Collaborator[] {
         if (!state.user) return
 
         collabs.push({
-          id: state.user.id,
+          id: String(clientId),
           name: state.user.name,
           color: state.user.color,
           isAgent: state.user.isAgent,

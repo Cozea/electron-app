@@ -9,6 +9,7 @@ import {
     Minimize2,
     X,
     Circle,
+    AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -22,19 +23,17 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-type TabType = "console" | "problems"
-
 interface TerminalTabBarProps {
-    activeTab: TabType
-    onTabChange: (tab: TabType) => void
+    activeView: "terminal" | "problems"
+    onViewChange: (view: "terminal" | "problems") => void
     problemCount?: number
     projectPath: string
     onClose?: () => void
 }
 
 export function TerminalTabBar({
-    activeTab,
-    onTabChange,
+    activeView,
+    onViewChange,
     problemCount = 0,
     projectPath,
     onClose,
@@ -89,8 +88,10 @@ export function TerminalTabBar({
                 status: 'starting',
                 hasOutput: false,
             })
+            // Switch to terminal view when creating a new terminal
+            onViewChange("terminal")
         }
-    }, [projectPath, profiles, addTerminal])
+    }, [projectPath, profiles, addTerminal, onViewChange])
 
     // Kill the active terminal
     const handleKillTerminal = useCallback(async () => {
@@ -114,56 +115,33 @@ export function TerminalTabBar({
         onClose?.()
     }, [setPanelOpen, onClose])
 
+    // Handle terminal tab click
+    const handleTerminalClick = useCallback((terminalId: string) => {
+        setActiveTerminal(terminalId)
+        onViewChange("terminal")
+    }, [setActiveTerminal, onViewChange])
+
     // Get terminals in active group
     const groupTerminals = activeGroup
         ? activeGroup.terminalIds.map((id) => terminals[id]).filter(Boolean)
         : []
 
-    const tabs: { id: TabType; label: string; count?: number }[] = [
-        { id: "console", label: "CONSOLE" },
-        { id: "problems", label: "PROBLEMS", count: problemCount },
-    ]
-
     const buttonClass = "p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
 
     return (
         <div className="flex items-center justify-between bg-sidebar w-full h-9">
-            {/* Left: Tab switcher */}
-            <div className="flex items-center h-full">
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.id}
-                        onClick={() => onTabChange(tab.id)}
-                        className={cn(
-                            "relative flex items-center gap-1.5 px-3 h-full text-[11px] tracking-wide transition-colors",
-                            activeTab === tab.id
-                                ? "text-sidebar-foreground"
-                                : "text-muted-foreground hover:text-sidebar-foreground"
-                        )}
-                    >
-                        <span>{tab.label}</span>
-                        {tab.count !== undefined && tab.count > 0 && (
-                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive">
-                                {tab.count}
-                            </span>
-                        )}
-                        {activeTab === tab.id && (
-                            <span className="absolute bottom-0 left-3 right-3 h-px bg-primary" />
-                        )}
-                    </button>
-                ))}
-            </div>
-
-            {/* Center: Terminal tabs (only show when console tab is active) */}
-            {activeTab === "console" && groupTerminals.length > 0 && (
-                <div className="flex items-center gap-0.5 flex-1 px-2 overflow-x-auto">
-                    {groupTerminals.map((term) => (
-                        <div
+            {/* Left: Terminal tabs + Problems tab */}
+            <div className="flex items-center h-full flex-1 min-w-0 overflow-x-auto gap-1 px-2">
+                {/* Terminal tabs */}
+                {groupTerminals.map((term) => {
+                    const isActive = activeView === "terminal" && activeTerminal?.id === term.id
+                    return (
+                        <button
                             key={term.id}
-                            onClick={() => setActiveTerminal(term.id)}
+                            onClick={() => handleTerminalClick(term.id)}
                             className={cn(
-                                "group flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors min-w-0 cursor-pointer",
-                                activeTerminal?.id === term.id
+                                "group flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] transition-colors shrink-0",
+                                isActive
                                     ? "bg-muted text-foreground"
                                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                             )}
@@ -178,9 +156,10 @@ export function TerminalTabBar({
                                     term.status === 'error' && "fill-destructive text-destructive"
                                 )}
                             />
-                            <span className="truncate max-w-[100px]">{term.title}</span>
+                            <span className="truncate max-w-[120px]">{term.title}</span>
                             {/* Close button for individual tab */}
-                            <button
+                            <span
+                                role="button"
                                 onClick={(e) => {
                                     e.stopPropagation()
                                     window.electronAPI.terminal.kill({ terminalId: term.id })
@@ -189,16 +168,35 @@ export function TerminalTabBar({
                                 className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                                 <X className="h-3 w-3" />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            )}
+                            </span>
+                        </button>
+                    )
+                })}
+
+                {/* Problems tab - always at the end */}
+                <button
+                    onClick={() => onViewChange("problems")}
+                    className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] transition-colors shrink-0",
+                        activeView === "problems"
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                >
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>PROBLEMS</span>
+                    {problemCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive">
+                            {problemCount}
+                        </span>
+                    )}
+                </button>
+            </div>
 
             {/* Right: Controls */}
-            <div className="flex items-center gap-0.5 pr-2">
-                {/* Process indicator (only when console is active) */}
-                {activeTab === "console" && activeTerminal && (
+            <div className="flex items-center gap-0.5 pr-2 shrink-0">
+                {/* Process indicator (only when a terminal is selected) */}
+                {activeView === "terminal" && activeTerminal && (
                     <div className="flex items-center gap-1 px-2 text-[11px] text-muted-foreground">
                         <Terminal className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">{activeTerminal.profileName}</span>
@@ -208,59 +206,59 @@ export function TerminalTabBar({
                     </div>
                 )}
 
-                {activeTab === "console" && (
-                    <>
-                        {/* New terminal dropdown */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button className={cn(buttonClass, "flex items-center gap-0.5")} title="New Terminal">
-                                    <Plus className="h-4 w-4" />
-                                    <ChevronDown className="h-3 w-3" />
-                                </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                                {profiles.map((profile) => (
-                                    <DropdownMenuItem
-                                        key={profile.id}
-                                        onClick={() => handleCreateTerminal(profile.id)}
-                                    >
-                                        <Terminal className="h-4 w-4 mr-2" />
-                                        {profile.name}
-                                    </DropdownMenuItem>
-                                ))}
-                                {profiles.length === 0 && (
-                                    <DropdownMenuItem onClick={() => handleCreateTerminal()}>
-                                        <Terminal className="h-4 w-4 mr-2" />
-                                        Default Terminal
-                                    </DropdownMenuItem>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        {/* Split terminal */}
-                        <button
-                            onClick={handleSplitTerminal}
-                            className={buttonClass}
-                            title="Split Terminal"
-                            disabled={!activeTerminal}
-                        >
-                            <SplitSquareHorizontal className="h-4 w-4" />
+                {/* New terminal dropdown */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button className={cn(buttonClass, "flex items-center gap-0.5")} title="New Terminal">
+                            <Plus className="h-4 w-4" />
+                            <ChevronDown className="h-3 w-3" />
                         </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                        {profiles.map((profile) => (
+                            <DropdownMenuItem
+                                key={profile.id}
+                                onClick={() => handleCreateTerminal(profile.id)}
+                            >
+                                <Terminal className="h-4 w-4 mr-2" />
+                                {profile.name}
+                            </DropdownMenuItem>
+                        ))}
+                        {profiles.length === 0 && (
+                            <DropdownMenuItem onClick={() => handleCreateTerminal()}>
+                                <Terminal className="h-4 w-4 mr-2" />
+                                Default Terminal
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
 
-                        {/* Kill terminal */}
-                        <button
-                            onClick={handleKillTerminal}
-                            className={buttonClass}
-                            title="Kill Terminal"
-                            disabled={!activeTerminal}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
-
-                        {/* Separator */}
-                        <div className="w-px h-4 bg-border mx-1" />
-                    </>
+                {/* Split terminal (only when terminal view is active) */}
+                {activeView === "terminal" && (
+                    <button
+                        onClick={handleSplitTerminal}
+                        className={buttonClass}
+                        title="Split Terminal"
+                        disabled={!activeTerminal}
+                    >
+                        <SplitSquareHorizontal className="h-4 w-4" />
+                    </button>
                 )}
+
+                {/* Kill terminal (only when terminal view is active) */}
+                {activeView === "terminal" && (
+                    <button
+                        onClick={handleKillTerminal}
+                        className={buttonClass}
+                        title="Kill Terminal"
+                        disabled={!activeTerminal}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                )}
+
+                {/* Separator */}
+                <div className="w-px h-4 bg-border mx-1" />
 
                 {/* Maximize/Restore */}
                 <button

@@ -6,8 +6,8 @@ import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
 } from 'ai'
-import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Logo } from '@/components/Logo'
 import { Textarea } from '@/components/ui/textarea'
 import {
   DropdownMenu,
@@ -58,6 +58,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachment'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
+import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 
@@ -77,6 +78,9 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { BillingError, parseBillingError, type BillingErrorData } from './BillingError'
+import { useMutation, useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 
 interface AIConversationProps {
   className?: string
@@ -203,10 +207,23 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   } = useAssistantPanelStore()
   const currentPage = usePageContextStore((state) => state.currentPage)
   const inspectedElement = usePageContextStore((state) => state.inspectedElement)
-  const { accessToken, currentOrganization } = useAuth()
+  const { accessToken, currentOrganization, convexUserId } = useAuth()
 
   // Context-based tool availability
   const hasProjectContext = !!projectPath
+
+  const project = useQuery(
+    api.projects.getBySlug,
+    currentOrganization?.convexOrgId && projectSlug
+      ? {
+          organizationId: currentOrganization.convexOrgId as Id<'organizations'>,
+          slug: projectSlug,
+        }
+      : 'skip'
+  )
+
+  const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
+  const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
 
   // Input State
   const [input, setInput] = useState("")
@@ -532,6 +549,101 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return toolMeta.requiresApproval ?? false
   }, [isAgentMode])
 
+  const normalizeRelativeFilePath = useCallback((filePath: string) => {
+    const normalized = filePath.replace(/\\/g, '/')
+    const projectRoot = projectPath?.replace(/\\/g, '/')
+    if (projectRoot && normalized.startsWith(projectRoot)) {
+      const rel = normalized.slice(projectRoot.length).replace(/^\/+/, '')
+      return rel
+    }
+    return normalized.replace(/^\/+/, '')
+  }, [projectPath])
+
+  const getToolFilePaths = useCallback((toolName: string, input: any): string[] => {
+    if (!input) return []
+
+    if (toolName === 'create_file' || toolName === 'replace_string_in_file' || toolName === 'read_file') {
+      const filePath = input.filePath
+      return typeof filePath === 'string' && filePath.trim() ? [filePath] : []
+    }
+
+    if (toolName === 'multi_replace_string_in_file') {
+      const replacements = Array.isArray(input.replacements) ? input.replacements : []
+      return replacements
+        .map((r: any) => r?.filePath)
+        .filter((p: any): p is string => typeof p === 'string' && p.trim().length > 0)
+    }
+
+    return []
+  }, [])
+
+  const formatLockConflictError = useCallback((
+    filePath: string,
+    details: { lockedByName?: string | null; expiresAt?: number | null; status?: string | null }
+  ) => {
+    const parts: string[] = []
+    parts.push(`File is locked: ${filePath}`)
+    if (details.status) parts.push(`status=${details.status}`)
+    if (details.lockedByName) parts.push(`by ${details.lockedByName}`)
+    if (details.expiresAt) {
+      parts.push(`until ${new Date(details.expiresAt).toLocaleTimeString()}`)
+    }
+    parts.push('Wait, then re-read the file and retry your edit.')
+    return parts.join(' ')
+  }, [])
+
+  const withFileLocks = useCallback(async <T,>(
+    filePaths: string[],
+    fn: () => Promise<T>
+  ): Promise<T> => {
+    if (!project?._id) {
+      throw new Error('Cannot acquire file lock: project not loaded')
+    }
+    if (!convexUserId) {
+      throw new Error('Cannot acquire file lock: not authenticated')
+    }
+
+    const uniquePaths = Array.from(
+      new Set(filePaths.map(normalizeRelativeFilePath).filter(Boolean))
+    ).sort()
+
+    const acquired: string[] = []
+    try {
+      for (const filePath of uniquePaths) {
+        const result = await acquireFileLock({
+          projectId: project._id,
+          filePath,
+          userId: convexUserId,
+        })
+        if (!result.acquired) {
+          throw new Error(
+            formatLockConflictError(filePath, {
+              lockedByName: result.lockedByName,
+              expiresAt: result.expiresAt,
+              status: result.status,
+            })
+          )
+        }
+        acquired.push(filePath)
+      }
+
+      return await fn()
+    } finally {
+      await Promise.allSettled(
+        acquired.map((filePath) =>
+          releaseFileLock({ projectId: project._id, filePath, userId: convexUserId })
+        )
+      )
+    }
+  }, [
+    acquireFileLock,
+    convexUserId,
+    formatLockConflictError,
+    normalizeRelativeFilePath,
+    project?._id,
+    releaseFileLock,
+  ])
+
   // Check if a tool is allowed in the current context
   const isToolAllowedInContext = useCallback((toolName: string) => {
     // If we have project context, all tools are allowed
@@ -570,7 +682,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    const validation = validateInputAgainstSchema(toolMeta.inputSchema, toolCall.input)
+    const normalizedInput = normalizeToolInput(toolCall.toolName, toolCall.input) as any
+
+    const validation = validateInputAgainstSchema(toolMeta.inputSchema, normalizedInput)
     if (!validation.valid) {
       void addToolOutput({
         state: 'output-error',
@@ -582,12 +696,19 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     try {
-      const result = await localRuntime.requestToolExecution(conversationId, {
-        toolName: toolCall.toolName,
-        input: toolCall.input,
-        toolCallId: toolCall.toolCallId,
-        projectPath: projectPath ?? undefined,
-      })
+      const toolFilePaths = getToolFilePaths(toolCall.toolName, normalizedInput)
+      const run = () =>
+        localRuntime.requestToolExecution(conversationId, {
+          toolName: toolCall.toolName,
+          input: normalizedInput,
+          toolCallId: toolCall.toolCallId,
+          projectPath: projectPath ?? undefined,
+        })
+
+      const result =
+        toolFilePaths.length > 0 && WRITE_TOOLS.has(toolCall.toolName)
+          ? await withFileLocks(toolFilePaths, run)
+          : await run()
 
       if (result.success) {
         void addToolOutput({
@@ -611,7 +732,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         errorText: err instanceof Error ? err.message : 'Tool failed',
       })
     }
-  }, [shouldRequireLocalApproval, isToolAllowedInContext, localRuntime, conversationId, projectPath])
+  }, [
+    conversationId,
+    getToolFilePaths,
+    isToolAllowedInContext,
+    localRuntime,
+    projectPath,
+    shouldRequireLocalApproval,
+    withFileLocks,
+  ])
 
   // Chat hook with auth transport
   const {
@@ -789,6 +918,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
+    const normalizedInput = normalizeToolInput(toolName, input) as any
+
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta && toolMeta.executionEnvironment !== 'local') {
       void addToolOutput({
@@ -801,7 +932,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     if (toolMeta?.inputSchema) {
-      const validation = validateInputAgainstSchema(toolMeta.inputSchema, input)
+      const validation = validateInputAgainstSchema(toolMeta.inputSchema, normalizedInput)
       if (!validation.valid) {
         void addToolOutput({
           state: 'output-error',
@@ -815,10 +946,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
     const result = await localRuntime.requestToolExecution(conversationId, {
       toolName,
-      input,
+      input: normalizedInput,
       toolCallId,
       projectPath: projectPath ?? undefined,
     })
+
     if (result.success) {
       void addToolOutput({
         tool: toolName,
@@ -983,9 +1115,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       }))
     }
 
-    await sendMessage(messageOptions)
+    // Clear input immediately before sending (don't wait for response)
     setInput("")
     clearPendingAttachments()
+
+    // Send message (don't await - let it stream in the background)
+    void sendMessage(messageOptions)
   };
 
   const handleStop = (e: React.MouseEvent) => {
@@ -1388,9 +1523,7 @@ function EmptyState() {
   return (
     <div className="flex flex-col h-full w-full">
       <div className="flex-1 flex flex-col items-center justify-center py-12 text-center gap-6">
-        <div className="rounded-full bg-primary/10 p-4 mb-4 mx-auto w-fit">
-          <Sparkles className="h-8 w-8 text-primary" />
-        </div>
+        <Logo size={32} className="mb-4" />
         <h3 className="text-lg font-medium mb-2">AI Assistant</h3>
         <p className="text-sm text-muted-foreground max-w-[250px]">
           Ask questions, get help with code, or explore ideas together.

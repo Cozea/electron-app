@@ -6,6 +6,7 @@ import {
 } from '@/components/ai-elements/message'
 import {
   Tool,
+  ToolStatic,
   ToolHeader,
   ToolContent,
   ToolInput,
@@ -24,7 +25,10 @@ import {
 } from '@/components/ai-elements/sources'
 import { ConfirmationDialog, type ConfirmationState } from '@/components/ai-elements/confirmation'
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
-import { Terminal } from '@/components/ai-elements/terminal'
+import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutput'
+import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
+import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
+import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 
 export interface MessageToolMeta {
   displayName?: string
@@ -40,6 +44,9 @@ export interface MessageBubbleProps {
   shouldRequireLocalApproval?: (toolMeta?: MessageToolMeta) => boolean
   onApproveTool?: (toolName: string, toolCallId: string, input: any, approvalId?: string) => void
   onDenyTool?: (toolName: string, toolCallId: string, approvalId?: string) => void
+  // For live terminal rendering
+  terminalSessions?: Map<string, string> // toolCallId -> terminalId
+  projectPath?: string
 }
 
 interface ExtractedSource {
@@ -55,6 +62,8 @@ export function MessageBubble({
   shouldRequireLocalApproval,
   onApproveTool,
   onDenyTool,
+  terminalSessions,
+  projectPath,
 }: MessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
@@ -150,13 +159,43 @@ export function MessageBubble({
 
             // Special handling for task-based tools (like Claude Code's TodoWrite)
             const isTaskTool = toolName === 'todo_list' || toolName === 'build_tasks'
+
+            // Skip rendering build_tasks entirely - it's shown in the controls pill
+            if (toolName === 'build_tasks') {
+              return null
+            }
             // Special handling for terminal tools
             const isTerminalTool = toolName === 'run_in_terminal' || toolName === 'get_terminal_output'
+            // Special handling for file edit tools (show Monaco diff)
+            const isEditTool = isFileEditTool(toolName)
+            // Special handling for web search tools (show only sources)
+            const isWebSearchTool = toolName.toLowerCase().includes('search') ||
+              toolName.toLowerCase().includes('web') ||
+              toolName === 'tavily_search' ||
+              toolName === 'brave_search' ||
+              toolName === 'bing_search'
+
+            // Non-expandable tools (output is not useful to display)
+            const isStaticTool = toolName === 'read_file'
+
+            // Render static (non-expandable) tools
+            if (isStaticTool) {
+              return (
+                <ToolStatic
+                  key={`${message.id}-tool-${index}`}
+                  toolName={toolName}
+                  input={toolPart.input as Record<string, unknown> | undefined}
+                  type={toolMeta?.toolType || 'function'}
+                  state={toolState}
+                />
+              )
+            }
 
             return (
               <Tool key={`${message.id}-tool-${index}`}>
                 <ToolHeader
-                  title={toolMeta?.displayName || toolName}
+                  toolName={toolName}
+                  input={toolPart.input as Record<string, unknown> | undefined}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
@@ -166,15 +205,44 @@ export function MessageBubble({
                     <TaskProgress tasks={extractTasksFromInput(toolPart.input)} showSummary />
                   )}
 
-                  {/* For terminal tools, show the command being run */}
-                  {isTerminalTool && toolPart.input?.command && (
-                    <div className="px-4 py-2 text-sm text-muted-foreground font-mono">
-                      $ {toolPart.input.command}
-                    </div>
+                  {/* For terminal tools, show live terminal if session is active, otherwise show command */}
+                  {isTerminalTool && toolPart.input?.command && (() => {
+                    const activeTerminalId = terminalSessions?.get(toolPart.toolCallId)
+                    if (activeTerminalId && projectPath && toolPart.state !== 'output-available') {
+                      // Show live interactive terminal
+                      return (
+                        <div className="px-4 py-2">
+                          <BuilderTerminal
+                            terminalId={activeTerminalId}
+                            command={toolPart.input.command as string}
+                            projectPath={projectPath}
+                            isStreaming={true}
+                          />
+                        </div>
+                      )
+                    }
+                    // Show command header only when no live terminal and not complete
+                    if (toolPart.state !== 'output-available') {
+                      return (
+                        <div className="px-4 py-2 text-sm text-muted-foreground font-mono">
+                          $ {toolPart.input.command}
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+
+                  {/* For file edit tools, show Monaco diff viewer */}
+                  {isEditTool && toolPart.input && (
+                    <ToolDiffOutput
+                      toolName={toolName}
+                      input={toolPart.input as Record<string, unknown>}
+                      maxHeight={300}
+                    />
                   )}
 
-                  {/* For non-task/non-terminal tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && toolPart.input && (
+                  {/* For non-task/non-terminal/non-edit/non-list_dir/non-web_search tools, show raw input */}
+                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolPart.input && (
                     <ToolInput input={formatToolPayload(toolPart.input)} />
                   )}
 
@@ -203,23 +271,27 @@ export function MessageBubble({
                         ? (() => {
                           const tasks = extractTasksFromToolOutput(toolPart.output)
                           if (tasks.length === 0) {
-                            return <ToolOutput output={formatToolPayload(toolPart.output)} />
+                            return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
                           }
                           return <TaskProgress tasks={tasks} showSummary />
                         })()
                         : isTerminalTool
-                          ? <Terminal
+                          ? <BuilderTerminalOutput
+                            command={toolPart.input?.command as string | undefined}
                             output={extractTerminalOutput(toolPart.output)}
-                            isStreaming={false}
-                            className="mx-4 mb-4"
+                            className="border-t"
                           />
-                          : <ToolOutput output={formatToolPayload(toolPart.output)} />}
+                          : isEditTool
+                            ? null // Diff viewer already shows the edit, no need to show output
+                            : isWebSearchTool
+                              ? null // Web search shows only sources below, no raw output
+                              : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />}
                       {(() => {
                         const sources = extractSourcesFromToolOutput(toolPart.output, toolName)
                         if (sources.length === 0) return null
                         return (
                           <div className="px-4 pb-4">
-                            <Sources>
+                            <Sources defaultOpen={isWebSearchTool}>
                               <SourcesTrigger count={sources.length} />
                               <SourcesContent>
                                 {sources.map((source, idx) => (
@@ -239,11 +311,11 @@ export function MessageBubble({
                   )}
 
                   {toolPart.state === 'output-error' && (
-                    <ToolOutput output={null} errorText={toolPart.errorText} />
+                    <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
                   )}
 
                   {toolPart.state === 'output-denied' && (
-                    <ToolOutput output={null} errorText="Tool execution denied" />
+                    <ToolOutput output={null} errorText="Tool execution denied" toolName={toolName} />
                   )}
                 </ToolContent>
               </Tool>
@@ -317,11 +389,8 @@ function extractTasksFromInput(input: unknown): TaskData[] {
   if (Array.isArray(payload?.tasks)) {
     tasks = payload.tasks
   } else if (payload?.tasks_json) {
-    try {
-      tasks = JSON.parse(payload.tasks_json)
-    } catch {
-      // ignore parse errors
-    }
+    const parsed = parseJsonArrayLoose(payload.tasks_json)
+    if (parsed) tasks = parsed
   }
   return tasks
     .filter((task: any) => task && typeof task === 'object')

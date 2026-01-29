@@ -35,12 +35,10 @@ export class YConvexProvider {
     // Don't re-broadcast updates we received from remote
     if (origin === 'remote' || !this.connected) return
 
-    // Convert Uint8Array to ArrayBuffer for Convex v.bytes()
-    // Slice the underlying buffer to get only the relevant portion
-    const arrayBuffer = update.buffer.slice(
-      update.byteOffset,
-      update.byteOffset + update.byteLength
-    )
+    // Convert Uint8Array to a clean ArrayBuffer for Convex v.bytes()
+    // (avoid `SharedArrayBuffer` typing issues).
+    const arrayBuffer = new ArrayBuffer(update.byteLength)
+    new Uint8Array(arrayBuffer).set(update)
 
     // Broadcast the update to Convex
     this.convex.mutation(api.yjs.broadcastUpdate, {

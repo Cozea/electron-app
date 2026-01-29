@@ -4,6 +4,7 @@ import * as monaco from 'monaco-editor'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { CollaborativeMonacoEditor } from './CollaborativeMonacoEditor'
+import { useMonacoTheme } from '@/hooks/useMonacoTheme'
 
 // Import Monaco workers for Vite
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -36,13 +37,15 @@ loader.config({ monaco })
 
 interface MonacoEditorProps {
     path: string
+    onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void
 }
 
-export function MonacoEditor({ path }: MonacoEditorProps) {
+export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
     const { yjsDoc } = useYjsProject()
+    const theme = useMonacoTheme()
 
     // Handle save for collaborative editor
     const handleSave = useCallback(() => {
@@ -68,8 +71,11 @@ export function MonacoEditor({ path }: MonacoEditorProps) {
             editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
                 actions.saveFile(path)
             })
+
+            // Notify parent that editor is ready
+            onEditorReady?.(editor)
         },
-        [path, actions]
+        [path, actions, onEditorReady]
     )
 
 
@@ -86,8 +92,8 @@ export function MonacoEditor({ path }: MonacoEditorProps) {
         return (
             <CollaborativeMonacoEditor
                 path={path}
-                language={model.language}
                 onSave={handleSave}
+                onEditorReady={onEditorReady}
             />
         )
     }
@@ -98,7 +104,7 @@ export function MonacoEditor({ path }: MonacoEditorProps) {
             height="100%"
             language={model.language}
             value={model.currentContent}
-            theme="vs-dark" // Could make dynamic later
+            theme={theme}
             onChange={handleChange}
             onMount={handleEditorMount}
             options={{

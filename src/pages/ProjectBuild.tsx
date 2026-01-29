@@ -5,27 +5,29 @@ import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { useAuth } from '@/contexts/AuthContext'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { ButtonGroup } from '@/components/ui/button-group'
 import { Progress } from '@/components/ui/progress'
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable'
 import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 import {
-  Check,
-  Circle,
   Loader2,
-  AlertCircle,
-  Square,
-  RotateCcw,
-  FolderOpen,
-  Download,
   Sparkles,
-  Trash,
+  Monitor,
+  MonitorOff,
 } from 'lucide-react'
 import type { BuildTask } from '@/components/builder/BuildTaskList'
 import { BuilderConversation } from '@/components/builder/BuilderConversation'
+import { BuildPreviewPanel } from '@/components/builder/BuildPreviewPanel'
+import { BuilderControlsPill } from '@/components/builder/BuilderControlsPill'
+import { BillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { useDevServerManager } from '@/hooks/useDevServerManager'
 
 // MIME type mapping for file extensions
 const MIME_TYPES: Record<string, string> = {
@@ -41,11 +43,36 @@ const MIME_TYPES: Record<string, string> = {
   svg: 'image/svg+xml',
   png: 'image/png',
   jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  ico: 'image/x-icon',
 }
 
 function getMimeType(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() || ''
   return MIME_TYPES[ext] || 'text/plain'
+}
+
+const BINARY_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico'])
+
+function isBinaryPath(filePath: string): boolean {
+  const fileName = filePath.split('/').pop() ?? filePath
+  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
+  return !!ext && BINARY_EXTENSIONS.has(ext)
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+
+  return btoa(binary)
 }
 
 // Compute xxhash of content (same algorithm as electron main process)
@@ -66,6 +93,11 @@ export function ProjectBuild() {
     projectId ? { projectId: projectId as Id<'projects'> } : 'skip'
   )
 
+  const memberLocalPath = useQuery(
+    api.projectMembers.getMemberLocalPath,
+    project?._id && convexUserId ? { projectId: project._id, userId: convexUserId } : 'skip'
+  )
+
   // Cloud files for this project
   const projectFiles = useQuery(
     api.projectFiles.listForProject,
@@ -78,8 +110,8 @@ export function ProjectBuild() {
   )
 
   // Mutations
-  const updateLocalPath = useMutation(api.projects.updateLocalPath)
   const updateStatus = useMutation(api.projects.updateStatus)
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
   const saveFile = useMutation(api.projectFiles.saveFile)
   const startBuilderRun = useMutation(api.builderRuns.startRun)
@@ -87,11 +119,14 @@ export function ProjectBuild() {
   const updateBuilderRunStatus = useMutation(api.builderRuns.updateRunStatus)
   const deleteProject = useMutation(api.projects.deleteProject)
   const saveYjsSnapshot = useMutation(api.yjs.saveSnapshot)
+  const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
+  const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
 
   // Build state
   const [progress, setProgress] = useState(0)
   const [statusMessage, setStatusMessage] = useState('Preparing to build...')
   const [hasError, setHasError] = useState(false)
+  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [logs, setLogs] = useState<string[]>([])
 
   // Pull state
@@ -102,7 +137,7 @@ export function ProjectBuild() {
   // AI Generation state
   const [isAIGenerating, setIsAIGenerating] = useState(false)
   const [buildTasks, setBuildTasks] = useState<BuildTask[]>([])
-  const [localPath, setLocalPath] = useState<string | null>(project?.localPath || null)
+  const [localPath, setLocalPath] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'failed' | 'completed' | 'interrupted'>('idle')
   const [runAttempt, setRunAttempt] = useState(0)
@@ -115,12 +150,40 @@ export function ProjectBuild() {
   // Track files created during build for Yjs initialization
   const createdFilesRef = useRef<Array<{ path: string; content: string }>>([])
 
+  // Preview panel state
+  const [showPreview, setShowPreview] = useState(true)
+
+  // Detect when npm install completes by checking build tasks
+  const npmInstallComplete = useMemo(() => {
+    if (buildTasks.length === 0) return false
+    // Look for completed install dependency tasks
+    return buildTasks.some(
+      (task) =>
+        task.status === 'completed' &&
+        (task.content.toLowerCase().includes('install') ||
+          task.content.toLowerCase().includes('dependencies') ||
+          task.content.toLowerCase().includes('npm'))
+    )
+  }, [buildTasks])
+
+  // Dev server manager - starts automatically when npm install completes
+  const devServer = useDevServerManager({
+    projectPath: npmInstallComplete ? localPath : null,
+    autoStart: npmInstallComplete && isAIGenerating,
+  })
+
   // xxhash for computing file checksums (same algorithm as electron main process)
   // Using state instead of ref so we can block builds until hasher is ready
   const [xxhasher, setXxhasher] = useState<XXHashAPI | null>(null)
   useEffect(() => {
     xxhashInit().then(setXxhasher)
   }, [])
+
+  useEffect(() => {
+    if (memberLocalPath && memberLocalPath !== localPath) {
+      setLocalPath(memberLocalPath)
+    }
+  }, [memberLocalPath, localPath])
 
   useEffect(() => {
     runIdRef.current = runId
@@ -199,6 +262,7 @@ export function ProjectBuild() {
   // Check if we need to auto-pull (cloud files exist, no local folder)
   useEffect(() => {
     if (!project || projectFiles === undefined || autoPullTriggeredRef.current) return
+    if (!convexUserId) return
     if (isAIGenerating || isPulling) return
 
     const checkAndAutoPull = async () => {
@@ -216,7 +280,7 @@ export function ProjectBuild() {
     }
 
     checkAndAutoPull()
-  }, [project, projectFiles])
+  }, [project, projectFiles, convexUserId, isAIGenerating, isPulling])
 
   // Start build automatically when project loads (only if no cloud files to pull)
   useEffect(() => {
@@ -234,6 +298,73 @@ export function ProjectBuild() {
     const timestamp = new Date().toLocaleTimeString()
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
+
+  // Log dev server status changes
+  useEffect(() => {
+    if (devServer.status === 'ready' && devServer.url) {
+      addLog(`Dev server ready at ${devServer.url}`)
+    } else if (devServer.status === 'error' && devServer.error) {
+      addLog(`Dev server error: ${devServer.error}`)
+    } else if (devServer.status === 'starting') {
+      addLog('Starting dev server...')
+    }
+  }, [devServer.status, devServer.url, devServer.error])
+
+  // Capture and upload preview screenshot
+  const capturePreviewScreenshot = useCallback(async () => {
+    if (!devServer.url || !project?._id) return
+
+    addLog('Capturing preview screenshot...')
+
+    try {
+      // Capture screenshot via Electron IPC
+      const result = await window.electronAPI.preview.captureScreenshot({
+        url: devServer.url,
+        width: 1280,
+        height: 800,
+      })
+
+      if (!result.success || !result.base64) {
+        throw new Error(result.error || 'Screenshot capture failed')
+      }
+
+      addLog('Screenshot captured, uploading...')
+
+      // Convert base64 to blob
+      const byteString = atob(result.base64)
+      const ab = new ArrayBuffer(byteString.length)
+      const ia = new Uint8Array(ab)
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i)
+      }
+      const blob = new Blob([ab], { type: 'image/png' })
+
+      // Upload to Convex
+      const uploadUrl = await generatePreviewUploadUrl({ projectId: project._id })
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/png' },
+        body: blob,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload screenshot')
+      }
+
+      const { storageId } = await uploadResponse.json()
+
+      // Update project with preview image
+      await updatePreviewImage({
+        projectId: project._id,
+        storageId,
+      })
+
+      addLog('Preview screenshot saved!')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      addLog(`Screenshot capture failed: ${msg}`)
+    }
+  }, [devServer.url, project?._id, generatePreviewUploadUrl, updatePreviewImage, addLog])
 
   // AI Generation handlers
   const handleTasksUpdate = useCallback((tasks: BuildTask[]) => {
@@ -316,7 +447,15 @@ export function ProjectBuild() {
       await updateStatus({ projectId: project._id, status: 'active' })
       addLog('Project status updated to active')
     }
-  }, [project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot])
+
+    // Capture preview screenshot if dev server is ready
+    // Use a small delay to ensure the app has rendered
+    if (devServer.status === 'ready' && devServer.url) {
+      setTimeout(() => {
+        capturePreviewScreenshot()
+      }, 2000)
+    }
+  }, [project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
 
   const handleAIError = useCallback((error: string) => {
     addLog(`AI Error: ${error}`)
@@ -382,10 +521,12 @@ export function ProjectBuild() {
     }
 
     // Ensure local folder exists
-    let path = project.localPath
-    if (!path) {
-      addLog('Creating local project folder...')
-      try {
+    let path = localPath
+    try {
+      const folderExists = await window.electronAPI.project.exists(project.slug)
+
+      if (!folderExists) {
+        addLog('Creating local project folder...')
         const result = await window.electronAPI.project.createFolder({
           slug: project.slug,
           initGit: true,
@@ -399,22 +540,37 @@ export function ProjectBuild() {
         setLocalPath(path)
         addLog(`Created folder at: ${path}`)
 
-        // Save the local path to Convex
-        await updateLocalPath({
+        // Save the local path to Convex (per-user, per-machine)
+        await updateMemberLocalPath({
           projectId: project._id,
+          userId: convexUserId,
           localPath: path,
         })
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        addLog(`Error: ${errorMessage}`)
-        setHasError(true)
-        setIsAIGenerating(false)
-        setStatusMessage('Setup failed')
-        return
+      } else if (!path) {
+        const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
+        if (fetchedPath) {
+          path = fetchedPath
+          setLocalPath(path)
+          await updateMemberLocalPath({
+            projectId: project._id,
+            userId: convexUserId,
+            localPath: fetchedPath,
+          })
+        }
       }
-    } else {
-      setLocalPath(path)
-      addLog(`Using existing folder: ${path}`)
+
+      if (!path) {
+        throw new Error('Could not determine local path')
+      }
+
+      addLog(`Using folder: ${path}`)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      addLog(`Error: ${errorMessage}`)
+      setHasError(true)
+      setIsAIGenerating(false)
+      setStatusMessage('Setup failed')
+      return
     }
 
     try {
@@ -495,7 +651,7 @@ export function ProjectBuild() {
 
   // Pull files from cloud to local folder
   const pullFilesFromCloud = async () => {
-    if (!project || !projectFiles || projectFiles.length === 0) return
+    if (!project || !projectFiles || projectFiles.length === 0 || !convexUserId) return
 
     setIsPulling(true)
     setPullProgress(0)
@@ -503,7 +659,7 @@ export function ProjectBuild() {
 
     try {
       // 1. Create local folder if doesn't exist
-      let localPath = project.localPath
+      let targetPath = localPath
       const folderExists = await window.electronAPI.project.exists(project.slug)
 
       if (!folderExists) {
@@ -516,19 +672,29 @@ export function ProjectBuild() {
           throw new Error(result.error || 'Failed to create folder')
         }
 
-        localPath = result.localPath
-        await updateLocalPath({ projectId: project._id, localPath })
-        addLog(`Created folder at: ${localPath}`)
-      } else if (!localPath) {
+        targetPath = result.localPath
+        setLocalPath(targetPath)
+        await updateMemberLocalPath({
+          projectId: project._id,
+          userId: convexUserId,
+          localPath: targetPath,
+        })
+        addLog(`Created folder at: ${targetPath}`)
+      } else if (!targetPath) {
         // Folder exists but path not in DB - get it
         const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
         if (fetchedPath) {
-          localPath = fetchedPath
-          await updateLocalPath({ projectId: project._id, localPath: fetchedPath })
+          targetPath = fetchedPath
+          setLocalPath(targetPath)
+          await updateMemberLocalPath({
+            projectId: project._id,
+            userId: convexUserId,
+            localPath: fetchedPath,
+          })
         }
       }
 
-      if (!localPath) {
+      if (!targetPath) {
         throw new Error('Could not determine local path')
       }
 
@@ -546,14 +712,27 @@ export function ProjectBuild() {
         // Download file content from Convex storage URL
         const response = await fetch(file.url)
         if (!response.ok) throw new Error(`Failed to download ${file.filePath}`)
-        const content = await response.text()
+        const binary = isBinaryPath(file.filePath)
+        const content = binary
+          ? arrayBufferToBase64(await response.arrayBuffer())
+          : await response.text()
 
-        // Write to local folder
-        await window.electronAPI.project.writeFile({
-          projectPath: localPath,
-          filePath: file.filePath,
-          content,
+        // Write to local folder (binary-safe)
+        const writeResult = await window.electronAPI.sync.writeFiles({
+          projectPath: targetPath,
+          files: [
+            {
+              path: file.filePath,
+              content,
+              encoding: binary ? 'base64' : 'utf8',
+            },
+          ],
         })
+
+        if (writeResult.successCount < 1) {
+          const error = writeResult.results[0]?.error ?? 'Unknown error'
+          throw new Error(`Failed to write ${file.filePath}: ${error}`)
+        }
 
         addLog(`Saved: ${file.filePath}`)
         setPullProgress(Math.round(((i + 1) / totalFiles) * 100))
@@ -584,13 +763,34 @@ export function ProjectBuild() {
   }
 
   const handleOpenProject = async () => {
-    if (!project?.localPath) {
+    if (!project) return
+
+    let path = localPath
+    if (!path) {
+      const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
+      if (fetchedPath) {
+        path = fetchedPath
+        setLocalPath(path)
+        if (convexUserId) {
+          await updateMemberLocalPath({ projectId: project._id, userId: convexUserId, localPath: path })
+        }
+      }
+    }
+
+    if (!path) {
       addLog('Error: Project folder path not set')
       return
     }
+
+    // Stop the dev server before opening the project folder
+    if (devServer.isRunning) {
+      addLog('Stopping dev server...')
+      await devServer.stop()
+    }
+
     addLog('Opening project folder...')
     // Open folder in system file manager
-    await window.electronAPI.shell.openExternal(`file://${project.localPath}`)
+    await window.electronAPI.shell.openExternal(`file://${path}`)
   }
 
   const handleCancelProject = async () => {
@@ -648,102 +848,33 @@ export function ProjectBuild() {
     )
   }
 
-  const headerContent = (
-    <div className="flex items-center justify-between gap-4 w-full">
-      {/* Left Side: Icon + Status Message */}
-      <div className="flex items-center gap-3">
-        {/* Status Icon */}
-        <div className="shrink-0">
-          {isPulling ? (
-            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
-              <Download className="h-4 w-4 text-blue-500 animate-pulse" />
-            </div>
-          ) : hasError ? (
-            <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center">
-              <AlertCircle className="h-4 w-4 text-destructive" />
-            </div>
-          ) : isAIComplete ? (
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-              <Check className="h-4 w-4 text-emerald-500" />
-            </div>
-          ) : isAIGenerating ? (
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-            </div>
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-              <Circle className="h-4 w-4 text-muted-foreground" />
-            </div>
-          )}
-        </div>
-
-        {/* Status Message */}
-        <h2 className="text-sm font-semibold truncate">
-          {isPulling ? 'Syncing from cloud...' : statusMessage}
-        </h2>
-      </div>
-
-      {/* Right Side: Actions */}
+  // Chat panel header - matches DashboardLayout header height (h-12) with blur
+  const chatPanelHeader = (
+    <div className="flex items-center gap-3 h-12 px-4 bg-background/50 backdrop-blur-md shrink-0">
       <div className="flex items-center gap-2">
-        {isAIGenerating && !hasError && !isPulling && (
-          <Button variant="outline" size="sm" onClick={handleAIStop} className="h-8 gap-2">
-            <Square className="h-3.5 w-3.5" />
-            Stop
-          </Button>
-        )}
-
-        {isAIComplete && !isPulling && !isAIGenerating && (
-          <ButtonGroup>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={pullFilesFromCloud}
-              className="h-8 gap-2 rounded-r-none border-r-0 focus:z-10"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Pull
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleOpenProject}
-              className="h-8 gap-2 rounded-l-none focus:z-10"
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              Open Project
-            </Button>
-          </ButtonGroup>
-        )}
-
-        {hasError && !isPulling && (
-          <ButtonGroup>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-              className="h-8 gap-2 rounded-r-none border-r-0 focus:z-10"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Retry
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleCancelProject}
-              className="h-8 gap-2 rounded-l-none focus:z-10"
-            >
-              <Trash className="h-3.5 w-3.5" />
-              Cancel Project
-            </Button>
-          </ButtonGroup>
-        )}
-
-        {!isAIGenerating && !isAIComplete && !hasError && !isPulling && (
-          <Button size="sm" onClick={startAIBuild} className="h-8 gap-2">
-            <Sparkles className="h-3.5 w-3.5" />
-            Start AI Build
-          </Button>
-        )}
+        <Sparkles className="h-4 w-4 text-primary" />
+        <span className="text-sm font-medium">Building {project.name}</span>
       </div>
+      <div className="flex-1" />
+      {/* Preview toggle button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setShowPreview((prev) => !prev)}
+        className="h-8 gap-2 text-xs"
+      >
+        {showPreview ? (
+          <>
+            <MonitorOff className="h-3.5 w-3.5" />
+            Hide Preview
+          </>
+        ) : (
+          <>
+            <Monitor className="h-3.5 w-3.5" />
+            Show Preview
+          </>
+        )}
+      </Button>
     </div>
   )
 
@@ -756,7 +887,7 @@ export function ProjectBuild() {
         { label: project.name },
         { label: 'Build' },
       ]}
-      header={headerContent}
+      contentMode="fixed"
     >
       <div className="h-full flex flex-col overflow-hidden">
         {/* Progress Bar - Pulling (Moved from header) */}
@@ -769,25 +900,122 @@ export function ProjectBuild() {
           </div>
         )}
 
-        {/* Logs and Files Section */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Logs Panel / AI Conversation */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {localPath && project && (
-              <div className="flex-1 overflow-hidden">
-                <BuilderConversation
-                  project={project}
-                  localPath={localPath}
-                  onTasksUpdate={handleTasksUpdate}
-                  onFileCreated={handleFileCreated}
-                  onComplete={handleAIComplete}
-                  onError={handleAIError}
+        {/* Split Pane Layout: Builder Conversation + Live Preview */}
+        <div className="flex-1 overflow-hidden">
+          {showPreview ? (
+            <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
+              {/* Builder Conversation Panel - Left Side */}
+              <ResizablePanel defaultSize={40} minSize={25} id="builder-conversation" className="min-w-0">
+                <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+                  {/* Chat panel header - unified with preview panel */}
+                  {chatPanelHeader}
+
+                  {/* Chat content */}
+                  <div className="flex-1 min-h-0 relative">
+                    {localPath && project ? (
+                      <BuilderConversation
+                        project={project}
+                        localPath={localPath}
+                        onTasksUpdate={handleTasksUpdate}
+                        onFileCreated={handleFileCreated}
+                        onComplete={handleAIComplete}
+                        onError={handleAIError}
+                        onBillingError={setBillingError}
+                        className="h-full"
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        <p>Loading project...</p>
+                      </div>
+                    )}
+                    {/* Floating Controls Pill */}
+                    <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
+                      {billingError && (
+                        <BillingError
+                          error={billingError}
+                          className="mx-auto w-full max-w-2xl"
+                        />
+                      )}
+                      <BuilderControlsPill
+                        statusMessage={statusMessage}
+                        isAIGenerating={isAIGenerating}
+                        isAIComplete={isAIComplete}
+                        hasError={hasError}
+                        isPulling={isPulling}
+                        buildTasks={buildTasks}
+                        onStop={handleAIStop}
+                        onRetry={handleRetry}
+                        onPull={pullFilesFromCloud}
+                        onOpenProject={handleOpenProject}
+                        onStartBuild={startAIBuild}
+                        onCancelProject={handleCancelProject}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </ResizablePanel>
+
+              {/* Resize Handle */}
+              <ResizableHandle withHandle />
+
+              {/* Preview Panel - Right Side */}
+              <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
+                <BuildPreviewPanel
+                  status={devServer.status}
+                  url={devServer.url}
+                  error={devServer.error}
+                  onRefresh={devServer.restart}
+                  onCapture={capturePreviewScreenshot}
                   className="h-full"
                 />
-              </div>
-            )}
-          </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            /* Full-width Builder Conversation when preview is hidden */
+            <div className="h-full flex flex-col overflow-hidden">
+              {/* Chat panel header */}
+              {chatPanelHeader}
 
+              {/* Chat content */}
+              <div className="flex-1 min-h-0 relative">
+                {localPath && project && (
+                  <BuilderConversation
+                    project={project}
+                    localPath={localPath}
+                    onTasksUpdate={handleTasksUpdate}
+                    onFileCreated={handleFileCreated}
+                    onComplete={handleAIComplete}
+                    onError={handleAIError}
+                    onBillingError={setBillingError}
+                    className="h-full"
+                  />
+                )}
+                {/* Floating Controls Pill */}
+                <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
+                  {billingError && (
+                    <BillingError
+                      error={billingError}
+                      className="mx-auto w-full max-w-2xl"
+                    />
+                  )}
+                  <BuilderControlsPill
+                    statusMessage={statusMessage}
+                    isAIGenerating={isAIGenerating}
+                    isAIComplete={isAIComplete}
+                    hasError={hasError}
+                    isPulling={isPulling}
+                    buildTasks={buildTasks}
+                    onStop={handleAIStop}
+                    onRetry={handleRetry}
+                    onPull={pullFilesFromCloud}
+                    onOpenProject={handleOpenProject}
+                    onStartBuild={startAIBuild}
+                    onCancelProject={handleCancelProject}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

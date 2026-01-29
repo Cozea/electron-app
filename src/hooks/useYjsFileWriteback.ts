@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import * as Y from 'yjs'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 /**
@@ -15,14 +16,19 @@ export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
   projectPath: string | null
 ): void {
-  const pendingWritesRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const hasHydratedInitialFilesRef = useRef(false)
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
 
   useEffect(() => {
     if (!yjsDoc || !projectPath) return
 
+    let cancelled = false
+
     // Track which files we're observing
     const observedFiles = new Map<string, () => void>()
+    const pendingDeletes = new Set<string>()
+    let deleteDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
     // Write a file to disk
     const writeFileToDisk = async (filePath: string, content: string) => {
@@ -55,6 +61,70 @@ export function useYjsFileWriteback(
       pendingWritesRef.current.set(filePath, timeout)
     }
 
+    const flushDeletes = async () => {
+      const paths = Array.from(pendingDeletes)
+      pendingDeletes.clear()
+      deleteDebounceTimer = null
+
+      if (paths.length === 0) return
+
+      try {
+        await window.electronAPI.sync.deleteFiles({
+          projectPath,
+          paths,
+        })
+        console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
+      } catch (err) {
+        console.error('[YjsWriteback] Failed to delete remote files:', err)
+      }
+    }
+
+    const scheduleDelete = (filePath: string) => {
+      pendingDeletes.add(filePath)
+      if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
+      deleteDebounceTimer = setTimeout(() => {
+        void flushDeletes()
+      }, DEBOUNCE_MS)
+    }
+
+    const hydrateLocalDiskIfEmpty = async () => {
+      if (hasHydratedInitialFilesRef.current) return
+      hasHydratedInitialFilesRef.current = true
+
+      try {
+        const listResult = await window.electronAPI.project.listFiles({ projectPath })
+        if (!listResult.success) return
+
+        const existingPaths = (listResult.files ?? [])
+          .map((f) => f.path.replace(/\\/g, '/'))
+          .filter((p) => p !== '.gitignore' && p !== '.env.example')
+
+        // If the folder is effectively empty (often only `.gitignore` exists on first run),
+        // hydrate from Yjs so the user actually sees the project files.
+        if (existingPaths.length > 0) return
+        if (yjsDoc.files.size === 0) return
+
+        const filesToWrite = Array.from(yjsDoc.files.entries()).map(([path, yText]) => ({
+          path,
+          content: yText.toString(),
+          encoding: 'utf8' as const,
+        }))
+
+        if (filesToWrite.length === 0) return
+
+        await window.electronAPI.sync.writeFiles({
+          projectPath,
+          files: filesToWrite,
+        })
+
+        if (!cancelled) {
+          console.log(`[YjsWriteback] Hydrated ${filesToWrite.length} files from Yjs snapshot`)
+        }
+      } catch (err) {
+        console.warn('[YjsWriteback] Initial hydration failed:', err)
+      }
+    }
+
     // Observe a single file's Y.Text
     const observeFile = (filePath: string) => {
       if (observedFiles.has(filePath)) return
@@ -62,7 +132,7 @@ export function useYjsFileWriteback(
       const yText = yjsDoc.files.get(filePath)
       if (!yText) return
 
-      const handler = (event: unknown, transaction: { origin: string | null }) => {
+      const handler = (_event: unknown, transaction: { origin: string | null }) => {
         // Only write back changes from remote (not our own agent/init)
         // 'remote' origin = came from another user via Convex
         if (transaction.origin === 'remote') {
@@ -76,9 +146,41 @@ export function useYjsFileWriteback(
     }
 
     // Observe the files map for new files being added
-    const filesMapHandler = (event: { keysChanged: Set<string> }) => {
-      for (const key of event.keysChanged) {
-        observeFile(key)
+    const filesMapHandler = (event: Y.YMapEvent<Y.Text>, transaction: Y.Transaction) => {
+      for (const [filePath, change] of event.changes.keys.entries()) {
+        if (change.action === 'delete') {
+          // Stop observing deleted files
+          const unobserve = observedFiles.get(filePath)
+          if (unobserve) {
+            unobserve()
+            observedFiles.delete(filePath)
+          }
+
+          // Cancel pending writes for deleted files
+          const pending = pendingWritesRef.current.get(filePath)
+          if (pending) {
+            clearTimeout(pending)
+            pendingWritesRef.current.delete(filePath)
+          }
+
+          // Only delete from disk for remote changes
+          if (transaction.origin === 'remote') {
+            scheduleDelete(filePath)
+          }
+
+          continue
+        }
+
+        // add / update
+        observeFile(filePath)
+
+        // If a file was created remotely, we may have missed the initial content change.
+        if (transaction.origin === 'remote') {
+          const yText = yjsDoc.files.get(filePath)
+          if (yText) {
+            scheduleWrite(filePath, yText.toString())
+          }
+        }
       }
     }
 
@@ -90,7 +192,11 @@ export function useYjsFileWriteback(
     // Observe for new files
     yjsDoc.files.observe(filesMapHandler)
 
+    // One-time initial hydration for empty local folders
+    void hydrateLocalDiskIfEmpty()
+
     return () => {
+      cancelled = true
       // Cleanup: unobserve all files
       for (const unobserve of observedFiles.values()) {
         unobserve()
@@ -102,6 +208,10 @@ export function useYjsFileWriteback(
         clearTimeout(timeout)
       }
       pendingWritesRef.current.clear()
+
+      // Cleanup: cancel pending deletes
+      if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
+      pendingDeletes.clear()
 
       // Unobserve files map
       yjsDoc.files.unobserve(filesMapHandler)

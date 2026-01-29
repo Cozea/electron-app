@@ -19,7 +19,14 @@ import {
   X,
   Loader2,
   MousePointerClick,
+  MoreHorizontal,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import {
   Empty,
@@ -122,6 +129,42 @@ export function ProjectDetailPage() {
     setPendingClosePath(null)
   }
 
+  // Close all tabs (only closes saved files, warns about unsaved)
+  const handleCloseAll = () => {
+    if (!projectId) return
+
+    // Check if any files have unsaved changes
+    const hasUnsaved = openFiles.some(path => editorModels[path]?.isDirty)
+
+    if (hasUnsaved) {
+      // For simplicity, close saved ones first, then user handles unsaved individually
+      openFiles.forEach(path => {
+        if (!editorModels[path]?.isDirty) {
+          editorActions.closeFile(path)
+          closeFile(projectId, path)
+        }
+      })
+    } else {
+      // All saved, close everything
+      openFiles.forEach(path => {
+        editorActions.closeFile(path)
+        closeFile(projectId, path)
+      })
+    }
+  }
+
+  // Close only saved tabs
+  const handleCloseAllSaved = () => {
+    if (!projectId) return
+
+    openFiles.forEach(path => {
+      if (!editorModels[path]?.isDirty) {
+        editorActions.closeFile(path)
+        closeFile(projectId, path)
+      }
+    })
+  }
+
   // Sync Store Active File -> URL
   useEffect(() => {
     if (activeFile) {
@@ -135,29 +178,6 @@ export function ProjectDetailPage() {
       setSearchParams(newParams)
     }
   }, [activeFile, openFiles.length])
-
-  // Format dates
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  }
-
-  const formatRelativeTime = (timestamp: number) => {
-    const now = Date.now()
-    const diffMs = now - timestamp
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
-    return formatDate(timestamp)
-  }
 
   // Loading state
   if (project === undefined) {
@@ -190,50 +210,72 @@ export function ProjectDetailPage() {
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Editor Tabs - only show when files are open */}
       {openFiles.length > 0 && (
-        <div className="flex items-center h-9 bg-muted/20 border-b border-border overflow-x-auto scrollbar-hide">
-          {openFiles.map(path => {
-            const isActive = path === activeFile
-            const fileName = path.split('/').pop() || 'file'
-            const model = editorModels[path]
-            const isDirty = model?.isDirty ?? false
-            return (
-              <div
-                key={path}
-                onClick={() => handleTabClick(path)}
-                className={cn(
-                  "flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] text-xs border-r border-border cursor-pointer select-none group",
-                  isActive ? "bg-background text-foreground border-t-2 border-t-primary" : "bg-muted/40 text-muted-foreground hover:bg-background/50"
-                )}
-              >
-                {getFileIcon(fileName, { width: 14, height: 14 })}
-                <span className="truncate flex-1">{fileName}</span>
-                {/* Dirty indicator */}
-                {isDirty && (
-                  <span
-                    className="w-2 h-2 rounded-full bg-amber-500 shrink-0"
-                    title="Unsaved changes"
-                  />
-                )}
-                <button
-                  onClick={(e) => handleCloseTab(e, path)}
+        <div className="relative flex items-center h-9 bg-muted/20">
+          {/* Scrollable tabs area */}
+          <div className="flex-1 flex items-center h-full overflow-x-auto scrollbar-hide">
+            {openFiles.map(path => {
+              const isActive = path === activeFile
+              const fileName = path.split('/').pop() || 'file'
+              const model = editorModels[path]
+              const isDirty = model?.isDirty ?? false
+              return (
+                <div
+                  key={path}
+                  onClick={() => handleTabClick(path)}
                   className={cn(
-                    "rounded-sm p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all",
-                    isActive && "opacity-100",
-                    isDirty && "group-hover:opacity-100"
+                    "flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs border-r border-border cursor-pointer select-none group",
+                    isActive ? "bg-muted/30 text-foreground border-t-2 border-t-primary" : "bg-muted/40 text-muted-foreground hover:bg-background/50 border-b border-border"
                   )}
                 >
-                  <X className="h-3 w-3" />
+                  {getFileIcon(fileName, { width: 14, height: 14 })}
+                  <span className="truncate flex-1">{fileName}</span>
+                  {/* Dirty indicator */}
+                  {isDirty && (
+                    <span
+                      className="w-2 h-2 rounded-full bg-amber-500 shrink-0"
+                      title="Unsaved changes"
+                    />
+                  )}
+                  <button
+                    onClick={(e) => handleCloseTab(e, path)}
+                    className={cn(
+                      "rounded-sm p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all",
+                      isActive && "opacity-100",
+                      isDirty && "group-hover:opacity-100"
+                    )}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Fixed menu button on the right */}
+          <div className="shrink-0 flex items-center h-full bg-muted/20 border-l border-border">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                  <MoreHorizontal className="h-4 w-4" />
                 </button>
-              </div>
-            )
-          })}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleCloseAll}>
+                  Close All
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleCloseAllSaved}>
+                  Close All Saved
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       )}
 
       {/* Editor Content */}
       <div className="flex-1 min-h-0 relative">
         {activeFile ? (
-          <FileViewer path={activeFile} />
+          <FileViewer key={activeFile} path={activeFile} />
         ) : (
           <Empty className="h-full py-0">
             <EmptyHeader>

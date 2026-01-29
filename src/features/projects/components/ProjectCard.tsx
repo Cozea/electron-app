@@ -9,7 +9,8 @@ import {
     Loader2,
     Trash2,
     Cloud,
-    Check
+    Check,
+    ImageOff
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -75,6 +76,14 @@ export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: s
         api.projectFiles.getManifestForProject,
         project.status !== 'draft' ? { projectId: project._id } : 'skip'
     )
+
+    // Get preview image URL
+    const previewImageUrl = useQuery(
+        api.projects.getPreviewImageUrl,
+        project.status !== 'draft' ? { projectId: project._id } : 'skip'
+    )
+    const [imageLoaded, setImageLoaded] = useState(false)
+    const [imageError, setImageError] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -225,10 +234,34 @@ export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: s
             >
                 {/* Preview Section - Top Half */}
                 <div className="h-40 w-full bg-muted/50 flex items-center justify-center relative overflow-hidden group-hover:bg-muted/70 transition-colors rounded-t-xl">
-                    {/* Placeholder for future preview logic */}
-                    <div className="text-muted-foreground/20">
-                        <FileCode className="h-12 w-12" />
-                    </div>
+                    {/* Preview Image or Placeholder */}
+                    {previewImageUrl && !imageError ? (
+                        <>
+                            {!imageLoaded && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/40" />
+                                </div>
+                            )}
+                            <img
+                                src={previewImageUrl}
+                                alt={`${project.name} preview`}
+                                className={cn(
+                                    "w-full h-full object-cover object-top transition-opacity",
+                                    imageLoaded ? "opacity-100" : "opacity-0"
+                                )}
+                                onLoad={() => setImageLoaded(true)}
+                                onError={() => setImageError(true)}
+                            />
+                        </>
+                    ) : imageError ? (
+                        <div className="text-muted-foreground/20">
+                            <ImageOff className="h-12 w-12" />
+                        </div>
+                    ) : (
+                        <div className="text-muted-foreground/20">
+                            <FileCode className="h-12 w-12" />
+                        </div>
+                    )}
 
                     {/* Sync Loader Overlay - only on preview section */}
                     {syncState !== 'idle' && (

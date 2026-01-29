@@ -859,7 +859,6 @@ export const getUsageSummary = query({
     period: v.union(v.literal("daily"), v.literal("monthly")),
   },
   handler: async (ctx, args) => {
-    const now = Date.now()
     const periodStart =
       args.period === "daily"
         ? new Date().setHours(0, 0, 0, 0)

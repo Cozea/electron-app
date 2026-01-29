@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
+import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -108,10 +109,14 @@ const formatTokens = (tokens: number): string => {
 export function AI() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
 
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
+  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
+  const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+  const convexOrg = useCachedQuery(
+    `ai-org-${currentOrganization?.organizationId}`,
+    freshOrg
   )
 
   // Get AI credentials status
@@ -210,12 +215,17 @@ export function AI() {
 
   const isLoading = !convexOrg
 
+  const headerContent = (
+    <h1 className="text-lg font-semibold">Usage Overview</h1>
+  )
+
   if (isLoading) {
     return (
       <DashboardLayout
         user={user}
         onLogout={logout}
         breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
+        header={headerContent}
       >
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -229,6 +239,7 @@ export function AI() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
+      header={headerContent}
     >
       <div className="space-y-6">
         {/* Subscription Status Banner */}
@@ -254,9 +265,7 @@ export function AI() {
         )}
 
         {/* Usage Overview */}
-        <div className="px-6 pt-6">
-          <h2 className="text-lg font-semibold">Usage Overview</h2>
-          <p className="text-sm text-muted-foreground mb-4">Month-to-date AI usage across your organization</p>
+        <div>
           <div className="flex flex-wrap md:flex-nowrap divide-x divide-border">
           {/* Requests MTD */}
           <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2 first:pl-0">
@@ -314,7 +323,7 @@ export function AI() {
         </div>
 
         {/* API Keys */}
-        <Card className="border-none shadow-none bg-transparent max-w-4xl">
+        <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5" />
@@ -325,13 +334,13 @@ export function AI() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
-            <Table>
+            <Table className="w-full">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[200px]">Provider</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Models</TableHead>
-                  <TableHead className="text-right"></TableHead>
+                  <TableHead className="w-1/4">Provider</TableHead>
+                  <TableHead className="w-1/4">Status</TableHead>
+                  <TableHead className="w-1/4">Models</TableHead>
+                  <TableHead className="w-1/4 text-right"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -405,7 +414,7 @@ export function AI() {
         </Card>
 
         {/* Usage History */}
-        <Card className="border-none shadow-none bg-transparent max-w-4xl">
+        <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
@@ -418,15 +427,15 @@ export function AI() {
           <CardContent className="px-4 py-0 overflow-hidden">
             {recentUsage && recentUsage.length > 0 ? (
               <>
-                <Table>
+                <Table className="w-full">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead>Date</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>Model</TableHead>
-                      <TableHead className="text-right">Requests</TableHead>
-                      <TableHead className="text-right">Tokens</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead className="w-[12%]">Date</TableHead>
+                      <TableHead className="w-[18%]">Provider</TableHead>
+                      <TableHead className="w-[30%]">Model</TableHead>
+                      <TableHead className="w-[13%] text-right">Requests</TableHead>
+                      <TableHead className="w-[13%] text-right">Tokens</TableHead>
+                      <TableHead className="w-[14%] text-right">Cost</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

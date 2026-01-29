@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   ListTodo,
@@ -22,7 +21,6 @@ import {
   Circle,
   CheckCircle2,
   Clock,
-  AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

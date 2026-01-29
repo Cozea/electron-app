@@ -39,7 +39,7 @@ export function useFileExplorer({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
-  const [updateTrigger, setUpdateTrigger] = useState(0)
+  const [_updateTrigger, setUpdateTrigger] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const fileServiceRef = useRef<FileService | null>(null)
@@ -124,7 +124,7 @@ export function useFileExplorer({
 
   // Force update helper (triggers re-render)
   const forceUpdate = useCallback(() => {
-    setUpdateTrigger(prev => prev + 1)
+    setUpdateTrigger((prev) => prev + 1)
   }, [])
 
   // Expand a node

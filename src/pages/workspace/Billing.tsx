@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
+import { useCachedQuery } from '../../stores/useQueryCache'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
@@ -106,10 +107,14 @@ interface StripeInvoice {
 export function Billing() {
   const { user, logout, currentOrganization, accessToken } = useAuth()
 
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
+  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
+  const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+  const convexOrg = useCachedQuery(
+    `billing-org-${currentOrganization?.organizationId}`,
+    freshOrg
   )
 
   // Get members count

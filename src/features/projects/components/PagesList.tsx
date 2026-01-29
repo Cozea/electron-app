@@ -1,5 +1,5 @@
 import { useState, useEffect, type MouseEvent } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -14,10 +14,15 @@ import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 export function PagesList() {
     const { slug } = useParams<{ slug: string }>()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { currentOrganization } = useAuth()
     const { serverStatus, serverPort } = useProjectPagesStore()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
+
+    // Get the focused page index from URL
+    const focusParam = searchParams.get('focus')
+    const focusedIndex = focusParam !== null ? parseInt(focusParam, 10) : null
 
     const [routes, setRoutes] = useState<ScannedRoute[]>([])
     const [isLoading, setIsLoading] = useState(false)
@@ -110,29 +115,32 @@ export function PagesList() {
                     </div>
                 ) : (
                     <div className="py-1">
-                        {routes.map((route, index) => (
+                        {routes.map((route, index) => {
+                            const isActive = focusedIndex === index
+                            return (
                             <div
                                 key={route.path}
                                 onClick={() => handlePageClick(index)}
                                 className={cn(
                                     "flex items-center gap-2 mx-2 px-2 h-8 text-left cursor-pointer rounded-md",
                                     "hover:bg-sidebar-accent transition-colors text-sm",
-                                    "group"
+                                    "group",
+                                    isActive && "bg-sidebar-accent"
                                 )}
                             >
                                 <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                    <div className="truncate text-xs font-medium">
+                                    <div className="truncate">
                                         {route.name}
                                     </div>
                                     {route.path !== `/${route.name}` && (
-                                        <div className="truncate text-[10px] text-muted-foreground">
+                                        <div className="truncate text-xs text-muted-foreground">
                                             {route.path}
                                         </div>
                                     )}
                                 </div>
                                 {route.type === 'dynamic' && (
-                                    <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 shrink-0">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 shrink-0">
                                         Dynamic
                                     </span>
                                 )}
@@ -146,14 +154,15 @@ export function PagesList() {
                                     </button>
                                 )}
                             </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 )}
             </div>
 
             {/* Footer with route count */}
             {routes.length > 0 && (
-                <div className="px-3 py-1.5 text-[10px] text-muted-foreground flex items-center justify-between">
+                <div className="px-3 py-1.5 text-xs text-muted-foreground flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         {framework && getFileIcon(
                             framework.toLowerCase().includes('vite') ? 'vite.config.js' :

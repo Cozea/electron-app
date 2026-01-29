@@ -271,7 +271,7 @@ const BUILTIN_TOOLS = [
     category: "code",
     inputSchema: {
       type: "object",
-      required: ["command", "explanation", "isBackground", "timeout"],
+      required: ["command"],
       properties: {
         command: {
           description: "The command to run in the terminal.",
@@ -282,12 +282,14 @@ const BUILTIN_TOOLS = [
           type: "string",
         },
         isBackground: {
-          description: "Whether the command starts a background process.",
+          description: "Whether the command starts a background process. Defaults to false.",
           type: "boolean",
+          default: false,
         },
         timeout: {
-          description: "Optional timeout in milliseconds. Use 0 for no timeout.",
+          description: "Timeout in milliseconds. Use 0 or omit for no timeout. Defaults to 0.",
           type: "number",
+          default: 0,
         },
       },
     },

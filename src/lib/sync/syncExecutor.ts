@@ -1,6 +1,43 @@
 import type { SyncPlan, SyncProgress } from "./types"
 import type { Id } from "../../../convex/_generated/dataModel"
 
+const BINARY_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "ico",
+  "bmp",
+  "tif",
+  "tiff",
+  "pdf",
+  "zip",
+  "gz",
+  "tar",
+  "rar",
+  "7z",
+  "mp3",
+  "wav",
+  "ogg",
+  "mp4",
+  "mov",
+  "avi",
+  "webm",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "eot",
+  "wasm",
+])
+
+function isBinaryPath(filePath: string): boolean {
+  const fileName = filePath.split("/").pop() ?? filePath
+  const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() : ""
+  return !!ext && BINARY_EXTENSIONS.has(ext)
+}
+
 // MIME type mapping for common file extensions
 const MIME_TYPES: Record<string, string> = {
   ts: "text/typescript",
@@ -24,11 +61,56 @@ const MIME_TYPES: Record<string, string> = {
   gif: "image/gif",
   webp: "image/webp",
   ico: "image/x-icon",
+  bmp: "image/bmp",
+  tiff: "image/tiff",
+  tif: "image/tiff",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  gz: "application/gzip",
+  tar: "application/x-tar",
+  rar: "application/vnd.rar",
+  "7z": "application/x-7z-compressed",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  avi: "video/x-msvideo",
+  webm: "video/webm",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  eot: "application/vnd.ms-fontobject",
+  wasm: "application/wasm",
 }
 
 function getMimeType(filePath: string): string {
   const ext = filePath.split(".").pop()?.toLowerCase() || ""
-  return MIME_TYPES[ext] || "text/plain"
+  if (MIME_TYPES[ext]) return MIME_TYPES[ext]
+  return isBinaryPath(filePath) ? "application/octet-stream" : "text/plain"
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ""
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+
+  return btoa(binary)
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
 }
 
 export interface SyncExecutorOptions {
@@ -117,7 +199,7 @@ export async function executeSyncPlan(
       addLog(`Downloading ${plan.downloads.length} files from cloud...`)
       updateProgress("Downloading files...")
 
-      const filesToWrite: Array<{ path: string; content: string }> = []
+      const filesToWrite: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }> = []
 
       for (const op of plan.downloads) {
         if (!op.cloudEntry) continue
@@ -135,9 +217,19 @@ export async function executeSyncPlan(
             continue
           }
 
-          const content = await response.text()
-          filesToWrite.push({ path: op.path, content })
-          addLog(`↓ Downloaded: ${op.path}`)
+          if (isBinaryPath(op.path)) {
+            const buffer = await response.arrayBuffer()
+            filesToWrite.push({
+              path: op.path,
+              content: arrayBufferToBase64(buffer),
+              encoding: "base64",
+            })
+            addLog(`↓ Downloaded (binary): ${op.path}`)
+          } else {
+            const content = await response.text()
+            filesToWrite.push({ path: op.path, content, encoding: "utf8" })
+            addLog(`↓ Downloaded: ${op.path}`)
+          }
           downloadedCount++
           completed++
           updateProgress(`Downloading: ${op.path}`)
@@ -176,16 +268,7 @@ export async function executeSyncPlan(
         if (!op.localEntry) continue
 
         try {
-          // Read local file
-          const readResult = await window.electronAPI.project.readFile({
-            projectPath,
-            filePath: op.path,
-          })
-
-          if (!readResult.success || !readResult.content) {
-            addLog(`⚠ Could not read: ${op.path}`)
-            continue
-          }
+          const isBinary = isBinaryPath(op.path)
 
           // Get upload URL from Convex
           const uploadUrl = await generateUploadUrl()
@@ -193,8 +276,36 @@ export async function executeSyncPlan(
           // Determine MIME type
           const mimeType = getMimeType(op.path)
 
+          // Read local file
+          let blob: Blob
+          if (isBinary) {
+            const readResult = await window.electronAPI.project.readFileBase64({
+              projectPath,
+              filePath: op.path,
+            })
+
+            if (!readResult.success || !readResult.base64) {
+              addLog(`⚠ Could not read: ${op.path}`)
+              continue
+            }
+
+            const bytes = base64ToUint8Array(readResult.base64)
+            blob = new Blob([bytes.buffer as ArrayBuffer], { type: mimeType })
+          } else {
+            const readResult = await window.electronAPI.project.readFile({
+              projectPath,
+              filePath: op.path,
+            })
+
+            if (!readResult.success || !readResult.content) {
+              addLog(`⚠ Could not read: ${op.path}`)
+              continue
+            }
+
+            blob = new Blob([readResult.content], { type: mimeType })
+          }
+
           // Upload to Convex storage
-          const blob = new Blob([readResult.content], { type: mimeType })
           const response = await fetch(uploadUrl, {
             method: "POST",
             headers: { "Content-Type": mimeType },

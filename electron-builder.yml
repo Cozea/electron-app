@@ -1,0 +1,21 @@
+appId: com.cozea.app
+productName: Cozea
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - dir
+win:
+  icon: build/icon.ico
+  target:
+    - dir
+linux:
+  icon: build/icon.png
+  target:
+    - dir

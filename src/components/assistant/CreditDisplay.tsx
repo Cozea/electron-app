@@ -12,6 +12,22 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { IconCoins } from '@tabler/icons-react'
 
+/**
+ * Format a number with k, m, b suffixes for compact display
+ */
+function formatCompactNumber(num: number): string {
+  if (num >= 1_000_000_000) {
+    return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'b'
+  }
+  if (num >= 1_000_000) {
+    return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
+  }
+  if (num >= 1_000) {
+    return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  }
+  return num.toString()
+}
+
 interface CreditDisplayProps {
   className?: string
   variant?: 'compact' | 'full'
@@ -65,9 +81,9 @@ export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayP
 
   if (variant === 'compact') {
     return (
-      <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', className)}>
+      <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', className)}>
         <IconCoins className="h-3 w-3" />
-        <span>{totalCreditsRemaining.toLocaleString()} credits</span>
+        <span>{formatCompactNumber(totalCreditsRemaining)}</span>
       </div>
     )
   }

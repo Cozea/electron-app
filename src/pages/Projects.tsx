@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
+import { useCachedQuery } from '../stores/useQueryCache'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
@@ -14,7 +15,8 @@ import {
   FileCode,
   LayoutGrid,
   List,
-  Search,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -33,15 +35,6 @@ import {
 import { TooltipProvider } from '../components/ui/tooltip'
 import { ButtonGroup } from '../components/ui/button-group'
 import { Badge } from '../components/ui/badge'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '../components/ui/pagination'
 import { IconFolderCode } from '@tabler/icons-react'
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -65,10 +58,14 @@ export function Projects() {
   const effectiveViewMode = isMobile ? 'list' : viewMode
   const ITEMS_PER_PAGE = 20
 
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
+  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
+  const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+  const convexOrg = useCachedQuery(
+    `projects-org-${currentOrganization?.organizationId}`,
+    freshOrg
   )
 
   // Get Convex user by WorkOS ID (needed for delete)
@@ -97,10 +94,14 @@ export function Projects() {
     return map
   }, [members])
 
-  // Query projects from Convex using the Convex org ID
-  const projects = useQuery(
+  // Query projects from Convex using the Convex org ID (with caching)
+  const freshProjects = useQuery(
     api.projects.listForOrganization,
     convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+  )
+  const projects = useCachedQuery(
+    `projects-list-${convexOrg?._id}`,
+    freshProjects
   )
 
   // Filter and sort projects
@@ -217,58 +218,7 @@ export function Projects() {
     </div>
   )
 
-  // Generate page numbers with ellipsis
-  const getPageNumbers = () => {
-    const pages: (number | 'ellipsis')[] = []
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i)
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, 'ellipsis', totalPages)
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, 'ellipsis', totalPages - 2, totalPages - 1, totalPages)
-      } else {
-        pages.push(1, 'ellipsis', currentPage, 'ellipsis', totalPages)
-      }
-    }
-    return pages
-  }
-
-  const paginationContent = !isLoading && filteredProjects.length > ITEMS_PER_PAGE ? (
-    <Pagination>
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationPrevious
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-          />
-        </PaginationItem>
-        {getPageNumbers().map((page, i) =>
-          page === 'ellipsis' ? (
-            <PaginationItem key={`ellipsis-${i}`}>
-              <PaginationEllipsis />
-            </PaginationItem>
-          ) : (
-            <PaginationItem key={page}>
-              <PaginationLink
-                onClick={() => setCurrentPage(page)}
-                isActive={currentPage === page}
-                className="cursor-pointer"
-              >
-                {page}
-              </PaginationLink>
-            </PaginationItem>
-          )
-        )}
-        <PaginationItem>
-          <PaginationNext
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-          />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
-  ) : undefined
+  const showPagination = !isLoading && filteredProjects.length > ITEMS_PER_PAGE
 
   return (
     <DashboardLayout
@@ -276,7 +226,6 @@ export function Projects() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Projects' }]}
       header={headerContent || undefined}
-      footer={paginationContent}
     >
       <TooltipProvider>
 
@@ -337,6 +286,33 @@ export function Projects() {
               })}
             </div>
           )
+        )}
+
+        {/* Floating Pagination Pill */}
+        {showPagination && (
+          <div className="fixed bottom-8 right-4 z-50 flex items-center gap-1 bg-background/95 backdrop-blur border rounded-full shadow-lg px-1 py-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-full"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-xs font-medium px-2 min-w-[4rem] text-center">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-full"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         )}
       </TooltipProvider>
     </DashboardLayout>

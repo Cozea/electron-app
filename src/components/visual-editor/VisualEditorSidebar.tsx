@@ -379,7 +379,7 @@ export function VisualEditorSidebar({
   return (
     <div
       className={cn(
-        'flex flex-col bg-sidebar text-sidebar-foreground border-l border-sidebar-border overflow-hidden relative',
+        'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative',
         !isDragging && 'transition-all duration-300 ease-in-out',
         className
       )}
@@ -810,7 +810,7 @@ export function VisualEditorSidebar({
         </Tabs>
 
         {/* Footer */}
-        <div className="px-3 py-2 border-t border-sidebar-border bg-sidebar space-y-2">
+        <div className="px-3 py-2 border-t border-sidebar-border space-y-2">
           <div className="flex gap-2">
             <Button
               variant="outline"

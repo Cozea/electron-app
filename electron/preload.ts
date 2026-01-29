@@ -64,6 +64,13 @@ export interface ReadFileResult {
   error?: string
 }
 
+export interface ReadFileBase64Result {
+  success: boolean
+  base64?: string
+  sizeBytes?: number
+  error?: string
+}
+
 export interface ListFilesResult {
   success: boolean
   files?: { path: string; sizeBytes: number }[]
@@ -71,6 +78,17 @@ export interface ListFilesResult {
 }
 
 export interface PreviewInjectBridgeResult {
+  success: boolean
+  error?: string
+}
+
+export interface PreviewCaptureScreenshotResult {
+  success: boolean
+  base64?: string
+  error?: string
+}
+
+export interface WatchProjectResult {
   success: boolean
   error?: string
 }
@@ -86,6 +104,12 @@ export interface FileManifestEntry {
 export interface SyncWriteFilesResult {
   results: Array<{ path: string; success: boolean; error?: string }>
   successCount: number
+}
+
+export interface SyncWriteFile {
+  path: string
+  content: string
+  encoding?: 'utf8' | 'base64'
 }
 
 export interface SyncDeleteFilesResult {
@@ -117,6 +141,64 @@ export interface TerminalInfo {
   title: string
 }
 
+// Integration types
+export interface IntegrationKeyResult {
+  success: boolean
+  keyId?: string
+  keyData?: string
+  error?: string
+}
+
+export interface IntegrationEncryptResult {
+  success: boolean
+  encrypted?: string
+  error?: string
+}
+
+export interface IntegrationDecryptResult {
+  success: boolean
+  credentials?: Record<string, unknown>
+  error?: string
+}
+
+export interface IntegrationToolDefinition {
+  provider: string
+  name: string
+  displayName: string
+  command: string
+  description: string
+}
+
+export interface IntegrationToolResult {
+  success: boolean
+  stdout?: string
+  stderr?: string
+  exitCode?: number | null
+  timedOut?: boolean
+  error?: string
+}
+
+export interface DbSupabaseSelectResult {
+  success: boolean
+  rows?: unknown[]
+  error?: string
+}
+
+export interface DbFirestoreDocument {
+  id: string
+  path: string
+  createTime?: string
+  updateTime?: string
+  fields: Record<string, unknown>
+}
+
+export interface DbFirestoreListDocumentsResult {
+  success: boolean
+  documents?: DbFirestoreDocument[]
+  nextPageToken?: string
+  error?: string
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   auth: {
@@ -128,8 +210,64 @@ export interface ElectronAPI {
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
   }
+  integrations: {
+    // Encryption key management (keys stored in OS keychain)
+    isEncryptionAvailable: () => Promise<boolean>
+    generateKey: () => Promise<IntegrationKeyResult>
+    storeKey: (options: { keyId: string; keyData: string }) => Promise<{ success: boolean; error?: string }>
+    getKey: (options: { keyId: string }) => Promise<IntegrationKeyResult>
+    deleteKey: (options: { keyId: string }) => Promise<{ success: boolean; error?: string }>
+    keyExists: (options: { keyId: string }) => Promise<boolean>
+    // Credential encryption/decryption
+    encrypt: (options: { credentials: Record<string, unknown>; keyId: string }) => Promise<IntegrationEncryptResult>
+    decrypt: (options: { encrypted: string; keyId: string }) => Promise<IntegrationDecryptResult>
+    // OAuth events
+    onOAuthSuccess: (callback: (data: {
+      provider: string
+      accessToken?: string
+      refreshToken?: string
+      tokenExpiresAt?: number
+      externalId?: string
+      externalAccountName?: string
+      scopes?: string[]
+    }) => void) => () => void
+    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
+    startOAuth: (options: { provider: string; orgId: string }) => Promise<{ success: boolean; error?: string }>
+    // Integration tool execution
+    runTool: (options: {
+      toolName: string
+      args: string[]
+      workingDir: string
+      encryptedCredentials: string
+      keyId: string
+      timeout?: number
+    }) => Promise<IntegrationToolResult>
+    isToolAvailable: (options: { toolName: string }) => Promise<boolean>
+    getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
+    listTools: () => Promise<IntegrationToolDefinition[]>
+  }
+  database: {
+    supabaseSelect: (options: {
+      table: string
+      select?: string
+      limit?: number
+      offset?: number
+      orderBy?: string
+      orderAscending?: boolean
+      credentials?: { url: string; anonKey: string }
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<DbSupabaseSelectResult>
+    firestoreListDocuments: (options: {
+      collection: string
+      pageSize?: number
+      pageToken?: string
+      encryptedCredentials: string
+      keyId: string
+    }) => Promise<DbFirestoreListDocumentsResult>
+  }
   tools: {
-    run: (request: { name: string; input: Record<string, unknown> }) => Promise<{ success: boolean; output?: unknown; error?: string }>
+    run: (request: { name: string; input: Record<string, unknown>; projectPath?: string }) => Promise<{ success: boolean; output?: unknown; error?: string }>
   }
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean }>
@@ -151,6 +289,7 @@ export interface ElectronAPI {
   }
   preview: {
     injectBridge: (options: { url: string }) => Promise<PreviewInjectBridgeResult>
+    captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
   }
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
@@ -158,7 +297,10 @@ export interface ElectronAPI {
     exists: (slug: string) => Promise<boolean>
     writeFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
+    readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
+    watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
+    watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>
@@ -168,13 +310,14 @@ export interface ElectronAPI {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
     getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
       Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
-    writeFiles: (options: { projectPath: string; files: Array<{ path: string; content: string }> }) =>
+    writeFiles: (options: { projectPath: string; files: SyncWriteFile[] }) =>
       Promise<SyncWriteFilesResult>
     deleteFiles: (options: { projectPath: string; paths: string[] }) =>
       Promise<SyncDeleteFilesResult>
   }
   yjs: {
-    onExternalFileChange: (callback: (data: { filePath: string; content: string }) => void) => () => void
+    onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
+    onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
   }
   devServer: {
     start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>
@@ -227,8 +370,86 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('auth:error', handler)
     },
   },
+  integrations: {
+    isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
+    generateKey: () => ipcRenderer.invoke('integrations:generateKey'),
+    storeKey: (options: { keyId: string; keyData: string }) =>
+      ipcRenderer.invoke('integrations:storeKey', options),
+    getKey: (options: { keyId: string }) =>
+      ipcRenderer.invoke('integrations:getKey', options),
+    deleteKey: (options: { keyId: string }) =>
+      ipcRenderer.invoke('integrations:deleteKey', options),
+    keyExists: (options: { keyId: string }) =>
+      ipcRenderer.invoke('integrations:keyExists', options),
+    encrypt: (options: { credentials: Record<string, unknown>; keyId: string }) =>
+      ipcRenderer.invoke('integrations:encrypt', options),
+    decrypt: (options: { encrypted: string; keyId: string }) =>
+      ipcRenderer.invoke('integrations:decrypt', options),
+    onOAuthSuccess: (callback: (data: {
+      provider: string
+      accessToken?: string
+      refreshToken?: string
+      tokenExpiresAt?: number
+      externalId?: string
+      externalAccountName?: string
+      scopes?: string[]
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        provider: string
+        accessToken?: string
+        refreshToken?: string
+        tokenExpiresAt?: number
+        externalId?: string
+        externalAccountName?: string
+        scopes?: string[]
+      }) => callback(data)
+      ipcRenderer.on('integrations:oauthSuccess', handler)
+      return () => ipcRenderer.removeListener('integrations:oauthSuccess', handler)
+    },
+    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { provider: string; error: string }) => callback(data)
+      ipcRenderer.on('integrations:oauthError', handler)
+      return () => ipcRenderer.removeListener('integrations:oauthError', handler)
+    },
+    startOAuth: (options: { provider: string; orgId: string }) =>
+      ipcRenderer.invoke('integrations:startOAuth', options),
+    runTool: (options: {
+      toolName: string
+      args: string[]
+      workingDir: string
+      encryptedCredentials: string
+      keyId: string
+      timeout?: number
+    }) => ipcRenderer.invoke('integrations:runTool', options),
+    isToolAvailable: (options: { toolName: string }) =>
+      ipcRenderer.invoke('integrations:isToolAvailable', options),
+    getToolDefinition: (options: { toolName: string }) =>
+      ipcRenderer.invoke('integrations:getToolDefinition', options),
+    listTools: () => ipcRenderer.invoke('integrations:listTools'),
+  },
+  database: {
+    supabaseSelect: (options: {
+      table: string
+      select?: string
+      limit?: number
+      offset?: number
+      orderBy?: string
+      orderAscending?: boolean
+      credentials?: { url: string; anonKey: string }
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('db:supabase:select', options),
+    firestoreListDocuments: (options: {
+      collection: string
+      pageSize?: number
+      pageToken?: string
+      encryptedCredentials: string
+      keyId: string
+    }) => ipcRenderer.invoke('db:firestore:listDocuments', options),
+  },
   tools: {
-    run: (request: { name: string; input: Record<string, unknown> }) => ipcRenderer.invoke('tools:run', request),
+    run: (request: { name: string; input: Record<string, unknown>; projectPath?: string }) =>
+      ipcRenderer.invoke('tools:run', request),
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
@@ -254,6 +475,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   preview: {
     injectBridge: (options: { url: string }) => ipcRenderer.invoke('preview:injectBridge', options),
+    captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
+      ipcRenderer.invoke('preview:captureScreenshot', options),
   },
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),
@@ -261,7 +484,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),
     writeFile: (options: { projectPath: string; filePath: string; content: string }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
+    readFileBase64: (options: { projectPath: string; filePath: string }) =>
+      ipcRenderer.invoke('project:readFileBase64', options),
     listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
+    watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
+    watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
   },
   fs: {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
@@ -271,16 +498,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hashFile: (options: { filePath: string }) => ipcRenderer.invoke('sync:hashFile', options),
     getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
       ipcRenderer.invoke('sync:getLocalManifest', options),
-    writeFiles: (options: { projectPath: string; files: Array<{ path: string; content: string }> }) =>
+    writeFiles: (options: { projectPath: string; files: SyncWriteFile[] }) =>
       ipcRenderer.invoke('sync:writeFiles', options),
     deleteFiles: (options: { projectPath: string; paths: string[] }) =>
       ipcRenderer.invoke('sync:deleteFiles', options),
   },
   yjs: {
-    onExternalFileChange: (callback: (data: { filePath: string; content: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { filePath: string; content: string }) => callback(data)
+    onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: { filePath: string; content: string; origin?: string }
+      ) => callback(data)
       ipcRenderer.on('yjs:external-file-change', handler)
       return () => ipcRenderer.removeListener('yjs:external-file-change', handler)
+    },
+    onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { filePath: string; origin?: string }) =>
+        callback(data)
+      ipcRenderer.on('yjs:external-file-delete', handler)
+      return () => ipcRenderer.removeListener('yjs:external-file-delete', handler)
     },
   },
   devServer: {

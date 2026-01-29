@@ -233,28 +233,10 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         xtermRef.current?.focus()
     }, [])
 
-    // Clear terminal
-    const clear = useCallback(() => {
-        xtermRef.current?.clear()
-    }, [])
-
-    // Search functions
-    const findNext = useCallback((query: string) => {
-        searchAddonRef.current?.findNext(query, { caseSensitive: false })
-    }, [])
-
-    const findPrevious = useCallback((query: string) => {
-        searchAddonRef.current?.findPrevious(query, { caseSensitive: false })
-    }, [])
-
-    const clearSearch = useCallback(() => {
-        searchAddonRef.current?.clearDecorations()
-    }, [])
-
     return (
         <div
             ref={containerRef}
-            className={cn("w-full h-full bg-sidebar overflow-hidden", className)}
+            className={cn("w-full h-full bg-sidebar overflow-hidden pl-3 pt-1", className)}
             onClick={focus}
         />
     )

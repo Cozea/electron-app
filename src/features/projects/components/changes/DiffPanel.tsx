@@ -1,137 +1,125 @@
-import { useQuery } from 'convex/react'
+import { useState } from 'react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { CodeDiffViewer } from '@/components/ai-elements/code-diff-viewer'
+import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+import { X, Bold, Italic, Underline, Link2, Smile } from 'lucide-react'
 import {
-  X,
-  Bot,
-  User,
-  Clock,
-  FilePlus,
-  FileText,
-  FileX,
-  RotateCcw,
-} from 'lucide-react'
+  DiffAddedIcon,
+  DiffModifiedIcon,
+  DiffRemovedIcon,
+} from '@primer/octicons-react'
 
 interface DiffPanelProps {
   changeId: Id<"fileChanges"> | null
   onClose: () => void
 }
 
-function formatTime(timestamp: number) {
-  const date = new Date(timestamp)
-  return date.toLocaleString()
+function formatRelativeTime(timestamp: number) {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
 }
 
 function getChangeIcon(changeType: string) {
   switch (changeType) {
     case 'create':
-      return <FilePlus className="h-4 w-4 text-green-500" />
+      return <DiffAddedIcon size={16} className="text-green-500" />
     case 'delete':
-      return <FileX className="h-4 w-4 text-red-500" />
+      return <DiffRemovedIcon size={16} className="text-red-500" />
     case 'modify':
     default:
-      return <FileText className="h-4 w-4 text-blue-500" />
+      return <DiffModifiedIcon size={16} className="text-yellow-500" />
   }
 }
 
-/**
- * Simple diff rendering - shows old and new content side by side
- * For a proper diff view, consider using a library like diff or react-diff-viewer
- */
-function renderDiff(oldContent: string, newContent: string, changeType: string) {
-  const oldLines = oldContent.split('\n')
-  const newLines = newContent.split('\n')
+// Extract relative path from full file path (strips local machine paths)
+function getRelativePath(filePath: string): string {
+  // Common project root directories to look for
+  const rootMarkers = ['src/', 'app/', 'lib/', 'components/', 'pages/', 'convex/', 'electron/', 'public/', 'test/', 'tests/', '__tests__/']
 
-  if (changeType === 'create') {
-    return (
-      <div className="font-mono text-xs">
-        {newLines.map((line, i) => (
-          <div key={i} className="flex">
-            <span className="w-10 text-right pr-2 text-muted-foreground select-none border-r border-border">
-              {i + 1}
-            </span>
-            <span className="flex-1 pl-2 bg-green-500/10 text-green-400">
-              + {line || ' '}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (changeType === 'delete') {
-    return (
-      <div className="font-mono text-xs">
-        {oldLines.map((line, i) => (
-          <div key={i} className="flex">
-            <span className="w-10 text-right pr-2 text-muted-foreground select-none border-r border-border">
-              {i + 1}
-            </span>
-            <span className="flex-1 pl-2 bg-red-500/10 text-red-400">
-              - {line || ' '}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  // For modifications, show a simple unified diff
-  // In production, use a proper diff algorithm
-  const maxLines = Math.max(oldLines.length, newLines.length)
-  const diffLines: Array<{ type: 'same' | 'add' | 'remove'; line: string; lineNum: number }> = []
-
-  for (let i = 0; i < maxLines; i++) {
-    const oldLine = oldLines[i]
-    const newLine = newLines[i]
-
-    if (oldLine === newLine) {
-      if (oldLine !== undefined) {
-        diffLines.push({ type: 'same', line: oldLine, lineNum: i + 1 })
-      }
-    } else {
-      if (oldLine !== undefined) {
-        diffLines.push({ type: 'remove', line: oldLine, lineNum: i + 1 })
-      }
-      if (newLine !== undefined) {
-        diffLines.push({ type: 'add', line: newLine, lineNum: i + 1 })
-      }
+  // Find the earliest occurrence of any root marker
+  let earliestIndex = -1
+  for (const marker of rootMarkers) {
+    const index = filePath.indexOf(marker)
+    if (index !== -1 && (earliestIndex === -1 || index < earliestIndex)) {
+      earliestIndex = index
     }
   }
 
-  return (
-    <div className="font-mono text-xs">
-      {diffLines.map((item, i) => (
-        <div key={i} className="flex">
-          <span className="w-10 text-right pr-2 text-muted-foreground select-none border-r border-border">
-            {item.lineNum}
-          </span>
-          <span
-            className={`flex-1 pl-2 ${
-              item.type === 'add'
-                ? 'bg-green-500/10 text-green-400'
-                : item.type === 'remove'
-                  ? 'bg-red-500/10 text-red-400'
-                  : ''
-            }`}
-          >
-            {item.type === 'add' ? '+ ' : item.type === 'remove' ? '- ' : '  '}
-            {item.line || ' '}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
+  if (earliestIndex !== -1) {
+    return filePath.slice(earliestIndex)
+  }
+
+  // Fallback: look for the last path segment that looks like a project folder
+  // (contains node_modules sibling or common config files pattern)
+  const parts = filePath.split('/')
+
+  // Find index after common non-project directories
+  const skipDirs = ['Users', 'home', 'Documents', 'Coding', 'Projects', 'Desktop', 'Downloads']
+  let startIndex = 0
+  for (let i = 0; i < parts.length; i++) {
+    if (skipDirs.includes(parts[i])) {
+      startIndex = i + 1
+    }
+  }
+
+  // Skip one more (likely the project folder name itself) if we have enough parts
+  if (startIndex < parts.length - 1) {
+    startIndex++
+  }
+
+  return parts.slice(startIndex).join('/') || filePath
 }
 
 export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
+  const { convexUserId } = useAuth()
+  const [commentText, setCommentText] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   const change = useQuery(
     api.activity.getChangeWithContent,
     changeId ? { changeId } : 'skip'
   )
+
+  const addComment = useMutation(api.activity.addComment)
+
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || !changeId || !convexUserId) return
+
+    setIsSubmitting(true)
+    try {
+      await addComment({
+        changeId,
+        userId: convexUserId,
+        content: commentText.trim(),
+      })
+      setCommentText('')
+    } catch (error) {
+      console.error('Failed to add comment:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmitComment()
+    }
+  }
 
   if (!changeId) return null
 
@@ -151,75 +139,120 @@ export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
     )
   }
 
+  const fileName = change.filePath.split('/').pop() || change.filePath
+  const displayPath = getRelativePath(change.filePath)
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col h-full bg-background">
+      {/* Header - GitHub style */}
+      <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
+        {/* File info - flexible */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           {getChangeIcon(change.changeType)}
-          <div>
-            <code className="text-sm font-mono">{change.filePath}</code>
-            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-              {change.isAgent ? (
-                <Bot className="h-3 w-3" style={{ color: change.userColor }} />
-              ) : (
-                <User className="h-3 w-3" style={{ color: change.userColor }} />
-              )}
-              <span style={{ color: change.userColor }}>{change.userName}</span>
-              <span>·</span>
-              <Clock className="h-3 w-3" />
-              <span>{formatTime(change.timestamp)}</span>
+          {getFileIcon(fileName, { width: 16, height: 16 })}
+          <code className="text-sm font-mono truncate">{displayPath}</code>
+        </div>
+
+        {/* Author & time */}
+        <div className="flex items-center gap-2 shrink-0">
+          {change.userImage ? (
+            <img
+              src={change.userImage}
+              alt={change.userName}
+              className="w-5 h-5 rounded-full object-cover"
+              title={change.userName}
+            />
+          ) : (
+            <div
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
+              style={{ backgroundColor: change.userColor }}
+              title={change.userName}
+            >
+              {change.userName?.charAt(0).toUpperCase() || 'U'}
             </div>
-          </div>
+          )}
+          <span className="text-xs text-muted-foreground">{formatRelativeTime(change.timestamp)}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Future: Revert button */}
-          <Button variant="ghost" size="sm" disabled title="Revert (coming soon)">
-            <RotateCcw className="h-4 w-4 mr-1.5" />
-            Revert
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-muted/30">
-        {change.additions !== undefined && change.additions > 0 && (
-          <Badge variant="outline" className="text-green-500 border-green-500/30">
-            +{change.additions} additions
-          </Badge>
-        )}
-        {change.deletions !== undefined && change.deletions > 0 && (
-          <Badge variant="outline" className="text-red-500 border-red-500/30">
-            -{change.deletions} deletions
-          </Badge>
-        )}
-        {change.totalLines !== undefined && (
-          <span className="text-xs text-muted-foreground">
-            {change.totalLines} total lines
-          </span>
-        )}
-        {change.isAgent && (
-          <Badge variant="secondary">AI Agent</Badge>
-        )}
+        {/* Close button */}
+        <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 shrink-0">
+          <X className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Diff Content */}
-      <ScrollArea className="flex-1">
-        <div className="p-4">
-          {change.oldContent === '' && change.newContent === '' ? (
-            <div className="text-center text-muted-foreground py-8">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {change.oldContent === '' && change.newContent === '' ? (
+          <div className="flex items-center justify-center h-full text-center text-muted-foreground py-8">
+            <div>
               <p>No content stored for this change.</p>
               <p className="text-xs mt-1">Older changes may not have diff data.</p>
             </div>
-          ) : (
-            renderDiff(change.oldContent, change.newContent, change.changeType)
-          )}
+          </div>
+        ) : (
+          <CodeDiffViewer
+            original={change.oldContent}
+            modified={change.newContent}
+            filePath={change.filePath}
+            showHeader={false}
+            fillContainer
+            themeVariant="sidebar"
+            className="h-full border-0 rounded-none"
+          />
+        )}
+      </div>
+
+      {/* Comment Input */}
+      <div className="p-4 bg-sidebar">
+        <div className="rounded-xl border border-primary/30 bg-background overflow-hidden shadow-sm">
+          {/* Text Input */}
+          <Textarea
+            placeholder="Add comment"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="min-h-[80px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+            disabled={isSubmitting}
+          />
+
+          {/* Toolbar */}
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-1">
+              {/* Formatting buttons */}
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Bold className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Italic className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Underline className="h-4 w-4" />
+              </Button>
+
+              {/* Separator */}
+              <div className="w-px h-5 bg-border mx-1" />
+
+              {/* Link and emoji */}
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Link2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Smile className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Send button */}
+            <Button
+              onClick={handleSubmitComment}
+              disabled={!commentText.trim() || isSubmitting || !convexUserId}
+              size="sm"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-4"
+            >
+              Send
+            </Button>
+          </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

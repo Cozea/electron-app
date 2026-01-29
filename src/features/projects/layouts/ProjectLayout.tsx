@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode, useRef, useState, useCallback } from "react"
+import { type ReactNode, useRef, useState, useCallback, useEffect } from "react"
 import { Outlet, useLocation, useParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -71,6 +71,36 @@ export function ProjectLayout({
     // Per-user local path only (no fallback to shared project.localPath)
     const effectiveLocalPath = memberLocalPath ?? null
 
+    // Ensure project-scoped runtime processes don't leak across navigation.
+    // - Stops any dev server PTY (devServer API)
+    // - Kills any terminals started for this projectPath (terminal API)
+    useEffect(() => {
+        if (!effectiveLocalPath) return
+
+        return () => {
+            const projectPath = effectiveLocalPath
+
+            // Stop dev server if running (ok if already stopped)
+            void window.electronAPI.devServer.stop({ projectPath }).catch(() => {
+                // ignore
+            })
+
+            // Kill all terminals for this project (ok if none)
+            void window.electronAPI.terminal
+                .list({ projectPath })
+                .then((terminalIds) =>
+                    Promise.all(
+                        terminalIds.map((terminalId) =>
+                            window.electronAPI.terminal.kill({ terminalId }).catch(() => null)
+                        )
+                    )
+                )
+                .catch(() => {
+                    // ignore
+                })
+        }
+    }, [effectiveLocalPath])
+
     // Real-time presence tracking
     const { otherUsers: presenceUsers } = useProjectPresence({
         projectId: project?._id,
@@ -97,11 +127,13 @@ export function ProjectLayout({
     const projectTabs = useFileTabsStore(state => slug ? state.projectTabs[slug] : null)
     const hasOpenFiles = (projectTabs?.openFiles?.length || 0) > 0
 
-    // Check if we are on the pages view or backend studio (simplified logic for now)
+    // Check if we are on views that need full-bleed content (no padding)
     const isPagesView = location.pathname.endsWith('/pages')
     const isBackendStudioView = location.pathname.endsWith('/backend')
-    // Remove padding for Editor (has files), Pages, and Studio
-    const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView
+    const isDependenciesView = location.pathname.endsWith('/dependencies')
+    const isChangesView = location.pathname.endsWith('/changes')
+    // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
+    const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data)
     const canSync = project?._id && convexUser?._id && slug
@@ -112,17 +144,15 @@ export function ProjectLayout({
         (user?.id && convexUser === undefined) ||
         (convexOrg?._id && slug && project === undefined)
 
-    // Show loading screen while waiting for data to determine sync status
-    if (isLoadingData) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-background">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Loading project...</p>
-                </div>
+    // Loading content for the main area (not full-page)
+    const loadingContent = (
+        <div className="flex flex-col items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Loading project...</p>
             </div>
-        )
-    }
+        </div>
+    )
 
     // Main layout content
     const layoutContent = (
@@ -150,7 +180,9 @@ export function ProjectLayout({
                 <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                     <div
                         className={cn(
-                            "flex flex-1 flex-col min-h-0 overflow-y-auto transition-all duration-300 ease-in-out",
+                            // `min-w-0` prevents the main content from overflowing under the right panels
+                            // when it contains wide children (iframes, editors, etc.).
+                            "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
                             shouldRemovePadding ? "p-0" : "p-4"
                         )}
                         style={{
@@ -158,7 +190,7 @@ export function ProjectLayout({
                             opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
                         }}
                     >
-                        {children || <Outlet />}
+                        {isLoadingData ? loadingContent : (children || <Outlet />)}
                     </div>
                     <ChatPanel />
                     <AssistantPanel
@@ -177,6 +209,7 @@ export function ProjectLayout({
     if (canSync) {
         return (
             <ProjectSyncProvider
+                key={project._id}
                 projectId={project._id}
                 userId={convexUser._id}
                 userName={convexUser.firstName || convexUser.email}

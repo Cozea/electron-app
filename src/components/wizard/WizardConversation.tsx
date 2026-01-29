@@ -68,6 +68,7 @@ import {
 } from '@/components/ai-elements/message'
 import {
   Tool,
+  ToolStatic,
   ToolHeader,
   ToolContent,
   ToolInput,
@@ -88,6 +89,7 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
+import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 
@@ -741,8 +743,13 @@ export function WizardConversation({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (!input.trim()) return
-    await sendMessage({ text: input })
+
+    const messageText = input
+    // Clear input immediately before sending (don't wait for response)
     setInput('')
+
+    // Send message (don't await - let it stream in the background)
+    void sendMessage({ text: messageText })
   }
 
   const handleStop = (e: React.MouseEvent) => {
@@ -1180,16 +1187,49 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
 
             const toolMeta = toolsByName.get(toolName)
             const toolState = toolPart.state || 'input-streaming'
+            const isEditTool = isFileEditTool(toolName)
+            // Special handling for web search tools (show only sources)
+            const isWebSearchTool = toolName.toLowerCase().includes('search') ||
+              toolName.toLowerCase().includes('web') ||
+              toolName === 'tavily_search' ||
+              toolName === 'brave_search' ||
+              toolName === 'bing_search'
+
+            // Non-expandable tools (output is not useful to display)
+            const isStaticTool = toolName === 'read_file'
+
+            // Render static (non-expandable) tools
+            if (isStaticTool) {
+              return (
+                <ToolStatic
+                  key={`${message.id}-tool-${index}`}
+                  toolName={toolName}
+                  input={toolPart.input as Record<string, unknown> | undefined}
+                  type={toolMeta?.toolType || 'function'}
+                  state={toolState}
+                />
+              )
+            }
 
             return (
               <Tool key={`${message.id}-tool-${index}`}>
                 <ToolHeader
-                  title={toolMeta?.displayName || toolName}
+                  toolName={toolName}
+                  input={toolPart.input as Record<string, unknown> | undefined}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
                 <ToolContent>
-                  {toolPart.input && (
+                  {/* For file edit tools, show Monaco diff viewer */}
+                  {isEditTool && toolPart.input && (
+                    <ToolDiffOutput
+                      toolName={toolName}
+                      input={toolPart.input as Record<string, unknown>}
+                      maxHeight={300}
+                    />
+                  )}
+                  {/* For non-edit/non-list_dir/non-web_search tools, show raw input */}
+                  {!isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolPart.input && (
                     <ToolInput input={formatToolPayload(toolPart.input)} />
                   )}
                   {toolPart.state === 'output-available' && (
@@ -1197,14 +1237,18 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
                       ? (() => {
                         const tasks = extractTasksFromToolOutput(toolPart.output)
                         if (tasks.length === 0) {
-                          return <ToolOutput output={formatToolPayload(toolPart.output)} />
+                          return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
                         }
                         return <TaskProgress tasks={tasks} showSummary />
                       })()
-                      : <ToolOutput output={formatToolPayload(toolPart.output)} />
+                      : isEditTool
+                        ? null // Diff viewer already shows the edit
+                        : isWebSearchTool
+                          ? null // Web search shows only sources, no raw output
+                          : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
                   )}
                   {toolPart.state === 'output-error' && (
-                    <ToolOutput output={null} errorText={toolPart.errorText} />
+                    <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
                   )}
                 </ToolContent>
               </Tool>

@@ -187,29 +187,96 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_token", ["token"]),
 
-  // Connected integrations (GitHub, Vercel, etc.)
+  // Connected integrations (GitHub, Vercel, Supabase, etc.)
   integrations: defineTable({
     organizationId: v.id("organizations"),
     provider: v.union(
+      // Version Control
       v.literal("github"),
+      v.literal("gitlab"),
+      // Backend/Database
+      v.literal("supabase"),
+      v.literal("firebase"),
+      v.literal("planetscale"),
+      v.literal("neon"),
+      // Deployment
       v.literal("vercel"),
+      v.literal("netlify"),
+      v.literal("railway"),
+      v.literal("fly"),
+      // Auth
+      v.literal("clerk"),
+      v.literal("auth0"),
+      // Payments
+      v.literal("stripe"),
+      // Email
+      v.literal("resend"),
+      v.literal("sendgrid"),
+      // Storage
+      v.literal("aws"),
+      v.literal("cloudflare"),
+      // Collaboration
       v.literal("linear"),
-      v.literal("slack")
+      v.literal("slack"),
+      // Work OS
+      v.literal("notion"),
+      v.literal("airtable"),
+      v.literal("monday"),
+      v.literal("asana"),
+      v.literal("clickup"),
+      v.literal("coda")
     ),
-    // Encrypted credentials
-    accessToken: v.string(),
-    refreshToken: v.optional(v.string()),
+
+    // Auth type used for this integration
+    authType: v.union(
+      v.literal("oauth"),
+      v.literal("api_key"),
+      v.literal("service_account")
+    ),
+
+    // Encrypted credentials (JSON blob encrypted client-side with org-specific key)
+    // Format: iv:authTag:ciphertext (hex-encoded AES-256-GCM)
+    encryptedCredentials: v.string(),
+
+    // OAuth-specific fields
+    oauthScopes: v.optional(v.array(v.string())),
+    tokenExpiresAt: v.optional(v.number()),
+
     // Provider-specific data
-    externalId: v.optional(v.string()), // e.g., GitHub installation ID
-    metadata: v.optional(v.any()),
+    externalId: v.optional(v.string()), // e.g., GitHub installation ID, account ID
+    externalAccountName: v.optional(v.string()), // Display name from provider
+    metadata: v.optional(v.any()), // Provider-specific config (regions, project IDs, etc.)
+
+    // CLI tools this integration enables
+    enabledTools: v.optional(v.array(v.string())), // e.g., ["supabase_query", "supabase_deploy"]
+
     // Status
-    status: v.union(v.literal("active"), v.literal("expired"), v.literal("revoked")),
+    status: v.union(
+      v.literal("active"),
+      v.literal("expired"),
+      v.literal("revoked"),
+      v.literal("needs_reauth")
+    ),
+    lastVerifiedAt: v.optional(v.number()),
+
     connectedBy: v.id("users"),
     connectedAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
-    .index("by_organization_and_provider", ["organizationId", "provider"]),
+    .index("by_organization_and_provider", ["organizationId", "provider"])
+    .index("by_status", ["status"]),
+
+  // Integration encryption keys metadata (actual key stored in local OS keychain)
+  integrationKeys: defineTable({
+    organizationId: v.id("organizations"),
+    keyId: v.string(), // UUID used to identify key in local keychain
+    keyVersion: v.number(), // For key rotation support
+    algorithm: v.literal("aes-256-gcm"),
+    createdAt: v.number(),
+    rotatedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"]),
 
   // AI usage tracking - individual requests
   aiUsage: defineTable({
@@ -591,6 +658,9 @@ export default defineSchema({
         logoUrl: v.optional(v.string()),
       })
     ),
+
+    // Preview image (captured from live preview)
+    previewImageId: v.optional(v.id("_storage")),
 
     // Generated plan (from Step 8)
     generatedPlan: v.optional(
@@ -1033,6 +1103,17 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_version", ["projectId", "version"]),
 
+  // Yjs awareness state for live cursors/selection (latest update per client)
+  yjsAwareness: defineTable({
+    projectId: v.id("projects"),
+    clientId: v.string(), // Y.Doc clientID as string
+    update: v.bytes(), // Awareness update bytes
+    updatedAt: v.number(),
+  })
+    .index("by_project_and_client", ["projectId", "clientId"])
+    .index("by_project_and_updated", ["projectId", "updatedAt"])
+    .index("by_updated_at", ["updatedAt"]),
+
   // ============================================
   // REAL-TIME PRESENCE TABLES
   // ============================================
@@ -1107,5 +1188,36 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_time", ["projectId", "timestamp"])
+    .index("by_user", ["userId"]),
+
+  // Comments on file changes (for code review / collaboration)
+  changeComments: defineTable({
+    changeId: v.id("fileChanges"),
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+
+    // Comment content
+    content: v.string(),
+
+    // User display info (denormalized for fast reads)
+    userName: v.string(),
+    userColor: v.string(),
+    userImage: v.optional(v.string()),
+
+    // For threading (future)
+    parentCommentId: v.optional(v.id("changeComments")),
+
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("resolved"),
+      v.literal("deleted")
+    ),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_change", ["changeId"])
+    .index("by_project", ["projectId"])
     .index("by_user", ["userId"]),
 })

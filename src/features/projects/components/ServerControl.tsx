@@ -20,6 +20,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     // Track the dev server terminal ID
     const devServerTerminalIdRef = useRef<string | null>(null)
+    const devServerProjectPathRef = useRef<string | null>(null)
 
     // Ref for timeout fallback when ready patterns don't match
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -32,14 +33,15 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
     }, [])
 
-    // Cleanup dev server terminal when component unmounts (leaving project)
+    // Cleanup dev server terminal when switching projects or leaving page
     useEffect(() => {
         return () => {
-            if (devServerTerminalIdRef.current) {
+            if (devServerTerminalIdRef.current && devServerProjectPathRef.current === projectPath) {
                 // Kill the terminal process
                 window.electronAPI.terminal.kill({ terminalId: devServerTerminalIdRef.current })
                 removeTerminal(devServerTerminalIdRef.current)
                 devServerTerminalIdRef.current = null
+                devServerProjectPathRef.current = null
             }
             clearReadyTimeout()
             // Reset server status
@@ -47,13 +49,34 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             actions.setServerPort(null)
             actions.setServerPid(null)
         }
-    }, []) // Empty deps - only run on unmount
+    }, [projectPath, actions, clearReadyTimeout, removeTerminal])
 
     // Subscribe to terminal events for dev server detection
     useEffect(() => {
+        const stripAnsi = (input: string) =>
+            // eslint-disable-next-line no-control-regex
+            input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+
+        const extractPort = (input: string): number | null => {
+            const cleaned = stripAnsi(input)
+            const match =
+                cleaned.match(/localhost:(\d{2,5})/i) ??
+                cleaned.match(/127\.0\.0\.1:(\d{2,5})/i) ??
+                cleaned.match(/0\.0\.0\.0:(\d{2,5})/i)
+
+            if (!match?.[1]) return null
+            const port = Number(match[1])
+            return Number.isFinite(port) ? port : null
+        }
+
         // Handle output from terminal to detect server ready
         const unsubOutput = window.electronAPI.terminal.onOutput(({ terminalId, data }) => {
             if (terminalId === devServerTerminalIdRef.current) {
+                const detectedPort = extractPort(data)
+                if (detectedPort) {
+                    actions.setServerPort(detectedPort)
+                }
+
                 // Try to detect when server is ready by looking for common patterns
                 const readyPatterns = [
                     // Generic patterns
@@ -77,7 +100,8 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     /app started/i,            // Generic
                     /server started/i,         // Generic
                 ]
-                if (readyPatterns.some(pattern => pattern.test(data))) {
+                const cleaned = stripAnsi(data)
+                if (readyPatterns.some(pattern => pattern.test(cleaned))) {
                     actions.setServerStatus('running')
                     if (devServerTerminalIdRef.current) {
                         updateTerminalStatus(devServerTerminalIdRef.current, 'running')
@@ -94,6 +118,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 actions.setServerPort(null)
                 actions.setServerPid(null)
                 devServerTerminalIdRef.current = null
+                devServerProjectPathRef.current = null
                 clearReadyTimeout()
             }
         })
@@ -125,6 +150,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
             if (result.success && result.terminalId) {
                 devServerTerminalIdRef.current = result.terminalId
+                devServerProjectPathRef.current = projectPath
 
                 // Add terminal to store with dev server title
                 addTerminal({
@@ -187,6 +213,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             actions.setServerPort(null)
             actions.setServerPid(null)
             devServerTerminalIdRef.current = null
+            devServerProjectPathRef.current = null
         } catch (e) {
             console.error(e)
         } finally {

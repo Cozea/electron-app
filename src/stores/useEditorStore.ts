@@ -105,9 +105,19 @@ export const useEditorStore = create<EditorState>()(
                         return { success: false, error: "Missing project context" }
                     }
 
+                    // Convert absolute path to relative path for writeFile API
+                    let relativePath = model.path
+                    if (model.path.startsWith(model.projectPath)) {
+                        relativePath = model.path.slice(model.projectPath.length)
+                        // Remove leading slash if present
+                        if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+                            relativePath = relativePath.slice(1)
+                        }
+                    }
+
                     const result = await window.electronAPI.project.writeFile({
                         projectPath: model.projectPath,
-                        filePath: model.path,
+                        filePath: relativePath,
                         content: model.currentContent
                     })
 

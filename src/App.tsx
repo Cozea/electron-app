@@ -93,6 +93,7 @@ function AppContent() {
         <Route path="version-control" element={<Navigate to="../changes" replace />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="settings" element={<ProjectSettingsPage />} />
+        <Route path="settings/:section" element={<ProjectSettingsPage />} />
         <Route path="*" element={<ProjectDetailPage />} />
       </Route>
 

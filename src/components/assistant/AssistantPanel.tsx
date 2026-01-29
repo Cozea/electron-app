@@ -108,12 +108,12 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-9 px-4 shrink-0">
-          <div className="flex items-center gap-1">
-            <span className="text-sm font-medium truncate max-w-[200px]">{chatTitle}</span>
-            <CreditDisplay className="ml-2" />
+        <div className="flex items-center h-9 px-4 shrink-0 gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
+            <CreditDisplay className="shrink-0" />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               variant="ghost"
               size="icon"

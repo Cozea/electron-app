@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Cloud,
   CloudOff,
@@ -22,6 +24,7 @@ interface SyncScreenProps {
   plan: SyncPlan | null
   onContinue: () => void
   onRetry: () => void
+  onSync?: (resolvedPlan: SyncPlan) => void
 }
 
 export function SyncScreen({
@@ -29,9 +32,56 @@ export function SyncScreen({
   plan,
   onContinue,
   onRetry,
+  onSync,
 }: SyncScreenProps) {
   const { status, message, current, total, logs } = progress
   const summary = plan ? getSyncPlanSummary(plan) : null
+  const conflicts = plan?.conflicts ?? []
+
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setConflictResolutions({})
+  }, [plan])
+
+  const allConflictsResolved = useMemo(() => {
+    if (!plan) return false
+    if (conflicts.length === 0) return true
+    return conflicts.every((c) => Boolean(conflictResolutions[c.path]))
+  }, [plan, conflicts, conflictResolutions])
+
+  const resolvedPlan = useMemo(() => {
+    if (!plan) return null
+    if (conflicts.length === 0) return plan
+
+    const next: SyncPlan = {
+      downloads: [...plan.downloads],
+      uploads: [...plan.uploads],
+      localDeletes: [...plan.localDeletes],
+      cloudDeletes: [...plan.cloudDeletes],
+      conflicts: [],
+      noChange: plan.noChange,
+    }
+
+    for (const conflict of conflicts) {
+      const decision = conflictResolutions[conflict.path]
+      if (!decision) continue
+
+      if (decision === "download") {
+        if (!conflict.cloudEntry) continue
+        next.downloads.push({ ...conflict, type: "download" })
+      } else if (decision === "upload") {
+        if (!conflict.localEntry) continue
+        next.uploads.push({ ...conflict, type: "upload" })
+      } else if (decision === "delete-local") {
+        next.localDeletes.push({ ...conflict, type: "delete-local" })
+      } else if (decision === "delete-cloud") {
+        next.cloudDeletes.push({ ...conflict, type: "delete-cloud" })
+      }
+    }
+
+    return next
+  }, [plan, conflicts, conflictResolutions])
 
   const getStatusIcon = () => {
     switch (status) {
@@ -124,7 +174,68 @@ export function SyncScreen({
             <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
             <p className="text-sm text-yellow-700 dark:text-yellow-400">
               {summary.conflicts} file{summary.conflicts > 1 ? "s have" : " has"}{" "}
-              conflicts. These will be skipped.
+              conflicts. Resolve them below to sync safely.
+            </p>
+          </div>
+        )}
+
+        {/* Conflict Resolution */}
+        {plan && conflicts.length > 0 && status === "planning" && (
+          <div className="space-y-3">
+            <div className="text-sm font-medium">Resolve conflicts</div>
+            <ScrollArea className="h-56 w-full rounded-md border bg-muted/20 p-3">
+              <div className="space-y-3">
+                {conflicts.map((conflict, index) => {
+                  const options: Array<{ value: string; label: string }> = []
+
+                  if (conflict.localEntry && conflict.cloudEntry) {
+                    options.push(
+                      { value: "upload", label: "Keep local (upload to cloud)" },
+                      { value: "download", label: "Keep cloud (download to local)" }
+                    )
+                  } else if (conflict.localEntry && !conflict.cloudEntry) {
+                    options.push(
+                      { value: "upload", label: "Restore to cloud (upload local)" },
+                      { value: "delete-local", label: "Accept cloud deletion (delete local)" }
+                    )
+                  } else if (!conflict.localEntry && conflict.cloudEntry) {
+                    options.push(
+                      { value: "download", label: "Restore locally (download cloud)" },
+                      { value: "delete-cloud", label: "Accept local deletion (delete from cloud)" }
+                    )
+                  }
+
+                  return (
+                    <div key={`${conflict.path}:${index}`} className="rounded-md border bg-background/50 p-3 space-y-2">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium break-all">{conflict.path}</div>
+                        <div className="text-xs text-muted-foreground">{conflict.reason}</div>
+                      </div>
+
+                      <RadioGroup
+                        value={conflictResolutions[conflict.path] ?? ""}
+                        onValueChange={(value) =>
+                          setConflictResolutions((prev) => ({ ...prev, [conflict.path]: value }))
+                        }
+                        className="grid gap-2"
+                      >
+                        {options.map((opt) => {
+                          const id = `conflict-${index}-${opt.value}`
+                          return (
+                            <label key={opt.value} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <RadioGroupItem id={id} value={opt.value} />
+                              <span>{opt.label}</span>
+                            </label>
+                          )
+                        })}
+                      </RadioGroup>
+                    </div>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+            <p className="text-xs text-muted-foreground">
+              Your choices determine whether local or cloud changes win for each file.
             </p>
           </div>
         )}
@@ -160,8 +271,16 @@ export function SyncScreen({
               Retry
             </Button>
           )}
+          {status === "planning" && summary && summary.totalChanges > 0 && onSync && (
+            <Button
+              onClick={() => resolvedPlan && onSync(resolvedPlan)}
+              disabled={!resolvedPlan || !allConflictsResolved}
+            >
+              Sync changes
+            </Button>
+          )}
           {(status === "complete" || status === "error" || status === "planning") && (
-            <Button onClick={onContinue}>
+            <Button variant={status === "planning" && summary && summary.totalChanges > 0 ? "outline" : "default"} onClick={onContinue}>
               Continue
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>

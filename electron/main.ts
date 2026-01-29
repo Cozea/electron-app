@@ -8,6 +8,14 @@ import { runTool } from './tools'
 import { BRIDGE_SCRIPT } from '../shared/previewBridgeScript'
 import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import * as pty from 'node-pty'
+import { resolvePathWithinDirectory } from './pathUtils'
+import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
+import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from './projectWatcher'
+import * as integrationKeys from './integrationKeys'
+import * as integrationCrypto from './integrationCrypto'
+import { startOAuthFlow, handleOAuthCallback } from './oauthHandler'
+import { runIntegrationTool, isIntegrationTool, getIntegrationToolDefinition, INTEGRATION_TOOLS } from './integrationToolExecutor'
+import { firestoreListDocuments, supabaseSelect, type FirestoreListDocumentsOptions, type SupabaseSelectOptions } from './database'
 
 // xxhash instance for file hashing
 // The hasher object contains h64Raw for direct hashing of Uint8Array
@@ -155,13 +163,6 @@ function saveSettings(settings: Partial<AppSettings>): void {
 }
 
 let win: InstanceType<typeof BrowserWindow> | null
-
-// Notify all windows of file changes (for Yjs collaborative editing)
-export function notifyFileChanged(filePath: string, content: string): void {
-  BrowserWindow.getAllWindows().forEach((window) => {
-    window.webContents.send('yjs:external-file-change', { filePath, content })
-  })
-}
 
 // Session management
 interface OrganizationMembership {
@@ -332,12 +333,35 @@ if (process.defaultApp) {
 }
 
 // Handle protocol on macOS
-app.on('open-url', (event, url) => {
+app.on('open-url', async (event, url) => {
   event.preventDefault()
   if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
     handleAuthCallback(url)
   } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
     handleBillingCallback(url)
+  } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
+    // Handle integration OAuth callback
+    try {
+      const result = await handleOAuthCallback(url)
+      if (result.success) {
+        // Send success to renderer
+        win?.webContents.send('integrations:oauthSuccess', result)
+      } else {
+        win?.webContents.send('integrations:oauthError', { provider: result.provider, error: result.error || 'OAuth failed' })
+      }
+    } catch (err) {
+      console.error('[OAuth] Callback handling error:', err)
+      win?.webContents.send('integrations:oauthError', {
+        provider: 'unknown',
+        error: err instanceof Error ? err.message : 'OAuth callback failed',
+      })
+    }
+
+    // Focus the window
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
   }
 })
 
@@ -361,6 +385,23 @@ if (!gotTheLock) {
         handleAuthCallback(url)
       } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
         handleBillingCallback(url)
+      } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
+        // Handle integration OAuth callback
+        handleOAuthCallback(url)
+          .then((result) => {
+            if (result.success) {
+              win?.webContents.send('integrations:oauthSuccess', result)
+            } else {
+              win?.webContents.send('integrations:oauthError', { provider: result.provider, error: result.error || 'OAuth failed' })
+            }
+          })
+          .catch((err) => {
+            console.error('[OAuth] Callback handling error:', err)
+            win?.webContents.send('integrations:oauthError', {
+              provider: 'unknown',
+              error: err instanceof Error ? err.message : 'OAuth callback failed',
+            })
+          })
       }
     }
   })
@@ -454,6 +495,133 @@ ipcMain.handle('auth:refresh', async () => {
   } catch {
     clearSession()
     return null
+  }
+})
+
+// ============================================
+// Integration Encryption Key Management
+// ============================================
+
+ipcMain.handle('integrations:isEncryptionAvailable', () => {
+  return integrationKeys.isEncryptionAvailable()
+})
+
+ipcMain.handle('integrations:generateKey', () => {
+  try {
+    const { keyId, keyData } = integrationKeys.generateEncryptionKey()
+    return { success: true, keyId, keyData }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to generate key' }
+  }
+})
+
+ipcMain.handle('integrations:storeKey', (_event, options: { keyId: string; keyData: string }) => {
+  return integrationKeys.storeEncryptionKey(options.keyId, options.keyData)
+})
+
+ipcMain.handle('integrations:getKey', (_event, options: { keyId: string }) => {
+  const result = integrationKeys.getEncryptionKey(options.keyId)
+  if (result.success) {
+    return { success: true, keyId: options.keyId, keyData: result.keyData }
+  }
+  return result
+})
+
+ipcMain.handle('integrations:deleteKey', (_event, options: { keyId: string }) => {
+  return integrationKeys.deleteEncryptionKey(options.keyId)
+})
+
+ipcMain.handle('integrations:keyExists', (_event, options: { keyId: string }) => {
+  return integrationKeys.keyExists(options.keyId)
+})
+
+// Integration Credential Encryption/Decryption
+
+ipcMain.handle('integrations:encrypt', async (_event, options: { credentials: Record<string, unknown>; keyId: string }) => {
+  // Get the encryption key from keychain
+  const keyResult = integrationKeys.getEncryptionKey(options.keyId)
+  if (!keyResult.success || !keyResult.keyData) {
+    return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
+  }
+
+  // Encrypt credentials
+  return integrationCrypto.encryptCredentials(options.credentials, keyResult.keyData)
+})
+
+ipcMain.handle('integrations:decrypt', async (_event, options: { encrypted: string; keyId: string }) => {
+  // Get the encryption key from keychain
+  const keyResult = integrationKeys.getEncryptionKey(options.keyId)
+  if (!keyResult.success || !keyResult.keyData) {
+    return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
+  }
+
+  // Decrypt credentials
+  return integrationCrypto.decryptCredentials(options.encrypted, keyResult.keyData)
+})
+
+ipcMain.handle('integrations:startOAuth', async (_event, options: { provider: string; orgId: string }) => {
+  return startOAuthFlow(options.provider, options.orgId)
+})
+
+// Integration Tool Execution
+
+ipcMain.handle('integrations:runTool', async (_event, options: {
+  toolName: string
+  args: string[]
+  workingDir: string
+  encryptedCredentials: string
+  keyId: string
+  timeout?: number
+}) => {
+  return runIntegrationTool(options)
+})
+
+ipcMain.handle('integrations:isToolAvailable', (_event, options: { toolName: string }) => {
+  return isIntegrationTool(options.toolName)
+})
+
+ipcMain.handle('integrations:getToolDefinition', (_event, options: { toolName: string }) => {
+  const def = getIntegrationToolDefinition(options.toolName)
+  if (!def) return null
+  // Return without internal details
+  return {
+    provider: def.provider,
+    name: def.name,
+    displayName: def.displayName,
+    command: def.command,
+    description: def.description,
+  }
+})
+
+ipcMain.handle('integrations:listTools', () => {
+  return INTEGRATION_TOOLS.map((t) => ({
+    provider: t.provider,
+    name: t.name,
+    displayName: t.displayName,
+    command: t.command,
+    description: t.description,
+  }))
+})
+
+// ============================================
+// Database Explorer (provider integrations)
+// ============================================
+
+ipcMain.handle('db:supabase:select', async (_event, options: SupabaseSelectOptions) => {
+  try {
+    const { rows } = await supabaseSelect(options)
+    return { success: true, rows }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Supabase query failed' }
+  }
+})
+
+ipcMain.handle('db:firestore:listDocuments', async (_event, options: FirestoreListDocumentsOptions) => {
+  try {
+    const { documents, nextPageToken } = await firestoreListDocuments(options)
+    return { success: true, documents, nextPageToken }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Firestore query failed' }
   }
 })
 
@@ -562,6 +730,80 @@ ipcMain.handle(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to inject preview bridge'
       return { success: false, error: message }
+    }
+  }
+)
+
+// Capture a screenshot of a URL using a hidden BrowserWindow
+ipcMain.handle(
+  'preview:captureScreenshot',
+  async (
+    _event,
+    { url, width = 1280, height = 800 }: { url: string; width?: number; height?: number }
+  ): Promise<{ success: boolean; base64?: string; error?: string }> => {
+    // Validate URL
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      return { success: false, error: 'Invalid URL' }
+    }
+
+    // Only allow localhost URLs for security
+    if (!isAllowedPreviewUrl(parsedUrl)) {
+      return { success: false, error: 'Only localhost URLs are supported' }
+    }
+
+    // Create a hidden browser window for capturing
+    const captureWindow = new BrowserWindow({
+      width,
+      height,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        offscreen: true,
+      },
+    })
+
+    try {
+      // Set a timeout for loading
+      const loadTimeout = 30000 // 30 seconds
+      const loadPromise = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error('Page load timeout'))
+        }, loadTimeout)
+
+        captureWindow.webContents.once('did-finish-load', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+
+        captureWindow.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
+          clearTimeout(timer)
+          reject(new Error(`Failed to load page: ${errorDescription} (${errorCode})`))
+        })
+      })
+
+      // Load the URL
+      await captureWindow.loadURL(url)
+      await loadPromise
+
+      // Wait a bit for any animations/rendering to complete
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Capture the page
+      const image = await captureWindow.webContents.capturePage()
+      const base64 = image.toPNG().toString('base64')
+
+      return { success: true, base64 }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Screenshot capture failed'
+      console.error('[Preview] Screenshot capture failed:', err)
+      return { success: false, error: message }
+    } finally {
+      // Always clean up the window
+      captureWindow.destroy()
     }
   }
 )
@@ -930,7 +1172,7 @@ ipcMain.handle(
     error?: string
   }> => {
     try {
-      const fullPath = path.join(projectPath, filePath)
+      const fullPath = resolvePathWithinDirectory(projectPath, filePath)
       const dir = path.dirname(fullPath)
 
       // Ensure directory exists
@@ -938,12 +1180,14 @@ ipcMain.handle(
         fs.mkdirSync(dir, { recursive: true })
       }
 
+      // Prevent the project watcher from treating this as an "external" change.
+      markInternalFsChange(fullPath)
       fs.writeFileSync(fullPath, content, 'utf-8')
       const stats = fs.statSync(fullPath)
       console.log(`[Project] Wrote file: ${fullPath}`)
 
       // Notify Yjs of the file change for collaborative editing
-      notifyFileChanged(fullPath, content)
+      notifyFileChanged(fullPath, content, { origin: 'agent' })
 
       return {
         success: true,
@@ -973,7 +1217,7 @@ ipcMain.handle(
     error?: string
   }> => {
     try {
-      const fullPath = path.join(projectPath, filePath)
+      const fullPath = resolvePathWithinDirectory(projectPath, filePath)
 
       if (!fs.existsSync(fullPath)) {
         return { success: false, error: 'File not found' }
@@ -989,6 +1233,43 @@ ipcMain.handle(
       }
     } catch (error) {
       console.error('[Project] Failed to read file:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
+// Read a file from project folder (base64, binary-safe)
+ipcMain.handle(
+  'project:readFileBase64',
+  async (
+    _event,
+    { projectPath, filePath }: { projectPath: string; filePath: string }
+  ): Promise<{
+    success: boolean
+    base64?: string
+    sizeBytes?: number
+    error?: string
+  }> => {
+    try {
+      const fullPath = resolvePathWithinDirectory(projectPath, filePath)
+
+      if (!fs.existsSync(fullPath)) {
+        return { success: false, error: 'File not found' }
+      }
+
+      const buffer = fs.readFileSync(fullPath)
+      const stats = fs.statSync(fullPath)
+
+      return {
+        success: true,
+        base64: buffer.toString('base64'),
+        sizeBytes: stats.size,
+      }
+    } catch (error) {
+      console.error('[Project] Failed to read file (base64):', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -1040,6 +1321,21 @@ ipcMain.handle(
         error: error instanceof Error ? error.message : 'Unknown error',
       }
     }
+  }
+)
+
+// Watch/unwatch a project folder for external filesystem edits.
+ipcMain.handle(
+  'project:watchStart',
+  (_event, { projectPath }: { projectPath: string }): { success: boolean; error?: string } => {
+    return startProjectWatcher(projectPath)
+  }
+)
+
+ipcMain.handle(
+  'project:watchStop',
+  (_event, { projectPath }: { projectPath: string }): { success: boolean; error?: string } => {
+    return stopProjectWatcher(projectPath)
   }
 )
 
@@ -1206,7 +1502,7 @@ ipcMain.handle(
       files,
     }: {
       projectPath: string
-      files: Array<{ path: string; content: string }>
+      files: Array<{ path: string; content: string; encoding?: 'utf8' | 'base64' }>
     }
   ): Promise<{
     results: Array<{ path: string; success: boolean; error?: string }>
@@ -1216,19 +1512,27 @@ ipcMain.handle(
 
     for (const file of files) {
       try {
-        const fullPath = path.join(projectPath, file.path)
+        const fullPath = resolvePathWithinDirectory(projectPath, file.path)
         const dir = path.dirname(fullPath)
 
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true })
         }
 
-        fs.writeFileSync(fullPath, file.content, 'utf-8')
+        // Prevent the project watcher from treating this as an "external" change.
+        markInternalFsChange(fullPath)
+        if (file.encoding === 'base64') {
+          fs.writeFileSync(fullPath, Buffer.from(file.content, 'base64'))
+        } else {
+          fs.writeFileSync(fullPath, file.content, 'utf-8')
+        }
         results.push({ path: file.path, success: true })
         console.log(`[Sync] Wrote file: ${file.path}`)
 
         // Notify Yjs of the file change for collaborative editing
-        notifyFileChanged(fullPath, file.content)
+        if (file.encoding !== 'base64') {
+          notifyFileChanged(fullPath, file.content, { origin: 'sync' })
+        }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         results.push({ path: file.path, success: false, error: errorMsg })
@@ -1259,12 +1563,17 @@ ipcMain.handle(
 
     for (const relPath of paths) {
       try {
-        const fullPath = path.join(projectPath, relPath)
+        const fullPath = resolvePathWithinDirectory(projectPath, relPath)
         if (fs.existsSync(fullPath)) {
+          // Prevent the project watcher from treating this as an "external" change.
+          markInternalFsChange(fullPath)
           fs.unlinkSync(fullPath)
           console.log(`[Sync] Deleted file: ${relPath}`)
         }
         results.push({ path: relPath, success: true })
+
+        // Notify Yjs so the in-memory doc stays in sync with disk.
+        notifyFileDeleted(fullPath, { origin: 'sync' })
       } catch (err) {
         console.error(`[Sync] Failed to delete file: ${relPath}`, err)
         results.push({ path: relPath, success: false })

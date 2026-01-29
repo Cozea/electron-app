@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
+import { notifyFileChanged } from './yjsNotify'
+import { markInternalFsChange } from './projectWatcher'
 
 export interface ToolRequest {
   name: string
@@ -209,13 +211,23 @@ async function grepSearch(input: {
   }
 }
 
-async function createFile(input: { filePath: string; content: string }, workingDir: string) {
+async function createFile(
+  input: { filePath: string; content: string },
+  workingDir: string,
+  options?: { notify?: boolean }
+) {
   const filePath = resolveToolPath(input.filePath, workingDir)
   if (fs.existsSync(filePath)) {
     throw new Error('File already exists')
   }
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  markInternalFsChange(filePath)
   fs.writeFileSync(filePath, input.content ?? '', 'utf-8')
+
+  if (options?.notify) {
+    notifyFileChanged(filePath, input.content ?? '', { origin: 'agent' })
+  }
+
   return { filePath }
 }
 
@@ -229,7 +241,11 @@ async function createDirectory(input: { dirPath?: string; path?: string }, worki
   return { dirPath }
 }
 
-function replaceStringInFile(input: { filePath: string; oldString: string; newString: string }, workingDir: string) {
+function replaceStringInFile(
+  input: { filePath: string; oldString: string; newString: string },
+  workingDir: string,
+  options?: { notify?: boolean }
+) {
   const filePath = resolveToolPath(input.filePath, workingDir)
   const content = fs.readFileSync(filePath, 'utf-8')
 
@@ -242,12 +258,21 @@ function replaceStringInFile(input: { filePath: string; oldString: string; newSt
   }
 
   const updated = content.replace(input.oldString, input.newString)
+  markInternalFsChange(filePath)
   fs.writeFileSync(filePath, updated, 'utf-8')
+
+  if (options?.notify) {
+    notifyFileChanged(filePath, updated, { origin: 'agent' })
+  }
 
   return { filePath, replacements: 1 }
 }
 
-function multiReplaceString(input: { replacements: Array<{ filePath: string; oldString: string; newString: string }> }, workingDir: string) {
+function multiReplaceString(
+  input: { replacements: Array<{ filePath: string; oldString: string; newString: string }> },
+  workingDir: string,
+  options?: { notify?: boolean }
+) {
   const results: Array<{ filePath: string; replacements: number }> = []
 
   for (const replacement of input.replacements) {
@@ -263,7 +288,11 @@ function multiReplaceString(input: { replacements: Array<{ filePath: string; old
     }
 
     const updated = content.replace(replacement.oldString, replacement.newString)
+    markInternalFsChange(filePath)
     fs.writeFileSync(filePath, updated, 'utf-8')
+    if (options?.notify) {
+      notifyFileChanged(filePath, updated, { origin: 'agent' })
+    }
     results.push({ filePath, replacements: 1 })
   }
 
@@ -400,6 +429,7 @@ async function getTerminalOutput(input: { id: string }) {
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
   // Use projectPath if provided, otherwise fall back to global WORKSPACE_ROOT
   const workingDir = request.projectPath || WORKSPACE_ROOT
+  const shouldNotify = Boolean(request.projectPath)
 
   try {
     switch (request.name) {
@@ -412,13 +442,19 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
       case 'grep_search':
         return { success: true, output: await grepSearch(request.input as any, workingDir) }
       case 'create_file':
-        return { success: true, output: await createFile(request.input as any, workingDir) }
+        return { success: true, output: await createFile(request.input as any, workingDir, { notify: shouldNotify }) }
       case 'create_directory':
         return { success: true, output: await createDirectory(request.input as any, workingDir) }
       case 'replace_string_in_file':
-        return { success: true, output: replaceStringInFile(request.input as any, workingDir) }
+        return {
+          success: true,
+          output: replaceStringInFile(request.input as any, workingDir, { notify: shouldNotify }),
+        }
       case 'multi_replace_string_in_file':
-        return { success: true, output: multiReplaceString(request.input as any, workingDir) }
+        return {
+          success: true,
+          output: multiReplaceString(request.input as any, workingDir, { notify: shouldNotify }),
+        }
       case 'run_in_terminal':
         return { success: true, output: await runInTerminal(request.input as any, workingDir) }
       case 'get_terminal_output':

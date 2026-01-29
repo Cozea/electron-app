@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { computeSyncPlan, createEmptySyncPlan, hasSyncOperations } from "@/lib/sync/syncEngine"
+import { computeSyncPlan, hasSyncOperations } from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 
@@ -29,7 +29,7 @@ interface UseProjectSyncReturn {
 export function useProjectSync({
   projectId,
   userId,
-  projectSlug,
+  projectSlug: _projectSlug,
   lastSyncAt,
 }: UseProjectSyncOptions): UseProjectSyncReturn {
   const [progress, setProgress] = useState<SyncProgress>({
@@ -53,29 +53,6 @@ export function useProjectSync({
   const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
   const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
-
-  // Query to get storage URLs
-  const getStorageUrl = useCallback(async (storageId: Id<"_storage">): Promise<string | null> => {
-    // Convex storage URLs are available via the file query
-    // We need to use the download URL from the manifest
-    const file = cloudManifest?.find((f) => f.storageId === storageId)
-    if (!file) return null
-
-    // We need to make a separate query to get the download URL
-    // For now, we'll construct a basic approach using the manifest data
-    // In practice, the listForProject query already includes URLs
-
-    // Get the URL from Convex storage
-    // The simplest approach is to use the existing listForProject query which includes URLs
-    // But since we're in a hook, we need to handle this differently
-
-    // Use the storage API directly via a fetch to the Convex function
-    // Actually, the manifest from getManifestForProject doesn't include URLs
-    // We need to call the existing listForProject which does include URLs
-
-    // For now, return null and handle this in the context
-    return null
-  }, [cloudManifest])
 
   /**
    * Check local files against cloud and create a sync plan.
@@ -269,7 +246,7 @@ export function useProjectSync({
  * Helper to get files with download URLs.
  * This is a workaround since the manifest query doesn't include URLs.
  */
-async function getFilesWithUrls(projectId: Id<"projects">): Promise<Array<{ storageId: Id<"_storage">; url: string | null }>> {
+async function getFilesWithUrls(_projectId: Id<"projects">): Promise<Array<{ storageId: Id<"_storage">; url: string | null }>> {
   // This is a limitation - we need to make a separate request to get URLs
   // In a real implementation, you'd want to batch this or include URLs in the manifest query
 

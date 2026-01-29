@@ -12,6 +12,7 @@ import type { Id } from "../../../../convex/_generated/dataModel"
 import { computeSyncPlan, hasSyncOperations } from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
+import { loadLocalSyncHistory, saveLocalSyncHistory } from "@/lib/sync/syncHistory"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
@@ -63,6 +64,25 @@ function AgentFileSyncBridge({
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
+
+  // Watch local filesystem for edits that bypass Electron IPC (terminal, external editor, etc.)
+  useEffect(() => {
+    if (!projectPath || !yjsDoc) return
+
+    let cancelled = false
+
+    void window.electronAPI.project.watchStart({ projectPath }).then((res) => {
+      if (!res?.success && !cancelled) {
+        console.warn('[ProjectWatcher] Failed to start watcher:', res?.error)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      void window.electronAPI.project.watchStop({ projectPath })
+    }
+  }, [projectPath, yjsDoc])
+
   // Bridge local agent file writes to Yjs (local → Yjs → remote)
   useAgentFileSync(yjsDoc, projectPath)
   // Write remote Yjs changes back to local disk (remote → Yjs → local)
@@ -212,20 +232,27 @@ export function ProjectSyncProvider({
         }))
 
         // Convert manifests
-        const localFiles: LocalFileEntry[] = localResult.manifest
-        const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-          _id: f._id,
-          path: f.path,
-          hash: f.hash,
-          size: f.size,
-          version: f.version,
-          storageId: f.storageId,
-          uploadedAt: f.uploadedAt,
-        }))
+	    const localFiles: LocalFileEntry[] = localResult.manifest
+	    const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
+	      _id: f._id,
+	      path: f.path,
+	      hash: f.hash,
+	      size: f.size,
+	      version: f.version,
+	      storageId: f.storageId,
+	      uploadedAt: f.uploadedAt,
+	    }))
 
-        // Compute sync plan
-        const syncPlan = computeSyncPlan(localFiles, cloudFiles, lastSyncAt ?? undefined)
-        setPlan(syncPlan)
+	    const localHistory = loadLocalSyncHistory(projectId)
+
+	    // Compute sync plan
+	    const syncPlan = computeSyncPlan(
+	      localFiles,
+	      cloudFiles,
+	      localHistory.lastSyncAt ?? undefined,
+	      localHistory.cloudPathsAtLastSync
+	    )
+	    setPlan(syncPlan)
 
         const totalChanges =
           syncPlan.downloads.length +
@@ -233,12 +260,18 @@ export function ProjectSyncProvider({
           syncPlan.localDeletes.length +
           syncPlan.cloudDeletes.length
 
-        if (totalChanges === 0) {
-          // Already synced - no screen needed
-          setProgress({
-            status: "complete",
-            message: "Everything up to date!",
-            current: 0,
+	        if (totalChanges === 0) {
+	          // Already synced - no screen needed
+	          const now = Date.now()
+	          saveLocalSyncHistory(projectId, {
+	            lastSyncAt: now,
+	            cloudPathsAtLastSync: cloudFiles.map((f) => f.path),
+	          })
+	          setLastSyncAt(now)
+	          setProgress({
+	            status: "complete",
+	            message: "Everything up to date!",
+	            current: 0,
             total: 0,
             logs: [],
           })
@@ -291,6 +324,8 @@ export function ProjectSyncProvider({
    * Execute sync plan.
    */
   const executeSync = async (projectPath: string, syncPlan: SyncPlan) => {
+    setIsSyncRunning(true)
+
     if (!hasSyncOperations(syncPlan)) {
       setIsSynced(true)
       setShowSyncScreen(false)
@@ -331,14 +366,23 @@ export function ProjectSyncProvider({
       console.error("[Sync] Failed to update final status:", err)
     }
 
-    if (result.success) {
-      setIsSynced(true)
-      setLastSyncAt(Date.now())
-      setShowSyncScreen(false)
-      // Clear the diff badge for this project
-      clearDiff(projectSlug)
-      onFilesChanged?.()
-    }
+	    if (result.success) {
+	      const now = Date.now()
+	      const cloudPaths = new Set((cloudManifest ?? []).map((f) => f.path))
+	      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
+	      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
+	      saveLocalSyncHistory(projectId, {
+	        lastSyncAt: now,
+	        cloudPathsAtLastSync: cloudPaths,
+	      })
+
+	      setIsSynced(true)
+	      setLastSyncAt(now)
+	      setShowSyncScreen(false)
+	      // Clear the diff badge for this project
+	      clearDiff(projectSlug)
+	      onFilesChanged?.()
+	    }
 
     // Mark sync as complete regardless of result
     setIsSyncRunning(false)
@@ -376,6 +420,23 @@ export function ProjectSyncProvider({
     await executeSync(currentLocalPath, plan)
   }
 
+  /**
+   * Handle sync after resolving conflicts.
+   */
+  const handleSyncResolved = async (resolvedPlan: SyncPlan) => {
+    if (!currentLocalPath) return
+
+    setPlan(resolvedPlan)
+    setProgress((prev) => ({
+      ...prev,
+      status: "syncing",
+      message: "Syncing files...",
+      logs: [],
+    }))
+
+    await executeSync(currentLocalPath, resolvedPlan)
+  }
+
   // Show sync screen while syncing
   if (showSyncScreen && !isSynced) {
     return (
@@ -384,6 +445,7 @@ export function ProjectSyncProvider({
         plan={plan}
         onContinue={handleContinue}
         onRetry={handleRetry}
+        onSync={handleSyncResolved}
       />
     )
   }

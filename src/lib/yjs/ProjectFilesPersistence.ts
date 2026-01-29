@@ -13,11 +13,18 @@ interface PendingChange {
   previousLineCount: number
 }
 
+interface PendingDelete {
+  previousContent: string
+  origin: ChangeOrigin
+  previousLineCount: number
+}
+
 /**
  * ProjectFilesPersistence - Persists Yjs file changes to projectFiles table.
  *
  * When the Yjs document changes, this provider debounces writes and
- * uploads the updated file content with computed checksums to Convex.
+ * uploads the updated file content with computed checksums to Convex storage.
+ * It then creates a new `projectFiles` version (superseding the previous active version).
  *
  * IMPORTANT: Only persists LOCAL changes (user edits, agent writes).
  * Ignores remote changes and snapshot loading to avoid:
@@ -27,11 +34,12 @@ interface PendingChange {
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
-  private userId: Id<"users"> | undefined
+  private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
   private hasher: XXHashAPI
   private pendingChanges: Map<string, PendingChange> = new Map()
+  private pendingDeletes: Map<string, PendingDelete> = new Map()
   private previousContents: Map<string, string> = new Map()
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
@@ -41,7 +49,7 @@ export class ProjectFilesPersistence {
     projectId: Id<"projects">,
     convex: ConvexReactClient,
     hasher: XXHashAPI,
-    userId?: Id<"users">,
+    userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
@@ -65,17 +73,40 @@ export class ProjectFilesPersistence {
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"
     const origin = transaction.origin
-    if (origin === 'remote' || origin === 'snapshot') {
+    if (origin === 'remote' || origin === 'snapshot' || origin === 'sync') {
       return
     }
 
     // Determine the change origin type
-    const changeOrigin: ChangeOrigin = origin === 'agent' ? 'agent' : 'user'
+    const changeOrigin: ChangeOrigin =
+      origin === 'agent' ? 'agent' : origin === 'init' ? 'init' : 'user'
 
     for (const event of events) {
+      if (event.target === this.filesMap) {
+        // Handle file deletions from the map
+        for (const [path, change] of event.changes.keys.entries()) {
+          if (change.action !== 'delete') continue
+
+          const previousContent = this.previousContents.get(path) || ''
+          const previousLineCount = this.countLines(previousContent)
+
+          // Deletion wins over any pending edit in the same debounce window
+          this.pendingChanges.delete(path)
+
+          this.pendingDeletes.set(path, {
+            previousContent,
+            origin: changeOrigin,
+            previousLineCount,
+          })
+        }
+      }
+
       if (event.target instanceof Y.Text) {
         const path = this.getPathForYText(event.target)
         if (path) {
+          // If the file is being deleted, don't persist a write for it.
+          if (this.pendingDeletes.has(path)) continue
+
           const previousContent = this.previousContents.get(path) || ''
           const previousLineCount = this.countLines(previousContent)
 
@@ -89,8 +120,8 @@ export class ProjectFilesPersistence {
       }
     }
 
-    // Only schedule persist if there are actual local changes
-    if (this.pendingChanges.size > 0) {
+    // Only schedule persist if there are actual local changes/deletes
+    if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
       this.schedulePersist()
     }
   }
@@ -115,8 +146,49 @@ export class ProjectFilesPersistence {
   private async persistChanges() {
     const changes = new Map(this.pendingChanges)
     this.pendingChanges.clear()
+    const deletes = new Map(this.pendingDeletes)
+    this.pendingDeletes.clear()
+
+    // Persist deletions first
+    if (deletes.size > 0) {
+      const paths = Array.from(deletes.keys())
+      try {
+        await this.convex.mutation(api.projectFiles.markFilesDeleted, {
+          projectId: this.projectId,
+          filePaths: paths,
+        })
+      } catch (error) {
+        console.error('[ProjectFilesPersistence] Failed to mark files deleted:', error)
+      }
+
+      for (const [path, info] of deletes) {
+        const { previousContent, origin, previousLineCount } = info
+        try {
+          await this.convex.mutation(api.activity.logFileChange, {
+            projectId: this.projectId,
+            userId: this.userId,
+            filePath: path,
+            changeType: 'delete',
+            oldContent: previousContent,
+            newContent: '',
+            additions: 0,
+            deletions: previousLineCount,
+            totalLines: 0,
+            origin,
+            userName: this.userName,
+          })
+        } catch (error) {
+          console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
+        }
+
+        this.previousContents.delete(path)
+      }
+    }
 
     for (const [path, change] of changes) {
+      // A delete may have happened after we captured `changes`
+      if (deletes.has(path)) continue
+
       const { content, previousContent, origin, previousLineCount } = change
       const checksum = await this.computeHash(content)
       const currentLineCount = this.countLines(content)
@@ -127,13 +199,35 @@ export class ProjectFilesPersistence {
       const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
 
       try {
-        // Save file content
-        await this.convex.mutation(api.projectFiles.saveFileContent, {
+        const uploadUrl = await this.convex.mutation(api.projectFiles.generateUploadUrl, {
           projectId: this.projectId,
-          path,
-          content,
+        })
+
+        const mimeType = getMimeTypeForText(path)
+        const blob = new Blob([content], { type: mimeType })
+
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': mimeType },
+          body: blob,
+        })
+
+        if (!response.ok) {
+          throw new Error(`Upload failed (${response.status})`)
+        }
+
+        const json = (await response.json()) as { storageId: Id<"_storage"> }
+        const storageId = json.storageId
+
+        await this.convex.mutation(api.projectFiles.saveFile, {
+          projectId: this.projectId,
+          userId: this.userId,
+          storageId,
+          fileName: path.split('/').pop() || path,
+          filePath: path,
+          fileType: mimeType,
+          sizeBytes: blob.size,
           checksum,
-          mtime: Date.now(),
         })
 
         // Log the activity with content for diff viewing
@@ -169,4 +263,26 @@ export class ProjectFilesPersistence {
     this.filesMap.unobserveDeep(this.handleFilesChange)
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
   }
+}
+
+function getMimeTypeForText(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase() || ''
+  const map: Record<string, string> = {
+    ts: 'text/typescript',
+    tsx: 'text/typescript',
+    js: 'application/javascript',
+    jsx: 'application/javascript',
+    json: 'application/json',
+    css: 'text/css',
+    scss: 'text/scss',
+    html: 'text/html',
+    htm: 'text/html',
+    md: 'text/markdown',
+    txt: 'text/plain',
+    yaml: 'text/yaml',
+    yml: 'text/yaml',
+    xml: 'text/xml',
+    svg: 'image/svg+xml',
+  }
+  return map[ext] ?? 'text/plain'
 }

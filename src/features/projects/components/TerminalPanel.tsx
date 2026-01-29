@@ -14,8 +14,6 @@ import { TerminalSplitView } from "./TerminalSplitView"
 const MIN_PANEL_HEIGHT = 150
 const MAX_PANEL_HEIGHT = 600
 
-type TabType = "console" | "problems"
-
 interface TerminalPanelProps {
     className?: string
     projectPath: string
@@ -58,7 +56,7 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
         }
     }, []) // Empty deps - only run on unmount
 
-    const [activeTab, setActiveTab] = useState<TabType>("console")
+    const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
     const [isDragging, setIsDragging] = useState(false)
     const dragStartY = useRef(0)
     const dragStartHeight = useRef(0)
@@ -126,8 +124,8 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
 
             {/* Tab Bar */}
             <TerminalTabBar
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
+                activeView={activeView}
+                onViewChange={setActiveView}
                 problemCount={unreadErrorCount}
                 projectPath={projectPath}
                 onClose={() => setPanelOpen(false)}
@@ -135,11 +133,11 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
 
             {/* Panel Content */}
             <div className="flex-1 min-h-0 overflow-hidden">
-                {/* Console tab with terminal */}
+                {/* Terminal view */}
                 <div
                     className={cn(
                         "h-full w-full",
-                        activeTab !== "console" && "hidden"
+                        activeView !== "terminal" && "hidden"
                     )}
                 >
                     {terminalCount === 0 ? (
@@ -167,9 +165,9 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
                     )}
                 </div>
 
-                {/* Problems tab */}
-                {activeTab === "problems" && (
-                    <div className="h-full">
+                {/* Problems view */}
+                {activeView === "problems" && (
+                    <div className="h-full bg-sidebar">
                         <ScrollArea className="h-full">
                             <div className="p-2 space-y-1">
                                 {errors.length === 0 ? (

@@ -1,5 +1,5 @@
-import { QueryCtx } from "../_generated/server"
-import { Id } from "../_generated/dataModel"
+import type { QueryCtx } from "../_generated/server"
+import type { Id } from "../_generated/dataModel"
 
 /**
  * Get the member limit for a given plan

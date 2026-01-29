@@ -13,12 +13,14 @@ import type * as aiUsage from "../aiUsage.js";
 import type * as billing from "../billing.js";
 import type * as builderRuns from "../builderRuns.js";
 import type * as crons from "../crons.js";
+import type * as integrations from "../integrations.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_modelTiers from "../lib/modelTiers.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_seatLimits from "../lib/seatLimits.js";
 import type * as organizations from "../organizations.js";
+import type * as projectFileLocks from "../projectFileLocks.js";
 import type * as projectFiles from "../projectFiles.js";
 import type * as projectInvites from "../projectInvites.js";
 import type * as projectMembers from "../projectMembers.js";
@@ -30,6 +32,7 @@ import type * as toolApprovals from "../toolApprovals.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
 import type * as yjs from "../yjs.js";
+import type * as yjsAwareness from "../yjsAwareness.js";
 
 import type {
   ApiFromModules,
@@ -43,12 +46,14 @@ declare const fullApi: ApiFromModules<{
   billing: typeof billing;
   builderRuns: typeof builderRuns;
   crons: typeof crons;
+  integrations: typeof integrations;
   invitations: typeof invitations;
   "lib/encryption": typeof lib_encryption;
   "lib/modelTiers": typeof lib_modelTiers;
   "lib/permissions": typeof lib_permissions;
   "lib/seatLimits": typeof lib_seatLimits;
   organizations: typeof organizations;
+  projectFileLocks: typeof projectFileLocks;
   projectFiles: typeof projectFiles;
   projectInvites: typeof projectInvites;
   projectMembers: typeof projectMembers;
@@ -60,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   tools: typeof tools;
   users: typeof users;
   yjs: typeof yjs;
+  yjsAwareness: typeof yjsAwareness;
 }>;
 
 /**
