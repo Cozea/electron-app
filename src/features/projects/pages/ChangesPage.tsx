@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -229,6 +229,13 @@ export function ChangesPage() {
     api.activity.getCommentCountsForChanges,
     changeIds.length > 0 ? { changeIds } : 'skip'
   )
+
+  // Auto-select the most recent change when activity loads
+  useEffect(() => {
+    if (activity && activity.length > 0 && selectedChangeId === null) {
+      setSelectedChangeId(activity[0].id as Id<"fileChanges">)
+    }
+  }, [activity, selectedChangeId])
 
   return (
     <div className="flex h-full bg-sidebar/60">
