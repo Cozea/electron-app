@@ -289,6 +289,35 @@ export const getCommentCountsForChanges = query({
 })
 
 /**
+ * Count unread changes from other users since a given timestamp.
+ * Used for sidebar badge notification.
+ */
+export const getUnreadChangesCount = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    lastSeenTimestamp: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { projectId, userId, lastSeenTimestamp } = args
+
+    // Get all changes since the last seen timestamp
+    const changes = await ctx.db
+      .query("fileChanges")
+      .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+      .filter((q) => q.gt(q.field("timestamp"), lastSeenTimestamp))
+      .collect()
+
+    // Count only changes from other users (not the current user)
+    const unreadCount = changes.filter(
+      (change) => change.userId !== userId
+    ).length
+
+    return unreadCount
+  },
+})
+
+/**
  * Delete a comment (soft delete).
  */
 export const deleteComment = mutation({

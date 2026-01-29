@@ -4,6 +4,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
+import { markSyncFeedAsSeen } from '../components/ProjectSidebar'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
@@ -236,6 +237,13 @@ export function ChangesPage() {
       setSelectedChangeId(activity[0].id as Id<"fileChanges">)
     }
   }, [activity, selectedChangeId])
+
+  // Mark sync feed as seen when page loads
+  useEffect(() => {
+    if (slug) {
+      markSyncFeedAsSeen(slug)
+    }
+  }, [slug])
 
   return (
     <div className="flex h-full bg-sidebar/60">
