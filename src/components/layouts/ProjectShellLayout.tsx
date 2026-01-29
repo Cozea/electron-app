@@ -180,7 +180,7 @@ export function ProjectShellLayout({
           {/* Left Panel (File Tree) */}
           {showLeftPanel && (
             <>
-              <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+              <ResizablePanel defaultSize="20" minSize="15" maxSize="40">
                 <div className="h-full flex flex-col bg-background">
                   <div className="h-8 px-3 flex items-center justify-between border-b border-border">
                     <span className="text-xs font-medium uppercase text-muted-foreground">
@@ -204,10 +204,10 @@ export function ProjectShellLayout({
           )}
 
           {/* Center Panel (Editor + Bottom Panel) */}
-          <ResizablePanel defaultSize={showRightPanel ? 55 : 80}>
+          <ResizablePanel defaultSize={showRightPanel ? '55' : '80'}>
             <ResizablePanelGroup orientation="vertical">
               {/* Editor Area */}
-              <ResizablePanel defaultSize={showBottomPanel ? 70 : 100}>
+              <ResizablePanel defaultSize={showBottomPanel ? '70' : '100'}>
                 <div className="h-full flex flex-col bg-background">
                   {/* Editor Tabs */}
                   <div className="h-9 border-b border-border flex items-center px-1">
@@ -238,7 +238,7 @@ export function ProjectShellLayout({
               {showBottomPanel && (
                 <>
                   <ResizableHandle />
-                  <ResizablePanel defaultSize={30} minSize={15} maxSize={50}>
+                  <ResizablePanel defaultSize="30" minSize="15" maxSize="50">
                     <div className="h-full flex flex-col bg-background border-t border-border">
                       {/* Bottom Panel Tabs */}
                       <div className="h-8 flex items-center justify-between px-2 border-b border-border">
@@ -287,7 +287,7 @@ export function ProjectShellLayout({
           {showRightPanel && (
             <>
               <ResizableHandle />
-              <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+              <ResizablePanel defaultSize="25" minSize="20" maxSize="40">
                 <div className="h-full flex flex-col bg-background border-l border-border">
                   <div className="h-8 px-3 flex items-center justify-between border-b border-border">
                     <span className="text-xs font-medium uppercase text-muted-foreground">

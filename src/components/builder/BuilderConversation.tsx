@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
+import { useMutation } from 'convex/react'
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
@@ -8,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
+import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { BuildTask } from './BuildTaskList'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
@@ -20,7 +22,9 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
-import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
+import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -97,6 +101,7 @@ interface BuilderConversationProps {
   onFileCreated: (file: { path: string; content: string }) => void
   onComplete: () => void
   onError: (error: string) => void
+  onBillingError?: (error: BillingErrorData | null) => void
   className?: string
 }
 
@@ -111,9 +116,13 @@ export function BuilderConversation({
   onFileCreated,
   onComplete,
   onError,
+  onBillingError,
   className,
 }: BuilderConversationProps) {
-  const { accessToken, currentOrganization } = useAuth()
+  const { accessToken, currentOrganization, convexUserId } = useAuth()
+
+  const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
+  const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
 
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
@@ -126,9 +135,18 @@ export function BuilderConversation({
   const hasSentInitialMessageRef = useRef(false)
   const completedRef = useRef(false)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
+  // Track active terminal sessions for live terminal rendering
+  const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
 
   const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
+  const lastTasksSignatureRef = useRef<string | null>(null)
+
+  // Auto-continuation refs (defined early for use in error handling)
+  const latestTasksRef = useRef<BuildTask[]>([])
+  const continuationSentRef = useRef(false)
+  const continuationCountRef = useRef(0)
+  const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const promptSettings = project.promptSettings
@@ -231,7 +249,17 @@ ${JSON.stringify(planContext.pages, null, 2)}
 Entities/Data models:
 ${JSON.stringify(planContext.entities, null, 2)}
 
-Start by calling build_tasks to define your task list, then create the project structure and files.`
+IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
+1. First call build_tasks to define your task list with all tasks set to status: "pending"
+2. Before starting each task, call build_tasks with that task's status changed to "in_progress"
+3. After completing each task, call build_tasks with that task's status changed to "completed"
+4. Repeat steps 2-3 for each task until all tasks are "completed"
+
+This updates the progress UI so the user can track your work in real-time. The user sees your progress through the build_tasks tool calls, so call it frequently!
+
+Note: If the tool schema expects tasks_json, it MUST be a strict JSON array string with double quotes, not a JS object literal.
+
+Now begin by defining your task list with build_tasks, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
   // Chat transport
@@ -285,6 +313,74 @@ Start by calling build_tasks to define your task list, then create the project s
     return `${localPath}/${filePath}`.replace(/\/+/g, '/')
   }, [localPath])
 
+  const normalizeRelativeFilePath = useCallback((filePath: string) => {
+    return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
+  }, [])
+
+  const formatLockConflictError = useCallback((
+    filePath: string,
+    details: { lockedByName?: string | null; expiresAt?: number | null; status?: string | null }
+  ) => {
+    const parts: string[] = []
+    parts.push(`File is locked: ${filePath}`)
+    if (details.status) parts.push(`status=${details.status}`)
+    if (details.lockedByName) parts.push(`by ${details.lockedByName}`)
+    if (details.expiresAt) {
+      parts.push(`until ${new Date(details.expiresAt).toLocaleTimeString()}`)
+    }
+    parts.push('Wait, then re-read the file and retry your edit.')
+    return parts.join(' ')
+  }, [])
+
+  const withFileLocks = useCallback(async <T,>(
+    filePaths: string[],
+    fn: () => Promise<T>
+  ): Promise<T> => {
+    if (!convexUserId) {
+      throw new Error('Cannot acquire file lock: not authenticated')
+    }
+
+    const uniquePaths = Array.from(
+      new Set(filePaths.map(normalizeRelativeFilePath).filter(Boolean))
+    ).sort()
+
+    const acquired: string[] = []
+    try {
+      for (const filePath of uniquePaths) {
+        const result = await acquireFileLock({
+          projectId: project._id,
+          filePath,
+          userId: convexUserId,
+        })
+        if (!result.acquired) {
+          throw new Error(
+            formatLockConflictError(filePath, {
+              lockedByName: result.lockedByName,
+              expiresAt: result.expiresAt,
+              status: result.status,
+            })
+          )
+        }
+        acquired.push(filePath)
+      }
+
+      return await fn()
+    } finally {
+      await Promise.allSettled(
+        acquired.map((filePath) =>
+          releaseFileLock({ projectId: project._id, filePath, userId: convexUserId })
+        )
+      )
+    }
+  }, [
+    acquireFileLock,
+    convexUserId,
+    formatLockConflictError,
+    normalizeRelativeFilePath,
+    project._id,
+    releaseFileLock,
+  ])
+
   const runLocalTool = useCallback(async (
     toolName: string,
     toolCallId: string,
@@ -292,6 +388,8 @@ Start by calling build_tasks to define your task list, then create the project s
   ) => {
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
+
+    const normalizedInput = normalizeToolInput(toolName, input) as any
 
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta?.executionEnvironment && toolMeta.executionEnvironment !== 'local') {
@@ -305,7 +403,7 @@ Start by calling build_tasks to define your task list, then create the project s
     }
 
     if (toolMeta?.inputSchema) {
-      const validation = validateInputAgainstSchema(toolMeta.inputSchema, input)
+      const validation = validateInputAgainstSchema(toolMeta.inputSchema, normalizedInput)
       if (!validation.valid) {
         void addToolOutput({
           state: 'output-error',
@@ -320,21 +418,46 @@ Start by calling build_tasks to define your task list, then create the project s
     try {
       if (toolName === 'build_tasks') {
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        let tasks: BuildTask[]
-        if (input.tasks) {
-          tasks = input.tasks as BuildTask[]
-        } else if (input.tasks_json) {
-          try {
-            tasks = JSON.parse(input.tasks_json as string) as BuildTask[]
-          } catch (e) {
-            console.error('[Builder] Failed to parse tasks_json:', e)
-            tasks = []
+        let tasks: BuildTask[] | null = null
+
+        if (Array.isArray(normalizedInput?.tasks)) {
+          tasks = normalizedInput.tasks as BuildTask[]
+        } else if (normalizedInput?.tasks_json) {
+          const parsed = parseJsonArrayLoose(normalizedInput.tasks_json)
+          if (parsed) {
+            tasks = parsed as BuildTask[]
+          } else {
+            void addToolOutput({
+              state: 'output-error',
+              tool: toolName,
+              toolCallId,
+              errorText: 'build_tasks failed: tasks_json must be a valid JSON array string. Re-read the tool schema and retry with strict JSON.',
+            })
+            return
           }
         } else {
-          console.warn('[Builder] build_tasks called without tasks or tasks_json')
-          tasks = []
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: 'build_tasks failed: missing tasks or tasks_json input.',
+          })
+          return
         }
-        onTasksUpdate(tasks)
+
+        let signature: string | null = null
+        try {
+          signature = JSON.stringify(tasks)
+        } catch {
+          signature = null
+        }
+
+        if (signature && signature === lastTasksSignatureRef.current) {
+          // Avoid re-applying identical task lists (prevents render churn / loops).
+        } else {
+          lastTasksSignatureRef.current = signature
+          onTasksUpdate(tasks)
+        }
 
         const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'completed')
         if (allCompleted && !completedRef.current) {
@@ -351,7 +474,7 @@ Start by calling build_tasks to define your task list, then create the project s
       }
 
       if (toolName === 'mark_complete') {
-        console.log('[Builder] mark_complete called with summary:', input.summary)
+        console.log('[Builder] mark_complete called with summary:', normalizedInput.summary)
         if (!completedRef.current) {
           completedRef.current = true
           void addToolOutput({
@@ -371,34 +494,31 @@ Start by calling build_tasks to define your task list, then create the project s
       }
 
       if (toolName === 'create_file') {
-        const result = await window.electronAPI.project.writeFile({
-          projectPath: localPath,
-          filePath: input.filePath,
-          content: input.content,
-        })
+        await withFileLocks([normalizedInput.filePath], async () => {
+          const result = await window.electronAPI.project.writeFile({
+            projectPath: localPath,
+            filePath: normalizedInput.filePath,
+            content: normalizedInput.content,
+          })
 
-        if (result.success) {
-          onFileCreated({ path: input.filePath, content: input.content })
+          if (!result.success) {
+            throw new Error(result.error || 'Failed to create file')
+          }
+
+          onFileCreated({ path: normalizedInput.filePath, content: normalizedInput.content })
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, path: input.filePath }),
+            output: JSON.stringify({ success: true, path: normalizedInput.filePath }),
           })
-        } else {
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: result.error || 'Failed to create file',
-          })
-        }
+        })
         return
       }
 
       if (toolName === 'read_file') {
         const result = await window.electronAPI.project.readFile({
           projectPath: localPath,
-          filePath: input.filePath,
+          filePath: normalizedInput.filePath,
         })
         if (result.success) {
           void addToolOutput({
@@ -418,7 +538,7 @@ Start by calling build_tasks to define your task list, then create the project s
       }
 
       if (toolName === 'list_dir') {
-        const targetPath = normalizeProjectPath(input.path)
+        const targetPath = normalizeProjectPath(normalizedInput.path)
         const entries = await window.electronAPI.fs.readDir(targetPath || localPath)
         void addToolOutput({
           tool: toolName,
@@ -429,96 +549,222 @@ Start by calling build_tasks to define your task list, then create the project s
       }
 
       if (toolName === 'replace_string_in_file') {
-        const result = await window.electronAPI.project.readFile({
-          projectPath: localPath,
-          filePath: input.filePath,
-        })
-        if (!result.success || result.content === undefined) {
-          throw new Error(result.error || 'File not found')
-        }
-        const content = result.content
-        const occurrences = content.split(input.oldString).length - 1
-        if (occurrences === 0) {
-          throw new Error('Old string not found in file')
-        }
-        if (occurrences > 1) {
-          throw new Error('Old string must match exactly one occurrence')
-        }
-        const updated = content.replace(input.oldString, input.newString)
-        const writeResult = await window.electronAPI.project.writeFile({
-          projectPath: localPath,
-          filePath: input.filePath,
-          content: updated,
-        })
-        if (!writeResult.success) {
-          throw new Error(writeResult.error || 'Failed to write file')
-        }
-        void addToolOutput({
-          tool: toolName,
-          toolCallId,
-          output: JSON.stringify({ filePath: input.filePath, replacements: 1 }),
+        await withFileLocks([normalizedInput.filePath], async () => {
+          const result = await window.electronAPI.project.readFile({
+            projectPath: localPath,
+            filePath: normalizedInput.filePath,
+          })
+          if (!result.success || result.content === undefined) {
+            throw new Error(result.error || 'File not found')
+          }
+          const content = result.content
+          const occurrences = content.split(normalizedInput.oldString).length - 1
+          if (occurrences === 0) {
+            throw new Error('Old string not found in file')
+          }
+          if (occurrences > 1) {
+            throw new Error('Old string must match exactly one occurrence')
+          }
+          const updated = content.replace(normalizedInput.oldString, normalizedInput.newString)
+          const writeResult = await window.electronAPI.project.writeFile({
+            projectPath: localPath,
+            filePath: normalizedInput.filePath,
+            content: updated,
+          })
+          if (!writeResult.success) {
+            throw new Error(writeResult.error || 'Failed to write file')
+          }
+          void addToolOutput({
+            tool: toolName,
+            toolCallId,
+            output: JSON.stringify({ filePath: normalizedInput.filePath, replacements: 1 }),
+          })
         })
         return
       }
 
       if (toolName === 'multi_replace_string_in_file') {
-        const results: Array<{ filePath: string; replacements: number }> = []
-        for (const replacement of input.replacements || []) {
-          const readResult = await window.electronAPI.project.readFile({
-            projectPath: localPath,
-            filePath: replacement.filePath,
+        const replacements = (normalizedInput.replacements || []) as Array<{
+          filePath: string
+          oldString: string
+          newString: string
+        }>
+
+        const paths = replacements.map((r) => r.filePath)
+        await withFileLocks(paths, async () => {
+          const results: Array<{ filePath: string; replacements: number }> = []
+          for (const replacement of replacements) {
+            const readResult = await window.electronAPI.project.readFile({
+              projectPath: localPath,
+              filePath: replacement.filePath,
+            })
+            if (!readResult.success || readResult.content === undefined) {
+              throw new Error(readResult.error || `File not found: ${replacement.filePath}`)
+            }
+            const content = readResult.content
+            const occurrences = content.split(replacement.oldString).length - 1
+            if (occurrences === 0) {
+              throw new Error(`Old string not found in file: ${replacement.filePath}`)
+            }
+            if (occurrences > 1) {
+              throw new Error(`Old string must match exactly one occurrence in file: ${replacement.filePath}`)
+            }
+            const updated = content.replace(replacement.oldString, replacement.newString)
+            const writeResult = await window.electronAPI.project.writeFile({
+              projectPath: localPath,
+              filePath: replacement.filePath,
+              content: updated,
+            })
+            if (!writeResult.success) {
+              throw new Error(writeResult.error || `Failed to write file: ${replacement.filePath}`)
+            }
+            results.push({ filePath: replacement.filePath, replacements: 1 })
+          }
+          void addToolOutput({
+            tool: toolName,
+            toolCallId,
+            output: JSON.stringify({ results }),
           })
-          if (!readResult.success || readResult.content === undefined) {
-            throw new Error(readResult.error || `File not found: ${replacement.filePath}`)
-          }
-          const content = readResult.content
-          const occurrences = content.split(replacement.oldString).length - 1
-          if (occurrences === 0) {
-            throw new Error(`Old string not found in file: ${replacement.filePath}`)
-          }
-          if (occurrences > 1) {
-            throw new Error(`Old string must match exactly one occurrence in file: ${replacement.filePath}`)
-          }
-          const updated = content.replace(replacement.oldString, replacement.newString)
-          const writeResult = await window.electronAPI.project.writeFile({
-            projectPath: localPath,
-            filePath: replacement.filePath,
-            content: updated,
-          })
-          if (!writeResult.success) {
-            throw new Error(writeResult.error || `Failed to write file: ${replacement.filePath}`)
-          }
-          results.push({ filePath: replacement.filePath, replacements: 1 })
-        }
-        void addToolOutput({
-          tool: toolName,
-          toolCallId,
-          output: JSON.stringify({ results }),
         })
         return
       }
 
-      if (toolName === 'run_in_terminal' && input?.command && localPath) {
-        const command = input.command
-        const safeCwd = localPath.replace(/"/g, '\\"')
-        const commandWithCwd = `cd "${safeCwd}" && ${command}`
-        const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
-          toolName,
-          input: { ...input, command: commandWithCwd },
-          toolCallId,
-        })
-        if (runtimeResult.success) {
-          void addToolOutput({
-            tool: toolName,
-            toolCallId,
-            output: runtimeResult.output,
+      if (toolName === 'run_in_terminal' && normalizedInput?.command && localPath) {
+        const command = normalizedInput.command as string
+        const isBackground = Boolean(normalizedInput.isBackground)
+        const timeout = typeof normalizedInput.timeout === 'number' ? normalizedInput.timeout : 120000 // 2 min default
+
+        try {
+          // Create a PTY terminal session for interactive command execution
+          const createResult = await window.electronAPI.terminal.create({
+            projectPath: localPath,
+            cwd: localPath,
+            cols: 120,
+            rows: 30,
           })
-        } else {
+
+          if (!createResult.terminalId) {
+            throw new Error('Failed to create terminal session')
+          }
+
+          const terminalId = createResult.terminalId
+          let output = ''
+          let exitCode: number | null = null
+          let completed = false
+
+          // Track this terminal session for live UI rendering
+          setTerminalSessions(prev => {
+            const next = new Map(prev)
+            next.set(toolCallId, terminalId)
+            return next
+          })
+
+          // Set up output listener
+          const outputHandler = (event: { terminalId: string; data: string }) => {
+            if (event.terminalId === terminalId) {
+              output += event.data
+            }
+          }
+
+          // Set up exit listener
+          const exitPromise = new Promise<{ exitCode: number | null }>((resolve) => {
+            const exitHandler = (event: { terminalId: string; exitCode: number | null }) => {
+              if (event.terminalId === terminalId) {
+                completed = true
+                // Remove from active sessions when terminal exits
+                setTerminalSessions(prev => {
+                  const next = new Map(prev)
+                  next.delete(toolCallId)
+                  return next
+                })
+                resolve({ exitCode: event.exitCode })
+              }
+            }
+            window.electronAPI.terminal.onExit(exitHandler)
+          })
+
+          // Subscribe to output
+          const unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
+
+          // Send the command to the terminal
+          setTimeout(() => {
+            window.electronAPI.terminal.input({
+              terminalId,
+              data: command + '\r',
+            })
+          }, 100)
+
+          if (isBackground) {
+            // For background processes, return immediately with terminal ID
+            void addToolOutput({
+              tool: toolName,
+              toolCallId,
+              output: JSON.stringify({
+                id: terminalId,
+                command,
+                isBackground: true,
+                message: 'Background process started. Use get_terminal_output to check status.',
+              }),
+            })
+            // Keep terminal running - don't clean up (session stays in terminalSessions)
+          } else {
+            // For foreground processes, wait for completion or timeout
+            const timeoutPromise = timeout > 0
+              ? new Promise<{ exitCode: number | null }>((resolve) => {
+                  setTimeout(() => {
+                    if (!completed) {
+                      resolve({ exitCode: -1 })
+                    }
+                  }, timeout)
+                })
+              : new Promise<never>(() => {}) // Never resolves if no timeout
+
+            const result = await Promise.race([exitPromise, timeoutPromise])
+            exitCode = result.exitCode
+
+            // Clean up
+            unsubOutput()
+
+            // If timed out, kill the process
+            if (!completed && timeout > 0) {
+              try {
+                await window.electronAPI.terminal.kill({ terminalId })
+              } catch {
+                // Ignore kill errors
+              }
+              // Remove from active sessions on timeout
+              setTerminalSessions(prev => {
+                const next = new Map(prev)
+                next.delete(toolCallId)
+                return next
+              })
+              output += '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
+            }
+
+            void addToolOutput({
+              tool: toolName,
+              toolCallId,
+              output: JSON.stringify({
+                command,
+                stdout: output,
+                stderr: '',
+                exitCode,
+                timedOut: !completed && timeout > 0,
+              }),
+            })
+          }
+        } catch (err) {
+          // Remove from active sessions on error
+          setTerminalSessions(prev => {
+            const next = new Map(prev)
+            next.delete(toolCallId)
+            return next
+          })
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: runtimeResult.error || 'Tool failed',
+            errorText: err instanceof Error ? err.message : 'Failed to run command',
           })
         }
         return
@@ -526,7 +772,7 @@ Start by calling build_tasks to define your task list, then create the project s
 
       const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
         toolName,
-        input,
+        input: normalizedInput,
         toolCallId,
       })
 
@@ -552,7 +798,16 @@ Start by calling build_tasks to define your task list, then create the project s
         errorText: err instanceof Error ? err.message : 'Tool failed',
       })
     }
-  }, [localPath, onTasksUpdate, onFileCreated, onComplete, localRuntime, conversationId, normalizeProjectPath])
+  }, [
+    conversationId,
+    localPath,
+    localRuntime,
+    normalizeProjectPath,
+    onComplete,
+    onFileCreated,
+    onTasksUpdate,
+    withFileLocks,
+  ])
 
   const handleApprovedTool = useCallback(async (
     toolName: string,
@@ -597,6 +852,18 @@ Start by calling build_tasks to define your task list, then create the project s
     }
   }, [runLocalTool, shouldRequireLocalApproval])
 
+  // Track if auto-continue is handling errors (don't propagate to parent during recovery)
+  const isRecoveringRef = useRef(false)
+  const lastErrorRef = useRef<string | null>(null)
+
+  // Check if we should allow auto-continue to handle the error
+  const shouldAllowRecovery = useCallback(() => {
+    const tasks = latestTasksRef.current
+    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
+    const canContinue = continuationCountRef.current < MAX_CONTINUATIONS
+    return hasIncompleteTasks && canContinue && !completedRef.current
+  }, [])
+
   // useChat hook
   const {
     messages,
@@ -615,13 +882,25 @@ Start by calling build_tasks to define your task list, then create the project s
 
       const billingErr = parseBillingError(err)
       if (billingErr) {
+        // Billing errors are always fatal
         setBillingError(billingErr)
-        // Pass a cleaner message to the parent
+        onBillingError?.(billingErr)
         onError(billingErr.title || 'Billing Error')
-      } else {
-        const message = err?.message || 'Build failed'
-        onError(message)
+        return
       }
+
+      const message = err?.message || 'Build failed'
+      lastErrorRef.current = message
+
+      // Check if we should let auto-continue recover from this error
+      if (shouldAllowRecovery()) {
+        console.log('[Builder] Error occurred but allowing recovery via auto-continue:', message)
+        isRecoveringRef.current = true
+        // Don't propagate error yet - auto-continue will try to recover
+        return
+      }
+
+      onError(message)
     },
   })
 
@@ -635,19 +914,37 @@ Start by calling build_tasks to define your task list, then create the project s
     }
   }, [accessToken, project._id, initialPrompt, sendMessage])
 
-  // Track error state
+  // Track error state - only propagate if recovery isn't possible
   useEffect(() => {
     if (error) {
       const billingErr = parseBillingError(error)
       if (billingErr) {
         setBillingError(billingErr)
+        onBillingError?.(billingErr)
         onError(billingErr.title || 'Billing Error')
-      } else {
-        const message = (error as { message?: string }).message || 'Build failed'
-        onError(message)
+        return
       }
+
+      // Check if we should let auto-continue recover from this error
+      if (shouldAllowRecovery()) {
+        console.log('[Builder] Error state detected but allowing recovery')
+        isRecoveringRef.current = true
+        return
+      }
+
+      const message = (error as { message?: string }).message || 'Build failed'
+      onError(message)
     }
-  }, [error, onError])
+  }, [error, onError, shouldAllowRecovery])
+
+  // Clear recovery state when streaming starts (continuation is working)
+  useEffect(() => {
+    if (status === 'streaming' && isRecoveringRef.current) {
+      console.log('[Builder] Recovery successful, clearing error state')
+      isRecoveringRef.current = false
+      lastErrorRef.current = null
+    }
+  }, [status])
 
   // Fallback: extract build_tasks updates directly from streamed messages
   useEffect(() => {
@@ -672,11 +969,10 @@ Start by calling build_tasks to define your task list, then create the project s
           break
         }
         if (toolPart.input?.tasks_json) {
-          try {
-            latestTasks = JSON.parse(toolPart.input.tasks_json) as BuildTask[]
+          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
+          if (parsed) {
+            latestTasks = parsed as BuildTask[]
             break
-          } catch {
-            // ignore parse errors
           }
         }
 
@@ -699,7 +995,17 @@ Start by calling build_tasks to define your task list, then create the project s
     }
 
     if (latestTasks) {
-      onTasksUpdate(latestTasks)
+      let signature: string | null = null
+      try {
+        signature = JSON.stringify(latestTasks)
+      } catch {
+        signature = null
+      }
+
+      if (!signature || signature !== lastTasksSignatureRef.current) {
+        lastTasksSignatureRef.current = signature
+        onTasksUpdate(latestTasks)
+      }
       const allCompleted = latestTasks.length > 0 && latestTasks.every(t => t.status === 'completed')
       console.log('[Builder] Task completion check:', {
         taskCount: latestTasks.length,
@@ -716,7 +1022,6 @@ Start by calling build_tasks to define your task list, then create the project s
   }, [messages, onTasksUpdate, onComplete])
 
   // Track latest tasks for continuation logic
-  const latestTasksRef = useRef<BuildTask[]>([])
   useEffect(() => {
     // Extract latest tasks from messages (same logic as above effect)
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -733,11 +1038,10 @@ Start by calling build_tasks to define your task list, then create the project s
           return
         }
         if (toolPart.input?.tasks_json) {
-          try {
-            latestTasksRef.current = JSON.parse(toolPart.input.tasks_json) as BuildTask[]
+          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
+          if (parsed) {
+            latestTasksRef.current = parsed as BuildTask[]
             return
-          } catch {
-            // ignore parse errors
           }
         }
       }
@@ -745,10 +1049,6 @@ Start by calling build_tasks to define your task list, then create the project s
   }, [messages])
 
   // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
-  const continuationSentRef = useRef(false)
-  const continuationCountRef = useRef(0)
-  const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
-
   useEffect(() => {
     // Only check when not loading and not completed
     if (status === 'streaming' || status === 'submitted' || completedRef.current) {
@@ -816,12 +1116,27 @@ Start by calling build_tasks to define your task list, then create the project s
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
+  // Filter out the initial plan prompt message (first user message with plan context)
+  const visibleMessages = useMemo(() => {
+    return messages.filter((message, index) => {
+      // Hide the first user message (the auto-sent plan prompt)
+      if (message.role === 'user' && index === 0) {
+        return false
+      }
+      return true
+    })
+  }, [messages])
+
   return (
     <div className={cn('flex flex-col overflow-hidden w-full', className)}>
       <div className="flex-1 min-h-0 relative w-full">
+        {/* Top fade */}
+        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
+        {/* Bottom fade */}
+        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
           <ConversationContent className="w-full max-w-none px-4 pt-4 pb-4">
-            {messages.map((message) => (
+            {visibleMessages.map((message) => (
               <MessageBubble
                 key={message.id}
                 message={message}
@@ -830,13 +1145,10 @@ Start by calling build_tasks to define your task list, then create the project s
                 shouldRequireLocalApproval={shouldRequireLocalApproval}
                 onApproveTool={handleApprovedTool}
                 onDenyTool={handleDeniedTool}
+                terminalSessions={terminalSessions}
+                projectPath={localPath}
               />
             ))}
-            {billingError && (
-              <div className="py-4 px-2">
-                <BillingError error={billingError} />
-              </div>
-            )}
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />

@@ -1,12 +1,14 @@
 import { type ReactNode, useState, useEffect } from "react"
+import { CommandSearch } from "./CommandSearch"
 
 interface TitleBarProps {
   title?: string
   showTitle?: boolean
+  showSearch?: boolean
   children?: ReactNode
 }
 
-export function TitleBar({ title = 'Cozea', showTitle = false, children }: TitleBarProps) {
+export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = false, children }: TitleBarProps) {
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   useEffect(() => {
@@ -36,17 +38,27 @@ export function TitleBar({ title = 'Cozea', showTitle = false, children }: Title
       />
 
       {/* Content Area (Breadcrumbs, etc.) - No Drag */}
-      <div
-        className="flex-1 flex items-center min-w-0"
-      >
+      <div className="flex-1 flex items-center min-w-0">
         {children}
       </div>
 
-      {showTitle && (
-        <div className="absolute left-1/2 -translate-x-1/2 text-muted-foreground text-sm font-medium pointer-events-none">
-          {title}
+      {/* Center Search - absolutely positioned overlay */}
+      {showSearch && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto">
+            <CommandSearch />
+          </div>
         </div>
       )}
+
+      {showTitle && !showSearch && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-muted-foreground text-sm font-medium">
+            {title}
+          </span>
+        </div>
+      )}
+
     </div>
   )
 }

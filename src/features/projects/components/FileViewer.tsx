@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
+import * as monaco from 'monaco-editor'
 import { MonacoEditor } from '@/components/editor/MonacoEditor'
+import { EditorBreadcrumb } from '@/components/editor/EditorBreadcrumb'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { Loader2, AlertCircle, FileX } from 'lucide-react'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
@@ -25,6 +27,28 @@ export function FileViewer({ path }: FileViewerProps) {
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+  const [editorReady, setEditorReady] = useState(false)
+
+  // Callback when editor is ready
+  const handleEditorReady = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
+    editorRef.current = editor
+    setEditorReady(true)
+  }, [])
+
+  // Always get projectPath for breadcrumb (even if model exists)
+  useEffect(() => {
+    const getProjectPath = async () => {
+      const localPath =
+        syncContext?.projectPath ??
+        (slug ? await window.electronAPI.project.getLocalPath(slug) : null)
+      if (localPath) {
+        setProjectPath(localPath)
+      }
+    }
+    getProjectPath()
+  }, [syncContext?.projectPath, slug])
 
   // Load file content when path changes and model doesn't exist
   useEffect(() => {
@@ -44,6 +68,9 @@ export function FileViewer({ path }: FileViewerProps) {
           if (mounted) setError('Project folder not found')
           return
         }
+
+        // Store project path for breadcrumb
+        if (mounted) setProjectPath(localPath)
 
         // Convert absolute path to relative path by removing the project folder prefix
         // path is absolute (e.g., /Users/foo/CrozCode Projects/my-project/src/App.tsx)
@@ -137,5 +164,17 @@ export function FileViewer({ path }: FileViewerProps) {
     )
   }
 
-  return <MonacoEditor path={path} />
+  return (
+    <div className="h-full flex flex-col">
+      <EditorBreadcrumb
+        path={path}
+        editorRef={editorRef}
+        projectPath={projectPath}
+        editorReady={editorReady}
+      />
+      <div className="flex-1 min-h-0">
+        <MonacoEditor path={path} onEditorReady={handleEditorReady} />
+      </div>
+    </div>
+  )
 }

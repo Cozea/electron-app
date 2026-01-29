@@ -54,15 +54,11 @@ const ALLOWED_DOT_FILES = [
 
 export class FileService {
   private readonly excludePatterns: Set<string>
-  private readonly respectGitignore: boolean
-  private readonly maxDepth: number
 
   constructor(options: FileServiceOptions = {}) {
     this.excludePatterns = new Set(
       options.excludePatterns ?? DEFAULT_EXCLUDE_PATTERNS
     )
-    this.respectGitignore = options.respectGitignore ?? false
-    this.maxDepth = options.maxDepth ?? 50
   }
 
   /**

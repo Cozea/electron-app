@@ -1,4 +1,4 @@
-import { Badge } from "~/components/ui/badge"
+import { Badge } from "@/components/ui/badge"
 
 export const title = "Circular Badge with Count"
 

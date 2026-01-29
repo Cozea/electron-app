@@ -15,6 +15,7 @@ interface DashboardLayoutProps {
   header?: ReactNode
   footer?: ReactNode
   breadcrumbs?: { label: string; href?: string }[]
+  contentMode?: 'scroll' | 'fixed'
   user?: {
     email: string
     firstName?: string | null
@@ -29,6 +30,7 @@ export function DashboardLayout({
   header,
   footer,
   breadcrumbs = [{ label: "Projects" }],
+  contentMode = 'scroll',
   user,
   onLogout,
 }: DashboardLayoutProps) {
@@ -41,25 +43,31 @@ export function DashboardLayout({
         {/* Main Content with Sidebar */}
         <div className="flex flex-1 overflow-hidden relative mt-9">
           <AppSidebar user={user} onLogout={onLogout} />
-          <SidebarInset>
-            <div className="flex flex-1 flex-col overflow-hidden relative">
-              {header && (
-                <div className="absolute top-0 left-0 right-0 z-40 h-12 flex items-center px-4 bg-background/50 backdrop-blur-md">
-                  <div className="w-full">
-                    {header}
-                  </div>
-                </div>
-              )}
-              <ScrollArea className="flex-1">
-                <div className={cn("flex flex-col gap-4 p-4 min-h-full", header && "pt-16")}>
-                  {children}
-                </div>
-              </ScrollArea>
-              {footer && (
-                <div className="flex-none border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                  {footer}
-                </div>
-              )}
+	          <SidebarInset>
+	            <div className="flex flex-1 flex-col overflow-hidden relative">
+	              {header && (
+	                <div className="absolute top-0 left-0 right-0 z-40 h-12 flex items-center px-4 bg-background/50 backdrop-blur-md">
+	                  <div className="w-full">
+	                    {header}
+	                  </div>
+	                </div>
+	              )}
+	              {contentMode === 'fixed' ? (
+	                <div className={cn("flex flex-1 min-h-0 flex-col overflow-hidden", header && "pt-16")}>
+	                  {children}
+	                </div>
+	              ) : (
+	                <ScrollArea className="flex-1">
+	                  <div className={cn("flex flex-col gap-4 p-4 min-h-full", header && "pt-16")}>
+	                    {children}
+	                  </div>
+	                </ScrollArea>
+	              )}
+	              {footer && (
+	                <div className="flex-none border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+	                  {footer}
+	                </div>
+	              )}
             </div>
           </SidebarInset>
           <AssistantPanel />

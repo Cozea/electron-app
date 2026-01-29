@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -16,6 +16,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import {
   Package,
   RefreshCw,
   Plus,
@@ -23,7 +32,6 @@ import {
   ArrowUp,
   Trash2,
   MoreHorizontal,
-  Box,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -49,6 +57,8 @@ export function ProjectDependenciesPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [dependencies, setDependencies] = useState<Dependency[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 20
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -125,6 +135,35 @@ export function ProjectDependenciesPage() {
   const prodCount = dependencies.filter(d => d.type === 'dependency').length
   const devCount = dependencies.filter(d => d.type === 'devDependency').length
 
+  // Pagination
+  const totalPages = Math.ceil(filteredDeps.length / ITEMS_PER_PAGE)
+  const paginatedDeps = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return filteredDeps.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredDeps, currentPage])
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filter])
+
+  // Generate page numbers with ellipsis
+  const getPageNumbers = () => {
+    const pages: (number | 'ellipsis')[] = []
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i)
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 'ellipsis', totalPages)
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, 'ellipsis', totalPages - 2, totalPages - 1, totalPages)
+      } else {
+        pages.push(1, 'ellipsis', currentPage, 'ellipsis', totalPages)
+      }
+    }
+    return pages
+  }
+
   if (project === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -134,13 +173,10 @@ export function ProjectDependenciesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-sidebar/60">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2 bg-background/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Box className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-sm font-medium">Dependencies</h1>
-        </div>
+      <div className="sticky top-0 z-20 flex items-center justify-between px-4 pt-4 pb-2 bg-sidebar/60 backdrop-blur-md">
+        <h1 className="text-sm font-medium">Dependencies</h1>
 
         <div className="flex items-center gap-2">
           <ButtonGroup>
@@ -175,18 +211,18 @@ export function ProjectDependenciesPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto">
 
         {/* Error State */}
         {error && (
-          <Card className="p-4 mb-6 border-destructive/50 bg-destructive/10 text-destructive text-sm text-center">
+          <Card className="p-4 mx-6 mt-6 mb-6 border-destructive/50 bg-destructive/10 text-destructive text-sm text-center">
             {error}
           </Card>
         )}
 
         {/* Dependencies Table */}
         {filteredDeps.length === 0 ? (
-          <Card className="p-12 text-center">
+          <Card className="p-12 m-6 text-center">
             <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <h3 className="text-lg font-medium mb-2">No packages found</h3>
             <p className="text-sm text-muted-foreground">
@@ -194,9 +230,9 @@ export function ProjectDependenciesPage() {
             </p>
           </Card>
         ) : (
-          <Card className="border-0 shadow-none bg-transparent">
+          <Card className="border-0 shadow-none bg-transparent px-4">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
+              <TableHeader className="sticky top-0 bg-sidebar/60 z-10">
                 <TableRow>
                   <TableHead className="w-[350px]">Package</TableHead>
                   <TableHead>Version</TableHead>
@@ -205,7 +241,7 @@ export function ProjectDependenciesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredDeps.map((dep) => (
+                {paginatedDeps.map((dep) => (
                   <TableRow key={dep.name}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -248,6 +284,45 @@ export function ProjectDependenciesPage() {
               </TableBody>
             </Table>
           </Card>
+        )}
+
+        {/* Pagination */}
+        {filteredDeps.length > ITEMS_PER_PAGE && (
+          <div className="flex justify-center py-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+                {getPageNumbers().map((page, i) =>
+                  page === 'ellipsis' ? (
+                    <PaginationItem key={`ellipsis-${i}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
         )}
       </div>
     </div>

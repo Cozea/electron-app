@@ -9,50 +9,195 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
   Activity,
-  FileText,
-  FilePlus,
-  FileX,
   Bot,
-  User,
-  Clock,
   PanelRightClose,
+  MessageSquare,
+  Smile,
 } from 'lucide-react'
+import {
+  DiffAddedIcon,
+  DiffModifiedIcon,
+  DiffRemovedIcon,
+} from '@primer/octicons-react'
 import { DiffPanel } from '../components/changes/DiffPanel'
+import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 
-function formatTime(timestamp: number) {
-  const diff = Date.now() - timestamp
-  const seconds = Math.floor(diff / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+function formatTimeOnly(timestamp: number) {
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+function formatDateHeader(timestamp: number) {
+  const date = new Date(timestamp)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  // Reset times to compare dates only
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+
+  if (dateOnly.getTime() === todayOnly.getTime()) {
+    return 'TODAY'
+  } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
+    return 'YESTERDAY'
+  } else {
+    return date.toLocaleDateString('en-US', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).toUpperCase().replace(',', '')
+  }
+}
+
+function getDateKey(timestamp: number) {
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+// Group activity by date
+function groupActivityByDate<T extends { timestamp: number }>(items: T[]): { dateHeader: string; items: T[] }[] {
+  const groups: Map<string, { dateHeader: string; items: T[] }> = new Map()
+
+  for (const item of items) {
+    const key = getDateKey(item.timestamp)
+    if (!groups.has(key)) {
+      groups.set(key, {
+        dateHeader: formatDateHeader(item.timestamp),
+        items: [],
+      })
+    }
+    groups.get(key)!.items.push(item)
+  }
+
+  return Array.from(groups.values())
 }
 
 function getChangeIcon(changeType: string) {
   switch (changeType) {
     case 'create':
-      return <FilePlus className="h-4 w-4 text-green-500" />
+      return <DiffAddedIcon size={14} className="text-green-500" />
     case 'delete':
-      return <FileX className="h-4 w-4 text-red-500" />
+      return <DiffRemovedIcon size={14} className="text-red-500" />
     case 'modify':
     default:
-      return <FileText className="h-4 w-4 text-blue-500" />
+      return <DiffModifiedIcon size={14} className="text-yellow-500" />
   }
 }
 
-function getChangeLabel(changeType: string) {
-  switch (changeType) {
-    case 'create':
-      return 'created'
-    case 'delete':
-      return 'deleted'
-    case 'modify':
-    default:
-      return 'modified'
-  }
+function formatRelativeTime(timestamp: number) {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
+}
+
+// Component to display comments for a change
+function ChangeComments({ changeId }: { changeId: Id<"fileChanges"> }) {
+  const comments = useQuery(api.activity.getCommentsForChange, { changeId })
+  const [isExpanded, setIsExpanded] = useState(true)
+
+  if (!comments || comments.length === 0) return null
+
+  return (
+    <div className="ml-[88px] mt-2 mb-3">
+      {/* Toggle button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsExpanded(!isExpanded)
+        }}
+        className="text-xs font-medium text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
+      >
+        {isExpanded ? 'Hide' : 'Show'} {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+      </button>
+
+      {/* Comments list */}
+      {isExpanded && (
+        <div className="relative">
+          {/* Dashed timeline line with rounded top and fade */}
+          <div className="absolute left-[19px] top-0 bottom-0 flex flex-col items-center pointer-events-none">
+            {/* Rounded top dot */}
+            <div className="w-2 h-2 rounded-full bg-border shrink-0" />
+            {/* Dashed line with fade */}
+            <div
+              className="w-px flex-1 border-l border-dashed border-border"
+              style={{
+                maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+              }}
+            />
+          </div>
+
+          {/* Comments */}
+          <div className="space-y-0 pl-12">
+            {comments.map((comment) => (
+              <div key={comment.id} className="flex gap-3 pb-4">
+                {/* Avatar */}
+                {comment.userImage ? (
+                  <img
+                    src={comment.userImage}
+                    alt={comment.userName}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium text-white shrink-0"
+                    style={{ backgroundColor: comment.userColor }}
+                  >
+                    {comment.userName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
+
+                {/* Content column */}
+                <div className="flex-1 min-w-0">
+                  {/* Name and time */}
+                  <div className="flex items-center gap-1.5 mb-1 min-w-0">
+                    <span className="text-sm font-semibold truncate shrink min-w-0">{comment.userName}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">•</span>
+                    <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                      {formatRelativeTime(comment.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Comment content */}
+                  <p className="text-sm text-foreground/90 mb-3">{comment.content}</p>
+
+                  {/* Floating reaction buttons */}
+                  <div className="flex items-center gap-2">
+                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <span>👍</span>
+                      <span>2</span>
+                    </button>
+                    <button className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <Smile className="h-4 w-4" />
+                      <span>+</span>
+                    </button>
+                    <span className="text-muted-foreground/50">•</span>
+                    <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      Reply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function ChangesPage() {
@@ -78,15 +223,22 @@ export function ChangesPage() {
     project?._id ? { projectId: project._id, limit: 100 } : 'skip'
   )
 
+  // Get comment counts for all changes
+  const changeIds = activity?.map(item => item.id as Id<"fileChanges">) || []
+  const commentCounts = useQuery(
+    api.activity.getCommentCountsForChanges,
+    changeIds.length > 0 ? { changeIds } : 'skip'
+  )
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-sidebar/60">
       {/* Timeline Panel */}
       <div className={`flex flex-col ${selectedChangeId ? 'w-1/2 border-r border-border' : 'w-full'} transition-all`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 h-9 bg-sidebar/30 backdrop-blur-md">
           <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-lg font-semibold">Changes</h1>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <h1 className="text-sm font-medium">Changes</h1>
           </div>
           {selectedChangeId && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -116,80 +268,98 @@ export function ChangesPage() {
                 </p>
               </Card>
             ) : (
-              <div className="relative">
-                {/* Timeline line */}
-                <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
-
-                {/* Timeline items */}
-                <div className="space-y-1">
-                  {activity.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedChangeId(item.id as Id<"fileChanges">)}
-                      className={`
-                        relative pl-10 pr-3 py-3 rounded-lg cursor-pointer transition-colors
-                        ${selectedChangeId === item.id
-                          ? 'bg-primary/10 border border-primary/20'
-                          : 'hover:bg-muted/50'
-                        }
-                      `}
-                    >
-                      {/* Timeline dot */}
-                      <div
-                        className="absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 border-background"
-                        style={{ backgroundColor: item.userColor }}
-                      />
-
-                      {/* Content */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          {/* User and action */}
-                          <div className="flex items-center gap-2 mb-1">
-                            {item.isAgent ? (
-                              <Bot className="h-3.5 w-3.5" style={{ color: item.userColor }} />
-                            ) : (
-                              <User className="h-3.5 w-3.5" style={{ color: item.userColor }} />
-                            )}
-                            <span
-                              className="font-medium text-sm"
-                              style={{ color: item.userColor }}
-                            >
-                              {item.userName}
-                            </span>
-                            <span className="text-sm text-muted-foreground">
-                              {getChangeLabel(item.changeType)}
-                            </span>
-                            {getChangeIcon(item.changeType)}
-                          </div>
-
-                          {/* File path */}
-                          <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded truncate block max-w-full">
-                            {item.filePath}
-                          </code>
-
-                          {/* Stats */}
-                          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                            {item.additions !== undefined && item.additions > 0 && (
-                              <span className="text-green-500">+{item.additions}</span>
-                            )}
-                            {item.deletions !== undefined && item.deletions > 0 && (
-                              <span className="text-red-500">-{item.deletions}</span>
-                            )}
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatTime(item.timestamp)}
-                            </div>
-                            {item.isAgent && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0">
-                                AI
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+              <div className="space-y-6">
+                {groupActivityByDate(activity).map((group) => (
+                  <div key={group.dateHeader}>
+                    {/* Date Header */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-xs font-semibold text-muted-foreground tracking-wider">
+                        {group.dateHeader}
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
                     </div>
-                  ))}
-                </div>
+
+                    {/* Items for this date */}
+                    <div className="space-y-1">
+                      {group.items.map((item) => (
+                        <div key={item.id}>
+                          <div
+                            onClick={() => setSelectedChangeId(item.id as Id<"fileChanges">)}
+                            className={`
+                              flex items-start gap-3 py-2 px-2 rounded-lg cursor-pointer transition-colors
+                              ${selectedChangeId === item.id
+                                ? 'bg-primary/10 border border-primary/20'
+                                : 'hover:bg-muted/50'
+                              }
+                            `}
+                          >
+                            {/* Time Column */}
+                            <div className="w-20 shrink-0 pt-1 mr-2">
+                              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                                {formatTimeOnly(item.timestamp)}
+                              </span>
+                            </div>
+
+                            {/* Avatar */}
+                            <div className="shrink-0 pt-0.5">
+                              {item.userImage ? (
+                                <img
+                                  src={item.userImage}
+                                  alt={item.userName}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
+                                  style={{ backgroundColor: item.userColor }}
+                                >
+                                  {item.isAgent ? (
+                                    <Bot className="h-4 w-4" />
+                                  ) : (
+                                    item.userName?.charAt(0).toUpperCase() || 'U'
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Content - single line */}
+                            <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
+                              <span className="font-medium text-sm">
+                                {item.userName}
+                              </span>
+                              {getChangeIcon(item.changeType)}
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs font-mono">
+                                {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
+                                <span className="truncate">{item.filePath.split('/').pop()}</span>
+                              </span>
+                              {item.isAgent && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                  AI
+                                </Badge>
+                              )}
+                              {(item.additions !== undefined && item.additions > 0) && (
+                                <span className="text-xs text-green-500">+{item.additions}</span>
+                              )}
+                              {(item.deletions !== undefined && item.deletions > 0) && (
+                                <span className="text-xs text-red-500">-{item.deletions}</span>
+                              )}
+                              {commentCounts && commentCounts[item.id] > 0 && (
+                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                                  <MessageSquare className="h-3 w-3" />
+                                  {commentCounts[item.id]}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {/* Comments under this change */}
+                          {commentCounts && commentCounts[item.id] > 0 && (
+                            <ChangeComments changeId={item.id as Id<"fileChanges">} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

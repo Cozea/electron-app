@@ -1,4 +1,3 @@
-import * as React from "react"
 import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"

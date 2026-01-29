@@ -15,9 +15,11 @@ export function useAgentFileSync(
   useEffect(() => {
     if (!yjsDoc || !projectPath) return
 
+    const cleanups: Array<() => void> = []
+
     // Subscribe to external file changes from Electron main process
-    const cleanup = window.electronAPI.yjs?.onExternalFileChange?.(
-      ({ filePath, content }) => {
+    const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(
+      ({ filePath, content, origin }) => {
         // Check if this file belongs to our project
         if (!filePath.startsWith(projectPath)) return
 
@@ -29,10 +31,28 @@ export function useAgentFileSync(
         console.log(`[AgentSync] External file change: ${normalizedPath}`)
 
         // Apply the change to Yjs document
-        yjsDoc.applyExternalChange(normalizedPath, content)
+        yjsDoc.applyExternalChange(normalizedPath, content, origin ?? 'agent')
       }
     )
 
-    return cleanup
+    if (cleanupChange) cleanups.push(cleanupChange)
+
+    const cleanupDelete = window.electronAPI.yjs?.onExternalFileDelete?.(
+      ({ filePath, origin }) => {
+        if (!filePath.startsWith(projectPath)) return
+
+        const relativePath = filePath.slice(projectPath.length + 1)
+        const normalizedPath = relativePath.replace(/\\/g, '/')
+
+        console.log(`[AgentSync] External file delete: ${normalizedPath}`)
+        yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
+      }
+    )
+
+    if (cleanupDelete) cleanups.push(cleanupDelete)
+
+    return () => {
+      for (const cleanup of cleanups) cleanup()
+    }
   }, [yjsDoc, projectPath])
 }

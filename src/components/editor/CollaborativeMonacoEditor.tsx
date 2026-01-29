@@ -4,6 +4,7 @@ import * as monaco from 'monaco-editor'
 import { MonacoBinding } from 'y-monaco'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useMonacoTheme } from '@/hooks/useMonacoTheme'
 
 // Import Monaco workers for Vite
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -39,6 +40,7 @@ loader.config({ monaco })
 interface CollaborativeMonacoEditorProps {
   path: string
   onSave?: () => void
+  onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void
 }
 
 /**
@@ -50,10 +52,13 @@ interface CollaborativeMonacoEditorProps {
 export function CollaborativeMonacoEditor({
   path,
   onSave,
+  onEditorReady,
 }: CollaborativeMonacoEditorProps) {
   const { yjsDoc, awareness } = useYjsProject()
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const bindingRef = useRef<MonacoBinding | null>(null)
+  const cursorDisposablesRef = useRef<monaco.IDisposable[]>([])
+  const theme = useMonacoTheme()
 
   const model = useEditorStore((state) => state.models[path])
   const actions = useEditorStore((state) => state.actions)
@@ -94,11 +99,35 @@ export function CollaborativeMonacoEditor({
         awareness ?? undefined
       )
 
+      // Publish "active file" + cursor position for collaborator UI.
+      if (awareness) {
+        const updateCursorState = () => {
+          const position = editor.getPosition()
+          if (!position) return
+          awareness.setLocalStateField('cursor', {
+            filePath: path,
+            line: position.lineNumber,
+            column: position.column,
+          })
+        }
+
+        // Set immediately so others can see which file we're in even before moving.
+        updateCursorState()
+
+        cursorDisposablesRef.current.push(
+          editor.onDidChangeCursorPosition(updateCursorState),
+          editor.onDidFocusEditorText(updateCursorState)
+        )
+      }
+
       // Register Cmd+S save command
       editor.addCommand(
         monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
         handleSave
       )
+
+      // Notify parent that editor is ready
+      onEditorReady?.(editor)
 
       // Update EditorStore when Y.Text changes (for dirty state tracking)
       yText.observe(() => {
@@ -109,7 +138,7 @@ export function CollaborativeMonacoEditor({
         }
       })
     },
-    [path, yjsDoc, awareness, model, actions, handleSave]
+    [path, yjsDoc, awareness, model, actions, handleSave, onEditorReady]
   )
 
   // Cleanup binding on unmount or path change
@@ -117,6 +146,11 @@ export function CollaborativeMonacoEditor({
     return () => {
       bindingRef.current?.destroy()
       bindingRef.current = null
+
+      for (const disposable of cursorDisposablesRef.current) {
+        disposable.dispose()
+      }
+      cursorDisposablesRef.current = []
     }
   }, [path])
 
@@ -134,7 +168,7 @@ export function CollaborativeMonacoEditor({
       language={model.language}
       // Don't set value prop - y-monaco manages content
       defaultValue={model.currentContent}
-      theme="vs-dark"
+      theme={theme}
       onMount={handleMount}
       // Don't use onChange - y-monaco handles sync
       options={{

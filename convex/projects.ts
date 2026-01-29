@@ -838,6 +838,64 @@ export const saveImportedFrom = mutation({
 })
 
 // ============================================
+// PREVIEW IMAGE MANAGEMENT
+// ============================================
+
+// Update project preview image (captured from live preview)
+export const updatePreviewImage = mutation({
+  args: {
+    projectId: v.id("projects"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    // Delete old preview image if exists
+    if (project.previewImageId) {
+      try {
+        await ctx.storage.delete(project.previewImageId)
+      } catch {
+        // Ignore if old image doesn't exist
+      }
+    }
+
+    await ctx.db.patch(args.projectId, {
+      previewImageId: args.storageId,
+      updatedAt: Date.now(),
+    })
+
+    return { success: true }
+  },
+})
+
+// Generate upload URL for preview image
+export const generatePreviewUploadUrl = mutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
+// Get preview image URL for a project
+export const getPreviewImageUrl = query({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project || !project.previewImageId) return null
+
+    return await ctx.storage.getUrl(project.previewImageId)
+  },
+})
+
+// ============================================
 // STATISTICS
 // ============================================
 

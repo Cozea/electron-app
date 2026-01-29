@@ -270,7 +270,35 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
 
+/* Utility: Invert on all dark themes (dark, navy, wine, forest) */
+@layer utilities {
+  .dark .invert-on-dark,
+  .navy .invert-on-dark,
+  .wine .invert-on-dark,
+  .forest .invert-on-dark {
+    filter: invert(1);
+  }
+
+  .dark .bg-foreground-on-dark,
+  .navy .bg-foreground-on-dark,
+  .wine .bg-foreground-on-dark,
+  .forest .bg-foreground-on-dark {
+    background-color: var(--foreground);
+  }
+
+  /* Hide scrollbar while keeping scroll functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer base {
   /* Custom Scrollbars */
   ::-webkit-scrollbar {
     width: 10px;

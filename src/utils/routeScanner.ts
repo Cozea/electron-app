@@ -139,7 +139,7 @@ async function scanNextjsRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -162,7 +162,7 @@ async function scanNextjsRoutes(projectPath: string): Promise<ScannedRoute[]> {
         routes.push({
           name,
           path: routePath,
-          file: `${projectPath}/${filePath}`,
+          file: filePath,
           type: isDynamic ? 'dynamic' : 'static',
         })
       }
@@ -211,7 +211,7 @@ async function scanRemixRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -255,7 +255,7 @@ async function scanSvelteKitRoutes(projectPath: string): Promise<ScannedRoute[]>
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -297,7 +297,7 @@ async function scanNuxtRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -341,7 +341,7 @@ async function scanAstroRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -385,7 +385,7 @@ async function scanGatsbyRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -430,7 +430,7 @@ async function scanSolidStartRoutes(projectPath: string): Promise<ScannedRoute[]
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -473,7 +473,7 @@ async function scanQwikRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: isDynamic ? 'dynamic' : 'static',
       })
     }
@@ -519,7 +519,7 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
         routes.push({
           name,
           path: routePath,
-          file: `${projectPath}/${filePath}`,
+          file: filePath,
           type: 'static',
         })
       }
@@ -564,7 +564,7 @@ async function scanVueRoutes(projectPath: string): Promise<ScannedRoute[]> {
       routes.push({
         name,
         path: routePath,
-        file: `${projectPath}/${filePath}`,
+        file: filePath,
         type: 'static',
       })
     }

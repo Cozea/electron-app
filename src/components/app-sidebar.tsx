@@ -7,7 +7,7 @@ import {
   Settings,
   CreditCard,
   Sparkles,
-  Plug,
+  Terminal,
   Cloud,
 } from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
@@ -40,15 +40,15 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
 
   const teamItems = [
     { title: "Members", url: "/teams", icon: Users },
-    { title: "Roles", url: "/teams/roles", icon: Shield },
+    { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true },
   ]
 
   const workspaceItems = [
     { title: "General", url: "/workspace/general", icon: Settings },
     { title: "Billing", url: "/workspace/billing", icon: CreditCard },
     { title: "AI", url: "/workspace/ai", icon: Sparkles },
-    { title: "Integrations", url: "/workspace/integrations", icon: Plug },
-    { title: "Cloud Sync", url: "/workspace/sync", icon: Cloud },
+    { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
+    { title: "Cloud Sync", url: "/workspace/sync", icon: Cloud, alpha: true },
   ]
 
   return (

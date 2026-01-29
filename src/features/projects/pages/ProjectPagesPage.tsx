@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -49,6 +49,7 @@ import {
     RotateCcw,
     AlertCircle,
     CheckCircle2,
+    ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -93,9 +94,55 @@ export function ProjectPagesPage() {
     } | null>(null)
     const thumbnailStripRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
+    const headerRef = useRef<HTMLDivElement>(null)
+    const [headerWidth, setHeaderWidth] = useState<number>(0)
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
+    const prevProjectPathRef = useRef<string | null>(null)
+
+    useEffect(() => {
+        const el = headerRef.current
+        if (!el) return
+
+        setHeaderWidth(Math.round(el.getBoundingClientRect().width))
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            const entry = entries[0]
+            if (!entry) return
+            setHeaderWidth(Math.round(entry.contentRect.width))
+        })
+
+        resizeObserver.observe(el)
+        return () => resizeObserver.disconnect()
+    }, [])
+
+    const toolbarDensity = useMemo<'full' | 'compact' | 'minimal'>(() => {
+        if (headerWidth >= 860) return 'full'
+        if (headerWidth >= 640) return 'compact'
+        return 'minimal'
+    }, [headerWidth])
+
+    // Reset project-scoped UI state when switching projects (prevents "wrong project" preview/terminals)
+    useEffect(() => {
+        const prev = prevProjectPathRef.current
+        if (prev !== projectPath) {
+            // Clear page routes and focused selection
+            actions.setRoutes([])
+            setFocusedPageIndex(null)
+
+            // Reset dev server state (ServerControl also cleans up its own terminal)
+            actions.setServerStatus('stopped')
+            actions.setServerPort(null)
+            actions.setServerPid(null)
+            actions.clearServerOutput()
+
+            // Reset terminal UI state
+            useTerminalStore.getState().actions.reset()
+        }
+
+        prevProjectPathRef.current = projectPath
+    }, [projectPath, actions])
 
     // Get Convex organization
     const convexOrg = useQuery(
@@ -489,8 +536,14 @@ export function ProjectPagesPage() {
         <div className="flex flex-col h-full bg-background relative">
             {/* Header */}
             <TooltipProvider delayDuration={300}>
-                <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-9 bg-transparent backdrop-blur-md transition-all">
-                    <div className="flex items-center gap-3">
+                <div
+                    ref={headerRef}
+                    className={cn(
+                        "absolute top-0 left-0 right-0 z-50 px-4 h-9 bg-transparent backdrop-blur-md transition-all overflow-hidden",
+                        "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center"
+                    )}
+                >
+                    <div className="flex items-center gap-3 min-w-0 justify-self-start">
                         {focusedPageIndex !== null && (
                             <>
                                 <Tooltip>
@@ -502,7 +555,7 @@ export function ProjectPagesPage() {
                                             className="gap-2 h-8 px-2"
                                         >
                                             <LayoutGrid className="h-3.5 w-3.5" />
-                                            <span className="text-xs">Grid</span>
+                                            {toolbarDensity === 'full' && <span className="text-xs">Grid</span>}
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent side="bottom">
@@ -512,109 +565,188 @@ export function ProjectPagesPage() {
                                 <div className="h-4 w-[1px] bg-sidebar-border" />
                             </>
                         )}
-                        <div>
-                            <h1 className="text-sm font-semibold text-foreground">
+                        <div className="min-w-0">
+                            <h1 className="text-sm font-semibold text-foreground truncate">
                                 {focusedRoute ? focusedRoute.name : 'Pages'}
                             </h1>
                         </div>
                     </div>
 
-                    {/* Device and Zoom Controls - only in focused view */}
-                    {focusedPageIndex !== null && (
-                        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                            {/* Device toggle */}
-                            <div className="flex items-center gap-1">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant={device === 'desktop' ? 'secondary' : 'ghost'}
-                                            size="icon"
-                                            onClick={() => setDevice('desktop')}
-                                            className={cn("h-7 w-7 rounded-md", device === 'desktop' && "bg-sidebar-accent shadow-none")}
-                                        >
+                    <div className="flex items-center justify-center justify-self-center">
+                        {/* Device and Zoom Controls - only in focused view */}
+                        {focusedPageIndex !== null && toolbarDensity === 'full' && (
+                            <div className="flex items-center gap-2">
+                                {/* Device toggle */}
+                                <div className="flex items-center gap-1">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={device === 'desktop' ? 'secondary' : 'ghost'}
+                                                size="icon"
+                                                onClick={() => setDevice('desktop')}
+                                                className={cn("h-7 w-7 rounded-md", device === 'desktop' && "bg-sidebar-accent shadow-none")}
+                                            >
+                                                <Monitor className="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Desktop</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={device === 'tablet' ? 'secondary' : 'ghost'}
+                                                size="icon"
+                                                onClick={() => setDevice('tablet')}
+                                                className={cn("h-7 w-7 rounded-md", device === 'tablet' && "bg-sidebar-accent shadow-none")}
+                                            >
+                                                <Tablet className="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={device === 'mobile' ? 'secondary' : 'ghost'}
+                                                size="icon"
+                                                onClick={() => setDevice('mobile')}
+                                                className={cn("h-7 w-7 rounded-md", device === 'mobile' && "bg-sidebar-accent shadow-none")}
+                                            >
+                                                <Smartphone className="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
+                                    </Tooltip>
+                                </div>
+
+                                <div className="h-4 w-[1px] bg-sidebar-border mx-2" />
+
+                                {/* Zoom controls */}
+                                <div className="flex items-center gap-0.5">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setZoom(prev => Math.max(25, prev - 25))}
+                                                className="h-7 w-7 rounded-md"
+                                                disabled={zoom <= 25}
+                                            >
+                                                <ZoomOut className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Zoom out</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setZoom(100)}
+                                                className="h-7 px-2 text-xs font-mono min-w-[3rem]"
+                                            >
+                                                {zoom}%
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Reset to 100%</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setZoom(prev => Math.min(200, prev + 25))}
+                                                className="h-7 w-7 rounded-md"
+                                                disabled={zoom >= 200}
+                                            >
+                                                <ZoomIn className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">Zoom in</TooltipContent>
+                                    </Tooltip>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Compact view control menu (prevents overlap on narrow layouts) */}
+                        {focusedPageIndex !== null && toolbarDensity !== 'full' && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="h-7 rounded-md px-2 gap-2 bg-sidebar-accent shadow-none"
+                                    >
+                                        {device === 'desktop' ? (
                                             <Monitor className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Desktop</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant={device === 'tablet' ? 'secondary' : 'ghost'}
-                                            size="icon"
-                                            onClick={() => setDevice('tablet')}
-                                            className={cn("h-7 w-7 rounded-md", device === 'tablet' && "bg-sidebar-accent shadow-none")}
-                                        >
+                                        ) : device === 'tablet' ? (
                                             <Tablet className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant={device === 'mobile' ? 'secondary' : 'ghost'}
-                                            size="icon"
-                                            onClick={() => setDevice('mobile')}
-                                            className={cn("h-7 w-7 rounded-md", device === 'mobile' && "bg-sidebar-accent shadow-none")}
-                                        >
+                                        ) : (
                                             <Smartphone className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
-                                </Tooltip>
-                            </div>
+                                        )}
+                                        {toolbarDensity === 'compact' && (
+                                            <span className="text-xs font-mono tabular-nums min-w-[3rem]">
+                                                {zoom}%
+                                            </span>
+                                        )}
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="center" className="w-56">
+                                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                                        View
+                                    </div>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => setDevice('desktop')}>
+                                        <Monitor className="h-4 w-4 mr-2" />
+                                        Desktop
+                                        {device === 'desktop' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setDevice('tablet')}>
+                                        <Tablet className="h-4 w-4 mr-2" />
+                                        Tablet (768px)
+                                        {device === 'tablet' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setDevice('mobile')}>
+                                        <Smartphone className="h-4 w-4 mr-2" />
+                                        Mobile (375px)
+                                        {device === 'mobile' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={() => setZoom(prev => Math.max(25, prev - 25))}
+                                        disabled={zoom <= 25}
+                                    >
+                                        <ZoomOut className="h-4 w-4 mr-2" />
+                                        Zoom out
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setZoom(100)}>
+                                        <span className="inline-flex h-4 w-4 mr-2 items-center justify-center text-xs font-mono">
+                                            1x
+                                        </span>
+                                        Reset to 100%
+                                        {zoom === 100 && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onClick={() => setZoom(prev => Math.min(200, prev + 25))}
+                                        disabled={zoom >= 200}
+                                    >
+                                        <ZoomIn className="h-4 w-4 mr-2" />
+                                        Zoom in
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    {[25, 50, 75, 100, 125, 150, 200].map((value) => (
+                                        <DropdownMenuItem key={value} onClick={() => setZoom(value)}>
+                                            <span className="font-mono tabular-nums">{value}%</span>
+                                            {zoom === value && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+                    </div>
 
-                            <div className="h-4 w-[1px] bg-sidebar-border mx-2" />
-
-                            {/* Zoom controls */}
-                            <div className="flex items-center gap-0.5">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setZoom(prev => Math.max(25, prev - 25))}
-                                            className="h-7 w-7 rounded-md"
-                                            disabled={zoom <= 25}
-                                        >
-                                            <ZoomOut className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Zoom out</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setZoom(100)}
-                                            className="h-7 px-2 text-xs font-mono min-w-[3rem]"
-                                        >
-                                            {zoom}%
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Reset to 100%</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setZoom(prev => Math.min(200, prev + 25))}
-                                            className="h-7 w-7 rounded-md"
-                                            disabled={zoom >= 200}
-                                        >
-                                            <ZoomIn className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">Zoom in</TooltipContent>
-                                </Tooltip>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0 justify-self-end">
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshRoutes}>
@@ -872,7 +1004,7 @@ export function ProjectPagesPage() {
                         </div>
 
                         {/* Thumbnail strip */}
-                        <div className="shrink-0 bg-sidebar/60 backdrop-blur-md px-3 py-2">
+                        <div className="shrink-0 backdrop-blur-md px-3 py-2">
                             <div className="flex items-center gap-3">
                                 <div
                                     ref={thumbnailStripRef}
@@ -920,11 +1052,11 @@ export function ProjectPagesPage() {
                                         </button>
                                     ))}
                                 </div>
-                                <div className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                                    {focusedPageIndex !== null && (
-                                        <span>{focusedPageIndex + 1}/{routes.length}</span>
-                                    )}
-                                </div>
+                                {focusedPageIndex !== null && (
+                                    <div className="shrink-0 text-xs text-muted-foreground tabular-nums bg-muted/50 px-2.5 py-1 rounded-full">
+                                        {focusedPageIndex + 1}/{routes.length}
+                                    </div>
+                                )}
                             </div>
                         </div>
                         </div>

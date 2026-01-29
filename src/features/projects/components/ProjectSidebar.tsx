@@ -3,20 +3,21 @@
 import * as React from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import {
-    LayoutDashboard,
     ListTodo,
     AppWindow,
     Files,
-    Activity,
+    Rss,
     Box,
     Database,
     Server,
     Settings,
     ChevronRight,
     Plus,
-    RefreshCw
+    RefreshCw,
+    GripVertical
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 
 import {
     Sidebar,
@@ -36,6 +37,7 @@ import { ContextSwitcher } from "@/components/context-switcher"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
+import { SettingsSectionsList } from "./SettingsSectionsList"
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -53,13 +55,11 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 // Route mappings for all navigation items
 const routeMap: Record<string, string> = {
-    // Dashboard group
-    "Dashboard": "",
     "Tasks": "tasks",
     // Platform group (with secondary panels)
     "Pages": "pages",
     "Files": "",  // Default/index route shows file editor
-    "Changes": "changes",
+    "Sync Feed": "changes",
     // Development group
     "Dependencies": "dependencies",
     "Database": "database",
@@ -68,19 +68,77 @@ const routeMap: Record<string, string> = {
     "Settings": "settings",
 }
 
+// Default and constraints for secondary sidebar width
+const DEFAULT_SECONDARY_WIDTH = 224 // 14rem = 224px
+const MIN_SECONDARY_WIDTH = 180
+const MAX_SECONDARY_WIDTH = 400
+
 export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRefreshing, className, ...props }: ProjectSidebarProps) {
     const navigate = useNavigate()
     const { slug } = useParams<{ slug: string }>()
 
-    // Top-level active selection (e.g. "Files", "Dashboard")
+    // Top-level active selection (e.g. "Files", "Tasks")
     // Default to Files per user expectation
     const [activeTab, setActiveTab] = React.useState<string | null>("Files")
 
+    // Resizable secondary sidebar width (persisted to localStorage)
+    const [secondaryWidth, setSecondaryWidth] = React.useState(() => {
+        const saved = localStorage.getItem('project-sidebar-secondary-width')
+        return saved ? parseInt(saved, 10) : DEFAULT_SECONDARY_WIDTH
+    })
+    const [isResizing, setIsResizing] = React.useState(false)
+    const resizeStartRef = React.useRef<{ startX: number; startWidth: number } | null>(null)
+
+    // Start resize - capture initial position and width
+    const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
+        e.preventDefault()
+        resizeStartRef.current = {
+            startX: e.clientX,
+            startWidth: secondaryWidth
+        }
+        setIsResizing(true)
+    }, [secondaryWidth])
+
+    // Handle resize drag
+    React.useEffect(() => {
+        if (!isResizing) return
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!resizeStartRef.current) return
+
+            // Calculate delta from start position
+            const delta = e.clientX - resizeStartRef.current.startX
+            const newWidth = resizeStartRef.current.startWidth + delta
+            const clampedWidth = Math.max(MIN_SECONDARY_WIDTH, Math.min(MAX_SECONDARY_WIDTH, newWidth))
+            setSecondaryWidth(clampedWidth)
+        }
+
+        const handleMouseUp = () => {
+            setIsResizing(false)
+            resizeStartRef.current = null
+            // Persist to localStorage
+            localStorage.setItem('project-sidebar-secondary-width', secondaryWidth.toString())
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+
+        // Add cursor style to body during resize
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+    }, [isResizing, secondaryWidth])
+
     const navGroups = [
         {
-            title: "Dashboard",
+            title: "Project",
             items: [
-                { title: "Dashboard", icon: LayoutDashboard },
                 { title: "Tasks", icon: ListTodo }
             ]
         },
@@ -89,15 +147,15 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
             items: [
                 { title: "Pages", icon: AppWindow },
                 { title: "Files", icon: Files },
-                { title: "Changes", icon: Activity }
+                { title: "Sync Feed", icon: Rss }
             ]
         },
         {
             title: "Development",
             items: [
                 { title: "Dependencies", icon: Box },
-                { title: "Database", icon: Database },
-                { title: "Backend Studio", icon: Server }
+                { title: "Database", icon: Database, alpha: true },
+                { title: "Backend Studio", icon: Server, alpha: true }
             ]
         },
         {
@@ -129,7 +187,7 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                     <SidebarMenu>
                                         {group.items.map((item) => {
                                             // Determine interaction type
-                                            const hasSecondaryPanel = ['Files', 'Pages'].includes(item.title)
+                                            const hasSecondaryPanel = ['Files', 'Pages', 'Settings'].includes(item.title)
                                             const isActive = activeTab === item.title
 
                                             return (
@@ -155,6 +213,11 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                                     >
                                                         <item.icon className="opacity-60" />
                                                         <span>{item.title}</span>
+                                                        {'alpha' in item && item.alpha && (
+                                                            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                                                                alpha
+                                                            </Badge>
+                                                        )}
                                                         {hasSecondaryPanel && (
                                                             <ChevronRight className={cn(
                                                                 "ml-auto transition-transform duration-200",
@@ -171,21 +234,27 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="pb-6">
+                    <SidebarFooter className="pb-6 group-data-[collapsible=icon]:pb-8">
                         <NavUser user={user} onLogout={onLogout} />
                     </SidebarFooter>
                     <SidebarRail />
                 </Sidebar>
             </div>
 
-            {/* 2. Secondary Sidebar (Context Panel) */}
+            {/* 2. Secondary Sidebar (Context Panel) - Resizable */}
             {activeTab && (
-                <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full hidden md:block">
+                <div
+                    style={{
+                        "--sidebar-width": `${secondaryWidth}px`,
+                        width: secondaryWidth
+                    } as React.CSSProperties}
+                    className="h-full hidden md:flex relative"
+                >
                     <Sidebar
                         side="left"
                         variant="sidebar"
                         collapsible="none"
-                        className="w-56 animate-in slide-in-from-left-5 duration-200 border-r border-border/50 shrink-0 h-full bg-sidebar"
+                        className="animate-in slide-in-from-left-5 duration-200 border-r-0 shrink-0 h-full bg-sidebar flex-1"
                     >
                         <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
                             <h3 className="text-sm font-medium">{activeTab}</h3>
@@ -214,15 +283,26 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                 fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
                             )}
                             {activeTab === 'Pages' && <PagesList />}
-
-                            {/* Fallback for others */}
-                            {!['Files', 'Pages'].includes(activeTab) && (
-                                <div className="p-4 text-sm text-muted-foreground">
-                                    {activeTab} content...
-                                </div>
-                            )}
+                            {activeTab === 'Settings' && <SettingsSectionsList />}
                         </SidebarContent>
                     </Sidebar>
+                    {/* Resize Handle with border */}
+                    <div
+                        onMouseDown={handleResizeStart}
+                        className={cn(
+                            "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group border-r border-border/50",
+                            "hover:bg-primary/20 active:bg-primary/30",
+                            isResizing && "bg-primary/30"
+                        )}
+                    >
+                        <div className={cn(
+                            "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
+                            "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
+                            isResizing && "opacity-100"
+                        )}>
+                            <GripVertical className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

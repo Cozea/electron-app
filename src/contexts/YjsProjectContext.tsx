@@ -14,6 +14,7 @@ import type { Id } from '../../convex/_generated/dataModel'
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import { YConvexProvider } from '@/lib/yjs/YConvexProvider'
 import { ProjectFilesPersistence } from '@/lib/yjs/ProjectFilesPersistence'
+import { YConvexAwarenessProvider } from '@/lib/yjs/YConvexAwarenessProvider'
 import type { Awareness } from 'y-protocols/awareness'
 
 interface YjsProjectContextValue {
@@ -47,7 +48,7 @@ function generateColor(id: string): string {
 
 interface YjsProjectProviderProps {
   projectId: Id<"projects">
-  userId: string
+  userId: Id<"users">
   userName: string
   children: ReactNode
 }
@@ -65,10 +66,13 @@ export function YjsProjectProvider({
   children,
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
-  const [lastSyncTime, setLastSyncTime] = useState(0)
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
   const [hasher, setHasher] = useState<XXHashAPI | null>(null)
   const providerRef = useRef<YConvexProvider | null>(null)
+  const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
   const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
+  const lastAppliedTimestampRef = useRef(0)
+  const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
   const convex = useConvex()
 
   // Initialize xxhash
@@ -76,11 +80,16 @@ export function YjsProjectProvider({
     xxhashInit().then(setHasher)
   }, [])
 
-  // Subscribe to Yjs updates since lastSyncTime
-  const updates = useQuery(api.yjs.getUpdatesSince, {
-    projectId,
-    since: lastSyncTime,
-  })
+  // Subscribe to Yjs updates since lastSyncTime.
+  // Note: Convex query is `timestamp > since`, so we overlap by 1ms and dedupe by update _id
+  // to avoid missing updates that share the same millisecond timestamp.
+  const updatesSince = lastSyncTime === null ? null : Math.max(0, lastSyncTime - 1)
+  const updates = useQuery(
+    api.yjs.getUpdatesSince,
+    updatesSince === null ? 'skip' : { projectId, since: updatesSince }
+  )
+
+  const awarenessEntries = useQuery(api.yjsAwareness.getActiveAwareness, { projectId })
 
   // Initialize Y.Doc and provider on mount
   useEffect(() => {
@@ -104,6 +113,12 @@ export function YjsProjectProvider({
 
       // Create provider to sync with Convex
       providerRef.current = new YConvexProvider(doc.doc, projectId, convex)
+      awarenessProviderRef.current = new YConvexAwarenessProvider(
+        doc.doc,
+        doc.awareness,
+        projectId,
+        convex
+      )
 
       // Create persistence provider to sync with projectFiles
       persistenceRef.current = new ProjectFilesPersistence(
@@ -111,30 +126,63 @@ export function YjsProjectProvider({
         projectId,
         convex,
         hasher,
-        userId as any, // Cast to Id<"users"> - may be undefined if external user
+        userId,
         userName
       )
 
       setYjsDoc(doc)
+      const initialSince = snapshot?.createdAt ?? 0
+      lastAppliedTimestampRef.current = initialSince
+      seenUpdateIdsAtLastTimestampRef.current = new Set()
+      setLastSyncTime(initialSince)
     }
 
     initDoc()
 
     return () => {
       providerRef.current?.destroy()
+      awarenessProviderRef.current?.destroy()
       persistenceRef.current?.destroy()
     }
   }, [projectId, userId, userName, convex, hasher])
 
   // Apply remote updates when they arrive from Convex
   useEffect(() => {
-    if (updates && updates.length > 0 && providerRef.current) {
-      providerRef.current.applyRemoteUpdates(updates)
-      // Update lastSyncTime to the newest update timestamp
-      const newestTimestamp = updates[updates.length - 1].timestamp
-      setLastSyncTime(newestTimestamp)
+    if (!updates || updates.length === 0 || !providerRef.current) return
+
+    // Ensure a stable ordering for cursor updates.
+    const sorted = [...updates].sort((a, b) => a.timestamp - b.timestamp)
+    const toApply: typeof updates = []
+
+    let lastTimestamp = lastAppliedTimestampRef.current
+    let seenIds = seenUpdateIdsAtLastTimestampRef.current
+
+    for (const update of sorted) {
+      if (update.timestamp < lastTimestamp) continue
+
+      if (update.timestamp > lastTimestamp) {
+        lastTimestamp = update.timestamp
+        seenIds = new Set()
+      }
+
+      if (seenIds.has(update._id)) continue
+      seenIds.add(update._id)
+      toApply.push(update)
+    }
+
+    if (toApply.length > 0) {
+      providerRef.current.applyRemoteUpdates(toApply)
+      lastAppliedTimestampRef.current = lastTimestamp
+      seenUpdateIdsAtLastTimestampRef.current = seenIds
+      setLastSyncTime(lastTimestamp)
     }
   }, [updates])
+
+  // Apply remote awareness updates (live cursors) when they arrive from Convex
+  useEffect(() => {
+    if (!awarenessEntries || !awarenessProviderRef.current) return
+    awarenessProviderRef.current.applyRemoteAwareness(awarenessEntries)
+  }, [awarenessEntries])
 
   // Periodic snapshot saving
   useEffect(() => {

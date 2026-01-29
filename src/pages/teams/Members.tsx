@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
+import { useCachedQuery } from '../../stores/useQueryCache'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
@@ -109,21 +110,33 @@ export function Members() {
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
+  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
+  const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
   )
+  const convexOrg = useCachedQuery(
+    `members-org-${currentOrganization?.organizationId}`,
+    freshOrg
+  )
 
-  // Convex queries for members and invitations
-  const members = useQuery(
+  // Convex queries for members and invitations (with caching)
+  const freshMembers = useQuery(
     api.organizations.getMembers,
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
+  const members = useCachedQuery(
+    `members-list-${convexOrg?._id}`,
+    freshMembers
+  )
 
-  const pendingInvites = useQuery(
+  const freshInvites = useQuery(
     api.invitations.listForOrganization,
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+  const pendingInvites = useCachedQuery(
+    `members-invites-${convexOrg?._id}`,
+    freshInvites
   )
 
   // Seat limit status

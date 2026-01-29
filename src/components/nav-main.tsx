@@ -8,6 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
 
 export function NavMain({
   label,
@@ -18,6 +19,7 @@ export function NavMain({
     title: string
     url: string
     icon?: LucideIcon
+    alpha?: boolean
   }[]
 }) {
   const location = useLocation()
@@ -37,6 +39,11 @@ export function NavMain({
               <Link to={item.url}>
                 {item.icon && <item.icon className="opacity-60" />}
                 <span>{item.title}</span>
+                {item.alpha && (
+                  <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                    alpha
+                  </Badge>
+                )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

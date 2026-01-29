@@ -15,7 +15,8 @@ import type { LocalFileEntry, CloudFileEntry, SyncPlan, SyncOperation } from "./
 export function computeSyncPlan(
   local: LocalFileEntry[],
   cloud: CloudFileEntry[],
-  lastSyncTime?: number
+  lastSyncTime?: number,
+  cloudPathsAtLastSync?: ReadonlySet<string>
 ): SyncPlan {
   const plan: SyncPlan = {
     downloads: [],
@@ -80,17 +81,12 @@ export function computeSyncPlan(
       }
     } else if (localFile && !cloudFile) {
       // Only exists locally
-      const operation = resolveLocalOnly(path, localFile, lastSyncTime)
+      const operation = resolveLocalOnly(path, localFile, lastSyncTime, cloudPathsAtLastSync)
       addOperation(plan, operation)
     } else if (!localFile && cloudFile) {
       // Only exists in cloud
-      const operation: SyncOperation = {
-        type: "download",
-        path,
-        cloudEntry: cloudFile,
-        reason: "Missing locally",
-      }
-      plan.downloads.push(operation)
+      const operation = resolveCloudOnly(path, cloudFile, lastSyncTime, cloudPathsAtLastSync)
+      addOperation(plan, operation)
     }
   }
 
@@ -169,16 +165,28 @@ function resolveFileDifference(
 function resolveLocalOnly(
   path: string,
   localFile: LocalFileEntry,
-  lastSyncTime?: number
+  lastSyncTime?: number,
+  cloudPathsAtLastSync?: ReadonlySet<string>
 ): SyncOperation {
-  if (lastSyncTime && localFile.mtime < lastSyncTime) {
-    // File existed before last sync but now missing from cloud
-    // This means it was deleted from cloud - delete locally too
+  if (lastSyncTime && cloudPathsAtLastSync?.has(path)) {
+    if (localFile.mtime < lastSyncTime) {
+      // File existed before last sync but now missing from cloud
+      // This means it was deleted from cloud - delete locally too
+      return {
+        type: "delete-local",
+        path,
+        localEntry: localFile,
+        reason: "Deleted from cloud since last sync",
+      }
+    }
+
+    // Cloud deleted the file, but local was modified after last sync.
+    // Treat as a conflict (delete vs modify).
     return {
-      type: "delete-local",
+      type: "conflict",
       path,
       localEntry: localFile,
-      reason: "Deleted from cloud since last sync",
+      reason: "Deleted from cloud, but modified locally since last sync",
     }
   }
 
@@ -188,6 +196,46 @@ function resolveLocalOnly(
     path,
     localEntry: localFile,
     reason: "New local file",
+  }
+}
+
+/**
+ * Resolve what to do when a file only exists in the cloud.
+ */
+function resolveCloudOnly(
+  path: string,
+  cloudFile: CloudFileEntry,
+  lastSyncTime?: number,
+  cloudPathsAtLastSync?: ReadonlySet<string>
+): SyncOperation {
+  if (lastSyncTime && cloudPathsAtLastSync?.has(path)) {
+    if (cloudFile.uploadedAt < lastSyncTime) {
+      // File existed at last sync, but now missing locally.
+      // This means it was deleted locally - delete from cloud too.
+      return {
+        type: "delete-cloud",
+        path,
+        cloudEntry: cloudFile,
+        reason: "Deleted locally since last sync",
+      }
+    }
+
+    // Local deleted the file, but cloud was modified after last sync.
+    // Treat as a conflict (delete vs modify).
+    return {
+      type: "conflict",
+      path,
+      cloudEntry: cloudFile,
+      reason: "Deleted locally, but modified in cloud since last sync",
+    }
+  }
+
+  // New cloud file - download
+  return {
+    type: "download",
+    path,
+    cloudEntry: cloudFile,
+    reason: "Missing locally",
   }
 }
 
