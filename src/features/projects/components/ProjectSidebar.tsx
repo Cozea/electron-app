@@ -2,6 +2,9 @@
 
 import * as React from "react"
 import { useNavigate, useParams } from "react-router-dom"
+import { useQuery } from "convex/react"
+import { api } from "../../../../convex/_generated/api"
+import { useAuth } from "@/contexts/AuthContext"
 import {
     ListTodo,
     AppWindow,
@@ -38,6 +41,18 @@ import { ContextSwitcher } from "@/components/context-switcher"
 // Placeholders / Components
 import { PagesList } from "./PagesList"
 import { SettingsSectionsList } from "./SettingsSectionsList"
+
+// Helper to get/set last seen timestamp for sync feed
+function getSyncFeedLastSeen(projectSlug: string): number {
+    const key = `sync-feed-last-seen-${projectSlug}`
+    const stored = localStorage.getItem(key)
+    return stored ? parseInt(stored, 10) : 0
+}
+
+export function markSyncFeedAsSeen(projectSlug: string): void {
+    const key = `sync-feed-last-seen-${projectSlug}`
+    localStorage.setItem(key, Date.now().toString())
+}
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -76,10 +91,45 @@ const MAX_SECONDARY_WIDTH = 400
 export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRefreshing, className, ...props }: ProjectSidebarProps) {
     const navigate = useNavigate()
     const { slug } = useParams<{ slug: string }>()
+    const { currentOrganization, convexUserId } = useAuth()
 
     // Top-level active selection (e.g. "Files", "Tasks")
     // Default to Files per user expectation
     const [activeTab, setActiveTab] = React.useState<string | null>("Files")
+
+    // Track last seen timestamp for sync feed (triggers re-render when updated)
+    const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
+        slug ? getSyncFeedLastSeen(slug) : 0
+    )
+
+    // Update lastSeenTimestamp when slug changes
+    React.useEffect(() => {
+        if (slug) {
+            setLastSeenTimestamp(getSyncFeedLastSeen(slug))
+        }
+    }, [slug])
+
+    // Get Convex organization for project lookup
+    const convexOrg = useQuery(
+        api.organizations.getByWorkosId,
+        currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+    )
+
+    // Get project by slug
+    const project = useQuery(
+        api.projects.getBySlug,
+        convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
+    )
+
+    // Get unread sync feed count
+    const unreadCount = useQuery(
+        api.activity.getUnreadChangesCount,
+        project?._id && convexUserId ? {
+            projectId: project._id,
+            userId: convexUserId,
+            lastSeenTimestamp,
+        } : 'skip'
+    )
 
     // Resizable secondary sidebar width (persisted to localStorage)
     const [secondaryWidth, setSecondaryWidth] = React.useState(() => {
@@ -189,6 +239,8 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                             // Determine interaction type
                                             const hasSecondaryPanel = ['Files', 'Pages', 'Settings'].includes(item.title)
                                             const isActive = activeTab === item.title
+                                            const isSyncFeed = item.title === 'Sync Feed'
+                                            const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
 
                                             return (
                                                 <SidebarMenuItem key={item.title}>
@@ -202,6 +254,12 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                                                 navigate(`/projects/${slug}${route ? `/${route}` : ''}`)
                                                             }
 
+                                                            // Mark sync feed as seen when clicking
+                                                            if (isSyncFeed && slug) {
+                                                                markSyncFeedAsSeen(slug)
+                                                                setLastSeenTimestamp(Date.now())
+                                                            }
+
                                                             if (hasSecondaryPanel) {
                                                                 // Toggle secondary panel for items that have one
                                                                 setActiveTab(isActive ? null : item.title)
@@ -213,6 +271,11 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                                     >
                                                         <item.icon className="opacity-60" />
                                                         <span>{item.title}</span>
+                                                        {showUnreadBadge && (
+                                                            <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground">
+                                                                {unreadCount > 99 ? '99+' : unreadCount}
+                                                            </Badge>
+                                                        )}
                                                         {'alpha' in item && item.alpha && (
                                                             <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
                                                                 alpha
