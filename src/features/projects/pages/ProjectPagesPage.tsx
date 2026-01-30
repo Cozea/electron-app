@@ -46,8 +46,6 @@ import {
     Terminal,
     Camera,
     MousePointer2,
-    RotateCcw,
-    AlertCircle,
     CheckCircle2,
     ChevronDown,
 } from 'lucide-react'
@@ -96,6 +94,7 @@ export function ProjectPagesPage() {
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
+    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'terminal' | null>(null)
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
@@ -747,149 +746,96 @@ export function ProjectPagesPage() {
                     </div>
 
                     <div className="flex items-center gap-2 min-w-0 justify-self-end">
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshRoutes}>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7">
                                     <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
                                 </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">Refresh routes</TooltipContent>
-                        </Tooltip>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={refreshRoutes}>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Refresh routes
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={retryBridgeInjection}>
+                                    <span
+                                        className={cn(
+                                            "h-2.5 w-2.5 rounded-full shrink-0 mr-2",
+                                            bridgeReady ? "bg-green-500" : "bg-amber-500"
+                                        )}
+                                        aria-hidden
+                                    />
+                                    Retry Bridge Connection
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         {focusedPageIndex !== null && serverStatus === 'running' && (
                             <>
-                                {/* Screenshot button with dropdown */}
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 relative"
-                                            disabled={isCapturingScreenshot}
+                                {/* Screenshot button */}
+                                <Tooltip open={toolbarTooltip === 'screenshot'} onOpenChange={(open) => setToolbarTooltip(open ? 'screenshot' : null)}>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="inline-flex"
+                                            onPointerEnter={() => setToolbarTooltip('screenshot')}
+                                            onPointerLeave={() => setToolbarTooltip(null)}
                                         >
-                                            <Camera className={cn(
-                                                "h-3.5 w-3.5",
-                                                isCapturingScreenshot ? "animate-pulse text-primary" : "text-muted-foreground"
-                                            )} />
-                                            {!bridgeReady && (
-                                                <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                            )}
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-56">
-                                        <DropdownMenuItem onClick={handleCaptureScreenshot} disabled={!bridgeReady}>
-                                            <Camera className="h-4 w-4 mr-2" />
-                                            Take Screenshot
-                                            {bridgeReady && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={retryBridgeInjection}>
-                                            <RotateCcw className="h-4 w-4 mr-2" />
-                                            Retry Bridge Connection
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <div className="px-2 py-1.5">
-                                            <div className="flex items-center gap-2 text-xs font-medium mb-1">
-                                                {bridgeReady ? (
-                                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                                ) : (
-                                                    <AlertCircle className="h-3 w-3 text-amber-500" />
-                                                )}
-                                                Bridge {bridgeReady ? 'Connected' : 'Not Connected'}
-                                            </div>
-                                            {bridgeError && (
-                                                <p className="text-[10px] text-red-400 mb-1">
-                                                    {bridgeError}
-                                                </p>
-                                            )}
-                                            <div className="text-[10px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
-                                                {bridgeLogs.length === 0 ? (
-                                                    <p>No logs yet</p>
-                                                ) : (
-                                                    bridgeLogs.slice(-5).map((log, i) => (
-                                                        <p key={i} className={cn(
-                                                            log.type === 'error' && 'text-red-400',
-                                                            log.type === 'success' && 'text-green-400'
-                                                        )}>
-                                                            {log.time.toLocaleTimeString()}: {log.message}
-                                                        </p>
-                                                    ))
-                                                )}
-                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                disabled={isCapturingScreenshot}
+                                                onClick={handleCaptureScreenshot}
+                                            >
+                                                <Camera className={cn(
+                                                    "h-3.5 w-3.5",
+                                                    isCapturingScreenshot ? "animate-pulse text-primary" : "text-muted-foreground"
+                                                )} />
+                                            </Button>
                                         </div>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Take Screenshot</TooltipContent>
+                                </Tooltip>
 
-                                {/* Inspector button with dropdown */}
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            variant={inspectorEnabled ? "secondary" : "ghost"}
-                                            size="icon"
-                                            className="h-7 w-7 relative"
+                                {/* Inspector button */}
+                                <Tooltip open={toolbarTooltip === 'inspector'} onOpenChange={(open) => setToolbarTooltip(open ? 'inspector' : null)}>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="inline-flex"
+                                            onPointerEnter={() => setToolbarTooltip('inspector')}
+                                            onPointerLeave={() => setToolbarTooltip(null)}
                                         >
-                                            <MousePointer2 className={cn("h-3.5 w-3.5", inspectorEnabled ? "text-foreground" : "text-muted-foreground")} />
-                                            {!bridgeReady && !inspectorEnabled && (
-                                                <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                            )}
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-56">
-                                        <DropdownMenuItem onClick={toggleInspector} disabled={!bridgeReady && !inspectorEnabled}>
-                                            <MousePointer2 className="h-4 w-4 mr-2" />
-                                            {inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector'}
-                                            {bridgeReady && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={retryBridgeInjection}>
-                                            <RotateCcw className="h-4 w-4 mr-2" />
-                                            Retry Bridge Connection
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <div className="px-2 py-1.5">
-                                            <div className="flex items-center gap-2 text-xs font-medium mb-1">
-                                                {bridgeReady ? (
-                                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                                ) : (
-                                                    <AlertCircle className="h-3 w-3 text-amber-500" />
-                                                )}
-                                                Bridge {bridgeReady ? 'Connected' : 'Not Connected'}
-                                            </div>
-                                            {bridgeError && (
-                                                <p className="text-[10px] text-red-400 mb-1">
-                                                    {bridgeError}
-                                                </p>
-                                            )}
-                                            <div className="text-[10px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
-                                                {bridgeLogs.length === 0 ? (
-                                                    <p>No logs yet</p>
-                                                ) : (
-                                                    bridgeLogs.slice(-5).map((log, i) => (
-                                                        <p key={i} className={cn(
-                                                            log.type === 'error' && 'text-red-400',
-                                                            log.type === 'success' && 'text-green-400'
-                                                        )}>
-                                                            {log.time.toLocaleTimeString()}: {log.message}
-                                                        </p>
-                                                    ))
-                                                )}
-                                            </div>
+                                            <Button
+                                                variant={inspectorEnabled ? "secondary" : "ghost"}
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                onClick={toggleInspector}
+                                            >
+                                                <MousePointer2 className={cn("h-3.5 w-3.5", inspectorEnabled ? "text-foreground" : "text-muted-foreground")} />
+                                            </Button>
                                         </div>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">{inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector'}</TooltipContent>
+                                </Tooltip>
                             </>
                         )}
-                        <Tooltip>
+                        <Tooltip open={toolbarTooltip === 'terminal'} onOpenChange={(open) => setToolbarTooltip(open ? 'terminal' : null)}>
                             <TooltipTrigger asChild>
-                                <Button
-                                    variant={isPanelOpen ? "secondary" : "ghost"}
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={togglePanel}
+                                <div
+                                    className="inline-flex"
+                                    onPointerEnter={() => setToolbarTooltip('terminal')}
+                                    onPointerLeave={() => setToolbarTooltip(null)}
                                 >
-                                    <Terminal className={cn("h-3.5 w-3.5", isPanelOpen ? "text-foreground" : "text-muted-foreground")} />
-                                </Button>
+                                    <Button
+                                        variant={isPanelOpen ? "secondary" : "ghost"}
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={togglePanel}
+                                    >
+                                        <Terminal className={cn("h-3.5 w-3.5", isPanelOpen ? "text-foreground" : "text-muted-foreground")} />
+                                    </Button>
+                                </div>
                             </TooltipTrigger>
-                            <TooltipContent side="bottom">Toggle Terminal</TooltipContent>
+                            <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Toggle Terminal</TooltipContent>
                         </Tooltip>
                         <div className="h-4 w-[1px] bg-sidebar-border" />
                         <ServerControl
