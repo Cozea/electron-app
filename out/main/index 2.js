@@ -3419,62 +3419,6 @@ electron.ipcMain.handle(
     return null;
   }
 );
-electron.ipcMain.handle(
-  "contextMenu:showTerminalSelection",
-  async (_event, { selectedText, x, y }) => {
-    return new Promise((resolve) => {
-      const template = [
-        {
-          label: "Copy",
-          accelerator: "CmdOrCtrl+C",
-          click: () => {
-            electron.clipboard.writeText(selectedText);
-            resolve({ action: "copy" });
-          }
-        },
-        { type: "separator" },
-        {
-          label: "Ask AI about this",
-          click: () => {
-            resolve({ action: "askAI" });
-          }
-        },
-        {
-          label: "Explain this error",
-          click: () => {
-            resolve({ action: "explainError" });
-          }
-        },
-        { type: "separator" },
-        {
-          label: "Search Google",
-          click: () => {
-            const query = encodeURIComponent(selectedText);
-            electron.shell.openExternal(`https://www.google.com/search?q=${query}`);
-            resolve({ action: "searchGoogle" });
-          }
-        },
-        {
-          label: "Search Stack Overflow",
-          click: () => {
-            const query = encodeURIComponent(selectedText);
-            electron.shell.openExternal(`https://stackoverflow.com/search?q=${query}`);
-            resolve({ action: "searchStackOverflow" });
-          }
-        }
-      ];
-      const menu = electron.Menu.buildFromTemplate(template);
-      menu.popup({
-        window: win || void 0,
-        x,
-        y,
-        callback: () => {
-          resolve({ action: null });
-        }
-      });
-    });
-  }
-);
 electron.app.on("window-all-closed", () => {
   for (const [projectPath, ptyProcess] of devServerProcesses) {
     console.log(`[DevServer] Killing PTY for ${projectPath}`);

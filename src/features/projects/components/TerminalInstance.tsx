@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search"
 import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
 import { useTerminalActions } from "@/stores/useTerminalStore"
+import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
 interface TerminalInstanceProps {
     terminalId: string
@@ -21,6 +22,34 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
     const hasInitializedRef = useRef(false)
     const [initRetry, setInitRetry] = useState(0)
     const { updateTerminalStatus, setTerminalHasOutput } = useTerminalActions()
+    const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
+
+    // Handle right-click context menu
+    const handleContextMenu = useCallback(async (e: React.MouseEvent) => {
+        const term = xtermRef.current
+        if (!term) return
+
+        const selectedText = term.getSelection()
+        if (!selectedText || selectedText.trim().length === 0) {
+            // No selection - let default context menu handle it
+            return
+        }
+
+        e.preventDefault()
+
+        const result = await window.electronAPI.contextMenu.showTerminalSelection({
+            selectedText: selectedText.trim(),
+            x: e.clientX,
+            y: e.clientY,
+        })
+
+        if (result.action === 'askAI') {
+            openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${selectedText.trim()}\n\`\`\``)
+        } else if (result.action === 'explainError') {
+            openWithPrompt(`Explain this error and suggest how to fix it:\n\n\`\`\`\n${selectedText.trim()}\n\`\`\``)
+        }
+        // Other actions (copy, search) are handled in main process
+    }, [openWithPrompt])
 
     // Initialize xterm and connect to IPC
     useEffect(() => {
@@ -238,6 +267,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
             ref={containerRef}
             className={cn("w-full h-full bg-sidebar overflow-hidden pl-3 pt-1", className)}
             onClick={focus}
+            onContextMenu={handleContextMenu}
         />
     )
 }

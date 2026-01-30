@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { Id } from '../../convex/_generated/dataModel'
 
 type AssistantPanelMode = 'closed' | 'panel' | 'fullscreen'
 
@@ -28,6 +29,10 @@ interface AssistantPanelState {
   panelWidth: number
   chatTitle: string
 
+  // Conversation history state
+  currentConversationId: Id<"aiConversations"> | null
+  isHistoryOpen: boolean
+
   // Actions
   open: () => void
   close: () => void
@@ -45,6 +50,12 @@ interface AssistantPanelState {
   setPanelWidth: (width: number) => void
   resetPanelWidth: () => void
   setChatTitle: (title: string) => void
+
+  // Conversation history actions
+  setCurrentConversationId: (id: Id<"aiConversations"> | null) => void
+  openHistory: () => void
+  closeHistory: () => void
+  startNewConversation: () => void
 }
 
 export const useAssistantPanelStore = create<AssistantPanelState>()(
@@ -56,6 +67,8 @@ export const useAssistantPanelStore = create<AssistantPanelState>()(
       triggerClearChat: 0,
       panelWidth: DEFAULT_PANEL_WIDTH,
       chatTitle: 'New Chat',
+      currentConversationId: null,
+      isHistoryOpen: false,
 
       open: () => set({ mode: 'panel' }),
 
@@ -101,6 +114,19 @@ export const useAssistantPanelStore = create<AssistantPanelState>()(
 
       resetPanelWidth: () => set({ panelWidth: DEFAULT_PANEL_WIDTH }),
       setChatTitle: (title) => set({ chatTitle: title }),
+
+      // Conversation history actions
+      setCurrentConversationId: (id) => set({ currentConversationId: id }),
+
+      openHistory: () => set({ isHistoryOpen: true }),
+
+      closeHistory: () => set({ isHistoryOpen: false }),
+
+      startNewConversation: () => set((state) => ({
+        currentConversationId: null,
+        chatTitle: 'New Chat',
+        triggerClearChat: state.triggerClearChat + 1,
+      })),
     }),
     {
       name: 'cozea-assistant-panel',

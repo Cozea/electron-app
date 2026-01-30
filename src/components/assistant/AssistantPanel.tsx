@@ -1,8 +1,13 @@
 import { useRef, useCallback, useState } from 'react'
 import { X, Plus, History } from 'lucide-react'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
+import { useAuth } from '@/contexts/AuthContext'
 import { AIConversation } from './AIConversation'
+import { ChatHistory } from './ChatHistory'
 import { cn } from '@/lib/utils'
 import { CreditDisplay } from './CreditDisplay'
 
@@ -21,8 +26,23 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
     panelWidth: storedWidth,
     setPanelWidth,
     resetPanelWidth,
-    chatTitle, // Get chatTitle
+    chatTitle,
+    isHistoryOpen,
+    openHistory,
+    closeHistory,
   } = useAssistantPanelStore()
+
+  const { currentOrganization } = useAuth()
+
+  // Get project ID for chat history
+  const convexOrg = useQuery(
+    api.organizations.getByWorkosId,
+    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+  )
+  const project = useQuery(
+    api.projects.getBySlug,
+    convexOrg?._id && projectSlug ? { organizationId: convexOrg._id, slug: projectSlug } : 'skip'
+  )
 
   const [isDragging, setIsDragging] = useState(false)
   const dragStartX = useRef(0)
@@ -128,7 +148,7 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
               variant="ghost"
               size="icon"
               className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-accent"
-              onClick={() => { }}
+              onClick={openHistory}
               aria-label="Conversation History"
               title="Conversation History"
             >
@@ -151,6 +171,13 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
           <AIConversation className="w-full h-full" projectPath={projectPath} projectName={projectName} projectSlug={projectSlug} />
         </div>
       </div>
+
+      {/* Chat History Sheet */}
+      <ChatHistory
+        isOpen={isHistoryOpen}
+        onClose={closeHistory}
+        projectId={project?._id ?? null}
+      />
     </div>
   )
 }

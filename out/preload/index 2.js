@@ -149,8 +149,5 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
       electron.ipcRenderer.on("terminal:exit", handler);
       return () => electron.ipcRenderer.removeListener("terminal:exit", handler);
     }
-  },
-  contextMenu: {
-    showTerminalSelection: (options) => electron.ipcRenderer.invoke("contextMenu:showTerminalSelection", options)
   }
 });
