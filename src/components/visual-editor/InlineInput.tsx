@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useVisualEditorStore, type ElementStyles } from '@/stores/useVisualEditorStore'
+import { ColorPickerPopover } from './ColorPickerPopover'
 
 type CSSUnit = 'px' | '%' | 'em' | 'rem' | 'vw' | 'vh' | 'auto' | ''
 
@@ -26,7 +27,7 @@ function parseValueAndUnit(value: string | undefined): { num: string; unit: CSSU
   if (value === 'auto') return { num: '', unit: 'auto' }
   const match = value.match(/^([\d.]+)(px|%|em|rem|vw|vh)?$/)
   if (match) {
-    return { num: match[1], unit: (match[2] as CSSUnit) || 'px' }
+    return { num: match[1], unit: (match[2] as CSSUnit) || '%' }
   }
   return { num: value, unit: '' }
 }
@@ -34,7 +35,7 @@ function parseValueAndUnit(value: string | undefined): { num: string; unit: CSSU
 export function InlineInput({
   label,
   property,
-  units = ['px', '%', 'em', 'rem', 'auto'],
+  units = ['%'],
   placeholder = '—',
   onPreview,
 }: InlineInputProps) {
@@ -42,8 +43,7 @@ export function InlineInput({
   const rawValue = getPendingOrOriginal(property) || ''
   const { num, unit } = useMemo(() => parseValueAndUnit(rawValue), [rawValue])
 
-  const NO_UNIT = '__no_unit__'
-  const defaultUnit = units[0] ?? 'px'
+  const defaultUnit = units[0] ?? '%'
   const effectiveUnit: CSSUnit = num === '' && unit === '' ? defaultUnit : unit
 
   const buildValue = (n: string, u: CSSUnit): string => {
@@ -58,15 +58,8 @@ export function InlineInput({
     onPreview(property, cssValue)
   }
 
-  const handleUnitChange = (newUnit: CSSUnit | typeof NO_UNIT) => {
-    const resolvedUnit = newUnit === NO_UNIT ? '' : newUnit
-    const cssValue = buildValue(num, resolvedUnit)
-    updatePendingChange(property, cssValue)
-    onPreview(property, cssValue)
-  }
-
   const isAuto = effectiveUnit === 'auto'
-  const selectUnitValue = effectiveUnit === '' ? NO_UNIT : effectiveUnit
+  const showUnitSelect = units.length > 1
 
   return (
     <div className="flex items-center gap-2 h-7">
@@ -85,18 +78,27 @@ export function InlineInput({
           )}
           placeholder={placeholder}
         />
-        <Select value={selectUnitValue} onValueChange={(v) => handleUnitChange(v as CSSUnit | typeof NO_UNIT)}>
-          <SelectTrigger className="h-7 w-14 text-[11px] px-1.5 shrink-0 bg-background/70 border-sidebar-border/70 focus:ring-sidebar-ring/40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {units.map((u) => (
-              <SelectItem key={u || NO_UNIT} value={u || NO_UNIT} className="text-[11px]">
-                {u || '—'}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {showUnitSelect && (
+          <Select
+            value={effectiveUnit === '' ? defaultUnit : effectiveUnit}
+            onValueChange={(v) => {
+              const cssValue = buildValue(num, v as CSSUnit)
+              updatePendingChange(property, cssValue)
+              onPreview(property, cssValue)
+            }}
+          >
+            <SelectTrigger className="h-7 w-14 text-[11px] px-1.5 shrink-0 bg-background/70 border-sidebar-border/70 focus:ring-sidebar-ring/40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {units.map((u) => (
+                <SelectItem key={u || '—'} value={u || ''} className="text-[11px]">
+                  {u || '—'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
     </div>
   )
@@ -147,14 +149,35 @@ interface InlineColorInputProps {
   onPreview: (prop: keyof ElementStyles, value: string) => void
 }
 
-function rgbToHex(rgb: string | undefined): string | null {
-  if (!rgb) return null
-  const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
+/** Convert rgb(r,g,b) or rgba(r,g,b,a) to #rrggbb hex. */
+function rgbRgbaToHex(css: string | undefined): string | null {
+  if (!css) return null
+  const match = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+)?\s*\)/)
   if (!match) return null
-  const r = parseInt(match[1]).toString(16).padStart(2, '0')
-  const g = parseInt(match[2]).toString(16).padStart(2, '0')
-  const b = parseInt(match[3]).toString(16).padStart(2, '0')
+  const r = parseInt(match[1], 10).toString(16).padStart(2, '0')
+  const g = parseInt(match[2], 10).toString(16).padStart(2, '0')
+  const b = parseInt(match[3], 10).toString(16).padStart(2, '0')
   return `#${r}${g}${b}`
+}
+
+/** Normalize to 6-digit hex for display and storage. Accepts #rgb, #rrggbb, #rrggbbaa, rrggbb, rgb(), rgba(). */
+export function toHex(css: string | undefined): string {
+  if (!css || !css.trim()) return '#000000'
+  const s = css.trim()
+  // #rgb -> #rrggbb
+  const short = s.match(/^#?([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/)
+  if (short) {
+    return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toLowerCase()
+  }
+  // #rrggbb or rrggbb -> #rrggbb
+  const six = s.match(/^#?([0-9a-fA-F]{6})$/)
+  if (six) return `#${six[1].toLowerCase()}`
+  // #rrggbbaa -> use first 6
+  const eight = s.match(/^#?([0-9a-fA-F]{8})$/)
+  if (eight) return `#${eight[1].slice(0, 6).toLowerCase()}`
+  const fromRgb = rgbRgbaToHex(s)
+  if (fromRgb) return fromRgb
+  return '#000000'
 }
 
 export function InlineColorInput({
@@ -163,13 +186,22 @@ export function InlineColorInput({
   onPreview,
 }: InlineColorInputProps) {
   const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
-  const value = getPendingOrOriginal(property) || ''
-  const hexValue = rgbToHex(value) || value || '#000000'
+  const rawValue = getPendingOrOriginal(property) || ''
+  const hexValue = toHex(rawValue)
 
-  const handleChange = (newValue: string) => {
-    updatePendingChange(property, newValue)
-    onPreview(property, newValue)
+  const [isEditing, setIsEditing] = useState(false)
+  const [buffer, setBuffer] = useState(hexValue)
+
+  useEffect(() => {
+    if (!isEditing) setBuffer(hexValue)
+  }, [hexValue, isEditing])
+
+  const handleChange = (hex: string) => {
+    updatePendingChange(property, hex)
+    onPreview(property, hex)
   }
+
+  const displayValue = isEditing ? buffer : hexValue
 
   return (
     <div className="flex items-center gap-2 h-7">
@@ -177,16 +209,31 @@ export function InlineColorInput({
         {label}
       </Label>
       <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        <input
-          type="color"
+        <ColorPickerPopover
           value={hexValue}
-          onChange={(e) => handleChange(e.target.value)}
-          className="w-7 h-7 rounded-md border border-sidebar-border/70 cursor-pointer bg-background/70 shrink-0"
+          onChange={handleChange}
+          trigger={
+            <button
+              type="button"
+              className="w-7 h-7 rounded-md border border-muted-foreground/50 cursor-pointer bg-background/70 shrink-0 focus:outline-none focus:ring-2 focus:ring-sidebar-ring/40"
+              style={{ backgroundColor: hexValue }}
+              aria-label="Open color picker"
+            />
+          }
         />
         <Input
           type="text"
-          value={value}
-          onChange={(e) => handleChange(e.target.value)}
+          value={displayValue}
+          onChange={(e) => setBuffer(e.target.value)}
+          onFocus={() => {
+            setBuffer(hexValue)
+            setIsEditing(true)
+          }}
+          onBlur={() => {
+            setIsEditing(false)
+            const hex = toHex(buffer.trim())
+            handleChange(hex)
+          }}
           className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 bg-background/70 border-sidebar-border/70 focus-visible:ring-sidebar-ring/40"
           placeholder="#000000"
         />
@@ -227,12 +274,12 @@ export function InlineSelectInput({
   }
 
   return (
-    <div className="flex items-center gap-2 h-7">
+    <div className="flex items-center gap-2 min-h-7 h-7 max-h-7">
       <Label className="text-[11px] text-sidebar-foreground/70 w-14 shrink-0 truncate">
         {label}
       </Label>
       <Select value={selectValue} onValueChange={handleChange}>
-        <SelectTrigger className="h-7 text-[11px] flex-1 bg-background/70 border-sidebar-border/70 focus:ring-sidebar-ring/40">
+        <SelectTrigger className="!h-7 min-h-7 max-h-7 text-[11px] flex-1 py-0 bg-background/70 border-sidebar-border/70 focus:ring-sidebar-ring/40">
           <SelectValue placeholder={rawValue || 'Select'} />
         </SelectTrigger>
         <SelectContent>

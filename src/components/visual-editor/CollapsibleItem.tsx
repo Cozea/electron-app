@@ -1,7 +1,11 @@
-import { type ReactNode, useState } from 'react'
-import { ChevronDown, X, Plus } from 'lucide-react'
+import { type ReactNode, useState, useEffect } from 'react'
+import { ChevronDown, ChevronUp, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { toHex } from './InlineInput'
+import { ColorPickerPopover } from './ColorPickerPopover'
 
 interface CollapsibleItemProps {
   title: string
@@ -67,6 +71,8 @@ interface CollapsibleSectionProps {
   children: ReactNode
   onAdd?: () => void
   defaultOpen?: boolean
+  /** When false, section is always open and cannot be collapsed (e.g. for text content). */
+  collapsible?: boolean
 }
 
 export function CollapsibleSection({
@@ -75,26 +81,35 @@ export function CollapsibleSection({
   children,
   onAdd,
   defaultOpen = false,
+  collapsible = true,
 }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
+  const alwaysOpen = !collapsible || isOpen
 
   return (
     <div className="border-b border-sidebar-border">
       <div className="flex items-center gap-1 px-2 h-8">
-        <button
-          type="button"
-          className="flex items-center gap-2 flex-1 min-w-0 text-[11px] font-medium text-sidebar-foreground hover:bg-sidebar-accent/70 rounded-md px-2 h-7 transition-colors"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <ChevronDown
-            className={cn(
-              'h-3 w-3 text-sidebar-foreground/60 transition-transform shrink-0',
-              !isOpen && '-rotate-90'
-            )}
-          />
-          {icon && <span className="text-sidebar-foreground/80 shrink-0">{icon}</span>}
-          <span className="truncate">{title}</span>
-        </button>
+        {collapsible ? (
+          <button
+            type="button"
+            className="flex items-center gap-2 flex-1 min-w-0 text-[11px] font-medium text-sidebar-foreground hover:bg-sidebar-accent/70 rounded-md px-2 h-7 transition-colors"
+            onClick={() => setIsOpen(!isOpen)}
+          >
+            <ChevronDown
+              className={cn(
+                'h-3 w-3 text-sidebar-foreground/60 transition-transform shrink-0',
+                !isOpen && '-rotate-90'
+              )}
+            />
+            {icon && <span className="text-sidebar-foreground/80 shrink-0">{icon}</span>}
+            <span className="truncate">{title}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 flex-1 min-w-0 px-2 h-7 text-[11px] font-medium text-sidebar-foreground">
+            {icon && <span className="text-sidebar-foreground/80 shrink-0">{icon}</span>}
+            <span className="truncate">{title}</span>
+          </div>
+        )}
         {onAdd && (
           <Button
             variant="ghost"
@@ -106,7 +121,7 @@ export function CollapsibleSection({
           </Button>
         )}
       </div>
-      {isOpen && (
+      {(alwaysOpen || isOpen) && (
         <div className="px-3 pb-3 pt-1 space-y-2">
           {children}
         </div>
@@ -147,61 +162,109 @@ function parseBoxShadow(value: string): {
 
 export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps) {
   const parsed = parseBoxShadow(value)
+  const hexValue = toHex(parsed.color)
+  const [colorEditing, setColorEditing] = useState(false)
+  const [colorBuffer, setColorBuffer] = useState(hexValue)
+
+  useEffect(() => {
+    if (!colorEditing) setColorBuffer(hexValue)
+  }, [hexValue, colorEditing])
 
   const buildShadow = (updates: Partial<typeof parsed>) => {
     const next = { ...parsed, ...updates }
     return `${next.x}px ${next.y}px ${next.blur}px ${next.spread}px ${next.color}`
   }
 
+  const handleColorChange = (hex: string) => {
+    onChange(buildShadow({ color: hex }))
+  }
+
+  const STEP = 1
+  const setX = (v: number) => onChange(buildShadow({ x: v }))
+  const setY = (v: number) => onChange(buildShadow({ y: v }))
+  const setBlur = (v: number) => onChange(buildShadow({ blur: Math.max(0, v) }))
+  const setSpread = (v: number) => onChange(buildShadow({ spread: v }))
+
   return (
     <CollapsibleItem title="box-shadow" summary={value} onRemove={onRemove} defaultOpen>
-      <div className="grid grid-cols-4 gap-1.5">
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">X</label>
-          <input
-            type="number"
-            value={parsed.x}
-            onChange={(e) => onChange(buildShadow({ x: parseInt(e.target.value) || 0 }))}
-            className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
-          />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Y</label>
-          <input
-            type="number"
-            value={parsed.y}
-            onChange={(e) => onChange(buildShadow({ y: parseInt(e.target.value) || 0 }))}
-            className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
-          />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Blur</label>
-          <input
-            type="number"
-            min={0}
-            value={parsed.blur}
-            onChange={(e) => onChange(buildShadow({ blur: parseInt(e.target.value) || 0 }))}
-            className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
-          />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Spread</label>
-          <input
-            type="number"
-            value={parsed.spread}
-            onChange={(e) => onChange(buildShadow({ spread: parseInt(e.target.value) || 0 }))}
-            className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
-          />
-        </div>
+      <div className="space-y-2">
+        {[
+          { label: 'X', value: parsed.x, setValue: setX, min: -500, max: 500 },
+          { label: 'Y', value: parsed.y, setValue: setY, min: -500, max: 500 },
+          { label: 'Blur', value: parsed.blur, setValue: setBlur, min: 0, max: 500 },
+          { label: 'Spread', value: parsed.spread, setValue: setSpread, min: -500, max: 500 },
+        ].map(({ label, value, setValue, min, max }) => (
+          <div key={label} className="flex items-center gap-2 h-7">
+            <Label className="text-[11px] text-sidebar-foreground/70 w-10 shrink-0 truncate">
+              {label}
+            </Label>
+            <div className="flex items-center gap-0 flex-1 min-w-0">
+              <Input
+                type="number"
+                min={min}
+                max={max}
+                value={value}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!Number.isNaN(v)) setValue(Math.min(max, Math.max(min, v)))
+                }}
+                className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 text-right rounded-r-none border-r-0 bg-background/70 border border-sidebar-border/70 focus-visible:ring-sidebar-ring/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <div className="flex flex-col shrink-0 h-7 rounded-r-md border border-sidebar-border/70 border-l-0 bg-sidebar-accent/60 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setValue(Math.min(max, value + STEP))}
+                  className="flex-1 min-h-0 flex items-center justify-center px-1.5 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground transition-colors"
+                  aria-label="Increase"
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValue(Math.max(min, value - STEP))}
+                  className="flex-1 min-h-0 flex items-center justify-center px-1.5 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground transition-colors border-t border-sidebar-border/50"
+                  aria-label="Decrease"
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
-      <div className="flex items-center gap-2 mt-1.5">
-        <label className="text-[10px] text-muted-foreground w-10">Color</label>
-        <input
-          type="text"
-          value={parsed.color}
-          onChange={(e) => onChange(buildShadow({ color: e.target.value }))}
-          className="flex-1 h-7 text-[11px] px-2 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
-        />
+      <div className="flex items-center gap-2 h-7 mt-1.5">
+        <Label className="text-[11px] text-sidebar-foreground/70 w-14 shrink-0 truncate">
+          Color
+        </Label>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <ColorPickerPopover
+            value={hexValue}
+            onChange={handleColorChange}
+            trigger={
+              <button
+                type="button"
+                className="w-7 h-7 rounded-md border border-muted-foreground/50 cursor-pointer bg-background/70 shrink-0 focus:outline-none focus:ring-2 focus:ring-sidebar-ring/40"
+                style={{ backgroundColor: hexValue }}
+                aria-label="Open color picker"
+              />
+            }
+          />
+          <Input
+            type="text"
+            value={colorEditing ? colorBuffer : hexValue}
+            onChange={(e) => setColorBuffer(e.target.value)}
+            onFocus={() => {
+              setColorBuffer(hexValue)
+              setColorEditing(true)
+            }}
+            onBlur={() => {
+              setColorEditing(false)
+              handleColorChange(toHex(colorBuffer.trim()))
+            }}
+            className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 bg-background/70 border-sidebar-border/70 focus-visible:ring-sidebar-ring/40"
+            placeholder="#000000"
+          />
+        </div>
       </div>
     </CollapsibleItem>
   )

@@ -1,4 +1,3 @@
-import { Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -14,18 +13,18 @@ interface StyleStateSelectorProps {
   className?: string
 }
 
-const STATES: Array<{ value: StyleState; label: string; hasEdit?: boolean }> = [
+const STATES: Array<{ value: StyleState; label: string }> = [
   { value: 'default', label: 'Default' },
-  { value: ':hover', label: ':hover', hasEdit: true },
-  { value: ':active', label: ':active', hasEdit: true },
-  { value: ':focus', label: ':focus', hasEdit: true },
+  { value: ':hover', label: 'hover' },
+  { value: ':active', label: 'active' },
+  { value: ':focus', label: 'focus' },
 ]
 
 export function StyleStateSelector({ value, onChange, className }: StyleStateSelectorProps) {
   return (
     <div
       className={cn(
-        'flex items-center gap-0.5 p-0.5 rounded-md border',
+        'flex items-center gap-0.5 p-0.5 rounded-md border w-full',
         'bg-sidebar-accent/60 border-sidebar-border/70',
         className
       )}
@@ -39,16 +38,13 @@ export function StyleStateSelector({ value, onChange, className }: StyleStateSel
                 type="button"
                 onClick={() => onChange(state.value)}
                 className={cn(
-                  'flex items-center gap-1 px-2 h-7 text-[11px] font-medium rounded-sm transition-colors',
+                  'flex-1 flex items-center justify-center gap-1 min-w-0 px-2 h-7 text-[11px] font-medium rounded-sm transition-colors',
                   'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                   isSelected && 'bg-background shadow-sm text-foreground',
                   !isSelected && 'text-sidebar-foreground/70'
                 )}
               >
                 {state.label}
-                {state.hasEdit && isSelected && (
-                  <Pencil className="h-2.5 w-2.5" />
-                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
