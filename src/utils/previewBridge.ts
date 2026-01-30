@@ -19,6 +19,7 @@ export type BridgeMessageType =
   | 'bridge:element-hover'
   | 'bridge:screenshot-ready'
   | 'bridge:style-update-ack'
+  | 'bridge:navigation'
   // host → iframe
   | 'host:enable-inspector'
   | 'host:disable-inspector'

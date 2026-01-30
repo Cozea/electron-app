@@ -486,6 +486,10 @@ async function scanQwikRoutes(projectPath: string): Promise<ScannedRoute[]> {
 
 /**
  * React (Vite/CRA) - Look for pages folder or router config
+ *
+ * Note: React Router projects typically use code-based routing, not file-based.
+ * We attempt to parse App.tsx for actual route definitions first, falling back
+ * to file-based conventions if parsing fails.
  */
 async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
@@ -494,7 +498,20 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
     const result = await window.electronAPI.project.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
-    // Check for src/pages directory (common convention)
+    // First, try to parse App.tsx for React Router route definitions
+    const appFile = result.files.find(f => {
+      const p = f.path.replace(/\\/g, '/')
+      return p === 'src/App.tsx' || p === 'src/App.jsx'
+    })
+
+    if (appFile) {
+      const parsedRoutes = await parseReactRouterRoutes(projectPath, appFile.path)
+      if (parsedRoutes.length > 0) {
+        return sortRoutes(parsedRoutes)
+      }
+    }
+
+    // Fallback: Check for src/pages directory (common convention)
     const pageFiles = result.files.filter(file => {
       const path = file.path.replace(/\\/g, '/')
       return (
@@ -511,6 +528,11 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
           .replace(/\.(tsx|jsx)$/, '')
           .replace(/\/index$/, '')
           .replace(/\/Index$/, '')
+
+        // Special case: Home.tsx typically maps to / (index route)
+        if (routePath === '/Home') {
+          routePath = '/'
+        }
 
         if (routePath === '') routePath = '/'
 
@@ -529,6 +551,106 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
   }
 
   return sortRoutes(routes)
+}
+
+/**
+ * Parse React Router route definitions from App.tsx
+ * Extracts routes from <Route path="..." element={...} /> patterns
+ */
+async function parseReactRouterRoutes(
+  projectPath: string,
+  appFilePath: string
+): Promise<ScannedRoute[]> {
+  const routes: ScannedRoute[] = []
+
+  try {
+    const content = await window.electronAPI.project.readFile({
+      projectPath,
+      filePath: appFilePath,
+    })
+
+    if (!content.success || !content.content) return routes
+
+    // Match import statements to map component names to files
+    const importMap = new Map<string, string>()
+    const importRegex = /import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g
+    let importMatch
+    while ((importMatch = importRegex.exec(content.content)) !== null) {
+      const [, componentName, importPath] = importMatch
+      // Normalize path: ./pages/Home -> src/pages/Home.tsx
+      let normalizedPath = importPath
+      if (normalizedPath.startsWith('./')) {
+        normalizedPath = 'src/' + normalizedPath.slice(2)
+      } else if (normalizedPath.startsWith('../')) {
+        // Handle relative paths
+        normalizedPath = importPath
+      }
+      // Add extension if missing
+      if (!normalizedPath.match(/\.(tsx|jsx|ts|js)$/)) {
+        normalizedPath += '.tsx'
+      }
+      importMap.set(componentName, normalizedPath)
+    }
+
+    // Match Route definitions with various patterns:
+    // <Route path="/" element={<Home />} />
+    // <Route path="shop" element={<Shop />} />
+    // <Route index element={<Home />} />
+    // Only match self-closing routes (ending with />) to avoid matching wrapper/layout routes
+
+    // Pattern for self-closing path-based routes: <Route path="..." element={<Comp />} />
+    // Must end with /> to exclude layout routes that have children
+    const pathRouteRegex = /<Route\s+path=["']([^"']*)["']\s+element=\{<(\w+)\s*\/>\s*\}\s*\/>/g
+    let routeMatch
+    while ((routeMatch = pathRouteRegex.exec(content.content)) !== null) {
+      const [, path, componentName] = routeMatch
+      // Skip Layout components - they're wrappers, not pages
+      if (componentName.toLowerCase().includes('layout')) continue
+
+      const routePath = path.startsWith('/') ? path : '/' + path
+      const filePath = importMap.get(componentName) || `src/pages/${componentName}.tsx`
+      const isDynamic = routePath.includes(':') || routePath.includes('*')
+
+      routes.push({
+        name: generateRouteName(routePath),
+        path: routePath,
+        file: filePath,
+        type: isDynamic ? 'dynamic' : 'static',
+      })
+    }
+
+    // Pattern for index routes: <Route index element={<Component />} />
+    const indexRouteRegex = /<Route\s+index\s+element=\{<(\w+)\s*\/>\s*\}\s*\/>/g
+    while ((routeMatch = indexRouteRegex.exec(content.content)) !== null) {
+      const [, componentName] = routeMatch
+      // Skip if we already have a "/" route
+      if (routes.some(r => r.path === '/')) continue
+
+      const filePath = importMap.get(componentName) || `src/pages/${componentName}.tsx`
+
+      routes.push({
+        name: 'Home',
+        path: '/',
+        file: filePath,
+        type: 'static',
+      })
+    }
+
+    // Deduplicate routes by path (keep first occurrence)
+    const seen = new Set<string>()
+    const deduped: ScannedRoute[] = []
+    for (const route of routes) {
+      if (!seen.has(route.path)) {
+        seen.add(route.path)
+        deduped.push(route)
+      }
+    }
+    return deduped
+  } catch (e) {
+    console.error('Failed to parse React Router routes:', e)
+  }
+
+  return routes
 }
 
 /**
