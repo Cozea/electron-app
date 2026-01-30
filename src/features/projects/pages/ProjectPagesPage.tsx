@@ -187,14 +187,24 @@ export function ProjectPagesPage() {
         }
     }, [searchParams, routes.length, setSearchParams])
 
-    // Handle escape key to exit focused view
+    // Handle escape key to exit focused view and arrow keys for navigation
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Check if an interactive element has focus (inputs, textareas, contenteditable)
+            const target = e.target as HTMLElement
+            const isInteractiveElement =
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' ||
+                target.isContentEditable ||
+                target.closest('[contenteditable="true"]')
+
             if (e.key === 'Escape' && focusedPageIndex !== null) {
                 setFocusedPageIndex(null)
             }
-            // Arrow keys for navigation in focused view
-            if (focusedPageIndex !== null) {
+
+            // Arrow keys for navigation in focused view - skip if interactive element is focused
+            if (focusedPageIndex !== null && !isInteractiveElement) {
                 if (e.key === 'ArrowLeft') {
                     setFocusedPageIndex(prev => prev !== null && prev > 0 ? prev - 1 : routes.length - 1)
                 } else if (e.key === 'ArrowRight') {
