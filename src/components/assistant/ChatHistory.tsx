@@ -108,10 +108,10 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
   return (
     <div
       ref={panelRef}
-      className="absolute left-3 right-3 top-12 z-50 flex flex-col bg-popover border border-border rounded-lg shadow-lg max-h-[400px] animate-in fade-in-0 slide-in-from-top-2 duration-150"
+      className="absolute left-3 right-3 top-12 z-50 flex flex-col bg-sidebar border border-sidebar-border rounded-lg shadow-lg max-h-[400px] animate-in fade-in-0 slide-in-from-top-2 duration-150"
     >
       {/* Search */}
-      <div className="p-3 pb-2">
+      <div className="px-3 py-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -120,7 +120,7 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
             placeholder="Search recent tasks"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 pl-8 text-sm bg-transparent border-0 focus-visible:ring-0"
+            className="h-8 pl-8 text-sm bg-sidebar dark:bg-sidebar border-0 shadow-none focus-visible:ring-0"
           />
         </div>
       </div>
@@ -145,16 +145,18 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
                 key={conv._id}
                 onClick={() => handleSelect(conv)}
                 className={cn(
-                  "group flex items-center gap-3 px-2 py-2 mx-1 rounded-md cursor-pointer transition-colors overflow-hidden",
+                  "group flex items-center gap-3 px-2 py-2 mx-1 rounded-md cursor-pointer transition-colors",
                   currentConversationId === conv._id
                     ? "bg-accent"
                     : "hover:bg-muted/50"
                 )}
               >
-                <span className="text-sm truncate max-w-[50%]">{conv.title}</span>
-                {currentConversationId === conv._id && (
-                  <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                )}
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="text-sm truncate min-w-0">{conv.title}</span>
+                  {currentConversationId === conv._id && (
+                    <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                  )}
+                </div>
                 <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
                   {formatRelativeTime(conv.updatedAt)}
                 </span>
