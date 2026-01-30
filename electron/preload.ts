@@ -345,6 +345,9 @@ export interface ElectronAPI {
     onOutput: (callback: (data: { terminalId: string; data: string }) => void) => () => void
     onExit: (callback: (data: { terminalId: string; exitCode: number | null }) => void) => () => void
   }
+  contextMenu: {
+    showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
+  }
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -569,5 +572,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
     },
+  },
+  contextMenu: {
+    showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
+      ipcRenderer.invoke('contextMenu:showTerminalSelection', options),
   },
 } satisfies ElectronAPI)

@@ -204,6 +204,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     pendingAttachments,
     removePendingAttachment,
     clearPendingAttachments,
+    currentConversationId,
+    setCurrentConversationId,
   } = useAssistantPanelStore()
   const currentPage = usePageContextStore((state) => state.currentPage)
   const inspectedElement = usePageContextStore((state) => state.inspectedElement)
@@ -224,6 +226,14 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
   const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
+
+  // Conversation persistence
+  const createConversation = useMutation(api.aiConversations.create)
+  const saveConversationMessages = useMutation(api.aiConversations.saveMessages)
+  const storedConversation = useQuery(
+    api.aiConversations.get,
+    currentConversationId ? { id: currentConversationId } : "skip"
+  )
 
   // Input State
   const [input, setInput] = useState("")
@@ -253,6 +263,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const addToolApprovalResponseRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const recordedApprovalIdsRef = useRef<Set<string>>(new Set())
+  const conversationInitializedRef = useRef<string | null>(null)
+  const isSavingRef = useRef(false)
 
   const selectedModelData = availableModels.find((m) => m.id === model)
 
@@ -771,6 +783,81 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
 
+  // Load stored messages when conversation changes
+  useEffect(() => {
+    if (!storedConversation) return
+    if (conversationInitializedRef.current === currentConversationId) return
+
+    // Convert stored messages to UIMessage format
+    const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      parts: [{ type: 'text' as const, text: msg.content }],
+      createdAt: new Date(msg.createdAt),
+    }))
+
+    setMessages(uiMessages)
+    conversationInitializedRef.current = currentConversationId
+
+    // Update chat title
+    if (storedConversation.title) {
+      useAssistantPanelStore.getState().setChatTitle(storedConversation.title)
+    }
+  }, [storedConversation, currentConversationId, setMessages])
+
+  // Reset initialization ref when conversation changes to null
+  useEffect(() => {
+    if (currentConversationId === null) {
+      conversationInitializedRef.current = null
+    }
+  }, [currentConversationId])
+
+  // Save messages to Convex when they change (debounced)
+  useEffect(() => {
+    if (!currentConversationId) return
+    if (messages.length === 0) return
+    if (isSavingRef.current) return
+    if (status === 'streaming' || status === 'submitted') return
+
+    const saveMessages = async () => {
+      isSavingRef.current = true
+      try {
+        // Convert UIMessages to storage format
+        const storedMessages = messages.map((msg) => {
+          const textParts = msg.parts.filter((p) => p.type === 'text')
+          const content = textParts.map((p) => (p as { text: string }).text).join('')
+
+          return {
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant' | 'system',
+            content,
+            createdAt: msg.createdAt?.getTime() ?? Date.now(),
+          }
+        })
+
+        // Generate title from first user message
+        const firstUserMessage = storedMessages.find((m) => m.role === 'user')
+        const title = firstUserMessage
+          ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '')
+          : 'New Conversation'
+
+        await saveConversationMessages({
+          conversationId: currentConversationId,
+          messages: storedMessages,
+          title,
+        })
+      } catch (err) {
+        console.warn('Failed to save conversation messages:', err)
+      } finally {
+        isSavingRef.current = false
+      }
+    }
+
+    // Debounce saves
+    const timeoutId = setTimeout(saveMessages, 500)
+    return () => clearTimeout(timeoutId)
+  }, [messages, currentConversationId, status, saveConversationMessages])
+
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
     const message = (error as { message?: string }).message
@@ -1101,6 +1188,21 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
     // Clear any previous billing error when trying again
     setBillingError(null)
+
+    // Create conversation on first message if we don't have one
+    if (!currentConversationId && project?._id && convexUserId) {
+      try {
+        const newConversationId = await createConversation({
+          projectId: project._id,
+          userId: convexUserId,
+          title: input.slice(0, 50) + (input.length > 50 ? '...' : '') || 'New Conversation',
+        })
+        setCurrentConversationId(newConversationId)
+        conversationInitializedRef.current = newConversationId
+      } catch (err) {
+        console.warn('Failed to create conversation:', err)
+      }
+    }
 
     // Build message with optional attachments
     const messageOptions: { text: string; experimental_attachments?: Array<{ url: string; contentType: string }> } = {

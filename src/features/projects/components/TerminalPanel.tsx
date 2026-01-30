@@ -85,22 +85,19 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
         setPanelHeight(250) // Reset to default
     }, [setPanelHeight])
 
-    // Don't render if panel is closed
-    if (!isPanelOpen) {
-        return null
-    }
-
     // Get terminal count for display
     const terminalCount = Object.keys(terminals).length
 
     // Determine the actual panel height (maximized = full height)
     const actualHeight = isMaximized ? '100%' : `${panelHeight}px`
 
+    // Hide panel instead of unmounting to keep terminals alive
     return (
         <div
             className={cn(
                 "flex flex-col border-t border-border bg-background w-full mt-auto relative",
                 isMaximized && "absolute inset-0 z-50",
+                !isPanelOpen && "hidden",
                 className
             )}
             style={{ height: actualHeight }}

@@ -1190,6 +1190,36 @@ export default defineSchema({
     .index("by_project_and_time", ["projectId", "timestamp"])
     .index("by_user", ["userId"]),
 
+  // ============================================
+  // AI CONVERSATION HISTORY
+  // ============================================
+
+  // AI conversations for chat history persistence
+  aiConversations: defineTable({
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    title: v.string(),
+    messages: v.array(v.object({
+      id: v.string(),
+      role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+      content: v.string(),
+      createdAt: v.number(),
+      // Optional tool call data
+      toolInvocations: v.optional(v.any()),
+      // Optional attachments (screenshots, files)
+      attachments: v.optional(v.array(v.object({
+        url: v.string(),
+        contentType: v.string(),
+      }))),
+    })),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_and_user", ["projectId", "userId"])
+    .index("by_user_and_status", ["userId", "status"])
+    .index("by_project_user_status", ["projectId", "userId", "status"]),
+
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),

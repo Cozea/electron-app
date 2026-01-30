@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog, type WebFrameMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog, Menu, clipboard, type WebFrameMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -1912,6 +1912,79 @@ ipcMain.handle(
       }
     }
     return null
+  }
+)
+
+// ============================================
+// Context Menu for Terminal Selection
+// ============================================
+
+export interface ContextMenuAction {
+  id: string
+  label: string
+  accelerator?: string
+}
+
+ipcMain.handle(
+  'contextMenu:showTerminalSelection',
+  async (
+    _event,
+    { selectedText, x, y }: { selectedText: string; x: number; y: number }
+  ): Promise<{ action: string | null }> => {
+    return new Promise((resolve) => {
+      const template: Electron.MenuItemConstructorOptions[] = [
+        {
+          label: 'Copy',
+          accelerator: 'CmdOrCtrl+C',
+          click: () => {
+            clipboard.writeText(selectedText)
+            resolve({ action: 'copy' })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Ask AI about this',
+          click: () => {
+            resolve({ action: 'askAI' })
+          },
+        },
+        {
+          label: 'Explain this error',
+          click: () => {
+            resolve({ action: 'explainError' })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Search Google',
+          click: () => {
+            const query = encodeURIComponent(selectedText)
+            shell.openExternal(`https://www.google.com/search?q=${query}`)
+            resolve({ action: 'searchGoogle' })
+          },
+        },
+        {
+          label: 'Search Stack Overflow',
+          click: () => {
+            const query = encodeURIComponent(selectedText)
+            shell.openExternal(`https://stackoverflow.com/search?q=${query}`)
+            resolve({ action: 'searchStackOverflow' })
+          },
+        },
+      ]
+
+      const menu = Menu.buildFromTemplate(template)
+
+      menu.popup({
+        window: win || undefined,
+        x,
+        y,
+        callback: () => {
+          // Menu closed without selection
+          resolve({ action: null })
+        },
+      })
+    })
   }
 )
 
