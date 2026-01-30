@@ -1086,7 +1086,8 @@ const BRIDGE_SCRIPT = `
 
       case 'host:disable-inspector':
         inspectorEnabled = false;
-        if (highlightOverlay) highlightOverlay.style.display = 'none';
+        // Clear all overlays and selection state
+        clearSelection();
         document.body.style.cursor = '';
         break;
 
@@ -1134,6 +1135,42 @@ const BRIDGE_SCRIPT = `
       e.preventDefault();
     }
   }, false);
+
+  // Track navigation changes (for React Router and other SPA routers)
+  let lastPathname = window.location.pathname;
+
+  function notifyNavigation() {
+    const newPathname = window.location.pathname;
+    if (newPathname !== lastPathname) {
+      lastPathname = newPathname;
+      postToParent({
+        type: 'bridge:navigation',
+        payload: {
+          pathname: newPathname,
+          url: window.location.href
+        }
+      });
+    }
+  }
+
+  // Override history methods to detect programmatic navigation
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+
+  history.pushState = function(...args) {
+    const result = originalPushState.apply(this, args);
+    notifyNavigation();
+    return result;
+  };
+
+  history.replaceState = function(...args) {
+    const result = originalReplaceState.apply(this, args);
+    notifyNavigation();
+    return result;
+  };
+
+  // Listen for popstate (back/forward navigation)
+  window.addEventListener('popstate', notifyNavigation);
 
   // Signal bridge is ready
   postToParent({ type: 'bridge:ready' });
