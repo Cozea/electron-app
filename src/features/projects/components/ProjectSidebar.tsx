@@ -14,7 +14,7 @@ import {
     Database,
     Server,
     Settings,
-    ChevronRight,
+    ChevronDown,
     Plus,
     RefreshCw,
     GripVertical
@@ -282,9 +282,9 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                                             </Badge>
                                                         )}
                                                         {hasSecondaryPanel && (
-                                                            <ChevronRight className={cn(
+                                                            <ChevronDown className={cn(
                                                                 "ml-auto transition-transform duration-200",
-                                                                isActive && "rotate-90"
+                                                                isActive && "-rotate-90"
                                                             )} />
                                                         )}
                                                     </SidebarMenuButton>

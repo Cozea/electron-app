@@ -12,7 +12,7 @@ import { useState, useCallback } from 'react'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { getFileIcon, getFolderIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
@@ -122,10 +122,10 @@ export function FileTreeNode({
               {isLoading ? (
                 <Loader2 className="ml-auto h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
               ) : (
-                <ChevronRight
+                <ChevronDown
                   className={cn(
                     'ml-auto h-4 w-4 shrink-0 transition-transform text-muted-foreground',
-                    isExpanded && 'rotate-90'
+                    isExpanded && '-rotate-90'
                   )}
                 />
               )}
@@ -183,10 +183,10 @@ export function FileTreeNode({
             {isLoading ? (
               <Loader2 className="ml-auto h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
             ) : (
-              <ChevronRight
+              <ChevronDown
                 className={cn(
                   'ml-auto h-4 w-4 shrink-0 transition-transform text-muted-foreground',
-                  isExpanded && 'rotate-90'
+                  isExpanded && '-rotate-90'
                 )}
               />
             )}
