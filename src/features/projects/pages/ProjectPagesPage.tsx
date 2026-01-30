@@ -96,6 +96,10 @@ export function ProjectPagesPage() {
     const [headerWidth, setHeaderWidth] = useState<number>(0)
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'terminal' | null>(null)
 
+    // Shift-to-inspect: track whether inspector was enabled via Shift key
+    const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
+    const manualInspectorEnabled = useRef(false)
+
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
     const prevProjectPathRef = useRef<string | null>(null)
@@ -308,12 +312,26 @@ export function ProjectPagesPage() {
                     setIsCapturingScreenshot(false)
                     break
                 }
+
+                case 'bridge:navigation': {
+                    // Update focused page when user navigates inside the iframe
+                    const data = payload as { pathname: string; url: string }
+                    const normalizedPath = data.pathname === '/' ? '/' : data.pathname.replace(/\/$/, '')
+                    const matchedIndex = routes.findIndex(r => {
+                        const routePath = r.path === '/' ? '/' : r.path.replace(/\/$/, '')
+                        return routePath === normalizedPath
+                    })
+                    if (matchedIndex !== -1 && matchedIndex !== focusedPageIndex) {
+                        setFocusedPageIndex(matchedIndex)
+                    }
+                    break
+                }
             }
         }
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot])
+    }, [inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -323,6 +341,34 @@ export function ProjectPagesPage() {
             })
         }
     }, [inspectorEnabled])
+
+    // Shift-to-inspect: enable inspector while Shift is held
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only trigger if Shift alone, not with other modifiers, and not already manually enabled
+            if (e.key === 'Shift' && !e.repeat && !manualInspectorEnabled.current && bridgeReady) {
+                setShiftInspectorActive(true)
+                setInspectorEnabled(true)
+            }
+        }
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Shift' && shiftInspectorActive) {
+                setShiftInspectorActive(false)
+                setInspectorEnabled(false)
+                // Clear selection when releasing Shift
+                setSelectedElement(null)
+                setInspectedElement(null)
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('keyup', handleKeyUp)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('keyup', handleKeyUp)
+        }
+    }, [shiftInspectorActive, bridgeReady, setSelectedElement, setInspectedElement])
 
     // Add a log entry
     const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -414,15 +460,29 @@ export function ProjectPagesPage() {
         }, 10000)
     }, [serverStatus, bridgeReady, ensureBridgeReady])
 
-    // Toggle inspector mode
+    // Toggle inspector mode (manual toggle via button)
     const toggleInspector = useCallback(() => {
         if (!inspectorEnabled && !bridgeReady) {
             ensureBridgeReady()
             setBridgeError('Preview bridge not ready. Try again in a moment.')
             return
         }
-        setInspectorEnabled((prev) => !prev)
-    }, [bridgeReady, inspectorEnabled, ensureBridgeReady])
+        setInspectorEnabled((prev) => {
+            const newState = !prev
+            // Track manual state for Shift-to-inspect feature
+            manualInspectorEnabled.current = newState
+            // Clear shift state if user manually toggles
+            if (shiftInspectorActive) {
+                setShiftInspectorActive(false)
+            }
+            // Clear selection state when disabling inspector
+            if (!newState) {
+                setSelectedElement(null)
+                setInspectedElement(null)
+            }
+            return newState
+        })
+    }, [bridgeReady, inspectorEnabled, ensureBridgeReady, setSelectedElement, setInspectedElement, shiftInspectorActive])
 
     // Handle visual editor style preview
     const handlePreviewStyle = useCallback((styles: Record<string, string>) => {

@@ -129,15 +129,8 @@ export function PagesList() {
                                 )}
                             >
                                 <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="truncate">
-                                        {route.name}
-                                    </div>
-                                    {route.path !== `/${route.name}` && (
-                                        <div className="truncate text-xs text-muted-foreground">
-                                            {route.path}
-                                        </div>
-                                    )}
+                                <div className="flex-1 min-w-0 truncate">
+                                    {route.name}
                                 </div>
                                 {route.type === 'dynamic' && (
                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 shrink-0">
