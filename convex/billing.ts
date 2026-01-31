@@ -741,6 +741,8 @@ async function updateSubscriptionHandler(
     },
     aiSettings: {
       ...org.aiSettings,
+      // Ensure allowedProviders is never undefined
+      allowedProviders: org.aiSettings?.allowedProviders ?? ["anthropic", "openai", "google"],
       byokPolicy,
     },
     updatedAt: now,
