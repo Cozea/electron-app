@@ -871,14 +871,20 @@ export default defineSchema({
 
     // Lock status
     status: v.union(
-      v.literal("free"), // Available for editing
-      v.literal("locked"), // Currently being edited
+      v.literal("free"), // Available for editing (green)
+      v.literal("locked"), // Currently being edited (yellow=human, red=agent)
       v.literal("merging") // Being merged by traffic control
     ),
 
-    // Who has the lock
+    // Who has the lock (human)
     lockedBy: v.optional(v.id("users")),
     lockedAt: v.optional(v.number()),
+
+    // Who has the lock (agent) - traffic light red
+    agentId: v.optional(v.string()),
+    agentName: v.optional(v.string()),
+    taskDescription: v.optional(v.string()),
+    expiresAt: v.optional(v.number()), // Auto-expire for agent locks
 
     // For merge tracking
     pendingMerges: v.optional(v.array(v.id("users"))), // Users with local changes waiting to merge
@@ -888,6 +894,21 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_path", ["projectId", "filePath"])
     .index("by_locked_by", ["lockedBy"]),
+
+  // File tombstones for delete-vs-edit conflict detection
+  // When a file is deleted, we create a tombstone to detect if someone
+  // was editing it offline. On reconnect, we can show a conflict UI.
+  fileTombstones: defineTable({
+    projectId: v.id("projects"),
+    filePath: v.string(),
+    deletedAt: v.number(),
+    deletedBy: v.optional(v.id("users")),
+    deletedByAgent: v.optional(v.string()),
+    // TTL: tombstones auto-expire after 7 days
+    expiresAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_path", ["projectId", "filePath"]),
 
   // Project conversation messages (for AI planning phase)
   projectMessages: defineTable({

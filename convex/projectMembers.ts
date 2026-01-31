@@ -10,9 +10,11 @@ const ROLE_PERMISSIONS = {
 } as const
 
 type ProjectRole = keyof typeof ROLE_PERMISSIONS
+type Permission = (typeof ROLE_PERMISSIONS)[ProjectRole][number]
 
-function hasPermission(role: ProjectRole, permission: string): boolean {
-  return ROLE_PERMISSIONS[role]?.includes(permission as any) ?? false
+function hasPermission(role: ProjectRole, permission: Permission): boolean {
+  const permissions = ROLE_PERMISSIONS[role] as readonly string[]
+  return permissions?.includes(permission) ?? false
 }
 
 // ============================================

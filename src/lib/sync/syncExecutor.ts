@@ -146,6 +146,7 @@ export interface SyncExecutorResult {
   downloadedCount: number
   uploadedCount: number
   deletedCount: number
+  mergedCount: number
 }
 
 /**
@@ -172,16 +173,19 @@ export async function executeSyncPlan(
     logs.push(`[${timestamp}] ${msg}`)
   }
 
+  const autoMergedCount = plan.autoMerged?.length ?? 0
   const totalOps =
     plan.downloads.length +
     plan.uploads.length +
     plan.localDeletes.length +
-    plan.cloudDeletes.length
+    plan.cloudDeletes.length +
+    autoMergedCount
 
   let completed = 0
   let downloadedCount = 0
   let uploadedCount = 0
   let deletedCount = 0
+  let mergedCount = 0
 
   const updateProgress = (message: string) => {
     onProgress({
@@ -250,7 +254,91 @@ export async function executeSyncPlan(
       }
     }
 
-    // 2. Uploads (Local → Cloud)
+    // 2. Auto-merged files (write merged content to local + upload to cloud)
+    if (autoMergedCount > 0) {
+      addLog(`Auto-merging ${autoMergedCount} files...`)
+      updateProgress("Applying auto-merges...")
+
+      const mergedFilesToWrite: Array<{ path: string; content: string; encoding: "utf8" }> = []
+      const mergedFilesToUpload: Array<{
+        storageId: Id<"_storage">
+        fileName: string
+        filePath: string
+        fileType: string
+        sizeBytes: number
+        checksum: string
+      }> = []
+
+      for (const op of plan.autoMerged!) {
+        if (!op.mergeDetails) continue
+
+        try {
+          const mimeType = getMimeType(op.path)
+          const mergedContent = op.mergeDetails.mergedContent
+
+          // Queue for local write
+          mergedFilesToWrite.push({
+            path: op.path,
+            content: mergedContent,
+            encoding: "utf8",
+          })
+
+          // Upload merged content to cloud
+          const uploadUrl = await generateUploadUrl()
+          const blob = new Blob([mergedContent], { type: mimeType })
+
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": mimeType },
+            body: blob,
+          })
+
+          if (response.ok) {
+            const { storageId } = await response.json()
+
+            // Compute hash for merged content
+            const encoder = new TextEncoder()
+            const data = encoder.encode(mergedContent)
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data)
+            const hashArray = Array.from(new Uint8Array(hashBuffer))
+            const checksum = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+
+            mergedFilesToUpload.push({
+              storageId,
+              fileName: op.path.split("/").pop() || op.path,
+              filePath: op.path,
+              fileType: mimeType,
+              sizeBytes: blob.size,
+              checksum,
+            })
+          }
+
+          addLog(
+            `⊕ Auto-merged: ${op.path} (${op.mergeDetails.localChanges}L + ${op.mergeDetails.cloudChanges}C)`
+          )
+          mergedCount++
+          completed++
+          updateProgress(`Merged: ${op.path}`)
+        } catch (err) {
+          addLog(`⚠ Failed to merge ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
+        }
+      }
+
+      // Write merged files locally
+      if (mergedFilesToWrite.length > 0) {
+        await window.electronAPI.sync.writeFiles({
+          projectPath,
+          files: mergedFilesToWrite,
+        })
+      }
+
+      // Save merged files to cloud
+      if (mergedFilesToUpload.length > 0) {
+        await saveFiles({ projectId, userId, files: mergedFilesToUpload })
+      }
+    }
+
+    // 3. Uploads (Local → Cloud)
     if (plan.uploads.length > 0) {
       addLog(`Uploading ${plan.uploads.length} files to cloud...`)
       updateProgress("Uploading files...")
@@ -343,7 +431,7 @@ export async function executeSyncPlan(
       }
     }
 
-    // 3. Local Deletes
+    // 4. Local Deletes
     if (plan.localDeletes.length > 0) {
       addLog(`Deleting ${plan.localDeletes.length} local files...`)
       updateProgress("Cleaning up local files...")
@@ -365,7 +453,7 @@ export async function executeSyncPlan(
       }
     }
 
-    // 4. Cloud Deletes
+    // 5. Cloud Deletes
     if (plan.cloudDeletes.length > 0) {
       addLog(`Marking ${plan.cloudDeletes.length} cloud files as deleted...`)
       updateProgress("Cleaning up cloud files...")
@@ -396,6 +484,7 @@ export async function executeSyncPlan(
       downloadedCount,
       uploadedCount,
       deletedCount,
+      mergedCount,
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error"
@@ -415,6 +504,7 @@ export async function executeSyncPlan(
       downloadedCount,
       uploadedCount,
       deletedCount,
+      mergedCount,
     }
   }
 }

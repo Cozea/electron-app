@@ -4,7 +4,13 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions } from "@/stores/useTerminalStore"
-import { getDevServerConfig } from "@/utils/projectDetector"
+import {
+    getDevServerConfig,
+    detectPackageManager,
+    getInstallCommand,
+    checkDependenciesInstalled,
+    hasPackageJson,
+} from "@/utils/projectDetector"
 
 interface ServerControlProps {
     projectPath?: string | null
@@ -72,6 +78,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         // Handle output from terminal to detect server ready
         const unsubOutput = window.electronAPI.terminal.onOutput(({ terminalId, data }) => {
             if (terminalId === devServerTerminalIdRef.current) {
+                // Forward output to store so DevServerPanel can display it
+                actions.addServerOutput(data)
+
                 const detectedPort = extractPort(data)
                 if (detectedPort) {
                     actions.setServerPort(detectedPort)
@@ -141,6 +150,20 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             // Get dev server config (uses stored values or detects from package.json)
             const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
 
+            // Check if we need to install dependencies first
+            let command = config.command
+            const hasPackage = await hasPackageJson(projectPath)
+            if (hasPackage) {
+                const depsInstalled = await checkDependenciesInstalled(projectPath)
+                if (!depsInstalled) {
+                    // Chain install + dev command so both run in the same terminal
+                    const pm = await detectPackageManager(projectPath)
+                    const installCmd = getInstallCommand(pm)
+                    command = `${installCmd} && ${config.command}`
+                    console.log(`[DevServer] Dependencies missing, will run: ${command}`)
+                }
+            }
+
             // Create a terminal for the dev server
             const result = await window.electronAPI.terminal.create({
                 projectPath,
@@ -165,18 +188,20 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 // Open the terminal panel
                 setPanelOpen(true)
 
-                // Send the dev command to the terminal
+                // Send the command to the terminal
                 // Small delay to ensure terminal is ready
                 setTimeout(() => {
                     window.electronAPI.terminal.input({
                         terminalId: result.terminalId!,
-                        data: `${config.command}\r`
+                        data: `${command}\r`
                     })
                 }, 100)
 
                 actions.setServerPort(config.port)
 
                 // Set a timeout fallback in case ready patterns don't match
+                // Use longer timeout if installing dependencies
+                const timeout = command.includes('install') ? 120000 : 15000
                 clearReadyTimeout()
                 readyTimeoutRef.current = setTimeout(() => {
                     const currentStatus = useProjectPagesStore.getState().serverStatus
@@ -184,7 +209,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                         console.log('[DevServer] Timeout: assuming server is ready')
                         actions.setServerStatus('running')
                     }
-                }, 15000) // 15 seconds
+                }, timeout)
             } else {
                 actions.setServerStatus('error')
                 actions.addServerOutput(`Error: ${result.error}\n`)

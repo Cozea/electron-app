@@ -207,8 +207,20 @@ export const getLock = query({
     const lockedByUser =
       lock.lockedBy ? await ctx.db.get(lock.lockedBy) : null
 
+    // Calculate traffic light color
+    let trafficLight: 'green' | 'yellow' | 'red' = 'green'
+    if (lock.status === 'locked') {
+      // Check if it's an agent lock
+      if (lock.agentId) {
+        trafficLight = 'red' // Agent working
+      } else {
+        trafficLight = 'yellow' // Human editing
+      }
+    }
+
     return {
       ...lock,
+      trafficLight,
       lockedByUser: lockedByUser
         ? {
             id: lockedByUser._id as Id<"users">,
@@ -217,6 +229,192 @@ export const getLock = query({
           }
         : null,
     }
+  },
+})
+
+/**
+ * Acquire a lock for an AI agent.
+ * Agents get exclusive locks (red light) that block other agents.
+ * Humans can still view but see a warning.
+ */
+export const acquireAgentLock = mutation({
+  args: {
+    projectId: v.id("projects"),
+    filePath: v.string(),
+    agentId: v.string(),
+    agentName: v.optional(v.string()),
+    taskDescription: v.optional(v.string()),
+    ttlMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const ttlMs = clampTtlMs(args.ttlMs ?? 60_000) // 1 minute default for agents
+    const filePath = normalizeFilePath(args.filePath)
+
+    const existing = await ctx.db
+      .query("projectFileLocks")
+      .withIndex("by_project_and_path", (q) =>
+        q.eq("projectId", args.projectId).eq("filePath", filePath)
+      )
+      .first()
+
+    // No lock: create it
+    if (!existing) {
+      const lockId = await ctx.db.insert("projectFileLocks", {
+        projectId: args.projectId,
+        filePath,
+        status: "locked",
+        agentId: args.agentId,
+        agentName: args.agentName ?? "AI Agent",
+        taskDescription: args.taskDescription,
+        lockedAt: now,
+        expiresAt: now + ttlMs,
+      })
+
+      return {
+        acquired: true as const,
+        lockId,
+        filePath,
+        expiresAt: now + ttlMs,
+      }
+    }
+
+    // Free: take it
+    if (existing.status === "free") {
+      await ctx.db.patch(existing._id, {
+        status: "locked",
+        agentId: args.agentId,
+        agentName: args.agentName ?? "AI Agent",
+        taskDescription: args.taskDescription,
+        lockedBy: undefined,
+        lockedAt: now,
+        expiresAt: now + ttlMs,
+      })
+
+      return {
+        acquired: true as const,
+        lockId: existing._id,
+        filePath,
+        expiresAt: now + ttlMs,
+      }
+    }
+
+    // Locked by us (same agent): renew
+    if (existing.status === "locked" && existing.agentId === args.agentId) {
+      await ctx.db.patch(existing._id, {
+        lockedAt: now,
+        expiresAt: now + ttlMs,
+        taskDescription: args.taskDescription,
+      })
+
+      return {
+        acquired: true as const,
+        lockId: existing._id,
+        filePath,
+        expiresAt: now + ttlMs,
+      }
+    }
+
+    // Locked by another agent but expired: steal it
+    if (
+      existing.status === "locked" &&
+      existing.agentId &&
+      existing.expiresAt &&
+      existing.expiresAt < now
+    ) {
+      await ctx.db.patch(existing._id, {
+        status: "locked",
+        agentId: args.agentId,
+        agentName: args.agentName ?? "AI Agent",
+        taskDescription: args.taskDescription,
+        lockedBy: undefined,
+        lockedAt: now,
+        expiresAt: now + ttlMs,
+      })
+
+      return {
+        acquired: true as const,
+        lockId: existing._id,
+        filePath,
+        expiresAt: now + ttlMs,
+        stolen: true as const,
+      }
+    }
+
+    // Locked by a human: agent should wait
+    if (existing.status === "locked" && existing.lockedBy) {
+      const lockedByUser = await ctx.db.get(existing.lockedBy)
+      return {
+        acquired: false as const,
+        reason: "human-editing",
+        lockedBy: lockedByUser ? displayName(lockedByUser) : "a user",
+      }
+    }
+
+    // Locked by another agent: wait
+    return {
+      acquired: false as const,
+      reason: "agent-working",
+      lockedBy: existing.agentName ?? "another agent",
+      taskDescription: existing.taskDescription,
+      expiresAt: existing.expiresAt,
+    }
+  },
+})
+
+/**
+ * Release an agent lock.
+ * Sets the lock to 'free' with a short cooldown.
+ */
+export const releaseAgentLock = mutation({
+  args: {
+    projectId: v.id("projects"),
+    filePath: v.string(),
+    agentId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const filePath = normalizeFilePath(args.filePath)
+
+    const existing = await ctx.db
+      .query("projectFileLocks")
+      .withIndex("by_project_and_path", (q) =>
+        q.eq("projectId", args.projectId).eq("filePath", filePath)
+      )
+      .first()
+
+    if (!existing) {
+      return { released: true as const }
+    }
+
+    // Only the lock owner can release
+    if (existing.agentId !== args.agentId) {
+      return { released: false as const }
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: "free",
+      agentId: undefined,
+      agentName: undefined,
+      taskDescription: undefined,
+      lockedBy: undefined,
+      lockedAt: undefined,
+      expiresAt: undefined,
+    })
+
+    return { released: true as const }
+  },
+})
+
+/**
+ * Get all locks for a project (for UI display).
+ */
+export const getProjectLocks = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("projectFileLocks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
   },
 })
 

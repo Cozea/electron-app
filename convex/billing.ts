@@ -8,8 +8,9 @@
  */
 
 import { internalMutation, mutation, query } from "./_generated/server"
+import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
-import type { Doc } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import { getPlanCredits, CREDIT_PACKS, type CreditPackType } from "./lib/modelTiers"
 
 // Minimum overage threshold for invoice generation (500 cents = $5)
@@ -228,7 +229,7 @@ export const checkBillingPeriodResets = internalMutation({
  * Can be called directly or via the batch check
  */
 async function resetBillingPeriodForOrg(
-  ctx: { db: any },
+  ctx: { db: DatabaseWriter },
   org: Doc<"organizations">
 ) {
   const now = Date.now()
@@ -247,7 +248,7 @@ async function resetBillingPeriodForOrg(
   // Finalize any draft invoices from the old period
   const draftInvoice = await ctx.db
     .query("invoices")
-    .withIndex("by_organization_and_status", (q: any) =>
+    .withIndex("by_organization_and_status", (q) =>
       q.eq("organizationId", org._id).eq("status", "draft")
     )
     .first()
@@ -419,13 +420,13 @@ export const recordCreditPackPurchaseForServer = mutation({
 
 // Shared handler for credit pack purchases
 async function recordCreditPackPurchaseHandler(
-  ctx: { db: any },
+  ctx: { db: DatabaseWriter },
   args: {
-    organizationId: any
+    organizationId: Id<"organizations">
     packType: "starter" | "plus" | "pro" | "max"
     stripePaymentIntentId: string
     stripeCheckoutSessionId?: string
-    purchasedBy?: any
+    purchasedBy?: Id<"users">
   }
 ) {
   const now = Date.now()
@@ -433,7 +434,7 @@ async function recordCreditPackPurchaseHandler(
   // Check for duplicate (idempotency)
   const existing = await ctx.db
     .query("creditLots")
-    .withIndex("by_stripe_payment", (q: any) =>
+    .withIndex("by_stripe_payment", (q) =>
       q.eq("stripePaymentIntentId", args.stripePaymentIntentId)
     )
     .first()
@@ -690,9 +691,9 @@ export const updateSubscriptionForServer = mutation({
 
 // Shared handler for subscription updates
 async function updateSubscriptionHandler(
-  ctx: { db: any },
+  ctx: { db: DatabaseWriter },
   args: {
-    organizationId: any
+    organizationId: Id<"organizations">
     plan: "free" | "pro" | "max" | "team" | "enterprise"
     status: "active" | "canceled" | "past_due" | "trialing"
     stripeCustomerId?: string

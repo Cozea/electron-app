@@ -56233,8 +56233,8 @@ function decodeNumericCharacterReference(value, base) {
     code2 < 9 || code2 === 11 || code2 > 13 && code2 < 32 || // Control character (DEL) of C0, and C1 controls.
     code2 > 126 && code2 < 160 || // Lone high surrogates and low surrogates.
     code2 > 55295 && code2 < 57344 || // Noncharacters.
-    code2 > 64975 && code2 < 65008 || /* eslint-disable no-bitwise */
-    (code2 & 65535) === 65535 || (code2 & 65535) === 65534 || /* eslint-enable no-bitwise */
+    code2 > 64975 && code2 < 65008 ||  
+    (code2 & 65535) === 65535 || (code2 & 65535) === 65534 ||  
     // Out of range
     code2 > 1114111
   ) {
@@ -61441,7 +61441,7 @@ class VFileMessage extends Error {
    * @returns
    *   Instance of `VFileMessage`.
    */
-  // eslint-disable-next-line complexity
+   
   constructor(causeOrReason, optionsOrParentOrPlace, origin) {
     super();
     if (typeof optionsOrParentOrPlace === "string") {
@@ -70998,7 +70998,7 @@ var INITIAL = StateStackImpl.NULL;
 const defaultSubsetRegex = /["&'<>`]/g;
 const surrogatePairsRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
 const controlCharactersRegex = (
-  // eslint-disable-next-line no-control-regex, unicorn/no-hex-escape
+  // eslint-disable-next-line unicorn/no-hex-escape
   /[\x01-\t\v\f\x0E-\x1F\x7F\x81\x8D\x8F\x90\x9D\xA0-\uFFFF]/g
 );
 const regexEscapeRegex = /[|\\{}()[\]^$+*?.]/g;
@@ -175058,12 +175058,12 @@ const DATA_ATTR = seal(/^data-[\-\w.\u00B7-\uFFFF]+$/);
 const ARIA_ATTR = seal(/^aria-[\-\w]+$/);
 const IS_ALLOWED_URI = seal(
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-  // eslint-disable-line no-useless-escape
+   
 );
 const IS_SCRIPT_OR_DATA = seal(/^(?:\w+script|data):/i);
 const ATTR_WHITESPACE = seal(
   /[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g
-  // eslint-disable-line no-control-regex
+   
 );
 const DOCTYPE_NAME = seal(/^html$/i);
 const CUSTOM_ELEMENT = seal(/^[a-z][.\w]*(-[.\w]+)+$/i);
@@ -175515,7 +175515,7 @@ function createDOMPurify() {
     return createNodeIterator.call(
       root2.ownerDocument || root2,
       root2,
-      // eslint-disable-next-line no-bitwise
+       
       NodeFilter2.SHOW_ELEMENT | NodeFilter2.SHOW_COMMENT | NodeFilter2.SHOW_TEXT | NodeFilter2.SHOW_PROCESSING_INSTRUCTION | NodeFilter2.SHOW_CDATA_SECTION,
       null
     );
@@ -314696,7 +314696,7 @@ const equalityDeep = (a2, b2) => {
     case ArrayBuffer:
       a2 = new Uint8Array(a2);
       b2 = new Uint8Array(b2);
-    // eslint-disable-next-line no-fallthrough
+     
     case Uint8Array: {
       if (a2.byteLength !== b2.byteLength) {
         return false;
@@ -332199,7 +332199,7 @@ function ServerControl({ projectPath, storedDevCommand, storedDevPort }) {
   }, [projectPath, actions, clearReadyTimeout, removeTerminal]);
   reactExports.useEffect(() => {
     const stripAnsi2 = (input) => (
-      // eslint-disable-next-line no-control-regex
+       
       input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, "")
     );
     const extractPort = (input) => {

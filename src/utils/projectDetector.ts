@@ -252,7 +252,7 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
     const config = FRAMEWORK_CONFIGS[framework]
 
     // Override dev command if specified in package.json scripts
-    let devCommand = config.devCommand
+    const devCommand = config.devCommand
     let devPort = config.devPort
 
     // Try to detect port from scripts
@@ -313,4 +313,63 @@ export async function getDevServerConfig(
 
   const info = await detectFramework(projectPath)
   return { command: info.devCommand, port: info.devPort }
+}
+
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+
+/**
+ * Detect which package manager is used in the project
+ */
+export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
+  const lockFiles: { file: string; manager: PackageManager }[] = [
+    { file: 'bun.lockb', manager: 'bun' },
+    { file: 'pnpm-lock.yaml', manager: 'pnpm' },
+    { file: 'yarn.lock', manager: 'yarn' },
+    { file: 'package-lock.json', manager: 'npm' },
+  ]
+
+  for (const { file, manager } of lockFiles) {
+    try {
+      const result = await window.electronAPI.project.readFile({ projectPath, filePath: file })
+      if (result.success) return manager
+    } catch { /* continue */ }
+  }
+  return 'npm'
+}
+
+/**
+ * Get the install command for a package manager
+ */
+export function getInstallCommand(pm: PackageManager): string {
+  const commands: Record<PackageManager, string> = {
+    bun: 'bun install',
+    pnpm: 'pnpm install',
+    yarn: 'yarn install',
+    npm: 'npm install',
+  }
+  return commands[pm]
+}
+
+/**
+ * Check if dependencies are installed (node_modules exists and has content)
+ */
+export async function checkDependenciesInstalled(projectPath: string): Promise<boolean> {
+  try {
+    const entries = await window.electronAPI.fs.readDir(`${projectPath}/node_modules`)
+    return entries && entries.length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check if package.json exists
+ */
+export async function hasPackageJson(projectPath: string): Promise<boolean> {
+  try {
+    const result = await window.electronAPI.project.readFile({ projectPath, filePath: 'package.json' })
+    return result.success && !!result.content
+  } catch {
+    return false
+  }
 }

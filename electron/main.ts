@@ -1324,6 +1324,49 @@ ipcMain.handle(
   }
 )
 
+// Rename/move a file or directory within project folder
+ipcMain.handle(
+  'project:renameFile',
+  async (
+    _event,
+    {
+      projectPath,
+      oldPath,
+      newPath,
+    }: {
+      projectPath: string
+      oldPath: string
+      newPath: string
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const fullOldPath = resolvePathWithinDirectory(projectPath, oldPath)
+      const fullNewPath = resolvePathWithinDirectory(projectPath, newPath)
+
+      if (!fs.existsSync(fullOldPath)) {
+        return { success: false, error: 'Source file not found' }
+      }
+
+      // Create parent directory of new path if it doesn't exist
+      const newDir = path.dirname(fullNewPath)
+      if (!fs.existsSync(newDir)) {
+        fs.mkdirSync(newDir, { recursive: true })
+      }
+
+      fs.renameSync(fullOldPath, fullNewPath)
+      console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`)
+
+      return { success: true }
+    } catch (error) {
+      console.error('[Project] Failed to rename file:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
 // Watch/unwatch a project folder for external filesystem edits.
 ipcMain.handle(
   'project:watchStart',

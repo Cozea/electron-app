@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server"
+import type { DatabaseReader, DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import {
@@ -70,7 +71,7 @@ interface DeductionResult {
  * 3. Overage (if enabled and under spending cap)
  */
 async function deductCredits(
-  ctx: { db: any },
+  ctx: { db: DatabaseWriter },
   organizationId: Id<"organizations">,
   creditsNeeded: number
 ): Promise<DeductionResult> {
@@ -113,10 +114,10 @@ async function deductCredits(
   // 2. Then, use purchased credit lots (oldest first, by purchase date - FIFO)
   const activeLots = await ctx.db
     .query("creditLots")
-    .withIndex("by_organization_and_status", (q: any) =>
+    .withIndex("by_organization_and_status", (q) =>
       q.eq("organizationId", organizationId).eq("status", "active")
     )
-    .collect() as Doc<"creditLots">[]
+    .collect()
 
   // Sort by purchase date (FIFO - oldest first)
   activeLots.sort((a, b) => a.purchasedAt - b.purchasedAt)
@@ -251,7 +252,7 @@ export const log = mutation({
     const modelTier = getModelTier(args.model)
 
     // Prepare the base usage record
-    const usageRecord: any = {
+    const usageRecord = {
       organizationId: args.organizationId,
       userId: args.userId,
       requestId: args.requestId,
@@ -273,6 +274,7 @@ export const log = mutation({
       rawFinishReason: args.rawFinishReason,
       keySource: args.keySource,
       timestamp: now,
+      creditSourceBreakdown: undefined as CreditSourceBreakdown | undefined,
     }
 
     // Only deduct credits if using organization keys
@@ -323,7 +325,7 @@ export const log = mutation({
  * Helper to update usage aggregates
  */
 async function updateAggregate(
-  ctx: { db: any },
+  ctx: { db: DatabaseWriter },
   args: {
     organizationId: Id<"organizations">
     model: string
@@ -338,7 +340,7 @@ async function updateAggregate(
 ) {
   const existing = await ctx.db
     .query("aiUsageAggregates")
-    .withIndex("by_organization_and_period", (q: any) =>
+    .withIndex("by_organization_and_period", (q) =>
       q
         .eq("organizationId", args.organizationId)
         .eq("period", period)
@@ -389,10 +391,10 @@ async function updateAggregate(
  * Internal function to check credits (can be called from other handlers)
  */
 async function checkCreditsInternal(
-  ctx: { db: any },
-  args: { organizationId: string; estimatedCredits: number }
+  ctx: { db: DatabaseReader },
+  args: { organizationId: Id<"organizations">; estimatedCredits: number }
 ) {
-  const org = await ctx.db.get(args.organizationId) as Doc<"organizations"> | null
+  const org = await ctx.db.get(args.organizationId)
   if (!org) {
     return {
       hasCredits: false,
@@ -408,10 +410,10 @@ async function checkCreditsInternal(
   // Sum active credit lots
   const activeLots = await ctx.db
     .query("creditLots")
-    .withIndex("by_organization_and_status", (q: any) =>
+    .withIndex("by_organization_and_status", (q) =>
       q.eq("organizationId", args.organizationId).eq("status", "active")
     )
-    .collect() as Doc<"creditLots">[]
+    .collect()
 
   const purchasedRemaining = activeLots.reduce(
     (sum, lot) => sum + lot.remainingCredits,
@@ -502,7 +504,7 @@ export const checkCredits = query({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    return checkCreditsInternal(ctx, { organizationId: args.organizationId as string, estimatedCredits: args.estimatedCredits })
+    return checkCreditsInternal(ctx, { organizationId: args.organizationId, estimatedCredits: args.estimatedCredits })
   },
 })
 
@@ -517,7 +519,7 @@ export const hasCredits = query({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    const result = await checkCreditsInternal(ctx, { organizationId: args.organizationId as string, estimatedCredits: args.estimatedCredits })
+    const result = await checkCreditsInternal(ctx, { organizationId: args.organizationId, estimatedCredits: args.estimatedCredits })
     return result.hasCredits
   },
 })
@@ -605,10 +607,10 @@ export const getCreditSummary = query({
     // Get active credit lots
     const activeLots = await ctx.db
       .query("creditLots")
-      .withIndex("by_organization_and_status", (q: any) =>
+      .withIndex("by_organization_and_status", (q) =>
         q.eq("organizationId", args.organizationId).eq("status", "active")
       )
-      .collect() as Doc<"creditLots">[]
+      .collect()
 
     const purchasedCreditsRemaining = activeLots.reduce(
       (sum, lot) => sum + lot.remainingCredits,

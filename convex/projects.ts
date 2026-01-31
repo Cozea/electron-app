@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server"
+import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 
@@ -13,7 +14,7 @@ function generateSlug(name: string): string {
 
 // Helper to ensure unique slug within organization
 async function ensureUniqueSlug(
-  ctx: any,
+  ctx: { db: DatabaseWriter },
   organizationId: Id<"organizations">,
   baseSlug: string,
   excludeProjectId?: Id<"projects">
@@ -24,7 +25,7 @@ async function ensureUniqueSlug(
   while (true) {
     const existing = await ctx.db
       .query("projects")
-      .withIndex("by_organization_and_slug", (q: any) =>
+      .withIndex("by_organization_and_slug", (q) =>
         q.eq("organizationId", organizationId).eq("slug", slug)
       )
       .first()
@@ -203,7 +204,7 @@ export const listForOrganization = query({
     ),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db
+    const query = ctx.db
       .query("projects")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
 

@@ -1,4 +1,37 @@
 import type { LocalFileEntry, CloudFileEntry, SyncPlan, SyncOperation } from "./types"
+import { syncCheckpointStore, type FileCheckpoint } from "./SyncCheckpointStore"
+import { threeWayMerge } from "./ThreeWayMerge"
+import type { Id } from "../../../convex/_generated/dataModel"
+
+/**
+ * Binary file extensions that cannot be merged.
+ */
+const BINARY_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "tiff", "svg",
+  "pdf", "zip", "gz", "tar", "rar", "7z",
+  "mp3", "wav", "ogg", "mp4", "mov", "avi", "webm",
+  "ttf", "otf", "woff", "woff2", "eot", "wasm",
+])
+
+/**
+ * Check if a file path is a binary file.
+ */
+function isBinaryPath(filePath: string): boolean {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? ""
+  return BINARY_EXTENSIONS.has(ext)
+}
+
+/**
+ * Options for 3-way merge during sync planning.
+ */
+export interface MergeOptions {
+  /** Project ID for loading checkpoints */
+  projectId: Id<"projects">
+  /** Callback to read local file content */
+  readLocalFile: (path: string) => Promise<string | null>
+  /** Callback to fetch cloud file content by storage ID */
+  fetchCloudFile: (storageId: string) => Promise<string | null>
+}
 
 /**
  * Compute a sync plan by comparing local and cloud file manifests.
@@ -24,6 +57,7 @@ export function computeSyncPlan(
     localDeletes: [],
     cloudDeletes: [],
     conflicts: [],
+    autoMerged: [],
     noChange: 0,
   }
 
@@ -272,6 +306,7 @@ export function createEmptySyncPlan(): SyncPlan {
     localDeletes: [],
     cloudDeletes: [],
     conflicts: [],
+    autoMerged: [],
     noChange: 0,
   }
 }
@@ -285,6 +320,129 @@ export function hasSyncOperations(plan: SyncPlan): boolean {
     plan.uploads.length > 0 ||
     plan.localDeletes.length > 0 ||
     plan.cloudDeletes.length > 0 ||
-    plan.conflicts.length > 0
+    plan.conflicts.length > 0 ||
+    (plan.autoMerged?.length ?? 0) > 0
   )
+}
+
+/**
+ * Compute a sync plan with 3-way merge support.
+ *
+ * This enhanced version attempts to auto-merge files when both local
+ * and cloud have been modified since the last sync, using Git-like
+ * 3-way merge with the checkpoint as the common ancestor.
+ */
+export async function computeSyncPlanWithMerge(
+  local: LocalFileEntry[],
+  cloud: CloudFileEntry[],
+  lastSyncTime: number | undefined,
+  cloudPathsAtLastSync: ReadonlySet<string> | undefined,
+  mergeOptions: MergeOptions
+): Promise<SyncPlan> {
+  // Start with standard plan computation
+  const plan = computeSyncPlan(local, cloud, lastSyncTime, cloudPathsAtLastSync)
+
+  // Try to auto-merge conflicts where possible
+  const remainingConflicts: SyncOperation[] = []
+
+  for (const conflict of plan.conflicts) {
+    // Skip delete-vs-modify conflicts - can't merge those
+    if (!conflict.localEntry || !conflict.cloudEntry) {
+      remainingConflicts.push(conflict)
+      continue
+    }
+
+    // Skip binary files
+    if (isBinaryPath(conflict.path)) {
+      console.log(`[SyncEngine] Cannot merge binary file: ${conflict.path}`)
+      remainingConflicts.push(conflict)
+      continue
+    }
+
+    // Try 3-way merge
+    const mergeResult = await attemptThreeWayMerge(
+      conflict.path,
+      conflict.localEntry,
+      conflict.cloudEntry,
+      mergeOptions
+    )
+
+    if (mergeResult) {
+      plan.autoMerged.push(mergeResult)
+    } else {
+      remainingConflicts.push(conflict)
+    }
+  }
+
+  // Replace conflicts with remaining (non-mergeable) conflicts
+  plan.conflicts = remainingConflicts
+
+  return plan
+}
+
+/**
+ * Attempt 3-way merge for a conflicting file.
+ */
+async function attemptThreeWayMerge(
+  path: string,
+  localFile: LocalFileEntry,
+  cloudFile: CloudFileEntry,
+  options: MergeOptions
+): Promise<SyncOperation | null> {
+  try {
+    // Get checkpoint (base content) for this file
+    const checkpoint = await syncCheckpointStore.getFileCheckpoint(
+      options.projectId,
+      path
+    )
+
+    if (!checkpoint) {
+      console.log(`[SyncEngine] No checkpoint for ${path}, cannot 3-way merge`)
+      return null
+    }
+
+    // Fetch current contents
+    const [localContent, cloudContent] = await Promise.all([
+      options.readLocalFile(path),
+      options.fetchCloudFile(cloudFile.storageId as unknown as string),
+    ])
+
+    if (localContent === null) {
+      console.log(`[SyncEngine] Could not read local file: ${path}`)
+      return null
+    }
+
+    if (cloudContent === null) {
+      console.log(`[SyncEngine] Could not fetch cloud file: ${path}`)
+      return null
+    }
+
+    // Attempt 3-way merge
+    const result = threeWayMerge.merge(checkpoint.content, localContent, cloudContent)
+
+    if (result.success) {
+      console.log(
+        `[SyncEngine] Auto-merged ${path}: ${result.stats.localChanges} local + ${result.stats.cloudChanges} cloud changes`
+      )
+
+      return {
+        type: "auto-merged",
+        path,
+        localEntry: localFile,
+        cloudEntry: cloudFile,
+        reason: `Auto-merged: ${result.stats.localChanges} local + ${result.stats.cloudChanges} cloud changes`,
+        mergeDetails: {
+          localChanges: result.stats.localChanges,
+          cloudChanges: result.stats.cloudChanges,
+          mergedContent: result.merged,
+        },
+      }
+    }
+
+    console.log(`[SyncEngine] Cannot auto-merge ${path}: ${result.stats.conflictCount} conflicts`)
+    return null
+  } catch (err) {
+    console.warn(`[SyncEngine] Error during 3-way merge for ${path}:`, err)
+    return null
+  }
 }

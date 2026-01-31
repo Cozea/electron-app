@@ -15,6 +15,16 @@ export const generateUploadUrl = mutation({
   },
 })
 
+// Get download URL for a file by storage ID
+export const getFileUrl = query({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId)
+  },
+})
+
 // Save uploaded file reference
 export const saveFile = mutation({
   args: {

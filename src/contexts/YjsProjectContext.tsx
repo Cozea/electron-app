@@ -15,18 +15,26 @@ import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import { YConvexProvider } from '@/lib/yjs/YConvexProvider'
 import { ProjectFilesPersistence } from '@/lib/yjs/ProjectFilesPersistence'
 import { YConvexAwarenessProvider } from '@/lib/yjs/YConvexAwarenessProvider'
+import { YjsIndexedDBProvider } from '@/lib/yjs/IndexedDBPersistence'
+import { useReconnectionSync, type DeleteConflict } from '@/hooks/useReconnectionSync'
 import type { Awareness } from 'y-protocols/awareness'
 
 interface YjsProjectContextValue {
   yjsDoc: YjsProjectDoc | null
   awareness: Awareness | null
   isConnected: boolean
+  /** Delete-vs-edit conflicts that need user resolution */
+  deleteConflicts: DeleteConflict[]
+  /** Resolve a delete conflict */
+  resolveDeleteConflict: (filePath: string, keepLocal: boolean) => Promise<void>
 }
 
 const YjsProjectContext = createContext<YjsProjectContextValue>({
   yjsDoc: null,
   awareness: null,
   isConnected: false,
+  deleteConflicts: [],
+  resolveDeleteConflict: async () => {},
 })
 
 /**
@@ -71,6 +79,7 @@ export function YjsProjectProvider({
   const providerRef = useRef<YConvexProvider | null>(null)
   const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
   const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
+  const indexedDBProviderRef = useRef<YjsIndexedDBProvider | null>(null)
   const lastAppliedTimestampRef = useRef(0)
   const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
   const convex = useConvex()
@@ -98,9 +107,18 @@ export function YjsProjectProvider({
     const initDoc = async () => {
       const doc = new YjsProjectDoc(projectId)
 
-      // Try to load existing snapshot
+      // 1. First, load from IndexedDB (offline-first)
+      // This restores any edits made while offline or before crash
+      indexedDBProviderRef.current = new YjsIndexedDBProvider(projectId, doc.doc)
+      await indexedDBProviderRef.current.waitForSync()
+
+      // 2. Then fetch Convex snapshot and apply if newer
+      // The Y.Doc from IndexedDB may have local-only edits not yet synced
+      // We merge the Convex state to get any remote changes we missed
       const snapshot = await convex.query(api.yjs.getLatestSnapshot, { projectId })
       if (snapshot?.snapshot) {
+        // Apply Convex snapshot - Yjs will automatically merge with local state
+        // Since we're using proper CRDT, concurrent edits will be preserved
         Y.applyUpdate(doc.doc, new Uint8Array(snapshot.snapshot), 'snapshot')
       }
 
@@ -143,6 +161,7 @@ export function YjsProjectProvider({
       providerRef.current?.destroy()
       awarenessProviderRef.current?.destroy()
       persistenceRef.current?.destroy()
+      indexedDBProviderRef.current?.destroy()
     }
   }, [projectId, userId, userName, convex, hasher])
 
@@ -215,12 +234,17 @@ export function YjsProjectProvider({
     }
   }, [yjsDoc, projectId, convex])
 
+  // Handle reconnection sync (merges local offline changes with server)
+  const { deleteConflicts, resolveConflict } = useReconnectionSync(projectId, yjsDoc)
+
   return (
     <YjsProjectContext.Provider
       value={{
         yjsDoc,
         awareness: yjsDoc?.awareness ?? null,
         isConnected: !!providerRef.current,
+        deleteConflicts,
+        resolveDeleteConflict: resolveConflict,
       }}
     >
       {children}

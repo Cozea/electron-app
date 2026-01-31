@@ -3055,6 +3055,35 @@ electron.ipcMain.handle(
   }
 );
 electron.ipcMain.handle(
+  "project:renameFile",
+  async (_event, {
+    projectPath,
+    oldPath,
+    newPath
+  }) => {
+    try {
+      const fullOldPath = resolvePathWithinDirectory(projectPath, oldPath);
+      const fullNewPath = resolvePathWithinDirectory(projectPath, newPath);
+      if (!fs.existsSync(fullOldPath)) {
+        return { success: false, error: "Source file not found" };
+      }
+      const newDir = path.dirname(fullNewPath);
+      if (!fs.existsSync(newDir)) {
+        fs.mkdirSync(newDir, { recursive: true });
+      }
+      fs.renameSync(fullOldPath, fullNewPath);
+      console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`);
+      return { success: true };
+    } catch (error) {
+      console.error("[Project] Failed to rename file:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
+  }
+);
+electron.ipcMain.handle(
   "project:watchStart",
   (_event, { projectPath }) => {
     return startProjectWatcher(projectPath);

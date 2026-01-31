@@ -85,6 +85,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
     readFile: (options) => electron.ipcRenderer.invoke("project:readFile", options),
     readFileBase64: (options) => electron.ipcRenderer.invoke("project:readFileBase64", options),
     listFiles: (options) => electron.ipcRenderer.invoke("project:listFiles", options),
+    renameFile: (options) => electron.ipcRenderer.invoke("project:renameFile", options),
     watchStart: (options) => electron.ipcRenderer.invoke("project:watchStart", options),
     watchStop: (options) => electron.ipcRenderer.invoke("project:watchStop", options)
   },

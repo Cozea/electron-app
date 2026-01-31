@@ -59068,7 +59068,7 @@ ${lanes.join("\n")}
             return false;
           case 106:
             return null;
-          // eslint-disable-line no-restricted-syntax
+           
           case 11:
             if (!isDoubleQuotedString(valueExpression)) {
               errors.push(createDiagnosticForNodeInSourceFile(sourceFile, valueExpression, Diagnostics.String_literal_with_double_quotes_expected));
@@ -142474,7 +142474,7 @@ ${lanes.join("\n")}
     }
     var nullTransformationContext = {
       factory,
-      // eslint-disable-line object-shorthand
+       
       getCompilerOptions: () => ({}),
       getEmitResolver: notImplemented,
       getEmitHost: notImplemented,
