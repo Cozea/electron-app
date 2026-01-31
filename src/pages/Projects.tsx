@@ -133,7 +133,6 @@ export function Projects() {
     })
 
     return result
-    return result
   }, [projects, statusFilter, sortBy])
 
   // Pagination Logic
