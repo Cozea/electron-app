@@ -602,8 +602,11 @@ export function ProjectPagesPage() {
     }
 
     const handleOpenCode = (file: string) => {
-        // Navigate to editor with file path
-        navigate(`/projects/${slug}?path=${encodeURIComponent(file)}`)
+        // Use full path when available so Files page can open/select the file in tree and tabs
+        const pathForUrl = projectPath
+            ? `${projectPath.replace(/\\/g, '/').replace(/\/+$/, '')}/${file.replace(/^[/\\]+/, '')}`
+            : file
+        navigate(`/projects/${slug}?path=${encodeURIComponent(pathForUrl)}`)
     }
 
     if (project === undefined) {

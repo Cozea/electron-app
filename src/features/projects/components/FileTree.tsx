@@ -7,7 +7,7 @@
  * - Proper state management via useFileExplorer hook
  */
 
-import { useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -17,6 +17,7 @@ import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { FileTreeNode } from './FileTreeNode'
 import { Loader2, FolderOpen } from 'lucide-react'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -78,6 +79,50 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
     }
   }, [setSearchParams])
 
+  // When opening a file (from URL or elsewhere), expand ancestor folders and ensure it's selected
+  const rootPath = syncContext?.projectPath ?? null
+  const activeFileFromStore = useFileTabsStore((state) =>
+    slug ? state.projectTabs[slug]?.activeFile ?? null : null
+  )
+  const selectedPathFromUrl = searchParams.get('path')
+  // Use active tab from store when available so tree stays in sync when switching tabs
+  const effectiveSelectedPath = activeFileFromStore ?? selectedPathFromUrl
+
+  // Normalize selected path for highlight: resolve to full path and forward slashes so it matches item.resource
+  const selectedPathForHighlight = (() => {
+    if (!effectiveSelectedPath) return null
+    const n = effectiveSelectedPath.replace(/\\/g, '/')
+    const r = rootPath ? rootPath.replace(/\\/g, '/') : ''
+    if (r && (n === r || n.startsWith(r + '/'))) return n
+    if (r && !n.startsWith('/') && !/^[a-zA-Z]:/.test(n)) return r + '/' + n
+    return n
+  })()
+
+  const selectedPath = effectiveSelectedPath
+  useEffect(() => {
+    if (!selectedPath || !rootPath || !root) return
+
+    const normalizedSelected = selectedPath.replace(/\\/g, '/')
+    const normalizedRoot = rootPath.replace(/\\/g, '/')
+    const relative = normalizedSelected.startsWith(normalizedRoot)
+      ? normalizedSelected.slice(normalizedRoot.length).replace(/^\/+/, '')
+      : normalizedSelected
+    const segments = relative.split('/').filter(Boolean)
+    const directorySegments = segments.slice(0, -1) // all but the file name
+
+    let current: ExplorerItem | null = root
+    const expandToFile = async () => {
+      for (const segment of directorySegments) {
+        if (!current?.isDirectory) break
+        const child = current.getChild(segment)
+        if (!child?.isDirectory) break
+        await expandNode(child)
+        current = child
+      }
+    }
+    void expandToFile()
+  }, [selectedPath, rootPath, root, expandNode])
+
   // No local path configured
   if (!syncContext?.projectPath) {
     return (
@@ -129,7 +174,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
               item={child}
               depth={0}
               isExpanded={expandedPaths.has(child.resource)}
-              selectedPath={searchParams.get('path')}
+              selectedPath={selectedPathForHighlight}
               onExpand={expandNode}
               onCollapse={collapseNode}
               onSelect={handleSelectFile}

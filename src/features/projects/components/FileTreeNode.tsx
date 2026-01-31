@@ -48,7 +48,10 @@ export function FileTreeNode({
   expandedPaths,
 }: FileTreeNodeProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const isSelected = selectedPath === item.resource
+  // Normalize both paths (forward slashes) so highlight works when URL and item.resource differ in format
+  const isSelected =
+    selectedPath != null &&
+    item.resource.replace(/\\/g, '/') === selectedPath.replace(/\\/g, '/')
 
   const handleToggle = useCallback(async (open: boolean) => {
     if (open) {
