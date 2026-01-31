@@ -48,6 +48,7 @@ import {
     MousePointer2,
     CheckCircle2,
     ChevronDown,
+    PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -61,11 +62,14 @@ export function ProjectPagesPage() {
 
     // Store state
     const { routes, serverStatus, serverPort, actions } = useProjectPagesStore()
+    const togglePagesListOpen = actions.togglePagesListOpen
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
     const { togglePanel } = useTerminalActions()
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
+    const closeVisualEditor = useVisualEditorStore((state) => state.close)
+    const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
     const { openWithScreenshot } = useAssistantPanelStore()
 
     // Local state
@@ -366,9 +370,10 @@ export function ProjectPagesPage() {
             if (e.key === 'Shift' && shiftInspectorActive) {
                 setShiftInspectorActive(false)
                 setInspectorEnabled(false)
-                // Clear selection when releasing Shift
+                // Clear selection and close inspector menu when releasing Shift
                 setSelectedElement(null)
                 setInspectedElement(null)
+                closeVisualEditor()
             }
         }
 
@@ -378,7 +383,7 @@ export function ProjectPagesPage() {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
         }
-    }, [shiftInspectorActive, bridgeReady, setSelectedElement, setInspectedElement])
+    }, [shiftInspectorActive, bridgeReady, setSelectedElement, setInspectedElement, closeVisualEditor])
 
     // Add a log entry
     const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -485,14 +490,15 @@ export function ProjectPagesPage() {
             if (shiftInspectorActive) {
                 setShiftInspectorActive(false)
             }
-            // Clear selection state when disabling inspector
+            // Clear selection state and close inspector menu when disabling inspector
             if (!newState) {
                 setSelectedElement(null)
                 setInspectedElement(null)
+                closeVisualEditor()
             }
             return newState
         })
-    }, [bridgeReady, inspectorEnabled, ensureBridgeReady, setSelectedElement, setInspectedElement, shiftInspectorActive])
+    }, [bridgeReady, inspectorEnabled, ensureBridgeReady, setSelectedElement, setInspectedElement, shiftInspectorActive, closeVisualEditor])
 
     // Handle visual editor style preview
     const handlePreviewStyle = useCallback((styles: Record<string, string>) => {
@@ -513,6 +519,13 @@ export function ProjectPagesPage() {
             })
         }
     }, [])
+
+    // When closing the inspector menu (X), also disable the inspector
+    const handleCloseInspectorSidebar = useCallback(() => {
+        setInspectorEnabled(false)
+        setSelectedElement(null)
+        setInspectedElement(null)
+    }, [setSelectedElement])
 
     // Handle apply changes from visual editor
     const handleApplyChanges = useCallback(() => {
@@ -956,6 +969,14 @@ export function ProjectPagesPage() {
                 ) : focusedPageIndex !== null && focusedRoute ? (
                     /* Focused/Slide View */
                     <div className="flex-1 flex overflow-hidden min-h-0 min-w-0 pt-9 bg-sidebar/60">
+                        {inspectorSide === 'left' && (
+                            <VisualEditorSidebar
+                                onPreviewStyle={handlePreviewStyle}
+                                onPreviewText={handlePreviewText}
+                                onApplyChanges={handleApplyChanges}
+                                onClose={handleCloseInspectorSidebar}
+                            />
+                        )}
                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                             {/* Preview area */}
                             <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
@@ -1031,14 +1052,14 @@ export function ProjectPagesPage() {
                                             key={route.path}
                                             onClick={() => setFocusedPageIndex(index)}
                                             className={cn(
-                                                "shrink-0 flex flex-col items-center gap-1 transition-all",
+                                                "group shrink-0 flex flex-col items-center gap-1 transition-all",
                                                 index === focusedPageIndex
                                                     ? "opacity-100"
                                                     : "opacity-50 hover:opacity-100"
                                             )}
                                         >
                                             <div className={cn(
-                                                "w-24 h-14 rounded border-2 overflow-hidden",
+                                                "w-24 h-14 rounded border-2 overflow-hidden relative",
                                                 index === focusedPageIndex
                                                     ? "border-primary ring-1 ring-primary/20"
                                                     : "border-border/40 hover:border-border"
@@ -1056,6 +1077,30 @@ export function ProjectPagesPage() {
                                                         <AppWindow className="h-3 w-3 text-muted-foreground/30" />
                                                     </div>
                                                 )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        togglePagesListOpen()
+                                                    }}
+                                                    className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                    aria-label="Toggle pages list"
+                                                >
+                                                    <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        handleOpenCode(route.file)
+                                                    }}
+                                                    className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                    aria-label="Open code file"
+                                                >
+                                                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                                </button>
                                             </div>
                                             <span className={cn(
                                                 "text-[10px] max-w-24 truncate",
@@ -1076,12 +1121,14 @@ export function ProjectPagesPage() {
                             </div>
                         </div>
                         </div>
-                        {/* Visual Editor Sidebar */}
-                        <VisualEditorSidebar
-                            onPreviewStyle={handlePreviewStyle}
-                            onPreviewText={handlePreviewText}
-                            onApplyChanges={handleApplyChanges}
-                        />
+                        {inspectorSide === 'right' && (
+                            <VisualEditorSidebar
+                                onPreviewStyle={handlePreviewStyle}
+                                onPreviewText={handlePreviewText}
+                                onApplyChanges={handleApplyChanges}
+                                onClose={handleCloseInspectorSidebar}
+                            />
+                        )}
                     </div>
                 ) : (
                     /* Grid View */

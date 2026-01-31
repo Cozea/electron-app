@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams, useLocation } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/sidebar"
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
+import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
@@ -91,11 +92,23 @@ const MAX_SECONDARY_WIDTH = 400
 export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRefreshing, className, ...props }: ProjectSidebarProps) {
     const navigate = useNavigate()
     const { slug } = useParams<{ slug: string }>()
+    const location = useLocation()
     const { currentOrganization, convexUserId } = useAuth()
+    const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
+    const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
+
+    const isPagesRoute = Boolean(slug && location.pathname === `/projects/${slug}/pages`)
 
     // Top-level active selection (e.g. "Files", "Tasks")
     // Default to Files per user expectation
     const [activeTab, setActiveTab] = React.useState<string | null>("Files")
+
+    // Keep rail selection in sync with route (e.g. when navigating to /pages)
+    React.useEffect(() => {
+        if (isPagesRoute) setActiveTab("Pages")
+        else if (slug && location.pathname === `/projects/${slug}/settings`) setActiveTab("Settings")
+        else if (slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`)) setActiveTab("Files")
+    }, [isPagesRoute, slug, location.pathname])
 
     // Track last seen timestamp for sync feed (triggers re-render when updated)
     const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
@@ -260,11 +273,12 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                                                 setLastSeenTimestamp(Date.now())
                                                             }
 
-                                                            if (hasSecondaryPanel) {
-                                                                // Toggle secondary panel for items that have one
+                                                            if (item.title === 'Pages') {
+                                                                setActiveTab('Pages')
+                                                                setPagesListOpen(false) // Pages list closed by default when entering page view
+                                                            } else if (hasSecondaryPanel) {
                                                                 setActiveTab(isActive ? null : item.title)
                                                             } else {
-                                                                // Close secondary panel for other items
                                                                 setActiveTab(null)
                                                             }
                                                         }}
@@ -304,23 +318,27 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                 </Sidebar>
             </div>
 
-            {/* 2. Secondary Sidebar (Context Panel) - Resizable */}
-            {activeTab && (
-                <div
-                    style={{
-                        "--sidebar-width": `${secondaryWidth}px`,
-                        width: secondaryWidth
-                    } as React.CSSProperties}
-                    className="h-full hidden md:flex relative"
-                >
+            {/* 2. Secondary Sidebar (Context Panel) - Resizable, width animates for smooth transition */}
+            <div
+                style={{
+                    "--sidebar-width": `${secondaryWidth}px`,
+                    width: (activeTab === 'Files') || (activeTab === 'Settings') || (isPagesRoute && pagesListOpen) ? secondaryWidth : 0,
+                    minWidth: 0,
+                    transition: 'width 200ms ease-in-out',
+                    overflow: 'hidden',
+                } as React.CSSProperties}
+                className="h-full hidden md:flex relative shrink-0"
+            >
+                {((activeTab === 'Files') || (activeTab === 'Settings') || (isPagesRoute && pagesListOpen)) && (
+                    <>
                     <Sidebar
                         side="left"
                         variant="sidebar"
                         collapsible="none"
-                        className="animate-in slide-in-from-left-5 duration-200 border-r-0 shrink-0 h-full bg-sidebar flex-1"
+                        className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0"
                     >
                         <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
-                            <h3 className="text-sm font-medium">{activeTab}</h3>
+                            <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
                             <div className="flex items-center gap-1">
                                 {activeTab === 'Files' && onRefreshFiles && (
                                     <button
@@ -333,7 +351,7 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                                     </button>
                                 )}
                                 <button
-                                    onClick={() => setActiveTab(null)}
+                                    onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
                                     className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
                                 >
                                     <Plus className="h-4 w-4 rotate-45" />
@@ -345,7 +363,7 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                             {activeTab === 'Files' && (
                                 fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
                             )}
-                            {activeTab === 'Pages' && <PagesList />}
+                            {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
                             {activeTab === 'Settings' && <SettingsSectionsList />}
                         </SidebarContent>
                     </Sidebar>
@@ -366,8 +384,9 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                             <GripVertical className="h-3 w-3 text-muted-foreground" />
                         </div>
                     </div>
-                </div>
-            )}
+                    </>
+                )}
+            </div>
         </div>
     )
 }

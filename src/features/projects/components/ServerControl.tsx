@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Play, Square, RefreshCw, ExternalLink } from "lucide-react"
+import { Play, Square, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
@@ -198,6 +198,23 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
     }, [projectPath, storedDevCommand, storedDevPort, actions, clearReadyTimeout, addTerminal, setPanelOpen])
 
+    // Auto-start dev server when entering the pages page (runs after handleStart is defined)
+    const hasAutoStartedRef = useRef(false)
+    useEffect(() => {
+        if (!projectPath) return
+        if (hasAutoStartedRef.current) return
+        const status = useProjectPagesStore.getState().serverStatus
+        if (status !== 'stopped' && status !== 'error') return
+        hasAutoStartedRef.current = true
+        void (async () => {
+            try {
+                await handleStart()
+            } catch (e) {
+                console.error('[ServerControl] Auto-start failed:', e)
+            }
+        })()
+    }, [projectPath, handleStart])
+
     const handleStop = useCallback(async () => {
         if (!devServerTerminalIdRef.current) return
 
@@ -220,12 +237,6 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             setIsUpdating(false)
         }
     }, [actions, clearReadyTimeout, removeTerminal])
-
-    const handleOpen = useCallback(() => {
-        if (serverPort) {
-            window.open(`http://localhost:${serverPort}`, '_blank')
-        }
-    }, [serverPort])
 
     return (
         <div className="flex items-center gap-2">
@@ -263,16 +274,6 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
-
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        onClick={handleOpen}
-                        title="Open in browser"
-                    >
-                        <ExternalLink className="h-4 w-4" />
-                    </Button>
 
                     <Button
                         size="sm"

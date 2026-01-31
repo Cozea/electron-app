@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 // Style state for pseudo-class editing
@@ -91,9 +92,23 @@ export interface SelectedElement {
   textContent?: string
 }
 
+export type InspectorSide = 'left' | 'right'
+
 interface VisualEditorState {
   // Whether the visual editor sidebar is open
   isOpen: boolean
+
+  // Which side of the window the inspector panel is on
+  inspectorSide: InspectorSide
+
+  // Switching sides: close anim on current side, then open anim on new side
+  isSwitchingSide: boolean
+  pendingInspectorSide: InspectorSide | null
+  openingAfterSwitch: boolean
+
+  // Actions for side switch (completeSideSwitch called when close transition ends)
+  completeSideSwitch: () => void
+  setOpeningAfterSwitchComplete: () => void
 
   // Currently selected element
   selectedElement: SelectedElement | null
@@ -117,6 +132,8 @@ interface VisualEditorState {
   open: () => void
   close: () => void
   toggle: () => void
+  setInspectorSide: (side: InspectorSide) => void
+  toggleInspectorSide: () => void
 
   setSelectedElement: (element: SelectedElement | null) => void
   clearSelectedElement: () => void
@@ -157,13 +174,18 @@ const initialState = {
   styleState: 'default' as StyleState,
   activeTab: 'styling' as EditorTab,
   searchQuery: '',
+  inspectorSide: 'right' as InspectorSide,
+  isSwitchingSide: false,
+  pendingInspectorSide: null,
+  openingAfterSwitch: false,
 }
 
 export const useVisualEditorStore = create<VisualEditorState>()(
-  immer((set, get) => ({
-    ...initialState,
+  persist(
+    immer((set, get) => ({
+      ...initialState,
 
-    open: () => set((state) => {
+      open: () => set((state) => {
       state.isOpen = true
     }),
 
@@ -176,6 +198,32 @@ export const useVisualEditorStore = create<VisualEditorState>()(
 
     toggle: () => set((state) => {
       state.isOpen = !state.isOpen
+    }),
+
+    setInspectorSide: (inspectorSide) => set((state) => {
+      state.inspectorSide = inspectorSide
+    }),
+
+    toggleInspectorSide: () => set((state) => {
+      if (state.isSwitchingSide || state.openingAfterSwitch) return
+      if (state.isOpen) {
+        state.isSwitchingSide = true
+        state.pendingInspectorSide = state.inspectorSide === 'left' ? 'right' : 'left'
+      } else {
+        state.inspectorSide = state.inspectorSide === 'left' ? 'right' : 'left'
+      }
+    }),
+
+    completeSideSwitch: () => set((state) => {
+      if (!state.isSwitchingSide || state.pendingInspectorSide == null) return
+      state.inspectorSide = state.pendingInspectorSide
+      state.isSwitchingSide = false
+      state.pendingInspectorSide = null
+      state.openingAfterSwitch = true
+    }),
+
+    setOpeningAfterSwitchComplete: () => set((state) => {
+      state.openingAfterSwitch = false
     }),
 
     setSelectedElement: (element) => set((state) => {
@@ -237,5 +285,11 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     }),
 
     reset: () => set(() => initialState),
-  }))
+  })),
+    {
+      name: 'visual-editor-store',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ inspectorSide: state.inspectorSide }),
+    }
+  )
 )

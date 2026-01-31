@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from 'react'
-import { X, Plus, History } from 'lucide-react'
+import { Plus, History } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -21,7 +21,6 @@ interface AssistantPanelProps {
 export function AssistantPanel({ className, projectPath, projectName, projectSlug }: AssistantPanelProps) {
   const {
     mode,
-    close,
     requestClearChat,
     panelWidth: storedWidth,
     setPanelWidth,
@@ -153,15 +152,6 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
               title="Conversation History"
             >
               <History className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-destructive/10 hover:text-destructive"
-              onClick={close}
-              aria-label="Close AI assistant panel"
-            >
-              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
