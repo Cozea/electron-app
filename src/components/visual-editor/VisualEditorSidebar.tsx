@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Settings2,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -843,6 +844,9 @@ export function VisualEditorSidebar({
     styleState,
     activeTab,
     searchQuery,
+    inspectorSide,
+    isSwitchingSide,
+    openingAfterSwitch,
     close,
     clearPendingChanges,
     updatePendingText,
@@ -852,6 +856,9 @@ export function VisualEditorSidebar({
     setStyleState,
     setActiveTab,
     setSearchQuery,
+    toggleInspectorSide,
+    completeSideSwitch,
+    setOpeningAfterSwitchComplete,
   } = useVisualEditorStore()
 
   const handleClose = useCallback(() => {
@@ -916,10 +923,10 @@ export function VisualEditorSidebar({
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging) return
-    const delta = dragStartX.current - e.clientX
+    const delta = inspectorSide === 'left' ? e.clientX - dragStartX.current : dragStartX.current - e.clientX
     const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, dragStartWidth.current + delta))
     setPanelWidth(newWidth)
-  }, [isDragging])
+  }, [isDragging, inspectorSide])
 
   const handlePointerUp = useCallback(() => {
     setIsDragging(false)
@@ -977,28 +984,53 @@ export function VisualEditorSidebar({
     return matchesSearch(sectionName, searchQuery)
   }, [searchQuery])
 
+  const closedTransform = inspectorSide === 'left' ? 'translateX(-100%)' : 'translateX(100%)'
+
+  // When switching sides: close anim on current side, then open anim on new side
+  const visuallyOpen = isOpen && !isSwitchingSide && !openingAfterSwitch
+
+  const transitionStyles = !isDragging
+    ? 'transform 250ms ease-out, width 250ms ease-out, min-width 250ms ease-out, max-width 250ms ease-out, opacity 250ms ease-out'
+    : 'none'
+
+  const handleTransitionEnd = useCallback(
+    (e: React.TransitionEvent) => {
+      if (e.target !== e.currentTarget) return
+      if (isSwitchingSide) completeSideSwitch()
+    },
+    [isSwitchingSide, completeSideSwitch]
+  )
+
+  useEffect(() => {
+    if (!openingAfterSwitch) return
+    const id = requestAnimationFrame(() => setOpeningAfterSwitchComplete())
+    return () => cancelAnimationFrame(id)
+  }, [openingAfterSwitch, setOpeningAfterSwitchComplete])
+
   return (
     <div
       className={cn(
         'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative',
-        !isDragging && 'transition-all duration-300 ease-in-out',
         className
       )}
       style={{
-        width: isOpen ? panelWidth : 0,
-        minWidth: isOpen ? panelWidth : 0,
-        maxWidth: isOpen ? MAX_PANEL_WIDTH : 0,
+        width: visuallyOpen ? panelWidth : 0,
+        minWidth: visuallyOpen ? panelWidth : 0,
+        maxWidth: visuallyOpen ? MAX_PANEL_WIDTH : 0,
         flexGrow: 0,
         flexShrink: 0,
-        pointerEvents: isOpen ? 'auto' : 'none',
-        transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-        transition: isDragging ? 'none' : 'transform 300ms ease, width 300ms ease',
+        pointerEvents: visuallyOpen ? 'auto' : 'none',
+        transform: visuallyOpen ? 'translateX(0)' : closedTransform,
+        opacity: visuallyOpen ? 1 : 0,
+        transition: transitionStyles,
       }}
+      onTransitionEnd={handleTransitionEnd}
     >
-      {isOpen && (
+      {visuallyOpen && (
         <div
           className={cn(
-            'absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize z-50',
+            'absolute top-0 bottom-0 w-1.5 cursor-ew-resize z-50',
+            inspectorSide === 'left' ? 'right-0' : 'left-0',
             'hover:bg-sidebar-accent transition-colors',
             isDragging && 'bg-sidebar-border/80'
           )}
@@ -1017,7 +1049,7 @@ export function VisualEditorSidebar({
           width: panelWidth,
           minWidth: panelWidth,
           maxWidth: MAX_PANEL_WIDTH,
-          transition: isDragging ? 'none' : 'width 300ms ease',
+          transition: !isDragging ? 'width 250ms ease-out' : 'none',
         }}
       >
         {/* Header */}
@@ -1039,14 +1071,25 @@ export function VisualEditorSidebar({
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={handleClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={toggleInspectorSide}
+              aria-label="Move inspector to other side"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Top-level Tabs */}

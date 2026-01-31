@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { PanelLeftIcon, PanelLeftCloseIcon } from "lucide-react"
+import { PanelLeftIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -25,10 +25,50 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+
+function getSidebarStateFromCookie(): boolean | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(
+    new RegExp("(^| )" + SIDEBAR_COOKIE_NAME + "=([^;]+)")
+  )
+  const value = match ? match[2] : null
+  if (value === "true") return true
+  if (value === "false") return false
+  return null
+}
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+
+/** Same as Lucide PanelLeft but with the left side filled (panel open state) */
+function PanelLeftFilledIcon({ className, ...props }: React.SVGAttributes<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      {/* Left half of rounded rect (same shape as PanelLeft left side), filled */}
+      <path
+        d="M5 3 L9 3 L9 21 L5 21 Q3 21 3 19 L3 5 Q3 3 5 3 Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      {/* Same as PanelLeft: outer rect + vertical divider */}
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+    </svg>
+  )
+}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -69,7 +109,11 @@ function SidebarProvider({
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen)
+  // Initialize from cookie so the user's last open/closed choice is restored.
+  const [_open, _setOpen] = React.useState(() => {
+    const saved = getSidebarStateFromCookie()
+    return saved !== null ? saved : defaultOpen
+  })
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -271,7 +315,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      {open ? <PanelLeftIcon /> : <PanelLeftCloseIcon />}
+      {open ? <PanelLeftFilledIcon /> : <PanelLeftIcon />}
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
