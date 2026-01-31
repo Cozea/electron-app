@@ -802,6 +802,9 @@ export default defineSchema({
     addedBy: v.id("users"),
     // Per-user local path for this project (machine-specific)
     localPath: v.optional(v.string()),
+    // Sync tracking (per-user, per-project)
+    lastSyncAt: v.optional(v.number()),
+    cloudPathsAtLastSync: v.optional(v.array(v.string())),
   })
     .index("by_project", ["projectId"])
     .index("by_user", ["userId"])
@@ -1181,7 +1184,8 @@ export default defineSchema({
     changeType: v.union(
       v.literal("create"),
       v.literal("modify"),
-      v.literal("delete")
+      v.literal("delete"),
+      v.literal("rename")
     ),
 
     // Content for diff viewing (stored for history)
@@ -1271,4 +1275,36 @@ export default defineSchema({
     .index("by_change", ["changeId"])
     .index("by_project", ["projectId"])
     .index("by_user", ["userId"]),
+
+  // Project assets (images, videos, PDFs, etc.)
+  projectAssets: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    storageId: v.optional(v.id("_storage")), // Optional for folders
+    mimeType: v.string(),
+    size: v.number(),
+    folderPath: v.optional(v.string()),
+    label: v.optional(v.string()),
+    description: v.optional(v.string()),
+    category: v.string(), // image, audio, video, document, other
+    tags: v.optional(v.array(v.string())),
+    uploadedBy: v.id("users"),
+    uploadedAt: v.number(),
+    aiAnalysis: v.optional(
+      v.object({
+        summary: v.string(),
+        detectedContent: v.optional(v.array(v.string())),
+        suggestedTags: v.optional(v.array(v.string())),
+      })
+    ),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_folder", ["projectId", "folderPath"])
+    .index("by_category", ["projectId", "category"])
+    .searchIndex("search_assets", {
+      searchField: "name",
+      filterFields: ["projectId"],
+    }),
 })
