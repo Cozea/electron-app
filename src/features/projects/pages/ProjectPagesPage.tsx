@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
@@ -98,7 +98,7 @@ export function ProjectPagesPage() {
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
-    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'terminal' | null>(null)
+    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | 'terminal' | null>(null)
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -163,6 +163,9 @@ export function ProjectPagesPage() {
         convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
     )
 
+    const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
+    const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
+
     // Extract stored framework info from project
     const storedFrameworkInfo = project?.frameworkInfo ? {
         framework: project.frameworkInfo.framework,
@@ -176,6 +179,72 @@ export function ProjectPagesPage() {
             refreshRoutes()
         }
     }, [projectPath])
+
+    // Capture home page screenshot and upload as project preview (for Projects dashboard showcase)
+    const [isCapturingPreview, setIsCapturingPreview] = useState(false)
+    const captureAndUploadProjectPreview = useCallback(async () => {
+        const projectId = project?._id
+        if (!serverPort || !projectId) return
+        const url = `http://localhost:${serverPort}/`
+        try {
+            const result = await window.electronAPI.preview.captureScreenshot({
+                url,
+                width: 1280,
+                height: 800,
+            })
+            if (!result.success || !result.base64) return
+            const byteString = atob(result.base64)
+            const ab = new ArrayBuffer(byteString.length)
+            const ia = new Uint8Array(ab)
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+            const blob = new Blob([ab], { type: 'image/png' })
+            const uploadUrl = await generatePreviewUploadUrl({ projectId })
+            const uploadResponse = await fetch(uploadUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'image/png' },
+                body: blob,
+            })
+            if (!uploadResponse.ok) return
+            const data = await uploadResponse.json()
+            const storageId = data?.storageId ?? data
+            if (!storageId) return
+            await updatePreviewImage({ projectId, storageId })
+        } catch {
+            // Silent: preview capture is best-effort for dashboard
+        } finally {
+            setIsCapturingPreview(false)
+        }
+    }, [project?._id, serverPort, generatePreviewUploadUrl, updatePreviewImage])
+
+    const handleUpdateProjectPreview = useCallback(() => {
+        if (serverStatus !== 'running' || !project?._id) return
+        setIsCapturingPreview(true)
+        void captureAndUploadProjectPreview()
+    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+
+    // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
+    useEffect(() => {
+        if (serverStatus !== 'running' || !serverPort || !project?._id) return
+        const t1 = setTimeout(() => {
+            void captureAndUploadProjectPreview()
+        }, 6000)
+        const t2 = setTimeout(() => {
+            void captureAndUploadProjectPreview()
+        }, 14000)
+        return () => {
+            clearTimeout(t1)
+            clearTimeout(t2)
+        }
+    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+
+    // On exit from Pages page: capture latest home page and replace project showcase
+    useEffect(() => {
+        return () => {
+            if (serverStatus === 'running' && serverPort && project?._id) {
+                void captureAndUploadProjectPreview()
+            }
+        }
+    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
 
     // Handle focus query param from PagesList clicks
     useEffect(() => {
@@ -901,6 +970,32 @@ export function ProjectPagesPage() {
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">{inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector'}</TooltipContent>
+                                </Tooltip>
+
+                                {/* Update project preview (Projects page showcase) */}
+                                <Tooltip open={toolbarTooltip === 'preview'} onOpenChange={(open) => setToolbarTooltip(open ? 'preview' : null)}>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="inline-flex"
+                                            onPointerEnter={() => setToolbarTooltip('preview')}
+                                            onPointerLeave={() => setToolbarTooltip(null)}
+                                        >
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                disabled={isCapturingPreview}
+                                                onClick={handleUpdateProjectPreview}
+                                            >
+                                                {isCapturingPreview ? (
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                                ) : (
+                                                    <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Update project preview (Projects page)</TooltipContent>
                                 </Tooltip>
                             </>
                         )}
