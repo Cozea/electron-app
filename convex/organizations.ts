@@ -58,7 +58,7 @@ export const syncFromWorkOS = mutation({
         }
       }
 
-      const existingCredits: any = existingOrg.credits || {}
+      const existingCredits = existingOrg.credits || {} as Partial<typeof existingOrg.credits>
       if (
         existingCredits.subscriptionCreditsRemaining === undefined ||
         existingCredits.subscriptionCreditsTotal === undefined
@@ -219,7 +219,8 @@ export const getByWorkosId = query({
 
     if (!org) return null
 
-    const { aiCredentials, ...safeOrg } = org as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { aiCredentials, ...safeOrg } = org
     return safeOrg
   },
 })
@@ -413,7 +414,8 @@ export const get = query({
     const org = await ctx.db.get(args.id)
     if (!org) return null
 
-    const { aiCredentials, ...safeOrg } = org as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { aiCredentials, ...safeOrg } = org
     return safeOrg
   },
 })
@@ -429,7 +431,8 @@ export const getBySlug = query({
 
     if (!org) return null
 
-    const { aiCredentials, ...safeOrg } = org as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { aiCredentials, ...safeOrg } = org
     return safeOrg
   },
 })

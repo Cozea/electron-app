@@ -9,10 +9,11 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { computeSyncPlan, hasSyncOperations } from "@/lib/sync/syncEngine"
+import { computeSyncPlan, computeSyncPlanWithMerge, hasSyncOperations } from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 import { loadLocalSyncHistory, saveLocalSyncHistory } from "@/lib/sync/syncHistory"
+import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
@@ -245,12 +246,32 @@ export function ProjectSyncProvider({
 
 	    const localHistory = loadLocalSyncHistory(projectId)
 
-	    // Compute sync plan
-	    const syncPlan = computeSyncPlan(
+	    // Compute sync plan with 3-way merge support
+	    const syncPlan = await computeSyncPlanWithMerge(
 	      localFiles,
 	      cloudFiles,
 	      localHistory.lastSyncAt ?? undefined,
-	      localHistory.cloudPathsAtLastSync
+	      localHistory.cloudPathsAtLastSync,
+	      {
+	        projectId,
+	        readLocalFile: async (path: string) => {
+	          const result = await window.electronAPI.project.readFile({
+	            projectPath: effectiveLocalPath,
+	            filePath: path,
+	          })
+	          return result.success ? result.content ?? null : null
+	        },
+	        fetchCloudFile: async (storageId: string) => {
+	          const file = filesWithUrls?.find((f) => f.storageId === storageId)
+	          if (!file?.url) return null
+	          try {
+	            const response = await fetch(file.url)
+	            return response.ok ? await response.text() : null
+	          } catch {
+	            return null
+	          }
+	        },
+	      }
 	    )
 	    setPlan(syncPlan)
 
@@ -258,7 +279,8 @@ export function ProjectSyncProvider({
           syncPlan.downloads.length +
           syncPlan.uploads.length +
           syncPlan.localDeletes.length +
-          syncPlan.cloudDeletes.length
+          syncPlan.cloudDeletes.length +
+          (syncPlan.autoMerged?.length ?? 0)
 
 	        if (totalChanges === 0) {
 	          // Already synced - no screen needed
@@ -371,10 +393,52 @@ export function ProjectSyncProvider({
 	      const cloudPaths = new Set((cloudManifest ?? []).map((f) => f.path))
 	      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
 	      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
+	      // Include auto-merged files in cloud paths
+	      for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
 	      saveLocalSyncHistory(projectId, {
 	        lastSyncAt: now,
 	        cloudPathsAtLastSync: cloudPaths,
 	      })
+
+	      // Save file checkpoints for future 3-way merges
+	      try {
+	        const checkpointFiles = new Map<string, { content: string; hash: string }>()
+
+	        // Read all synced files and save as checkpoints
+	        const filesToCheckpoint = [
+	          ...syncPlan.downloads.map((op) => op.path),
+	          ...syncPlan.uploads.map((op) => op.path),
+	          ...(syncPlan.autoMerged ?? []).map((op) => op.path),
+	        ]
+
+	        for (const filePath of filesToCheckpoint) {
+	          try {
+	            const readResult = await window.electronAPI.project.readFile({
+	              projectPath,
+	              filePath,
+	            })
+	            if (readResult.success && readResult.content) {
+	              // Compute hash
+	              const encoder = new TextEncoder()
+	              const data = encoder.encode(readResult.content)
+	              const hashBuffer = await crypto.subtle.digest("SHA-256", data)
+	              const hashArray = Array.from(new Uint8Array(hashBuffer))
+	              const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+
+	              checkpointFiles.set(filePath, { content: readResult.content, hash })
+	            }
+	          } catch {
+	            // Skip files that can't be read (binary, etc.)
+	          }
+	        }
+
+	        if (checkpointFiles.size > 0) {
+	          await syncCheckpointStore.saveCheckpoint(projectId, checkpointFiles)
+	        }
+	      } catch (err) {
+	        console.warn("[Sync] Failed to save checkpoints:", err)
+	        // Non-fatal - sync still succeeded
+	      }
 
 	      setIsSynced(true)
 	      setLastSyncAt(now)

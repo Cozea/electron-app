@@ -77,6 +77,11 @@ export interface ListFilesResult {
   error?: string
 }
 
+export interface RenameFileResult {
+  success: boolean
+  error?: string
+}
+
 export interface PreviewInjectBridgeResult {
   success: boolean
   error?: string
@@ -299,6 +304,7 @@ export interface ElectronAPI {
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
+    renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<RenameFileResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
@@ -490,6 +496,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFileBase64: (options: { projectPath: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
     listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
+    renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) =>
+      ipcRenderer.invoke('project:renameFile', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
   },

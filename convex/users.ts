@@ -80,7 +80,8 @@ export const getByWorkosId = query({
 
     if (!user) return null
 
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
     return safeUser
   },
 })
@@ -128,7 +129,8 @@ export const getByEmail = query({
 
     if (!user) return null
 
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
     return safeUser
   },
 })
@@ -141,7 +143,8 @@ export const getById = query({
     if (!user) return null
 
     // Strip sensitive BYOK keys
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
     return safeUser
   },
 })
@@ -252,14 +255,16 @@ export const getWithOrganizations = query({
       })
     )
 
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
 
     return {
       ...safeUser,
       organizations: organizations
-        .filter(Boolean)
-        .map((org: any) => {
-          const { aiCredentials, ...safeOrg } = org || {}
+        .filter((org): org is NonNullable<typeof org> => org !== null)
+        .map((org) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { aiCredentials, ...safeOrg } = org
           return safeOrg
         }),
     }

@@ -1,6 +1,25 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
+type BuiltinTool = {
+  name: string
+  displayName: string
+  description: string
+  category: string
+  inputSchema: Record<string, unknown>
+  requiresApproval: boolean
+  allowedRoles: readonly string[]
+  riskLevel: string
+  executionEnvironment: string
+  isBuiltin: boolean
+  isEnabled: boolean
+  provider?: string
+  toolType?: string
+  providerToolId?: string
+  providerToolArgs?: Record<string, unknown>
+  supportsDeferredResults?: boolean
+}
+
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
 function assertGatewaySecret(secret: string | undefined) {
@@ -12,7 +31,7 @@ function assertGatewaySecret(secret: string | undefined) {
   }
 }
 
-const BUILTIN_TOOLS = [
+const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "read_file",
     displayName: "Read File",
@@ -463,12 +482,12 @@ export const syncBuiltinTools = mutation({
         displayName: tool.displayName,
         description: tool.description,
         category: tool.category as "filesystem" | "web" | "code" | "data" | "custom",
-        provider: (tool as any).provider,
+        provider: tool.provider,
         inputSchema: tool.inputSchema,
-        toolType: (tool as any).toolType ?? "function",
-        providerToolId: (tool as any).providerToolId,
-        providerToolArgs: (tool as any).providerToolArgs,
-        supportsDeferredResults: (tool as any).supportsDeferredResults,
+        toolType: (tool.toolType ?? "function") as "function" | "provider",
+        providerToolId: tool.providerToolId,
+        providerToolArgs: tool.providerToolArgs,
+        supportsDeferredResults: tool.supportsDeferredResults,
         requiresApproval: tool.requiresApproval,
         allowedRoles: [...tool.allowedRoles] as ("admin" | "member" | "viewer")[],
         riskLevel: tool.riskLevel as "safe" | "moderate" | "dangerous",
@@ -509,6 +528,6 @@ export const listEnabledTools = query({
 
     if (!args.role) return tools
 
-    return tools.filter((tool: any) => tool.allowedRoles.includes(args.role))
+    return tools.filter((tool) => tool.allowedRoles.includes(args.role!))
   },
 })

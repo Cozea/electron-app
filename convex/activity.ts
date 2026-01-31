@@ -34,7 +34,8 @@ export const logFileChange = mutation({
     changeType: v.union(
       v.literal("create"),
       v.literal("modify"),
-      v.literal("delete")
+      v.literal("delete"),
+      v.literal("rename")
     ),
     oldContent: v.optional(v.string()),
     newContent: v.optional(v.string()),
@@ -48,9 +49,11 @@ export const logFileChange = mutation({
       v.literal("init")
     ),
     userName: v.optional(v.string()),
+    /** For renames: the old path before rename */
+    oldPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName } = args
+    const { projectId, userId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
 
     // Generate color for user
     const userColor = userId ? generateColor(userId) : "#6b7280"
@@ -60,8 +63,8 @@ export const logFileChange = mutation({
       userId,
       filePath,
       changeType,
-      oldContent,
-      newContent,
+      oldContent: changeType === "rename" ? oldPath : oldContent,
+      newContent: changeType === "rename" ? filePath : newContent,
       additions,
       deletions,
       totalLines,

@@ -3,6 +3,7 @@ import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { XXHashAPI } from 'xxhash-wasm'
+import { YjsOfflineQueue } from './OfflineQueue'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
 
@@ -38,6 +39,7 @@ export class ProjectFilesPersistence {
   private userName: string
   private convex: ConvexReactClient
   private hasher: XXHashAPI
+  private offlineQueue: YjsOfflineQueue
   private pendingChanges: Map<string, PendingChange> = new Map()
   private pendingDeletes: Map<string, PendingDelete> = new Map()
   private previousContents: Map<string, string> = new Map()
@@ -58,6 +60,7 @@ export class ProjectFilesPersistence {
     this.hasher = hasher
     this.userId = userId
     this.userName = userName
+    this.offlineQueue = new YjsOfflineQueue(convex, projectId)
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -152,13 +155,36 @@ export class ProjectFilesPersistence {
     // Persist deletions first
     if (deletes.size > 0) {
       const paths = Array.from(deletes.keys())
+      let deleteSuccess = false
+
       try {
         await this.convex.mutation(api.projectFiles.markFilesDeleted, {
           projectId: this.projectId,
           filePaths: paths,
         })
+        deleteSuccess = true
       } catch (error) {
-        console.error('[ProjectFilesPersistence] Failed to mark files deleted:', error)
+        console.error('[ProjectFilesPersistence] Failed to mark files deleted, queueing for retry:', error)
+        // Queue for retry when back online
+        this.offlineQueue.enqueueDelete(paths)
+      }
+
+      // Create tombstones for deleted files (for conflict detection on reconnection)
+      // Only create if the delete succeeded - otherwise they'll be created when the queue processes
+      if (deleteSuccess) {
+        for (const path of paths) {
+          try {
+            await this.convex.mutation(api.fileTombstones.createTombstone, {
+              projectId: this.projectId,
+              filePath: path,
+              deletedBy: this.userId,
+            })
+          } catch (error) {
+            // Tombstone creation is best-effort - conflict detection will still work
+            // via the markFilesDeleted mutation
+            console.warn(`[ProjectFilesPersistence] Failed to create tombstone for ${path}:`, error)
+          }
+        }
       }
 
       for (const [path, info] of deletes) {
@@ -229,6 +255,19 @@ export class ProjectFilesPersistence {
           sizeBytes: blob.size,
           checksum,
         })
+
+        // If this is a new file, remove any existing tombstone
+        // (file was deleted before, now being recreated)
+        if (isNewFile) {
+          try {
+            await this.convex.mutation(api.fileTombstones.removeTombstone, {
+              projectId: this.projectId,
+              filePath: path,
+            })
+          } catch {
+            // Tombstone removal is best-effort
+          }
+        }
 
         // Log the activity with content for diff viewing
         await this.convex.mutation(api.activity.logFileChange, {

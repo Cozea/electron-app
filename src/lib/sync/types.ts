@@ -26,6 +26,19 @@ export type SyncOperationType =
   | "delete-local"
   | "delete-cloud"
   | "conflict"
+  | "auto-merged"
+
+/**
+ * Details about an auto-merged file.
+ */
+export interface MergeDetails {
+  /** Number of changes from local version */
+  localChanges: number
+  /** Number of changes from cloud version */
+  cloudChanges: number
+  /** The merged content to write */
+  mergedContent: string
+}
 
 export interface SyncOperation {
   type: SyncOperationType
@@ -33,6 +46,8 @@ export interface SyncOperation {
   localEntry?: LocalFileEntry
   cloudEntry?: CloudFileEntry
   reason: string
+  /** Merge details for auto-merged files */
+  mergeDetails?: MergeDetails
 }
 
 // Sync plan - computed from comparing local and cloud manifests
@@ -42,6 +57,7 @@ export interface SyncPlan {
   localDeletes: SyncOperation[] // Files to delete locally
   cloudDeletes: SyncOperation[] // Files to delete from cloud
   conflicts: SyncOperation[] // Files with conflicts requiring resolution
+  autoMerged: SyncOperation[] // Files that were auto-merged (3-way merge)
   noChange: number // Count of files already in sync
 }
 
@@ -70,6 +86,7 @@ export interface SyncPlanSummary {
   uploads: number
   deletes: number
   conflicts: number
+  autoMerged: number
   noChange: number
 }
 
@@ -78,13 +95,15 @@ export function getSyncPlanSummary(plan: SyncPlan): SyncPlanSummary {
   const uploads = plan.uploads.length
   const deletes = plan.localDeletes.length + plan.cloudDeletes.length
   const conflicts = plan.conflicts.length
+  const autoMerged = plan.autoMerged?.length ?? 0
 
   return {
-    totalChanges: downloads + uploads + deletes + conflicts,
+    totalChanges: downloads + uploads + deletes + conflicts + autoMerged,
     downloads,
     uploads,
     deletes,
     conflicts,
+    autoMerged,
     noChange: plan.noChange,
   }
 }

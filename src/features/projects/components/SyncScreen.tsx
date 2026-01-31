@@ -14,6 +14,7 @@ import {
   Download,
   Upload,
   Trash2,
+  GitMerge,
 } from "lucide-react"
 import type { SyncProgress, SyncPlan } from "@/lib/sync/types"
 import { getSyncPlanSummary } from "@/lib/sync/types"
@@ -60,6 +61,7 @@ export function SyncScreen({
       localDeletes: [...plan.localDeletes],
       cloudDeletes: [...plan.cloudDeletes],
       conflicts: [],
+      autoMerged: [...(plan.autoMerged ?? [])],
       noChange: plan.noChange,
     }
 
@@ -143,7 +145,10 @@ export function SyncScreen({
 
         {/* Plan Summary */}
         {summary && status !== "syncing" && summary.totalChanges > 0 && (
-          <div className="grid grid-cols-3 gap-2 text-sm">
+          <div className={cn(
+            "grid gap-2 text-sm",
+            summary.autoMerged > 0 ? "grid-cols-4" : "grid-cols-3"
+          )}>
             <div className="bg-muted/50 rounded-md p-3 text-center">
               <div className="flex items-center justify-center gap-1 text-blue-500 mb-1">
                 <Download className="h-4 w-4" />
@@ -165,6 +170,26 @@ export function SyncScreen({
               </div>
               <div className="text-xs text-muted-foreground">Deletes</div>
             </div>
+            {summary.autoMerged > 0 && (
+              <div className="bg-muted/50 rounded-md p-3 text-center">
+                <div className="flex items-center justify-center gap-1 text-purple-500 mb-1">
+                  <GitMerge className="h-4 w-4" />
+                  <span className="font-medium">{summary.autoMerged}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">Merged</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Auto-merged indicator */}
+        {summary && summary.autoMerged > 0 && status !== "syncing" && (
+          <div className="flex items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-md">
+            <GitMerge className="h-5 w-5 text-purple-500 flex-shrink-0" />
+            <p className="text-sm text-purple-700 dark:text-purple-400">
+              {summary.autoMerged} file{summary.autoMerged > 1 ? "s" : ""} auto-merged
+              (non-conflicting changes combined)
+            </p>
           </div>
         )}
 
@@ -249,11 +274,12 @@ export function SyncScreen({
                   key={i}
                   className={cn(
                     "text-muted-foreground",
-                    log.startsWith("✓") && "text-green-500",
-                    log.startsWith("✕") && "text-destructive",
-                    log.startsWith("⚠") && "text-yellow-500",
-                    log.startsWith("↓") && "text-blue-500",
-                    log.startsWith("↑") && "text-green-500"
+                    log.includes("✓") && "text-green-500",
+                    log.includes("✕") && "text-destructive",
+                    log.includes("⚠") && "text-yellow-500",
+                    log.includes("↓") && "text-blue-500",
+                    log.includes("↑") && "text-green-500",
+                    log.includes("⊕") && "text-purple-500"
                   )}
                 >
                   {log}

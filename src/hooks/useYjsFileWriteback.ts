@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as Y from 'yjs'
-import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
+import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
 
 /**
  * useYjsFileWriteback - Writes remote Yjs changes back to local disk.
@@ -8,6 +8,10 @@ import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
  * When another user's agent edits a file, the change arrives via Yjs.
  * This hook ensures those changes are written to the local filesystem
  * even if the file isn't open in Monaco editor.
+ *
+ * Also handles:
+ * - File/folder renames from other users
+ * - File deletions from other users
  *
  * This enables "vibe coding" where users don't need to have files open
  * to receive changes from collaborators.
@@ -184,6 +188,38 @@ export function useYjsFileWriteback(
       }
     }
 
+    // Handle renames from remote users
+    const renameFileToDisk = async (from: string, to: string, isDirectory: boolean) => {
+      try {
+        await window.electronAPI.project.renameFile({
+          projectPath,
+          oldPath: from,
+          newPath: to,
+        })
+        console.log(`[YjsWriteback] Renamed: ${from} -> ${to}`)
+      } catch (err) {
+        console.error(`[YjsWriteback] Failed to rename ${from} -> ${to}:`, err)
+      }
+    }
+
+    // Observe the renames map for remote renames
+    const renamesMapHandler = (event: Y.YMapEvent<RenameEntry>, transaction: Y.Transaction) => {
+      // Only process remote renames
+      if (transaction.origin !== 'remote') return
+
+      for (const [renameId, change] of event.changes.keys.entries()) {
+        if (change.action === 'add') {
+          const rename = yjsDoc.renames.get(renameId)
+          if (rename) {
+            renameFileToDisk(rename.from, rename.to, rename.isDirectory)
+            // Clear the rename after processing to prevent re-processing
+            // (do this async to not block the observer)
+            setTimeout(() => yjsDoc.clearRename(renameId), 100)
+          }
+        }
+      }
+    }
+
     // Start observing existing files
     for (const [filePath] of yjsDoc.files.entries()) {
       observeFile(filePath)
@@ -191,6 +227,9 @@ export function useYjsFileWriteback(
 
     // Observe for new files
     yjsDoc.files.observe(filesMapHandler)
+
+    // Observe for renames
+    yjsDoc.renames.observe(renamesMapHandler)
 
     // One-time initial hydration for empty local folders
     void hydrateLocalDiskIfEmpty()
@@ -215,6 +254,9 @@ export function useYjsFileWriteback(
 
       // Unobserve files map
       yjsDoc.files.unobserve(filesMapHandler)
+
+      // Unobserve renames map
+      yjsDoc.renames.unobserve(renamesMapHandler)
     }
   }, [yjsDoc, projectPath])
 }

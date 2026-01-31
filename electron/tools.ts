@@ -7,14 +7,71 @@ import { markInternalFsChange } from './projectWatcher'
 
 export interface ToolRequest {
   name: string
-  input: Record<string, any>
+  input: Record<string, unknown>
   projectPath?: string
 }
 
 export interface ToolResult {
   success: boolean
-  output?: any
+  output?: unknown
   error?: string
+}
+
+// Tool input types
+interface ReadFileInput {
+  filePath: string
+  offset?: number
+  limit?: number
+  startLine?: number
+  endLine?: number
+}
+
+interface ListDirInput {
+  path: string
+}
+
+interface FindFilesInput {
+  query: string
+  maxResults?: number
+}
+
+interface GrepSearchInput {
+  query: string
+  isRegexp?: boolean
+  includePattern?: string
+  maxResults?: number
+  includeIgnoredFiles?: boolean
+}
+
+interface CreateFileInput {
+  filePath: string
+  content: string
+}
+
+interface CreateDirectoryInput {
+  dirPath?: string
+  path?: string
+}
+
+interface ReplaceStringInput {
+  filePath: string
+  oldString: string
+  newString: string
+}
+
+interface MultiReplaceInput {
+  replacements: Array<{ filePath: string; oldString: string; newString: string }>
+}
+
+interface RunInTerminalInput {
+  command: string
+  explanation?: string
+  isBackground?: boolean
+  timeout?: number
+}
+
+interface GetTerminalOutputInput {
+  id: string
 }
 
 const WORKSPACE_ROOT = path.resolve(
@@ -434,31 +491,31 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
   try {
     switch (request.name) {
       case 'read_file':
-        return { success: true, output: await readFile(request.input as any, workingDir) }
+        return { success: true, output: await readFile(request.input as ReadFileInput, workingDir) }
       case 'list_dir':
-        return { success: true, output: await listDir(request.input as any, workingDir) }
+        return { success: true, output: await listDir(request.input as ListDirInput, workingDir) }
       case 'file_search':
-        return { success: true, output: await findFiles(request.input as any, workingDir) }
+        return { success: true, output: await findFiles(request.input as FindFilesInput, workingDir) }
       case 'grep_search':
-        return { success: true, output: await grepSearch(request.input as any, workingDir) }
+        return { success: true, output: await grepSearch(request.input as GrepSearchInput, workingDir) }
       case 'create_file':
-        return { success: true, output: await createFile(request.input as any, workingDir, { notify: shouldNotify }) }
+        return { success: true, output: await createFile(request.input as CreateFileInput, workingDir, { notify: shouldNotify }) }
       case 'create_directory':
-        return { success: true, output: await createDirectory(request.input as any, workingDir) }
+        return { success: true, output: await createDirectory(request.input as CreateDirectoryInput, workingDir) }
       case 'replace_string_in_file':
         return {
           success: true,
-          output: replaceStringInFile(request.input as any, workingDir, { notify: shouldNotify }),
+          output: replaceStringInFile(request.input as ReplaceStringInput, workingDir, { notify: shouldNotify }),
         }
       case 'multi_replace_string_in_file':
         return {
           success: true,
-          output: multiReplaceString(request.input as any, workingDir, { notify: shouldNotify }),
+          output: multiReplaceString(request.input as MultiReplaceInput, workingDir, { notify: shouldNotify }),
         }
       case 'run_in_terminal':
-        return { success: true, output: await runInTerminal(request.input as any, workingDir) }
+        return { success: true, output: await runInTerminal(request.input as RunInTerminalInput, workingDir) }
       case 'get_terminal_output':
-        return { success: true, output: await getTerminalOutput(request.input as any) }
+        return { success: true, output: await getTerminalOutput(request.input as GetTerminalOutputInput) }
       case 'apply_patch':
         return { success: false, error: 'apply_patch is not yet enabled in this runtime' }
       default:
