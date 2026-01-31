@@ -1,6 +1,6 @@
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useFileTabsStore } from "@/stores/useFileTabsStore"
+import { useFileTabsStore, pathsReferToSameFile } from "@/stores/useFileTabsStore"
 import { useParams } from "react-router-dom"
 import { useShallow } from 'zustand/react/shallow'
 import { getFileIcon } from "@/lib/fileExplorer/fileIcons"
@@ -28,7 +28,7 @@ export function EditorTabs() {
         <div className="flex flex-row overflow-x-auto bg-muted/20 border-b h-7 shrink-0 scrollbar-hide">
             {openFiles.map(path => {
                 const name = path.split('/').pop()
-                const isActive = path === activeFile
+                const isActive = path === activeFile || (activeFile != null && pathsReferToSameFile(path, activeFile))
                 return (
                     <div
                         key={path}

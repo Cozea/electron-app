@@ -22,6 +22,16 @@ const defaultTabs: ProjectFileTabs = {
     activeFile: null,
 }
 
+/** True if two paths refer to the same file (handles relative/absolute and slashes). */
+export function pathsReferToSameFile(a: string, b: string): boolean {
+    const n = (p: string) => p.replace(/\\/g, '/')
+    const na = n(a)
+    const nb = n(b)
+    if (na === nb) return true
+    if (na.endsWith('/' + nb) || nb.endsWith('/' + na)) return true
+    return false
+}
+
 export const useFileTabsStore = create<FileTabsState>()(
     persist(
         (set, get) => ({
@@ -32,14 +42,15 @@ export const useFileTabsStore = create<FileTabsState>()(
                 },
                 openFile: (projectId, path) => set((state) => {
                     const tabs = state.projectTabs[projectId] || defaultTabs
+                    const existing = tabs.openFiles.find((p) => pathsReferToSameFile(p, path))
 
-                    if (tabs.openFiles.includes(path)) {
+                    if (existing !== undefined) {
                         return {
                             projectTabs: {
                                 ...state.projectTabs,
                                 [projectId]: {
                                     ...tabs,
-                                    activeFile: path
+                                    activeFile: existing
                                 }
                             }
                         }

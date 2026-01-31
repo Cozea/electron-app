@@ -5,7 +5,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { FileViewer } from '../components/FileViewer'
 import { UnsavedChangesDialog } from '@/components/editor/UnsavedChangesDialog'
-import { useFileTabsStore } from '@/stores/useFileTabsStore'
+import { useFileTabsStore, pathsReferToSameFile } from '@/stores/useFileTabsStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -72,12 +72,13 @@ export function ProjectDetailPage() {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
 
-  // Sync URL -> Store
+  // Sync URL -> Store (open file and set as active so tree/tabs show selection)
   useEffect(() => {
     if (filePath && projectId) {
       openFile(projectId, filePath)
+      setActiveFile(projectId, filePath)
     }
-  }, [filePath, projectId])
+  }, [filePath, projectId, openFile, setActiveFile])
 
   // Sync Store -> URL
   const handleTabClick = (path: string) => {
@@ -165,19 +166,24 @@ export function ProjectDetailPage() {
     })
   }
 
-  // Sync Store Active File -> URL
+  // Sync Store Active File -> URL (don't overwrite URL when user navigated with ?path= - let Sync URL -> Store win)
   useEffect(() => {
+    const urlPath = searchParams.get('path')
     if (activeFile) {
-      if (searchParams.get('path') !== activeFile) {
-        setSearchParams({ path: activeFile })
+      if (urlPath !== activeFile && !pathsReferToSameFile(activeFile, urlPath ?? '')) {
+        // Only push store to URL when URL has no path (e.g. user opened tab from tree earlier)
+        // If URL has a path, user may have navigated with ?path= - don't overwrite; Sync URL -> Store will update the store
+        if (!urlPath) {
+          setSearchParams({ path: activeFile })
+        }
       }
-    } else if (openFiles.length === 0 && searchParams.get('path')) {
+    } else if (openFiles.length === 0 && urlPath) {
       // All files closed, clear path
       const newParams = new URLSearchParams(searchParams)
       newParams.delete('path')
       setSearchParams(newParams)
     }
-  }, [activeFile, openFiles.length])
+  }, [activeFile, openFiles.length, searchParams])
 
   // Loading state
   if (project === undefined) {
@@ -214,7 +220,7 @@ export function ProjectDetailPage() {
           {/* Scrollable tabs area */}
           <div className="flex-1 flex items-center h-full overflow-x-auto scrollbar-hide">
             {openFiles.map(path => {
-              const isActive = path === activeFile
+              const isActive = path === activeFile || (activeFile != null && pathsReferToSameFile(path, activeFile))
               const fileName = path.split('/').pop() || 'file'
               const model = editorModels[path]
               const isDirty = model?.isDirty ?? false
