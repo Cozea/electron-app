@@ -36,3 +36,4 @@ package-lock 2.json
 *.njsproj
 *.sln
 *.sw?
+out

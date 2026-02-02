@@ -59,13 +59,17 @@ export function General() {
   const deleteOrganization = useMutation(api.organizations.deleteOrganization)
 
   // Initialize form with org data
+  const [isFormInitialized, setIsFormInitialized] = useState(false)
+
+  // Initialize form with org data - only once to prevent overwriting user edits and flashing
   useEffect(() => {
-    if (convexOrg) {
+    if (convexOrg && !isFormInitialized) {
       setWorkspaceName(convexOrg.name)
       setWorkspaceSlug(convexOrg.slug)
       setDescription(convexOrg.description || '')
+      setIsFormInitialized(true)
     }
-  }, [convexOrg])
+  }, [convexOrg, isFormInitialized])
 
   // Clear success message after 3 seconds
   useEffect(() => {
@@ -152,6 +156,10 @@ export function General() {
     })
   }
 
+  const headerContent = (
+    <h1 className="text-lg font-semibold">Workspace Details</h1>
+  )
+
   const isLoading = convexOrg === undefined
 
   if (isLoading) {
@@ -160,6 +168,7 @@ export function General() {
         user={user}
         onLogout={logout}
         breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
+        header={headerContent}
       >
         <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -168,14 +177,13 @@ export function General() {
     )
   }
 
-  const hasChanges =
+  const hasChanges = isFormInitialized && (
     workspaceName !== convexOrg?.name ||
     workspaceSlug !== convexOrg?.slug ||
     description !== (convexOrg?.description || '')
-
-  const headerContent = (
-    <h1 className="text-lg font-semibold">Workspace Details</h1>
   )
+
+
 
   return (
     <DashboardLayout

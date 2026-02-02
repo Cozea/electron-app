@@ -10,7 +10,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import {
-  Loader2,
   Save,
   Trash2,
   Globe,
@@ -37,12 +36,9 @@ export function ProjectSettingsPage() {
     convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
   )
 
-  if (project === undefined) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
+  // Loading state - show shell immediately
+  if (project === null) {
+    return <div>Project not found</div>
   }
 
   return (
@@ -56,7 +52,7 @@ export function ProjectSettingsPage() {
       </div>
 
       <ScrollArea className="h-full">
-        <div className="p-6 max-w-2xl space-y-8">
+        <div className="p-6 max-w-2xl space-y-8" key={project?._id || 'loading'}>
           {activeSection === 'general' && (
             <>
               <div>

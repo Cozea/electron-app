@@ -6,7 +6,7 @@ import {
   Shield,
   Settings,
   CreditCard,
-  Sparkles,
+  Bot,
   Terminal,
   Cloud,
 } from "lucide-react"
@@ -21,6 +21,7 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
+  SidebarSeparator,
 } from "@/components/ui/sidebar"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -46,9 +47,9 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
   const workspaceItems = [
     { title: "General", url: "/workspace/general", icon: Settings },
     { title: "Billing", url: "/workspace/billing", icon: CreditCard },
-    { title: "AI", url: "/workspace/ai", icon: Sparkles },
+    { title: "AI", url: "/workspace/ai", icon: Bot },
     { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
-    { title: "Cloud Sync", url: "/workspace/sync", icon: Cloud, alpha: true },
+    { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
   ]
 
   return (
@@ -58,7 +59,9 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
       </SidebarHeader>
       <SidebarContent className="group-data-[collapsible=icon]:mt-9">
         <NavMain label="Platform" items={platformItems} />
+        <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
         <NavMain label="Team" items={teamItems} />
+        <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
         <NavMain label="Workspace" items={workspaceItems} />
       </SidebarContent>
       <SidebarFooter className="pb-6">

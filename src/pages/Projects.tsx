@@ -11,7 +11,6 @@ import { ProjectListRow } from '../features/projects/components/ProjectListRow'
 import {
   Plus,
   ArrowUpDown,
-  Loader2,
   FileCode,
   LayoutGrid,
   List,
@@ -32,10 +31,12 @@ import {
   EmptyDescription,
   EmptyContent,
 } from '../components/ui/empty'
-import { TooltipProvider } from '../components/ui/tooltip'
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip'
 import { ButtonGroup } from '../components/ui/button-group'
 import { Badge } from '../components/ui/badge'
+import { Skeleton } from '../components/ui/skeleton'
 import { IconFolderCode } from '@tabler/icons-react'
+
 
 type SortOption = 'last_modified' | 'name' | 'created'
 type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
@@ -94,6 +95,12 @@ export function Projects() {
     return map
   }, [members])
 
+  // Query usage limits (for project count limits)
+  const usageLimits = useQuery(
+    api.organizations.getUsageLimits,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+
   // Query projects from Convex using the Convex org ID (with caching)
   const freshProjects = useQuery(
     api.projects.listForOrganization,
@@ -149,21 +156,68 @@ export function Projects() {
 
   const isLoading = convexOrg === undefined || (convexOrg && projects === undefined)
   const hasProjects = projects && projects.length > 0
-  const isEmptyState = !isLoading && !hasProjects
 
-  const headerContent = !isEmptyState && (
+
+  // Project limit calculations for circular gauge
+  const projectLimit = usageLimits?.projects
+  const projectPercentage = projectLimit && projectLimit.limit > 0
+    ? Math.min((projectLimit.current / projectLimit.limit) * 100, 100)
+    : 0
+  const circumference = 2 * Math.PI * 8 // radius = 8
+  const strokeDashoffset = circumference - (projectPercentage / 100) * circumference
+  const isLimitReached = projectLimit && !projectLimit.isUnlimited && projectLimit.current >= projectLimit.limit
+
+  const headerContent = (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">Projects</h1>
-        {projects && projects.length > 0 && (
+        {usageLimits === undefined ? (
+          <Skeleton className="h-5 w-16 rounded-full" />
+        ) : hasProjects && (projectLimit && projectLimit.limit > 0 ? (
+          <Badge
+            variant="secondary"
+            className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
+            title={`${projectLimit.current} / ${projectLimit.limit} projects used`}
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
+              {/* Background circle */}
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="opacity-20"
+              />
+              {/* Progress circle */}
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                className={projectLimit.current >= projectLimit.limit ? 'text-destructive stroke-current' : projectLimit.current >= projectLimit.limit - 1 ? 'text-amber-500 stroke-current' : 'text-primary stroke-current'}
+              />
+            </svg>
+            <span>{projectLimit.current}/{projectLimit.limit}</span>
+          </Badge>
+        ) : projectLimit?.isUnlimited ? (
+          <Badge variant="secondary" className="text-xs font-normal">
+            {projects?.length ?? 0}
+          </Badge>
+        ) : projects && projects.length > 0 ? (
           <Badge variant="secondary" className="text-xs font-normal">
             {projects.length}
           </Badge>
-        )}
+        ) : null)}
       </div>
 
       <div className="flex items-center gap-2">
-        <ButtonGroup>
+        {hasProjects && <ButtonGroup>
           {/* Status Filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -207,12 +261,30 @@ export function Projects() {
           >
             {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
           </Button>
-        </ButtonGroup>
+        </ButtonGroup>}
 
-        <Button className="gap-2 h-8 px-2 text-xs" onClick={() => navigate('/projects/new')}>
-          <Plus className="h-3.5 w-3.5" />
-          New Project
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  className="gap-2 h-8 px-2 text-xs"
+                  onClick={() => navigate('/projects/new')}
+                  disabled={isLimitReached}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Project
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {isLimitReached && (
+              <TooltipContent>
+                <p>Project limit reached ({projectLimit?.current}/{projectLimit?.limit}).</p>
+                <p className="text-muted-foreground">Upgrade your plan for more projects.</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   )
@@ -228,11 +300,9 @@ export function Projects() {
     >
       <TooltipProvider>
 
-        {/* Loading State */}
+        {/* Loading State - no spinner, just empty */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
+          null
         ) : filteredProjects.length === 0 ? (
           /* Empty State */
           <Empty className="h-[calc(100vh-12rem)]">

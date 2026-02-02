@@ -1135,7 +1135,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className="w-full max-w-none px-4 pt-4 pb-4">
+          <ConversationContent className="w-full max-w-none px-4 pt-4 pb-24">
             {visibleMessages.map((message) => (
               <MessageBubble
                 key={message.id}

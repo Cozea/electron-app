@@ -339,11 +339,11 @@ export function ChangesPage() {
 
                             {/* Content - single line */}
                             <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
-                              <span className="font-medium text-sm">
+                              <span className="font-medium text-sm truncate max-w-[120px]" title={item.userName}>
                                 {item.userName}
                               </span>
                               {getChangeIcon(item.changeType)}
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs font-mono">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs font-mono shrink min-w-0 max-w-[180px]">
                                 {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
                                 <span className="truncate">{item.filePath.split('/').pop()}</span>
                               </span>

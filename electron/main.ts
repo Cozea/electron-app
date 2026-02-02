@@ -1,21 +1,23 @@
-import { app, BrowserWindow, shell, ipcMain, safeStorage, dialog, Menu, clipboard, type WebFrameMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog, Menu, clipboard, nativeTheme, type WebFrameMain } from 'electron'
+import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import fs from 'node:fs'
+import fs from 'node:fs' // Used by DevServer logic
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { runTool } from './tools'
 import { BRIDGE_SCRIPT } from '../shared/previewBridgeScript'
 import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
-import * as pty from 'node-pty'
+import * as pty from 'node-pty' // Still used for DevServer PTY
 import { resolvePathWithinDirectory } from './pathUtils'
 import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from './projectWatcher'
-import * as integrationKeys from './integrationKeys'
-import * as integrationCrypto from './integrationCrypto'
-import { startOAuthFlow, handleOAuthCallback } from './oauthHandler'
-import { runIntegrationTool, isIntegrationTool, getIntegrationToolDefinition, INTEGRATION_TOOLS } from './integrationToolExecutor'
-import { firestoreListDocuments, supabaseSelect, type FirestoreListDocumentsOptions, type SupabaseSelectOptions } from './database'
+
+// Services
+import { AuthService } from './services/AuthService'
+import { TerminalService } from './services/TerminalService'
+import { IntegrationService } from './services/IntegrationService'
+import { DatabaseService } from './services/DatabaseService'
 
 // xxhash instance for file hashing
 // The hasher object contains h64Raw for direct hashing of Uint8Array
@@ -28,67 +30,7 @@ const devServerProcesses = new Map<string, pty.IPty>()
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
 // ============================================
-
-interface TerminalProfile {
-  id: string
-  name: string
-  path: string
-  args?: string[]
-  env?: Record<string, string>
-  icon?: string
-}
-
-interface ManagedTerminal {
-  id: string
-  projectPath: string
-  ptyProcess: pty.IPty
-  profile: TerminalProfile
-  title: string
-}
-
-// All terminal instances by ID
-const terminals = new Map<string, ManagedTerminal>()
-// Track terminals per project
-const projectTerminals = new Map<string, string[]>()
-
-// Detect available shell profiles
-function detectTerminalProfiles(): TerminalProfile[] {
-  const profiles: TerminalProfile[] = []
-
-  // macOS/Linux shells
-  if (process.platform !== 'win32') {
-    if (fs.existsSync('/bin/zsh')) {
-      profiles.push({ id: 'zsh', name: 'zsh', path: '/bin/zsh', icon: 'terminal' })
-    }
-    if (fs.existsSync('/bin/bash')) {
-      profiles.push({ id: 'bash', name: 'bash', path: '/bin/bash', icon: 'terminal' })
-    }
-    if (fs.existsSync('/bin/sh')) {
-      profiles.push({ id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' })
-    }
-  }
-
-  // Windows shells
-  if (process.platform === 'win32') {
-    profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
-    profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
-  }
-
-  // Node.js (cross-platform)
-  profiles.push({ id: 'node', name: 'Node.js', path: 'node', icon: 'symbol-event' })
-
-  return profiles
-}
-
-function getTerminalProfile(profileId?: string): TerminalProfile {
-  const profiles = detectTerminalProfiles()
-  if (profileId) {
-    const profile = profiles.find(p => p.id === profileId)
-    if (profile) return profile
-  }
-  // Default to first available profile (usually zsh or bash)
-  return profiles[0] || { id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' }
-}
+// Logic moved to TerminalService
 
 const execAsync = promisify(exec)
 
@@ -164,93 +106,7 @@ function saveSettings(settings: Partial<AppSettings>): void {
 
 let win: InstanceType<typeof BrowserWindow> | null
 
-// Session management
-interface OrganizationMembership {
-  id: string
-  organizationId: string
-  organizationName: string
-  role: string
-  status: 'active' | 'inactive' | 'pending'
-}
-
-interface Session {
-  accessToken: string
-  refreshToken: string
-  user: {
-    id: string
-    email: string
-    firstName: string | null
-    lastName: string | null
-    profileImageUrl: string | null
-  }
-  organizations: OrganizationMembership[]
-}
-
-function saveSession(session: Session): void {
-  const jsonData = JSON.stringify(session)
-
-  // Use safeStorage if available (encrypts using OS keychain)
-  if (safeStorage.isEncryptionAvailable()) {
-    const encryptedData = safeStorage.encryptString(jsonData)
-    fs.writeFileSync(getSessionPath(), encryptedData)
-  } else if (isProductionBuild) {
-    // In production, encryption is required for security
-    dialog.showErrorBox(
-      'Security Error',
-      'Session encryption is not available on this system. Please ensure your operating system keychain is properly configured.'
-    )
-    throw new Error('Session encryption required in production')
-  } else {
-    // Fallback to plain storage in development only
-    console.warn('safeStorage not available, storing session unencrypted (dev mode only)')
-    fs.writeFileSync(getSessionPath(), jsonData)
-  }
-}
-
-function loadSession(): Session | null {
-  try {
-    if (!fs.existsSync(getSessionPath())) {
-      return null
-    }
-
-    const fileData = fs.readFileSync(getSessionPath())
-
-    // Try to decrypt if safeStorage is available
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        const decryptedData = safeStorage.decryptString(fileData)
-        return JSON.parse(decryptedData)
-      } catch {
-        // File might be unencrypted (from before encryption was enabled)
-        // Try parsing as plain JSON
-        const plainData = fileData.toString('utf-8')
-        return JSON.parse(plainData)
-      }
-    } else {
-      // No encryption available, read as plain text
-      const data = fileData.toString('utf-8')
-      return JSON.parse(data)
-    }
-  } catch (err) {
-    console.error('Failed to load session:', err)
-  }
-  return null
-}
-
-function clearSession(): void {
-  try {
-    if (fs.existsSync(getSessionPath())) {
-      fs.unlinkSync(getSessionPath())
-    }
-    // Also try to clear old unencrypted session file if it exists
-    const oldSessionPath = getSessionPath().replace('.enc', '.json')
-    if (fs.existsSync(oldSessionPath)) {
-      fs.unlinkSync(oldSessionPath)
-    }
-  } catch (err) {
-    console.error('Failed to clear session:', err)
-  }
-}
+// Session management logic moved to AuthService
 
 // Handle billing callback (success/cancel from Stripe)
 function handleBillingCallback(url: string): void {
@@ -291,36 +147,7 @@ function handleBillingCallback(url: string): void {
 
 // Handle custom protocol callback
 async function handleAuthCallback(url: string): Promise<void> {
-  const urlObj = new URL(url)
-  const token = urlObj.searchParams.get('token')
-
-  if (!token) {
-    console.error('No token in callback URL')
-    win?.webContents.send('auth:error', 'No token received')
-    return
-  }
-
-  try {
-    // Exchange one-time token for session
-    const response = await fetch(`${AUTH_SERVER_URL}/auth/desktop/exchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    })
-
-    if (!response.ok) {
-      throw new Error('Token exchange failed')
-    }
-
-    const session = await response.json() as Session
-    saveSession(session)
-
-    // Notify renderer of successful auth
-    win?.webContents.send('auth:success', session)
-  } catch (err) {
-    console.error('Auth callback error:', err)
-    win?.webContents.send('auth:error', 'Authentication failed')
-  }
+  await AuthService.getInstance().handleAuthCallback(url, win)
 }
 
 // Register custom protocol
@@ -342,9 +169,16 @@ app.on('open-url', async (event, url) => {
   } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
     // Handle integration OAuth callback
     try {
-      const result = await handleOAuthCallback(url)
+      await IntegrationService.getInstance().handleOAuthCallback(url)
+      // Success handled by Service via win.webContents if needed, 
+      // but wait, Service assumes it returns a result?
+      // Let's check Service implementation. 
+      // Service.handleOAuthCallback calls oauthHandler.handleOAuthCallback which returns Promise<Result>.
+      // Service just returns that promise.
+      // So main.ts needs to handle the response broadcasting.
+
+      const result = await IntegrationService.getInstance().handleOAuthCallback(url)
       if (result.success) {
-        // Send success to renderer
         win?.webContents.send('integrations:oauthSuccess', result)
       } else {
         win?.webContents.send('integrations:oauthError', { provider: result.provider, error: result.error || 'OAuth failed' })
@@ -356,14 +190,15 @@ app.on('open-url', async (event, url) => {
         error: err instanceof Error ? err.message : 'OAuth callback failed',
       })
     }
+  }
 
-    // Focus the window
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    }
+  // Focus the window
+  if (win) {
+    if (win.isMinimized()) win.restore()
+    win.focus()
   }
 })
+
 
 // Handle protocol on Windows/Linux (single instance)
 const gotTheLock = app.requestSingleInstanceLock()
@@ -387,7 +222,7 @@ if (!gotTheLock) {
         handleBillingCallback(url)
       } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
         // Handle integration OAuth callback
-        handleOAuthCallback(url)
+        IntegrationService.getInstance().handleOAuthCallback(url)
           .then((result) => {
             if (result.success) {
               win?.webContents.send('integrations:oauthSuccess', result)
@@ -408,17 +243,42 @@ if (!gotTheLock) {
 }
 
 function createWindow() {
+  // Load window state
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1200,
+    defaultHeight: 800,
+  })
+
   win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
+    show: false, // Hide initially for smooth launch
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    backgroundColor: '#000000',
+    // Dynamic background color to prevent white flash
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#000000' : '#ffffff',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 10 },
+  })
+
+  // Register window state listeners
+  mainWindowState.manage(win)
+
+  // Show window when ready to prevent flickering
+  win.once('ready-to-show', () => {
+    win?.show()
+    win?.focus()
+  })
+
+  // Update background color on system theme change
+  nativeTheme.on('updated', () => {
+    const bgColor = nativeTheme.shouldUseDarkColors ? '#000000' : '#ffffff'
+    win?.setBackgroundColor(bgColor)
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -430,200 +290,11 @@ function createWindow() {
 }
 
 // IPC Handlers
-ipcMain.handle('auth:login', async () => {
-  // Open system browser to auth server
-  const loginUrl = `${AUTH_SERVER_URL}/auth/login?client=desktop`
-  await shell.openExternal(loginUrl)
-  return { success: true }
-})
-
-ipcMain.handle('auth:logout', async () => {
-  clearSession()
-  // Also notify server
-  try {
-    await fetch(`${AUTH_SERVER_URL}/auth/logout`, { method: 'POST' })
-  } catch {
-    // Ignore errors - local session is cleared
-  }
-  return { success: true }
-})
-
-ipcMain.handle('auth:getSession', () => {
-  return loadSession()
-})
-
-ipcMain.handle('auth:updateOrganizations', (_event, organizations: OrganizationMembership[]) => {
-  const session = loadSession()
-  if (!session) {
-    return { success: false, error: 'No session found' }
-  }
-
-  const updatedSession = {
-    ...session,
-    organizations,
-  }
-  saveSession(updatedSession)
-  return { success: true }
-})
-
-ipcMain.handle('auth:refresh', async () => {
-  const session = loadSession()
-  if (!session?.refreshToken) {
-    return null
-  }
-
-  try {
-    const response = await fetch(`${AUTH_SERVER_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: session.refreshToken }),
-    })
-
-    if (!response.ok) {
-      clearSession()
-      return null
-    }
-
-    const data = await response.json() as { accessToken: string; refreshToken: string }
-    const newSession = {
-      ...session,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-    }
-    saveSession(newSession)
-    return newSession
-  } catch {
-    clearSession()
-    return null
-  }
-})
-
-// ============================================
-// Integration Encryption Key Management
-// ============================================
-
-ipcMain.handle('integrations:isEncryptionAvailable', () => {
-  return integrationKeys.isEncryptionAvailable()
-})
-
-ipcMain.handle('integrations:generateKey', () => {
-  try {
-    const { keyId, keyData } = integrationKeys.generateEncryptionKey()
-    return { success: true, keyId, keyData }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Failed to generate key' }
-  }
-})
-
-ipcMain.handle('integrations:storeKey', (_event, options: { keyId: string; keyData: string }) => {
-  return integrationKeys.storeEncryptionKey(options.keyId, options.keyData)
-})
-
-ipcMain.handle('integrations:getKey', (_event, options: { keyId: string }) => {
-  const result = integrationKeys.getEncryptionKey(options.keyId)
-  if (result.success) {
-    return { success: true, keyId: options.keyId, keyData: result.keyData }
-  }
-  return result
-})
-
-ipcMain.handle('integrations:deleteKey', (_event, options: { keyId: string }) => {
-  return integrationKeys.deleteEncryptionKey(options.keyId)
-})
-
-ipcMain.handle('integrations:keyExists', (_event, options: { keyId: string }) => {
-  return integrationKeys.keyExists(options.keyId)
-})
-
-// Integration Credential Encryption/Decryption
-
-ipcMain.handle('integrations:encrypt', async (_event, options: { credentials: Record<string, unknown>; keyId: string }) => {
-  // Get the encryption key from keychain
-  const keyResult = integrationKeys.getEncryptionKey(options.keyId)
-  if (!keyResult.success || !keyResult.keyData) {
-    return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
-  }
-
-  // Encrypt credentials
-  return integrationCrypto.encryptCredentials(options.credentials, keyResult.keyData)
-})
-
-ipcMain.handle('integrations:decrypt', async (_event, options: { encrypted: string; keyId: string }) => {
-  // Get the encryption key from keychain
-  const keyResult = integrationKeys.getEncryptionKey(options.keyId)
-  if (!keyResult.success || !keyResult.keyData) {
-    return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
-  }
-
-  // Decrypt credentials
-  return integrationCrypto.decryptCredentials(options.encrypted, keyResult.keyData)
-})
-
-ipcMain.handle('integrations:startOAuth', async (_event, options: { provider: string; orgId: string }) => {
-  return startOAuthFlow(options.provider, options.orgId)
-})
-
-// Integration Tool Execution
-
-ipcMain.handle('integrations:runTool', async (_event, options: {
-  toolName: string
-  args: string[]
-  workingDir: string
-  encryptedCredentials: string
-  keyId: string
-  timeout?: number
-}) => {
-  return runIntegrationTool(options)
-})
-
-ipcMain.handle('integrations:isToolAvailable', (_event, options: { toolName: string }) => {
-  return isIntegrationTool(options.toolName)
-})
-
-ipcMain.handle('integrations:getToolDefinition', (_event, options: { toolName: string }) => {
-  const def = getIntegrationToolDefinition(options.toolName)
-  if (!def) return null
-  // Return without internal details
-  return {
-    provider: def.provider,
-    name: def.name,
-    displayName: def.displayName,
-    command: def.command,
-    description: def.description,
-  }
-})
-
-ipcMain.handle('integrations:listTools', () => {
-  return INTEGRATION_TOOLS.map((t) => ({
-    provider: t.provider,
-    name: t.name,
-    displayName: t.displayName,
-    command: t.command,
-    description: t.description,
-  }))
-})
-
-// ============================================
-// Database Explorer (provider integrations)
-// ============================================
-
-ipcMain.handle('db:supabase:select', async (_event, options: SupabaseSelectOptions) => {
-  try {
-    const { rows } = await supabaseSelect(options)
-    return { success: true, rows }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Supabase query failed' }
-  }
-})
-
-ipcMain.handle('db:firestore:listDocuments', async (_event, options: FirestoreListDocumentsOptions) => {
-  try {
-    const { documents, nextPageToken } = await firestoreListDocuments(options)
-    return { success: true, documents, nextPageToken }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Firestore query failed' }
-  }
-})
+// Register Services
+AuthService.getInstance().registerIpcHandlers()
+TerminalService.getInstance().registerIpcHandlers()
+IntegrationService.getInstance().registerIpcHandlers()
+DatabaseService.getInstance().registerIpcHandlers()
 
 // Local tool execution (agent runtime)
 ipcMain.handle('tools:run', async (_event, request: { name: string; input: Record<string, unknown> }) => {
@@ -1765,198 +1436,7 @@ ipcMain.handle(
 // Terminal IPC Handlers (VS Code-style multi-terminal)
 // ============================================
 
-// Create a new terminal instance
-ipcMain.handle(
-  'terminal:create',
-  async (
-    _event,
-    {
-      projectPath,
-      profileId,
-      cwd,
-      cols = 80,
-      rows = 24,
-    }: {
-      projectPath: string
-      profileId?: string
-      cwd?: string
-      cols?: number
-      rows?: number
-    }
-  ): Promise<{ success: boolean; terminalId?: string; error?: string }> => {
-    try {
-      const terminalId = crypto.randomUUID()
-      const profile = getTerminalProfile(profileId)
-
-      console.log(`[Terminal] Creating terminal ${terminalId} with profile ${profile.name} in ${cwd || projectPath}`)
-
-      const ptyProcess = pty.spawn(profile.path, profile.args || [], {
-        name: 'xterm-256color',
-        cols,
-        rows,
-        cwd: cwd || projectPath,
-        env: {
-          ...process.env,
-          ...profile.env,
-          TERM: 'xterm-256color',
-          COLORTERM: 'truecolor',
-        } as Record<string, string>,
-      })
-
-      const terminal: ManagedTerminal = {
-        id: terminalId,
-        projectPath,
-        ptyProcess,
-        profile,
-        title: profile.name,
-      }
-
-      terminals.set(terminalId, terminal)
-
-      // Track terminals per project
-      const projectTerms = projectTerminals.get(projectPath) || []
-      projectTerms.push(terminalId)
-      projectTerminals.set(projectPath, projectTerms)
-
-      // Stream output to renderer
-      ptyProcess.onData((data: string) => {
-        win?.webContents.send('terminal:output', { terminalId, data })
-      })
-
-      // Handle process exit
-      ptyProcess.onExit(({ exitCode }) => {
-        console.log(`[Terminal] Terminal ${terminalId} exited with code ${exitCode}`)
-        win?.webContents.send('terminal:exit', { terminalId, exitCode })
-
-        // Clean up
-        terminals.delete(terminalId)
-        const projectTerms = projectTerminals.get(projectPath)
-        if (projectTerms) {
-          const idx = projectTerms.indexOf(terminalId)
-          if (idx !== -1) projectTerms.splice(idx, 1)
-          if (projectTerms.length === 0) {
-            projectTerminals.delete(projectPath)
-          }
-        }
-      })
-
-      return { success: true, terminalId }
-    } catch (err) {
-      console.error('[Terminal] Failed to create terminal:', err)
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Failed to create terminal',
-      }
-    }
-  }
-)
-
-// Send input to a terminal (keystrokes)
-ipcMain.handle(
-  'terminal:input',
-  async (
-    _event,
-    { terminalId, data }: { terminalId: string; data: string }
-  ): Promise<void> => {
-    const terminal = terminals.get(terminalId)
-    if (terminal) {
-      terminal.ptyProcess.write(data)
-    }
-  }
-)
-
-// Resize a terminal
-ipcMain.handle(
-  'terminal:resize',
-  (
-    _event,
-    { terminalId, cols, rows }: { terminalId: string; cols: number; rows: number }
-  ): { success: boolean } => {
-    const terminal = terminals.get(terminalId)
-    if (terminal) {
-      try {
-        terminal.ptyProcess.resize(cols, rows)
-        return { success: true }
-      } catch (err) {
-        console.error('[Terminal] Failed to resize:', err)
-        return { success: false }
-      }
-    }
-    return { success: false }
-  }
-)
-
-// Kill a terminal
-ipcMain.handle(
-  'terminal:kill',
-  async (
-    _event,
-    { terminalId }: { terminalId: string }
-  ): Promise<{ success: boolean }> => {
-    const terminal = terminals.get(terminalId)
-    if (terminal) {
-      try {
-        console.log(`[Terminal] Killing terminal ${terminalId}`)
-        terminal.ptyProcess.kill()
-        terminals.delete(terminalId)
-
-        // Clean up project tracking
-        const projectTerms = projectTerminals.get(terminal.projectPath)
-        if (projectTerms) {
-          const idx = projectTerms.indexOf(terminalId)
-          if (idx !== -1) projectTerms.splice(idx, 1)
-          if (projectTerms.length === 0) {
-            projectTerminals.delete(terminal.projectPath)
-          }
-        }
-
-        return { success: true }
-      } catch (err) {
-        console.error('[Terminal] Failed to kill:', err)
-        return { success: false }
-      }
-    }
-    return { success: true } // Already dead
-  }
-)
-
-// Get available terminal profiles
-ipcMain.handle(
-  'terminal:getProfiles',
-  (): TerminalProfile[] => {
-    return detectTerminalProfiles()
-  }
-)
-
-// List terminals for a project
-ipcMain.handle(
-  'terminal:list',
-  (_event, { projectPath }: { projectPath: string }): string[] => {
-    return projectTerminals.get(projectPath) || []
-  }
-)
-
-// Get terminal info
-ipcMain.handle(
-  'terminal:getInfo',
-  (_event, { terminalId }: { terminalId: string }): {
-    id: string
-    profileId: string
-    profileName: string
-    title: string
-  } | null => {
-    const terminal = terminals.get(terminalId)
-    if (terminal) {
-      return {
-        id: terminal.id,
-        profileId: terminal.profile.id,
-        profileName: terminal.profile.name,
-        title: terminal.title,
-      }
-    }
-    return null
-  }
-)
+// Legacy Terminal IPC Handlers Removed (Moved to TerminalService)
 
 // ============================================
 // Context Menu for Terminal Selection
@@ -2044,16 +1524,7 @@ app.on('window-all-closed', () => {
   devServerProcesses.clear()
 
   // Kill all terminal instances when app closes
-  for (const [terminalId, terminal] of terminals) {
-    console.log(`[Terminal] Killing terminal ${terminalId}`)
-    try {
-      terminal.ptyProcess.kill()
-    } catch {
-      // Ignore errors when killing on shutdown
-    }
-  }
-  terminals.clear()
-  projectTerminals.clear()
+  TerminalService.getInstance().killAll()
 
   if (process.platform !== 'darwin') {
     app.quit()
@@ -2074,3 +1545,5 @@ app.whenReady().then(async () => {
 
   createWindow()
 })
+
+

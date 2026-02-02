@@ -14,7 +14,6 @@ import {
   ClipboardCheck,
   FileCode2,
   Rocket,
-  Search,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -64,6 +63,7 @@ export interface WizardTeamMember {
   name?: string
   role: ProjectRole
   isCurrentUser?: boolean
+  profileImageUrl?: string | null
 }
 
 export interface WizardRepoSource {
@@ -165,12 +165,8 @@ export const FRESH_STEPS: WizardStepDef[] = [
 export const REPO_STEPS: WizardStepDef[] = [
   { id: 'entry', title: 'Start', description: 'Choose how to create', icon: Sparkles },
   { id: 'repo-source', title: 'Source', description: 'Select repository', icon: FolderGit2 },
-  { id: 'repo-scan', title: 'Scan', description: 'Analyzing repository', icon: Search },
-  { id: 'visuals', title: 'Visuals', description: 'Visual style & branding', icon: Palette },
   { id: 'team', title: 'Team', description: 'Team & roles', icon: Users },
-  { id: 'review', title: 'Review', description: 'Review configuration', icon: ClipboardCheck },
-  { id: 'plan', title: 'Plan', description: 'Generate project plan', icon: FileCode2 },
-  { id: 'build', title: 'Build', description: 'Build your project', icon: Rocket },
+  { id: 'review', title: 'Review', description: 'Review & import', icon: ClipboardCheck },
 ]
 
 export const PROMPT_STEPS: WizardStepDef[] = [

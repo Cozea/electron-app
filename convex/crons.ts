@@ -35,4 +35,26 @@ crons.cron(
   internal.billing.checkBillingPeriodResets
 )
 
+// ============================================
+// SYNC SYSTEM CRON JOBS
+// ============================================
+
+// Cleanup expired file tombstones (daily at 5:00 AM UTC)
+crons.cron(
+  "cleanup expired tombstones",
+  "0 5 * * *",
+  internal.fileTombstones.cleanupAllExpiredTombstones
+)
+
+// ============================================
+// STORAGE TRACKING CRON JOBS
+// ============================================
+
+// Recalculate storage usage for all organizations (weekly on Sunday at 6:00 AM UTC)
+crons.cron(
+  "recalculate storage usage",
+  "0 6 * * 0",
+  internal.organizations.recalculateStorageUsageAll
+)
+
 export default crons

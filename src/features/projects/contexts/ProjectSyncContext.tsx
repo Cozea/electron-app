@@ -166,49 +166,59 @@ export function ProjectSyncProvider({
       })
 
       try {
-        // Check if local folder exists (always check, even if localPath not stored)
+        // Check if we already have a local path (e.g., from repo import)
         let effectiveLocalPath = currentLocalPath
-        const folderExists = await window.electronAPI.project.exists(projectSlug)
 
-        if (!folderExists) {
-          // Create local folder
+        if (effectiveLocalPath) {
+          // For repo imports, we already have the local path - just verify it exists
           setProgress((prev) => ({
             ...prev,
-            message: "Creating local folder...",
-            logs: [...prev.logs, "Local folder not found, creating..."],
+            logs: [...prev.logs, `Using existing folder at: ${effectiveLocalPath}`],
           }))
+        } else {
+          // No localPath provided - check if folder exists at slug path or create one
+          const folderExists = await window.electronAPI.project.exists(projectSlug)
 
-          const result = await window.electronAPI.project.createFolder({
-            slug: projectSlug,
-            initGit: true,
-          })
-
-          if (!result.success) {
-            throw new Error(result.error || "Failed to create folder")
-          }
-
-          effectiveLocalPath = result.localPath!
-          setCurrentLocalPath(effectiveLocalPath)
-
-          // Update per-user local path (machine-specific)
-          await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
-
-          setProgress((prev) => ({
-            ...prev,
-            logs: [...prev.logs, `Created folder at: ${effectiveLocalPath}`],
-          }))
-        } else if (!effectiveLocalPath) {
-          // Folder exists but we don't have the path stored - get it from electron
-          const localPath = await window.electronAPI.project.getLocalPath(projectSlug)
-          if (localPath) {
-            effectiveLocalPath = localPath
-            setCurrentLocalPath(effectiveLocalPath)
-            // Update per-user local path (machine-specific)
-            await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
+          if (!folderExists) {
+            // Create local folder
             setProgress((prev) => ({
               ...prev,
-              logs: [...prev.logs, `Found existing folder at: ${effectiveLocalPath}`],
+              message: "Creating local folder...",
+              logs: [...prev.logs, "Local folder not found, creating..."],
             }))
+
+            const result = await window.electronAPI.project.createFolder({
+              slug: projectSlug,
+              initGit: true,
+            })
+
+            if (!result.success) {
+              throw new Error(result.error || "Failed to create folder")
+            }
+
+            effectiveLocalPath = result.localPath!
+            setCurrentLocalPath(effectiveLocalPath)
+
+            // Update per-user local path (machine-specific)
+            await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
+
+            setProgress((prev) => ({
+              ...prev,
+              logs: [...prev.logs, `Created folder at: ${effectiveLocalPath}`],
+            }))
+          } else {
+            // Folder exists but we don't have the path stored - get it from electron
+            const localPath = await window.electronAPI.project.getLocalPath(projectSlug)
+            if (localPath) {
+              effectiveLocalPath = localPath
+              setCurrentLocalPath(effectiveLocalPath)
+              // Update per-user local path (machine-specific)
+              await updateMemberLocalPath({ projectId, userId, localPath: effectiveLocalPath })
+              setProgress((prev) => ({
+                ...prev,
+                logs: [...prev.logs, `Found existing folder at: ${effectiveLocalPath}`],
+              }))
+            }
           }
         }
 

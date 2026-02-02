@@ -133,6 +133,24 @@ export default defineSchema({
       lastResetAt: v.optional(v.number()),
     }),
 
+    // Storage usage tracking
+    storageUsage: v.optional(
+      v.object({
+        totalBytes: v.number(),
+        lastCalculatedAt: v.number(),
+        breakdown: v.object({
+          sourceAndConfig: v.number(),
+          collaborationData: v.number(),
+          aiHistory: v.number(),
+          buildCache: v.number(),
+          snapshots: v.number(),
+          gitHistory: v.number(),
+          databaseBackups: v.number(),
+          assets: v.number(),
+        }),
+      })
+    ),
+
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),

@@ -84,10 +84,10 @@ const ProviderIcon = ({ provider, className }: { provider: Provider; className?:
     case 'google':
       return (
         <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
         </svg>
       )
     default:
@@ -213,26 +213,13 @@ export function AI() {
   const totalTokens = aggregate?.totalTokens || 0
   const totalCreditsUsed = aggregate?.totalCreditsUsed || 0
 
-  const isLoading = !convexOrg
+
 
   const headerContent = (
     <h1 className="text-lg font-semibold">Usage Overview</h1>
   )
 
-  if (isLoading) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
-        header={headerContent}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
+
 
   return (
     <DashboardLayout
@@ -265,60 +252,60 @@ export function AI() {
         )}
 
         {/* Usage Overview */}
-        <div>
-          <div className="flex flex-wrap md:flex-nowrap divide-x divide-border">
-          {/* Requests MTD */}
-          <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2 first:pl-0">
-            <p className="text-sm text-muted-foreground mb-1">Requests (MTD)</p>
-            <p className="text-2xl font-semibold">
-              {(aggregate?.requestCount || 0).toLocaleString()}
-            </p>
-          </div>
+        <div className="px-4">
+          <div className="flex flex-wrap md:flex-nowrap divide-x divide-border w-full">
+            {/* Requests MTD */}
+            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+              <p className="text-sm text-muted-foreground mb-1">Requests (MTD)</p>
+              <p className="text-2xl font-semibold">
+                {(aggregate?.requestCount || 0).toLocaleString()}
+              </p>
+            </div>
 
-          {/* Tokens MTD */}
-          <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
-            <p className="text-sm text-muted-foreground mb-1">Tokens (MTD)</p>
-            <p className="text-2xl font-semibold">
-              {formatTokens(totalTokens)}
-            </p>
-          </div>
+            {/* Tokens MTD */}
+            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+              <p className="text-sm text-muted-foreground mb-1">Tokens (MTD)</p>
+              <p className="text-2xl font-semibold">
+                {formatTokens(totalTokens)}
+              </p>
+            </div>
 
-          {/* Estimated Cost MTD */}
-          <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2 first:pl-0 md:first:pl-6">
-            <p className="text-sm text-muted-foreground mb-1">Cost (MTD)</p>
-            <p className="text-2xl font-semibold">
-              {totalCreditsUsed.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">cr</span>
-            </p>
-          </div>
+            {/* Estimated Cost MTD */}
+            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+              <p className="text-sm text-muted-foreground mb-1">Cost (MTD)</p>
+              <p className="text-2xl font-semibold">
+                {totalCreditsUsed.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">cr</span>
+              </p>
+            </div>
 
-          {/* Budget Usage */}
-          <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2 last:pr-0">
-            <div className="flex items-center gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Budget</p>
-                <p className="text-2xl font-semibold">{Math.round(usagePercent)}%</p>
-              </div>
-              {/* Circular Progress */}
-              <div className="relative h-10 w-10">
-                <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
-                  <circle
-                    cx="18" cy="18" r="16"
-                    fill="none"
-                    className="stroke-muted"
-                    strokeWidth="3"
-                  />
-                  <circle
-                    cx="18" cy="18" r="16"
-                    fill="none"
-                    className="stroke-primary"
-                    strokeWidth="3"
-                    strokeDasharray={`${usagePercent} 100`}
-                    strokeLinecap="round"
-                  />
-                </svg>
+            {/* Budget Usage */}
+            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Budget</p>
+                  <p className="text-2xl font-semibold">{Math.round(usagePercent)}%</p>
+                </div>
+                {/* Circular Progress */}
+                <div className="relative h-10 w-10">
+                  <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
+                    <circle
+                      cx="18" cy="18" r="16"
+                      fill="none"
+                      className="stroke-muted"
+                      strokeWidth="3"
+                    />
+                    <circle
+                      cx="18" cy="18" r="16"
+                      fill="none"
+                      className="stroke-primary"
+                      strokeWidth="3"
+                      strokeDasharray={`${usagePercent} 100`}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
 
@@ -425,7 +412,32 @@ export function AI() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
-            {recentUsage && recentUsage.length > 0 ? (
+            {recentUsage === undefined ? (
+              <Table className="w-full">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[12%]">Date</TableHead>
+                    <TableHead className="w-[18%]">Provider</TableHead>
+                    <TableHead className="w-[30%]">Model</TableHead>
+                    <TableHead className="w-[13%] text-right">Requests</TableHead>
+                    <TableHead className="w-[13%] text-right">Tokens</TableHead>
+                    <TableHead className="w-[14%] text-right">Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: usagePageSize }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><div className="h-4 w-16 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 w-24 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
+                      <TableCell className="text-right"><div className="h-4 w-8 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                      <TableCell className="text-right"><div className="h-4 w-12 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                      <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : recentUsage && recentUsage.length > 0 ? (
               <>
                 <Table className="w-full">
                   <TableHeader>
@@ -442,36 +454,36 @@ export function AI() {
                     {recentUsage
                       .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
                       .map((usage) => (
-                      <TableRow key={usage._id}>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(usage.timestamp).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <ProviderIcon
-                              provider={usage.provider as Provider}
-                              className="h-4 w-4"
-                            />
-                            <span className="capitalize">{usage.provider}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-sm">{usage.model}</span>
-                        </TableCell>
-                        <TableCell className="text-right">1</TableCell>
-                        <TableCell className="text-right">
-                          {(usage.totalTokens || 0).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="text-muted-foreground">
-                            {(usage.creditsUsed || 0).toFixed(2)} cr
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        <TableRow key={usage._id}>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <ProviderIcon
+                                provider={usage.provider as Provider}
+                                className="h-4 w-4"
+                              />
+                              <span className="capitalize">{usage.provider}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm">{usage.model}</span>
+                          </TableCell>
+                          <TableCell className="text-right">1</TableCell>
+                          <TableCell className="text-right">
+                            {(usage.totalTokens || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="text-muted-foreground">
+                              {(usage.creditsUsed || 0).toFixed(2)} cr
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
                 {recentUsage.length > usagePageSize && (

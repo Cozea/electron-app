@@ -15,7 +15,6 @@ import {
   Settings,
   CreditCard,
   Users,
-  Home,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,8 +40,7 @@ interface CommandSearchProps {
 }
 
 const navigationItems = [
-  { href: '/', label: 'Dashboard', icon: Home, keywords: ['home', 'main', 'dashboard'] },
-  { href: '/projects', label: 'Projects', icon: FolderOpen, keywords: ['projects', 'apps', 'code'] },
+  { href: '/projects', label: 'Projects', icon: FolderOpen, keywords: ['projects', 'apps', 'code', 'home', 'main'] },
   { href: '/workspace/integrations', label: 'CLI Tools', icon: Terminal, keywords: ['cli', 'tools', 'integrations', 'connect', 'services', 'terminal'] },
   { href: '/workspace/billing', label: 'Billing', icon: CreditCard, keywords: ['billing', 'subscription', 'payment', 'credits'] },
   { href: '/teams', label: 'Team Members', icon: Users, keywords: ['team', 'members', 'organization'] },

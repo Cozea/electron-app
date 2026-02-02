@@ -395,6 +395,7 @@ export function ProjectBuild() {
   const handleAIComplete = useCallback(async () => {
     addLog('AI generation complete!')
     setIsAIGenerating(false)
+    setHasError(false) // Clear any stale error state from recovered errors
     setStatusMessage('Build complete!')
     setRunStatus('completed')
 
@@ -765,32 +766,14 @@ export function ProjectBuild() {
   const handleOpenProject = async () => {
     if (!project) return
 
-    let path = localPath
-    if (!path) {
-      const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
-      if (fetchedPath) {
-        path = fetchedPath
-        setLocalPath(path)
-        if (convexUserId) {
-          await updateMemberLocalPath({ projectId: project._id, userId: convexUserId, localPath: path })
-        }
-      }
-    }
-
-    if (!path) {
-      addLog('Error: Project folder path not set')
-      return
-    }
-
-    // Stop the dev server before opening the project folder
+    // Stop the dev server before navigating away
     if (devServer.isRunning) {
       addLog('Stopping dev server...')
       await devServer.stop()
     }
 
-    addLog('Opening project folder...')
-    // Open folder in system file manager
-    await window.electronAPI.shell.openExternal(`file://${path}`)
+    // Navigate to the project page (same as clicking a project card)
+    navigate(`/projects/${project.slug}`)
   }
 
   const handleCancelProject = async () => {

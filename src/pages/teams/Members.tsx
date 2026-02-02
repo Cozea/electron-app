@@ -10,6 +10,7 @@ import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Badge } from '../../components/ui/badge'
+import { Skeleton } from '../../components/ui/skeleton'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
@@ -100,7 +101,7 @@ export function Members() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [isInviteOpen, setIsInviteOpen] = useState(false)
-  const [inviteMembers, setInviteMembers] = useState<{email: string, role: 'admin' | 'member' | 'viewer'}[]>([])
+  const [inviteMembers, setInviteMembers] = useState<{ email: string, role: 'admin' | 'member' | 'viewer' }[]>([])
   const [emailInput, setEmailInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -432,7 +433,9 @@ export function Members() {
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold">Members</h1>
-        {seatStatus && seatStatus.limit > 0 && (
+        {seatStatus === undefined ? (
+          <Skeleton className="h-5 w-16 rounded-full" />
+        ) : seatStatus && seatStatus.limit > 0 && (
           <Badge
             variant="secondary"
             className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
@@ -703,7 +706,7 @@ export function Members() {
             <div className="overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
+                  <TableRow>
                     <TableHead className="w-12">
                       <Checkbox
                         checked={selected.length === paginatedRows.length && paginatedRows.length > 0}
@@ -755,9 +758,8 @@ export function Members() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span
-                            className={`h-2 w-2 rounded-full ${
-                              row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
-                            }`}
+                            className={`h-2 w-2 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
+                              }`}
                           />
                           <span className={row.status === 'active' ? 'text-green-600' : 'text-amber-600'}>
                             {row.status === 'active' ? 'Active' : 'Pending'}

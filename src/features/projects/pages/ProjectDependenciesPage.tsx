@@ -232,7 +232,7 @@ export function ProjectDependenciesPage() {
         ) : (
           <Card className="border-0 shadow-none bg-transparent px-4">
             <Table>
-              <TableHeader className="sticky top-0 bg-sidebar/60 z-10">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="w-[350px]">Package</TableHead>
                   <TableHead>Version</TableHead>

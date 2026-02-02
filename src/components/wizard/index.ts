@@ -8,8 +8,12 @@ export { TemplateStep } from './steps/TemplateStep'
 export { StackStep } from './steps/StackStep'
 export { SourceControlStep } from './steps/SourceControlStep'
 export { VisualsStep } from './steps/VisualsStep'
-export { TeamStep } from './steps/TeamStep'
+export { TeamStep, type OrgMember } from './steps/TeamStep'
 export { ReviewStep } from './steps/ReviewStep'
+
+// Repo Import Steps
+export { RepoSourceStep } from './steps/RepoSourceStep'
+export { RepoScanStep } from './steps/RepoScanStep'
 
 // Prompt Path
 export { PromptInput } from './prompt/PromptInput'
