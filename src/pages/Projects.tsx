@@ -150,7 +150,7 @@ export function Projects() {
   }, [filteredProjects, currentPage])
 
   // Reset page when filter/sort changes
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1)
   }, [statusFilter, sortBy])
 
