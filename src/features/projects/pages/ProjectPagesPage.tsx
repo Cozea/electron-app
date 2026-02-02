@@ -260,10 +260,19 @@ export function ProjectPagesPage() {
         }
     }, [searchParams, routes.length, setSearchParams])
 
-    // Handle escape key to exit focused view and arrow keys for navigation
+    // When closing the inspector (X, Escape), disable inspector, close sidebar and context menu
+    const handleCloseInspectorSidebar = useCallback(() => {
+        setInspectorEnabled(false)
+        manualInspectorEnabled.current = false // allow Shift-to-inspect to work again
+        setSelectedElement(null)
+        setInspectedElement(null)
+        setInspectorContextMenu(null)
+        closeVisualEditor()
+    }, [setSelectedElement, closeVisualEditor])
+
+    // Arrow keys for navigation in focused view
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Check if an interactive element has focus (inputs, textareas, contenteditable)
             const target = e.target as HTMLElement
             const isInteractiveElement =
                 target.tagName === 'INPUT' ||
@@ -272,11 +281,6 @@ export function ProjectPagesPage() {
                 target.isContentEditable ||
                 target.closest('[contenteditable="true"]')
 
-            if (e.key === 'Escape' && focusedPageIndex !== null) {
-                setFocusedPageIndex(null)
-            }
-
-            // Arrow keys for navigation in focused view - skip if interactive element is focused
             if (focusedPageIndex !== null && !isInteractiveElement) {
                 if (e.key === 'ArrowLeft') {
                     setFocusedPageIndex(prev => prev !== null && prev > 0 ? prev - 1 : routes.length - 1)
@@ -320,6 +324,34 @@ export function ProjectPagesPage() {
             const { type, payload } = event.data || {}
 
             switch (type) {
+                case 'bridge:close-inspector':
+                    handleCloseInspectorSidebar()
+                    break
+
+                case 'bridge:shift-keydown':
+                    // Shift pressed in iframe: enable inspector (same as window Shift keydown)
+                    if (!manualInspectorEnabled.current && bridgeReady) {
+                        setShiftInspectorActive(true)
+                        setInspectorEnabled(true)
+                    }
+                    break
+
+                case 'bridge:shift-keyup':
+                    // Shift released in iframe: only disable inspector if no element selected
+                    if (shiftInspectorActive) {
+                        const hasSelection = !!useVisualEditorStore.getState().selectedElement
+                        setShiftInspectorActive(false)
+                        if (!hasSelection) {
+                            setInspectorEnabled(false)
+                            setSelectedElement(null)
+                            setInspectedElement(null)
+                            closeVisualEditor()
+                        } else {
+                            manualInspectorEnabled.current = true // keep inspector on for selected element
+                        }
+                    }
+                    break
+
                 case 'bridge:ready':
                     // Bridge is ready
                     setBridgeReady(true)
@@ -414,7 +446,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -425,24 +457,36 @@ export function ProjectPagesPage() {
         }
     }, [inspectorEnabled])
 
-    // Shift-to-inspect: enable inspector while Shift is held
+    // Shift-to-inspect: enable inspector while Shift is held; Escape: one-time press to disable inspector
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Only trigger if Shift alone, not with other modifiers, and not already manually enabled
+            // Shift: enable inspector while held (same as toolbar toggle)
             if (e.key === 'Shift' && !e.repeat && !manualInspectorEnabled.current && bridgeReady) {
                 setShiftInspectorActive(true)
                 setInspectorEnabled(true)
+            }
+            // Escape: one-time press to disable inspector (or exit focused view if inspector off)
+            if (e.key === 'Escape') {
+                if (inspectorEnabled) {
+                    handleCloseInspectorSidebar()
+                } else if (focusedPageIndex !== null) {
+                    setFocusedPageIndex(null)
+                }
             }
         }
 
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.key === 'Shift' && shiftInspectorActive) {
+                const hasSelection = !!useVisualEditorStore.getState().selectedElement
                 setShiftInspectorActive(false)
-                setInspectorEnabled(false)
-                // Clear selection and close inspector menu when releasing Shift
-                setSelectedElement(null)
-                setInspectedElement(null)
-                closeVisualEditor()
+                if (!hasSelection) {
+                    setInspectorEnabled(false)
+                    setSelectedElement(null)
+                    setInspectedElement(null)
+                    closeVisualEditor()
+                } else {
+                    manualInspectorEnabled.current = true // keep inspector on for selected element
+                }
             }
         }
 
@@ -452,7 +496,7 @@ export function ProjectPagesPage() {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
         }
-    }, [shiftInspectorActive, bridgeReady, setSelectedElement, setInspectedElement, closeVisualEditor])
+    }, [shiftInspectorActive, bridgeReady, inspectorEnabled, focusedPageIndex, handleCloseInspectorSidebar, setSelectedElement, setInspectedElement, closeVisualEditor])
 
     // Add a log entry
     const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -588,13 +632,6 @@ export function ProjectPagesPage() {
             })
         }
     }, [])
-
-    // When closing the inspector menu (X), also disable the inspector
-    const handleCloseInspectorSidebar = useCallback(() => {
-        setInspectorEnabled(false)
-        setSelectedElement(null)
-        setInspectedElement(null)
-    }, [setSelectedElement])
 
     // Handle apply changes from visual editor
     const handleApplyChanges = useCallback(() => {

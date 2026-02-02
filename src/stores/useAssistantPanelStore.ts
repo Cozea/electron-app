@@ -131,8 +131,8 @@ export const useAssistantPanelStore = create<AssistantPanelState>()(
     {
       name: 'cozea-assistant-panel',
       storage: createJSONStorage(() => localStorage),
-      // Only persist the panel width
-      partialize: (state) => ({ panelWidth: state.panelWidth }),
+      // Persist panel width and open/closed state so it stays as the user left it
+      partialize: (state) => ({ panelWidth: state.panelWidth, mode: state.mode }),
     }
   )
 )
