@@ -866,6 +866,18 @@ export function VisualEditorSidebar({
     onClose?.()
   }, [close, onClose])
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose()
+      }
+    }
+    if (isOpen) {
+      window.addEventListener('keydown', onKeyDown)
+      return () => window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isOpen, handleClose])
+
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
   const dragStartX = useRef(0)

@@ -437,6 +437,24 @@ export const BRIDGE_SCRIPT = `
     }
   }, false);
 
+  // Escape closes inspector (notify parent so it can disable inspector and clear selection)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && inspectorEnabled) {
+      e.preventDefault();
+      postToParent({ type: 'bridge:close-inspector' });
+    }
+    // Forward Shift so parent can enable inspector when focus is in iframe (e.g. after Escape)
+    if (e.key === 'Shift' && !e.repeat) {
+      postToParent({ type: 'bridge:shift-keydown' });
+    }
+  }, true);
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift') {
+      postToParent({ type: 'bridge:shift-keyup' });
+    }
+  }, true);
+
   // Track navigation changes (for React Router and other SPA routers)
   let lastPathname = window.location.pathname;
 

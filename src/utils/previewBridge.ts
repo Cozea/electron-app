@@ -14,6 +14,9 @@ import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
 export type BridgeMessageType =
   // iframe → host
   | 'bridge:ready'
+  | 'bridge:close-inspector'
+  | 'bridge:shift-keydown'
+  | 'bridge:shift-keyup'
   | 'bridge:element-selected'
   | 'bridge:element-contextmenu'
   | 'bridge:element-hover'
