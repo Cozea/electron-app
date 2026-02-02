@@ -68,7 +68,7 @@ export function WizardLayout({
         <div className={cn(
           "flex-1 w-full px-8 py-8 flex flex-col",
           fullHeight ? "max-w-full p-0 min-h-0" :
-            currentStep === 0 ? "max-w-2xl mx-auto justify-center" : "max-w-2xl"
+            currentStep === 0 ? "max-w-2xl mx-auto justify-center" : ""
         )}>
           {fullHeight ? (
             // No animation wrapper in fullHeight mode to preserve flex layout

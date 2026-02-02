@@ -17,7 +17,6 @@ import {
   Clock,
   FolderOpen,
   X,
-  Loader2,
   MousePointerClick,
   MoreHorizontal,
 } from 'lucide-react'
@@ -185,18 +184,9 @@ export function ProjectDetailPage() {
     }
   }, [activeFile, openFiles.length, searchParams])
 
-  // Loading state
-  if (project === undefined) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-16 space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading project...</p>
-      </div>
-    )
-  }
-
-  // Not found
-  if (!project) {
+  // Loading state - show shell immediately
+  // Only show 404 if we are loaded (project === null) and explicitly not found
+  if (project === null) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 space-y-4">
         <FolderOpen className="h-16 w-16 text-muted-foreground" />
@@ -210,6 +200,9 @@ export function ProjectDetailPage() {
       </div>
     )
   }
+
+  // Ensure stores are initialized even if project is loading (we have the slug)
+  if (!slug) return null
 
   // Editor Layout - always shown, with tabs when files are open
   return (

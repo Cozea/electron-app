@@ -715,16 +715,19 @@ export function ProjectPagesPage() {
         navigate(`/projects/${slug}?path=${encodeURIComponent(pathForUrl)}`)
     }
 
-    if (project === undefined) {
+    // Loading state - show shell immediately
+    // Only show 404 if we are loaded (project === null) and explicitly not found
+    if (project === null) {
         return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center justify-center h-full py-16 space-y-4">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-muted-foreground">Project not found</p>
             </div>
         )
     }
 
     return (
-        <div className="flex flex-col h-full bg-background relative">
+        <div className="flex flex-col h-full bg-background relative" key={project?._id || 'loading'}>
             {/* Header */}
             <TooltipProvider delayDuration={300}>
                 <div
@@ -1115,146 +1118,146 @@ export function ProjectPagesPage() {
                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                             {/* Preview area */}
                             <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
-                            <div
-                                className={cn(
-                                    "relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
-                                    device === 'desktop' ? "w-full h-full" : "h-full",
-                                    device === 'mobile' && "w-[375px]",
-                                    device === 'tablet' && "w-[768px]"
-                                )}
-                                style={{
-                                    transform: `scale(${zoom / 100})`,
-                                    transformOrigin: 'center center'
-                                }}
-                            >
-                                {serverStatus === 'running' && serverPort ? (
-                                    <iframe
-                                        ref={iframeRef}
-                                        src={`http://localhost:${serverPort}${focusedRoute.path}`}
-                                        className="w-full h-full border-none"
-                                        onLoad={handleIframeLoad}
-                                    />
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                                        <AppWindow className="h-16 w-16 mb-4 opacity-20" />
-                                        <p className="text-lg">Start dev server for live preview</p>
-                                        <p className="text-sm text-muted-foreground/60 mt-1">{focusedRoute.path}</p>
-                                    </div>
-                                )}
+                                <div
+                                    className={cn(
+                                        "relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
+                                        device === 'desktop' ? "w-full h-full" : "h-full",
+                                        device === 'mobile' && "w-[375px]",
+                                        device === 'tablet' && "w-[768px]"
+                                    )}
+                                    style={{
+                                        transform: `scale(${zoom / 100})`,
+                                        transformOrigin: 'center center'
+                                    }}
+                                >
+                                    {serverStatus === 'running' && serverPort ? (
+                                        <iframe
+                                            ref={iframeRef}
+                                            src={`http://localhost:${serverPort}${focusedRoute.path}`}
+                                            className="w-full h-full border-none"
+                                            onLoad={handleIframeLoad}
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                                            <AppWindow className="h-16 w-16 mb-4 opacity-20" />
+                                            <p className="text-lg">Start dev server for live preview</p>
+                                            <p className="text-sm text-muted-foreground/60 mt-1">{focusedRoute.path}</p>
+                                        </div>
+                                    )}
 
-                                {/* Dynamic badge */}
-                                {focusedRoute.type === 'dynamic' && (
-                                    <div className="absolute top-3 right-3 px-2 py-1 rounded text-xs uppercase font-bold tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
-                                        Dynamic
-                                    </div>
-                                )}
+                                    {/* Dynamic badge */}
+                                    {focusedRoute.type === 'dynamic' && (
+                                        <div className="absolute top-3 right-3 px-2 py-1 rounded text-xs uppercase font-bold tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
+                                            Dynamic
+                                        </div>
+                                    )}
 
-                                {/* Action buttons overlay */}
-                                <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleOpenCode(focusedRoute.file)}
-                                        className="shadow-md"
-                                    >
-                                        <FileText className="h-3.5 w-3.5 mr-1.5" />
-                                        Edit Code
-                                    </Button>
-                                    {serverStatus === 'running' && (
+                                    {/* Action buttons overlay */}
+                                    <div className="absolute bottom-4 right-4 flex items-center gap-2">
                                         <Button
                                             variant="secondary"
                                             size="sm"
-                                            onClick={() => window.open(`http://localhost:${serverPort}${focusedRoute.path}`, '_blank')}
+                                            onClick={() => handleOpenCode(focusedRoute.file)}
                                             className="shadow-md"
                                         >
-                                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                                            Open
+                                            <FileText className="h-3.5 w-3.5 mr-1.5" />
+                                            Edit Code
                                         </Button>
+                                        {serverStatus === 'running' && (
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => window.open(`http://localhost:${serverPort}${focusedRoute.path}`, '_blank')}
+                                                className="shadow-md"
+                                            >
+                                                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                                                Open
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Thumbnail strip */}
+                            <div className="shrink-0 backdrop-blur-md px-3 py-2">
+                                <div className="flex items-center gap-3">
+                                    <div
+                                        ref={thumbnailStripRef}
+                                        className="flex-1 flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                                    >
+                                        {routes.map((route, index) => (
+                                            <button
+                                                key={route.path}
+                                                onClick={() => setFocusedPageIndex(index)}
+                                                className={cn(
+                                                    "group shrink-0 flex flex-col items-center gap-1 transition-all",
+                                                    index === focusedPageIndex
+                                                        ? "opacity-100"
+                                                        : "opacity-50 hover:opacity-100"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "w-24 h-14 rounded border-2 overflow-hidden relative",
+                                                    index === focusedPageIndex
+                                                        ? "border-primary ring-1 ring-primary/20"
+                                                        : "border-border/40 hover:border-border"
+                                                )}>
+                                                    {serverStatus === 'running' && serverPort ? (
+                                                        <div className="w-full h-full bg-white relative">
+                                                            <iframe
+                                                                src={`http://localhost:${serverPort}${route.path}`}
+                                                                className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
+                                                                tabIndex={-1}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-full h-full bg-muted/50 flex items-center justify-center">
+                                                            <AppWindow className="h-3 w-3 text-muted-foreground/30" />
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            togglePagesListOpen()
+                                                        }}
+                                                        className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                        aria-label="Toggle pages list"
+                                                    >
+                                                        <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            handleOpenCode(route.file)
+                                                        }}
+                                                        className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                        aria-label="Open code file"
+                                                    >
+                                                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </button>
+                                                </div>
+                                                <span className={cn(
+                                                    "text-[10px] max-w-24 truncate",
+                                                    index === focusedPageIndex
+                                                        ? "text-foreground font-medium"
+                                                        : "text-muted-foreground"
+                                                )}>
+                                                    {route.name}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {focusedPageIndex !== null && (
+                                        <div className="shrink-0 text-xs text-muted-foreground tabular-nums bg-muted/50 px-2.5 py-1 rounded-full">
+                                            {focusedPageIndex + 1}/{routes.length}
+                                        </div>
                                     )}
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Thumbnail strip */}
-                        <div className="shrink-0 backdrop-blur-md px-3 py-2">
-                            <div className="flex items-center gap-3">
-                                <div
-                                    ref={thumbnailStripRef}
-                                    className="flex-1 flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                                >
-                                    {routes.map((route, index) => (
-                                        <button
-                                            key={route.path}
-                                            onClick={() => setFocusedPageIndex(index)}
-                                            className={cn(
-                                                "group shrink-0 flex flex-col items-center gap-1 transition-all",
-                                                index === focusedPageIndex
-                                                    ? "opacity-100"
-                                                    : "opacity-50 hover:opacity-100"
-                                            )}
-                                        >
-                                            <div className={cn(
-                                                "w-24 h-14 rounded border-2 overflow-hidden relative",
-                                                index === focusedPageIndex
-                                                    ? "border-primary ring-1 ring-primary/20"
-                                                    : "border-border/40 hover:border-border"
-                                            )}>
-                                                {serverStatus === 'running' && serverPort ? (
-                                                    <div className="w-full h-full bg-white relative">
-                                                        <iframe
-                                                            src={`http://localhost:${serverPort}${route.path}`}
-                                                            className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
-                                                            tabIndex={-1}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <div className="w-full h-full bg-muted/50 flex items-center justify-center">
-                                                        <AppWindow className="h-3 w-3 text-muted-foreground/30" />
-                                                    </div>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.preventDefault()
-                                                        e.stopPropagation()
-                                                        togglePagesListOpen()
-                                                    }}
-                                                    className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                    aria-label="Toggle pages list"
-                                                >
-                                                    <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.preventDefault()
-                                                        e.stopPropagation()
-                                                        handleOpenCode(route.file)
-                                                    }}
-                                                    className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                    aria-label="Open code file"
-                                                >
-                                                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                                </button>
-                                            </div>
-                                            <span className={cn(
-                                                "text-[10px] max-w-24 truncate",
-                                                index === focusedPageIndex
-                                                    ? "text-foreground font-medium"
-                                                    : "text-muted-foreground"
-                                            )}>
-                                                {route.name}
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                                {focusedPageIndex !== null && (
-                                    <div className="shrink-0 text-xs text-muted-foreground tabular-nums bg-muted/50 px-2.5 py-1 rounded-full">
-                                        {focusedPageIndex + 1}/{routes.length}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
                         </div>
                         {inspectorSide === 'right' && (
                             <VisualEditorSidebar

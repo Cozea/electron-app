@@ -195,17 +195,6 @@ export function TerminalTabBar({
 
             {/* Right: Controls */}
             <div className="flex items-center gap-0.5 pr-2 shrink-0">
-                {/* Process indicator (only when a terminal is selected) */}
-                {activeView === "terminal" && activeTerminal && (
-                    <div className="flex items-center gap-1 px-2 text-[11px] text-muted-foreground">
-                        <Terminal className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">{activeTerminal.profileName}</span>
-                        {activeTerminal.status === 'running' && (
-                            <span className="text-green-500">●</span>
-                        )}
-                    </div>
-                )}
-
                 {/* New terminal dropdown */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -29,6 +29,8 @@ import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutpu
 import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
+import { AlertCircle, X } from 'lucide-react'
+import { useState } from 'react'
 
 export interface MessageToolMeta {
   displayName?: string
@@ -67,6 +69,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
+  const [dismissedErrors, setDismissedErrors] = useState<Set<number>>(new Set())
 
   return (
     <Message from={message.role}>
@@ -141,6 +144,32 @@ export function MessageBubble({
                 className="rounded-md bg-background/70 px-2 py-1 text-[11px] text-muted-foreground"
               >
                 Usage: {stats.join(' · ')}
+              </div>
+            )
+          }
+
+          // Handle error parts (data-error or error type)
+          if (part.type === 'error' || part.type === 'data-error') {
+            if (dismissedErrors.has(index)) {
+              return null
+            }
+            const errorPart = part as any
+            const errorMessage = errorPart.error || errorPart.message || errorPart.text || 'Error'
+            return (
+              <div
+                key={`${message.id}-error-${index}`}
+                className="flex items-center gap-2 rounded-lg bg-background/90 backdrop-blur-md border border-destructive/30 px-3 py-2"
+              >
+                <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                <span className="text-sm text-destructive flex-1">{errorMessage}</span>
+                <button
+                  type="button"
+                  className="text-destructive/70 hover:text-destructive transition-colors"
+                  onClick={() => setDismissedErrors(prev => new Set(prev).add(index))}
+                  aria-label="Dismiss error"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )
           }

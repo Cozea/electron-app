@@ -331,59 +331,59 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
             >
                 {((activeTab === 'Files') || (activeTab === 'Settings') || (isPagesRoute && pagesListOpen)) && (
                     <>
-                    <Sidebar
-                        side="left"
-                        variant="sidebar"
-                        collapsible="none"
-                        className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0"
-                    >
-                        <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
-                            <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
-                            <div className="flex items-center gap-1">
-                                {activeTab === 'Files' && onRefreshFiles && (
+                        <Sidebar
+                            side="left"
+                            variant="sidebar"
+                            collapsible="none"
+                            className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0"
+                        >
+                            <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
+                                <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
+                                <div className="flex items-center gap-1">
+                                    {activeTab === 'Files' && onRefreshFiles && (
+                                        <button
+                                            onClick={onRefreshFiles}
+                                            disabled={isRefreshing}
+                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            title="Refresh"
+                                        >
+                                            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+                                        </button>
+                                    )}
                                     <button
-                                        onClick={onRefreshFiles}
-                                        disabled={isRefreshing}
+                                        onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
                                         className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
-                                        title="Refresh"
                                     >
-                                        <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+                                        <Plus className="h-4 w-4 rotate-45" />
                                     </button>
+                                </div>
+                            </SidebarHeader>
+                            <SidebarContent className="h-full overflow-y-auto overflow-x-hidden pt-2">
+                                {/* Content based on Active Tab */}
+                                {activeTab === 'Files' && (
+                                    fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
                                 )}
-                                <button
-                                    onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
-                                    className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
-                                >
-                                    <Plus className="h-4 w-4 rotate-45" />
-                                </button>
-                            </div>
-                        </SidebarHeader>
-                        <SidebarContent className="h-full overflow-hidden pt-2">
-                            {/* Content based on Active Tab */}
-                            {activeTab === 'Files' && (
-                                fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
+                                {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
+                                {activeTab === 'Settings' && <SettingsSectionsList />}
+                            </SidebarContent>
+                        </Sidebar>
+                        {/* Resize Handle with border */}
+                        <div
+                            onMouseDown={handleResizeStart}
+                            className={cn(
+                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group border-r border-border/50",
+                                "hover:bg-primary/20 active:bg-primary/30",
+                                isResizing && "bg-primary/30"
                             )}
-                            {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
-                            {activeTab === 'Settings' && <SettingsSectionsList />}
-                        </SidebarContent>
-                    </Sidebar>
-                    {/* Resize Handle with border */}
-                    <div
-                        onMouseDown={handleResizeStart}
-                        className={cn(
-                            "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group border-r border-border/50",
-                            "hover:bg-primary/20 active:bg-primary/30",
-                            isResizing && "bg-primary/30"
-                        )}
-                    >
-                        <div className={cn(
-                            "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
-                            "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
-                            isResizing && "opacity-100"
-                        )}>
-                            <GripVertical className="h-3 w-3 text-muted-foreground" />
+                        >
+                            <div className={cn(
+                                "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
+                                "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
+                                isResizing && "opacity-100"
+                            )}>
+                                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                            </div>
                         </div>
-                    </div>
                     </>
                 )}
             </div>

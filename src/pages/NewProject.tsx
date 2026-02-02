@@ -18,13 +18,17 @@ import {
   ReviewStep,
   PromptInput,
   WizardConversation,
+  RepoSourceStep,
   type PromptSettings,
   type PlanOption,
+  type OrgMember,
 } from '../components/wizard'
 import { useWizardState, type CreationPath } from '../hooks/useWizardState'
-import { useMutation } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
+import { detectFramework, detectPackageManager } from '../utils/projectDetector'
+import { scanForRoutes } from '../utils/routeScanner'
 
 export function NewProject() {
   const { user, logout, convexUserId, currentOrganization } = useAuth()
@@ -44,9 +48,29 @@ export function NewProject() {
   const [conversationPromptSettings, setConversationPromptSettings] = useState<PromptSettings | null>(null)
   const [pendingPromptText, setPendingPromptText] = useState<string>('')
 
+  // Repo import state
+  const [isImporting, setIsImporting] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
+
   // Convex mutation for creating project
   const createProject = useMutation(api.projects.create)
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
+
+  // Fetch organization members for the team step
+  const orgMembersData = useQuery(
+    api.organizations.getMembers,
+    organizationId ? { orgId: organizationId } : 'skip'
+  )
+
+  // Transform to OrgMember format
+  const organizationMembers: OrgMember[] = (orgMembersData ?? []).map((m) => ({
+    id: m._id,
+    email: m.user?.email || '',
+    firstName: m.user?.firstName,
+    lastName: m.user?.lastName,
+    profileImageUrl: m.user?.profileImageUrl,
+    role: m.role,
+  })).filter((m) => m.email) // Filter out members without email
 
   const {
     state,
@@ -65,6 +89,7 @@ export function NewProject() {
     addTeamMember,
     removeTeamMember,
     setOriginalPrompt,
+    setRepoSource,
     createOrUpdateProject,
   } = wizard
 
@@ -76,6 +101,7 @@ export function NewProject() {
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
         role: 'project_manager',
         isCurrentUser: true,
+        profileImageUrl: user.profileImageUrl,
       })
     }
   }, [currentStepDef?.id, state.team.length, user, addTeamMember])
@@ -89,11 +115,10 @@ export function NewProject() {
   }
 
   const handleNext = async () => {
-    // On the review step (before generate), create/update the project
-    if (currentStepDef?.id === 'review') {
+    // On the review step for fresh path, create project and go to build
+    if (currentStepDef?.id === 'review' && state.path === 'fresh') {
       const projectId = await createOrUpdateProject()
       if (projectId) {
-        // Navigate to the build page for this project
         navigate(`/projects/${projectId}/build`)
       }
       return
@@ -104,6 +129,102 @@ export function NewProject() {
       const projectId = await createOrUpdateProject()
       if (projectId) {
         navigate(`/projects/${projectId}/build`)
+      }
+      return
+    }
+
+    // For repo-source step, scan the repo before advancing
+    if (currentStepDef?.id === 'repo-source' && state.repoSource?.repoUrl) {
+      setIsScanning(true)
+      try {
+        let detectedStack: NonNullable<typeof state.repoSource.detectedStack> = {
+          pageCount: 0,
+          componentCount: 0,
+        }
+
+        if (state.repoSource.provider === 'local') {
+          const projectPath = state.repoSource.repoUrl
+
+          // Detect framework
+          const frameworkInfo = await detectFramework(projectPath)
+
+          // Detect package manager
+          await detectPackageManager(projectPath)
+
+          // Scan for routes
+          const routeInfo = await scanForRoutes(projectPath)
+
+          // Detect styling, database, testing from package.json
+          let styling: string | undefined
+          let database: string | undefined
+          let testingFramework: string | undefined
+
+          try {
+            const pkgResult = await window.electronAPI.project.readFile({
+              projectPath,
+              filePath: 'package.json',
+            })
+
+            if (pkgResult.success && pkgResult.content) {
+              const pkg = JSON.parse(pkgResult.content)
+              const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+
+              // Detect styling
+              if (allDeps['tailwindcss']) styling = 'Tailwind CSS'
+              else if (allDeps['@emotion/react'] || allDeps['@emotion/styled']) styling = 'Emotion'
+              else if (allDeps['styled-components']) styling = 'Styled Components'
+              else if (allDeps['@chakra-ui/react']) styling = 'Chakra UI'
+              else if (allDeps['@mui/material']) styling = 'Material UI'
+
+              // Detect database
+              if (allDeps['@supabase/supabase-js']) database = 'Supabase'
+              else if (allDeps['prisma'] || allDeps['@prisma/client']) database = 'Prisma'
+              else if (allDeps['drizzle-orm']) database = 'Drizzle'
+              else if (allDeps['firebase'] || allDeps['firebase-admin']) database = 'Firebase'
+              else if (allDeps['mongoose']) database = 'MongoDB'
+              else if (allDeps['convex']) database = 'Convex'
+
+              // Detect testing
+              if (allDeps['vitest']) testingFramework = 'Vitest'
+              else if (allDeps['jest']) testingFramework = 'Jest'
+              else if (allDeps['@testing-library/react']) testingFramework = 'Testing Library'
+              else if (allDeps['cypress']) testingFramework = 'Cypress'
+              else if (allDeps['playwright']) testingFramework = 'Playwright'
+            }
+          } catch {
+            // Ignore package.json parse errors
+          }
+
+          // Count components
+          let componentCount = 0
+          try {
+            const manifest = await window.electronAPI.sync.getLocalManifest({ projectPath })
+            componentCount = manifest.manifest.filter(
+              (f) => f.path.includes('/components/') && (f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
+            ).length
+          } catch {
+            // Ignore count errors
+          }
+
+          detectedStack = {
+            framework: frameworkInfo.framework,
+            styling,
+            database,
+            testingFramework,
+            pageCount: routeInfo.routes.length,
+            componentCount,
+          }
+        }
+
+        // Update repo source with detected stack
+        setRepoSource({ ...state.repoSource, detectedStack })
+        setIsScanning(false)
+        nextStep()
+      } catch (error) {
+        console.error('Scan failed:', error)
+        setIsScanning(false)
+        // Still advance even if scan fails
+        nextStep()
       }
       return
     }
@@ -178,6 +299,41 @@ export function NewProject() {
     goToStep(stepIndex)
   }
 
+  // Handle repo import from ReviewStep button
+  const handleImportProject = async () => {
+    if (!organizationId || !convexUserId) {
+      console.error('[Import] Missing organizationId or convexUserId', { organizationId, convexUserId })
+      return
+    }
+
+    const repoName = state.repoSource?.repoUrl?.split('/').pop() || 'Imported Project'
+    console.log('[Import] Starting import:', { repoName, repoSource: state.repoSource })
+    setIsImporting(true)
+
+    try {
+      console.log('[Import] Calling createProject mutation...')
+      const result = await createProject({
+        organizationId,
+        userId: convexUserId,
+        name: repoName,
+        creationPath: 'repo',
+        repoSource: state.repoSource,
+      })
+      console.log('[Import] Project created:', result)
+
+      if (result.slug) {
+        console.log('[Import] Navigating to:', `/projects/${result.slug}`)
+        navigate(`/projects/${result.slug}`)
+      } else {
+        console.error('[Import] No slug returned from createProject')
+      }
+    } catch (error) {
+      console.error('[Import] Failed to create project:', error)
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   // Render the current step content
   const renderStepContent = () => {
     // Conversation mode for prompt path (project not created yet)
@@ -228,11 +384,20 @@ export function NewProject() {
             team={state.team}
             onAddMember={addTeamMember}
             onRemoveMember={removeTeamMember}
+            organizationMembers={organizationMembers}
+            currentUserEmail={user?.email}
           />
         )
 
       case 'review':
-        return <ReviewStep state={state} onEditStep={handleEditStep} />
+        return (
+          <ReviewStep
+            state={state}
+            onEditStep={handleEditStep}
+            onImport={state.path === 'repo' ? handleImportProject : undefined}
+            isImporting={isImporting}
+          />
+        )
 
       case 'prompt':
         return (
@@ -265,15 +430,15 @@ export function NewProject() {
           </div>
         )
 
-      // Repo path steps (not yet implemented)
+      // Repo path steps
       case 'repo-source':
-      case 'repo-scan':
         return (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              Repository import coming soon...
-            </p>
-          </div>
+          <RepoSourceStep
+            repoSource={state.repoSource}
+            onUpdate={(partial) => {
+              setRepoSource({ ...state.repoSource, ...partial } as any)
+            }}
+          />
         )
 
       // Plan and Build steps redirect to dedicated pages
@@ -289,13 +454,15 @@ export function NewProject() {
   // Determine button text
   const nextButtonText = useMemo(() => {
     if (state.isSaving) return 'Saving...'
+    if (isScanning) return 'Analyzing...'
     if (currentStepDef?.id === 'review') return 'Generate Plan'
     if (currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review') return 'Generate Project'
     return 'Next'
-  }, [currentStepDef?.id, state.isSaving])
+  }, [currentStepDef?.id, state.isSaving, isScanning])
 
-  // Don't show Next button on entry step (path selection handles it) or in conversation mode
-  const showNextButton = state.path !== null && state.step > 0 && !['plan', 'build'].includes(currentStepDef?.id || '') && !isConversationMode
+  // Don't show Next button on entry step (path selection handles it), in conversation mode, or for repo review (button is in card)
+  const isRepoReview = state.path === 'repo' && currentStepDef?.id === 'review'
+  const showNextButton = state.path !== null && state.step > 0 && !['plan', 'build'].includes(currentStepDef?.id || '') && !isConversationMode && !isRepoReview
 
   // Don't show navigation at all in conversation mode
   const showNavigation = state.step > 0 && !isConversationMode
@@ -312,10 +479,10 @@ export function NewProject() {
         <Button
           onClick={handleNext}
           size="sm"
-          disabled={!canProceed || state.isSaving}
+          disabled={!canProceed || state.isSaving || isScanning}
           className="gap-2"
         >
-          {state.isSaving ? (
+          {state.isSaving || isScanning ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
             <Rocket className="h-4 w-4" />

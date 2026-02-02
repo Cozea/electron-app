@@ -54,7 +54,8 @@ export const useQueryCache = create<QueryCacheState>()(
       clear: (key?: string) => {
         if (key) {
           set((state) => {
-            const { [key]: _, ...rest } = state.cache
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { [key]: _removed, ...rest } = state.cache
             return { cache: rest }
           })
         } else {
@@ -64,7 +65,7 @@ export const useQueryCache = create<QueryCacheState>()(
     }),
     {
       name: 'cozea-query-cache',
-      storage: createJSONStorage(() => sessionStorage), // Use sessionStorage - clears on app restart
+      storage: createJSONStorage(() => localStorage), // Use localStorage to persist across restarts
       partialize: (state) => ({ cache: state.cache }),
     }
   )

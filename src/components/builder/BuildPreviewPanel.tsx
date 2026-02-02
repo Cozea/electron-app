@@ -131,9 +131,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
         {/* Idle state - waiting for build */}
         {status === 'idle' && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-            <Shimmer>
-              <AppWindow className="h-16 w-16 opacity-20" />
-            </Shimmer>
+            <AppWindow className="h-16 w-16 opacity-50 animate-pulse" />
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Preview will appear here</p>
               <Shimmer className="text-xs text-muted-foreground/70">
@@ -146,9 +144,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
         {/* Starting state - dev server booting with shimmer */}
         {status === 'starting' && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-            <Shimmer>
-              <AppWindow className="h-16 w-16 opacity-20" />
-            </Shimmer>
+            <AppWindow className="h-16 w-16 opacity-50 animate-pulse" />
             <div className="text-center space-y-1">
               <Shimmer className="text-sm font-medium">Starting dev server...</Shimmer>
               <p className="text-xs text-muted-foreground/70">Compiling your project</p>
@@ -192,7 +188,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
         {/* Stopped state */}
         {status === 'stopped' && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-            <AppWindow className="h-16 w-16 opacity-20" />
+            <AppWindow className="h-16 w-16 opacity-50" />
             <div className="text-center">
               <p className="text-sm font-medium">Preview stopped</p>
               <p className="text-xs text-muted-foreground/70">The dev server has been stopped</p>

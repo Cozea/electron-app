@@ -1,37 +1,42 @@
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { Login } from './pages/Login'
-import { Dashboard } from './pages/Dashboard'
+// Eager load core pages for instant startup (VS Code style)
 import { Projects } from './pages/Projects'
-import { NewProject } from './pages/NewProject'
-import { ProjectBuild } from './pages/ProjectBuild'
-// Project pages (under ProjectLayout)
 import { ProjectLayout } from './features/projects/layouts/ProjectLayout'
-import { ProjectDetailPage } from './features/projects/pages/ProjectDetailPage'
-import { ProjectPagesPage } from './features/projects/pages/ProjectPagesPage'
-import { ProjectDatabasePage } from './features/projects/pages/ProjectDatabasePage'
-import { ProjectDependenciesPage } from './features/projects/pages/ProjectDependenciesPage'
-import { ProjectBackendStudioPage } from './features/projects/pages/ProjectBackendStudioPage'
-import { ChangesPage } from './features/projects/pages/ChangesPage'
-import { TasksPage } from './features/projects/pages/TasksPage'
-import { ProjectSettingsPage } from './features/projects/pages/ProjectSettingsPage'
+
+// Lazy load other non-critical pages
+const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })))
+const NewProject = lazy(() => import('./pages/NewProject').then(m => ({ default: m.NewProject })))
+const ProjectBuild = lazy(() => import('./pages/ProjectBuild').then(m => ({ default: m.ProjectBuild })))
+const ProjectDetailPage = lazy(() => import('./features/projects/pages/ProjectDetailPage').then(m => ({ default: m.ProjectDetailPage })))
+const ProjectPagesPage = lazy(() => import('./features/projects/pages/ProjectPagesPage').then(m => ({ default: m.ProjectPagesPage })))
+const ProjectDatabasePage = lazy(() => import('./features/projects/pages/ProjectDatabasePage').then(m => ({ default: m.ProjectDatabasePage })))
+const ProjectDependenciesPage = lazy(() => import('./features/projects/pages/ProjectDependenciesPage').then(m => ({ default: m.ProjectDependenciesPage })))
+const ProjectBackendStudioPage = lazy(() => import('./features/projects/pages/ProjectBackendStudioPage').then(m => ({ default: m.ProjectBackendStudioPage })))
+const ChangesPage = lazy(() => import('./features/projects/pages/ChangesPage').then(m => ({ default: m.ChangesPage })))
+const TasksPage = lazy(() => import('./features/projects/pages/TasksPage').then(m => ({ default: m.TasksPage })))
+const ProjectSettingsPage = lazy(() => import('./features/projects/pages/ProjectSettingsPage').then(m => ({ default: m.ProjectSettingsPage })))
+
 // Other pages
-import { Members } from './pages/teams/Members'
-import { MemberDetails } from './pages/teams/MemberDetails'
-import { Roles } from './pages/teams/Roles'
-import { General } from './pages/workspace/General'
-import { Billing } from './pages/workspace/Billing'
-import { AI } from './pages/workspace/AI'
-import { Integrations } from './pages/workspace/Integrations'
-import { Sync } from './pages/workspace/Sync'
-import { Account } from './pages/settings/Account'
-import { Appearance } from './pages/settings/Appearance'
-import { Storage } from './pages/settings/Storage'
-import { AcceptInvitation } from './pages/AcceptInvitation'
-import { Onboarding } from './components/Onboarding'
+const Members = lazy(() => import('./pages/teams/Members').then(m => ({ default: m.Members })))
+const MemberDetails = lazy(() => import('./pages/teams/MemberDetails').then(m => ({ default: m.MemberDetails })))
+const Roles = lazy(() => import('./pages/teams/Roles').then(m => ({ default: m.Roles })))
+const General = lazy(() => import('./pages/workspace/General').then(m => ({ default: m.General })))
+const Billing = lazy(() => import('./pages/workspace/Billing').then(m => ({ default: m.Billing })))
+const AI = lazy(() => import('./pages/workspace/AI').then(m => ({ default: m.AI })))
+const Integrations = lazy(() => import('./pages/workspace/Integrations').then(m => ({ default: m.Integrations })))
+const Sync = lazy(() => import('./pages/workspace/Sync').then(m => ({ default: m.Sync })))
+const Account = lazy(() => import('./pages/settings/Account').then(m => ({ default: m.Account })))
+const Appearance = lazy(() => import('./pages/settings/Appearance').then(m => ({ default: m.Appearance })))
+const Storage = lazy(() => import('./pages/settings/Storage').then(m => ({ default: m.Storage })))
+const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })))
+const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })))
 import { TooltipProvider } from './components/ui/tooltip'
+
+
 
 function AppWithOrganization() {
   const { accessToken, organizations, refreshToken } = useAuth()
@@ -42,7 +47,9 @@ function AppWithOrganization() {
       initialOrganizations={organizations}
       onTokenExpired={refreshToken}
     >
-      <AppContent />
+      <Suspense fallback={null}>
+        <AppContent />
+      </Suspense>
     </OrganizationProvider>
   )
 }
@@ -51,14 +58,9 @@ function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
 
   if (isLoading) {
-    return (
-      <div className="h-screen w-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="text-foreground text-lg font-semibold">Loading...</div>
-          <div className="w-8 h-8 border-4 border-foreground border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      </div>
-    )
+    if (isLoading) {
+      return null
+    }
   }
 
   if (!isAuthenticated) {
@@ -71,10 +73,8 @@ function AppContent() {
 
   return (
     <Routes>
-      {/* Dashboard */}
-      <Route path="/" element={<Dashboard />} />
-
-      {/* Projects List and Wizard */}
+      {/* Projects (default landing page) */}
+      <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/projects" element={<Projects />} />
       <Route path="/projects/new" element={<NewProject />} />
       <Route path="/projects/:projectId/build" element={<ProjectBuild />} />

@@ -21,6 +21,7 @@ import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_modelTiers from "../lib/modelTiers.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_seatLimits from "../lib/seatLimits.js";
+import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as organizations from "../organizations.js";
 import type * as projectAssets from "../projectAssets.js";
 import type * as projectFileLocks from "../projectFileLocks.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   "lib/modelTiers": typeof lib_modelTiers;
   "lib/permissions": typeof lib_permissions;
   "lib/seatLimits": typeof lib_seatLimits;
+  "lib/workspaceLimits": typeof lib_workspaceLimits;
   organizations: typeof organizations;
   projectAssets: typeof projectAssets;
   projectFileLocks: typeof projectFileLocks;

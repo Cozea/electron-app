@@ -23,6 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 const electron = require("electron");
+const windowStateKeeper = require("electron-window-state");
 const node_url = require("node:url");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -48,6 +49,7 @@ function _interopNamespaceDefault(e) {
   n.default = e;
   return Object.freeze(n);
 }
+const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const pty__namespace = /* @__PURE__ */ _interopNamespaceDefault(pty);
 function notifyFileChanged(filePath, content, options) {
   electron.BrowserWindow.getAllWindows().forEach((window) => {
@@ -1212,6 +1214,308 @@ function resolvePathWithinDirectory(baseDir, inputPath) {
   }
   return resolved;
 }
+class AuthService {
+  constructor() {
+    this.sessionPath = null;
+    this.authServerUrl = process.env.AUTH_SERVER_URL || "https://crosscode-auth-gateway-production.up.railway.app";
+    this.isProduction = !process.env["VITE_DEV_SERVER_URL"];
+  }
+  static getInstance() {
+    if (!AuthService.instance) {
+      AuthService.instance = new AuthService();
+    }
+    return AuthService.instance;
+  }
+  getSessionPath() {
+    if (!this.sessionPath) {
+      this.sessionPath = path.join(electron.app.getPath("userData"), "session.enc");
+    }
+    return this.sessionPath;
+  }
+  saveSession(session) {
+    const jsonData = JSON.stringify(session);
+    if (electron.safeStorage.isEncryptionAvailable()) {
+      const encryptedData = electron.safeStorage.encryptString(jsonData);
+      fs.writeFileSync(this.getSessionPath(), encryptedData);
+    } else if (this.isProduction) {
+      electron.dialog.showErrorBox(
+        "Security Error",
+        "Session encryption is not available on this system. Please ensure your operating system keychain is properly configured."
+      );
+      throw new Error("Session encryption required in production");
+    } else {
+      console.warn("safeStorage not available, storing session unencrypted (dev mode only)");
+      fs.writeFileSync(this.getSessionPath(), jsonData);
+    }
+  }
+  loadSession() {
+    try {
+      if (!fs.existsSync(this.getSessionPath())) {
+        return null;
+      }
+      const fileData = fs.readFileSync(this.getSessionPath());
+      if (electron.safeStorage.isEncryptionAvailable()) {
+        try {
+          const decryptedData = electron.safeStorage.decryptString(fileData);
+          return JSON.parse(decryptedData);
+        } catch {
+          const plainData = fileData.toString("utf-8");
+          return JSON.parse(plainData);
+        }
+      } else {
+        const data = fileData.toString("utf-8");
+        return JSON.parse(data);
+      }
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
+    return null;
+  }
+  clearSession() {
+    try {
+      if (fs.existsSync(this.getSessionPath())) {
+        fs.unlinkSync(this.getSessionPath());
+      }
+      const oldSessionPath = this.getSessionPath().replace(".enc", ".json");
+      if (fs.existsSync(oldSessionPath)) {
+        fs.unlinkSync(oldSessionPath);
+      }
+    } catch (err) {
+      console.error("Failed to clear session:", err);
+    }
+  }
+  async handleAuthCallback(url, win2) {
+    const urlObj = new URL(url);
+    const token = urlObj.searchParams.get("token");
+    if (!token) {
+      console.error("No token in callback URL");
+      win2?.webContents.send("auth:error", "No token received");
+      return;
+    }
+    try {
+      const response = await fetch(`${this.authServerUrl}/auth/desktop/exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+      if (!response.ok) {
+        throw new Error("Token exchange failed");
+      }
+      const session = await response.json();
+      this.saveSession(session);
+      win2?.webContents.send("auth:success", session);
+    } catch (err) {
+      console.error("Auth callback error:", err);
+      win2?.webContents.send("auth:error", "Authentication failed");
+    }
+  }
+  registerIpcHandlers() {
+    electron.ipcMain.handle("auth:login", async () => {
+      const loginUrl = `${this.authServerUrl}/auth/login?client=desktop`;
+      await electron.shell.openExternal(loginUrl);
+      return { success: true };
+    });
+    electron.ipcMain.handle("auth:logout", async () => {
+      this.clearSession();
+      try {
+        await fetch(`${this.authServerUrl}/auth/logout`, { method: "POST" });
+      } catch {
+      }
+      return { success: true };
+    });
+    electron.ipcMain.handle("auth:getSession", () => {
+      return this.loadSession();
+    });
+    electron.ipcMain.handle("auth:updateOrganizations", (_event, organizations) => {
+      const session = this.loadSession();
+      if (!session) {
+        return { success: false, error: "No session found" };
+      }
+      const updatedSession = { ...session, organizations };
+      this.saveSession(updatedSession);
+      return { success: true };
+    });
+    electron.ipcMain.handle("auth:refresh", async () => {
+      const session = this.loadSession();
+      if (!session?.refreshToken) {
+        return null;
+      }
+      try {
+        const response = await fetch(`${this.authServerUrl}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: session.refreshToken })
+        });
+        if (!response.ok) {
+          this.clearSession();
+          return null;
+        }
+        const data = await response.json();
+        const newSession = {
+          ...session,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken
+        };
+        this.saveSession(newSession);
+        return newSession;
+      } catch {
+        this.clearSession();
+        return null;
+      }
+    });
+  }
+}
+class TerminalService {
+  constructor() {
+    this.terminals = /* @__PURE__ */ new Map();
+    this.projectTerminals = /* @__PURE__ */ new Map();
+  }
+  static getInstance() {
+    if (!TerminalService.instance) {
+      TerminalService.instance = new TerminalService();
+    }
+    return TerminalService.instance;
+  }
+  detectTerminalProfiles() {
+    const profiles = [];
+    if (process.platform !== "win32") {
+      if (fs__namespace.existsSync("/bin/zsh")) {
+        profiles.push({ id: "zsh", name: "zsh", path: "/bin/zsh", icon: "terminal" });
+      }
+      if (fs__namespace.existsSync("/bin/bash")) {
+        profiles.push({ id: "bash", name: "bash", path: "/bin/bash", icon: "terminal" });
+      }
+      if (fs__namespace.existsSync("/bin/sh")) {
+        profiles.push({ id: "sh", name: "sh", path: "/bin/sh", icon: "terminal" });
+      }
+    }
+    if (process.platform === "win32") {
+      profiles.push({ id: "powershell", name: "PowerShell", path: "powershell.exe", icon: "terminal-powershell" });
+      profiles.push({ id: "cmd", name: "Command Prompt", path: "cmd.exe", icon: "terminal-cmd" });
+    }
+    profiles.push({ id: "node", name: "Node.js", path: "node", icon: "symbol-event" });
+    return profiles;
+  }
+  getTerminalProfile(profileId) {
+    const profiles = this.detectTerminalProfiles();
+    if (profileId) {
+      const profile = profiles.find((p) => p.id === profileId);
+      if (profile) return profile;
+    }
+    return profiles[0] || { id: "sh", name: "sh", path: "/bin/sh", icon: "terminal" };
+  }
+  registerIpcHandlers() {
+    electron.ipcMain.handle("terminal:create", async (_event, options) => {
+      try {
+        const profile = this.getTerminalProfile(options.profileId);
+        const cols = options.cols || 80;
+        const rows = options.rows || 24;
+        const cwd = options.cwd || options.projectPath;
+        const ptyProcess = pty__namespace.spawn(profile.path, profile.args || [], {
+          name: "xterm-256color",
+          cols,
+          rows,
+          cwd,
+          env: process.env
+        });
+        const terminalId = Math.random().toString(36).substring(2, 15);
+        const terminal = {
+          id: terminalId,
+          projectPath: options.projectPath,
+          ptyProcess,
+          profile,
+          title: profile.name
+        };
+        this.terminals.set(terminalId, terminal);
+        const projectTerms = this.projectTerminals.get(options.projectPath) || [];
+        projectTerms.push(terminalId);
+        this.projectTerminals.set(options.projectPath, projectTerms);
+        ptyProcess.onData((data) => {
+          import("electron").then(({ BrowserWindow }) => {
+            BrowserWindow.getAllWindows().forEach((win2) => {
+              win2.webContents.send("terminal:output", { terminalId, data });
+            });
+          });
+        });
+        ptyProcess.onExit((res) => {
+          this.terminals.delete(terminalId);
+          const terms = this.projectTerminals.get(options.projectPath) || [];
+          this.projectTerminals.set(options.projectPath, terms.filter((t) => t !== terminalId));
+          import("electron").then(({ BrowserWindow }) => {
+            BrowserWindow.getAllWindows().forEach((win2) => {
+              win2.webContents.send("terminal:exit", { terminalId, exitCode: res.exitCode });
+            });
+          });
+        });
+        return { success: true, terminalId };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "Failed to create terminal" };
+      }
+    });
+    electron.ipcMain.handle("terminal:input", async (_event, options) => {
+      const term = this.terminals.get(options.terminalId);
+      if (term) {
+        term.ptyProcess.write(options.data);
+      }
+    });
+    electron.ipcMain.handle("terminal:resize", async (_event, options) => {
+      const term = this.terminals.get(options.terminalId);
+      if (term) {
+        term.ptyProcess.resize(options.cols, options.rows);
+        return { success: true };
+      }
+      return { success: false };
+    });
+    electron.ipcMain.handle("terminal:kill", async (_event, options) => {
+      const term = this.terminals.get(options.terminalId);
+      if (term) {
+        term.ptyProcess.kill();
+        this.terminals.delete(options.terminalId);
+        return { success: true };
+      }
+      return { success: false };
+    });
+    electron.ipcMain.handle("terminal:getProfiles", () => {
+      return this.detectTerminalProfiles();
+    });
+    electron.ipcMain.handle("terminal:list", (_event, options) => {
+      return this.projectTerminals.get(options.projectPath) || [];
+    });
+    electron.ipcMain.handle("terminal:getInfo", (_event, options) => {
+      const term = this.terminals.get(options.terminalId);
+      if (!term) return null;
+      return {
+        id: term.id,
+        profileId: term.profile.id,
+        profileName: term.profile.name,
+        title: term.title
+      };
+    });
+  }
+  // Cleanup all terminals for a project (used by ProjectLayout cleanup)
+  killAllForProject(projectPath) {
+    const ids = this.projectTerminals.get(projectPath) || [];
+    ids.forEach((id) => {
+      const term = this.terminals.get(id);
+      if (term) {
+        term.ptyProcess.kill();
+        this.terminals.delete(id);
+      }
+    });
+    this.projectTerminals.delete(projectPath);
+  }
+  // Cleanup all terminals (used on app exit)
+  killAll() {
+    for (const [terminalId, terminal] of this.terminals) {
+      try {
+        terminal.ptyProcess.kill();
+      } catch {
+      }
+    }
+    this.terminals.clear();
+    this.projectTerminals.clear();
+  }
+}
 const KEYS_DIR_NAME = "integration-keys";
 function getKeysDirectory() {
   const userDataPath = electron.app.getPath("userData");
@@ -1975,6 +2279,92 @@ async function runIntegrationTool(params) {
     timeout: params.timeout
   });
 }
+class IntegrationService {
+  constructor() {
+  }
+  static getInstance() {
+    if (!IntegrationService.instance) {
+      IntegrationService.instance = new IntegrationService();
+    }
+    return IntegrationService.instance;
+  }
+  // Exposed for Main to call when protocol URL is received
+  async handleOAuthCallback(url) {
+    return handleOAuthCallback(url);
+  }
+  registerIpcHandlers() {
+    electron.ipcMain.handle("integrations:isEncryptionAvailable", () => {
+      return isEncryptionAvailable();
+    });
+    electron.ipcMain.handle("integrations:generateKey", () => {
+      try {
+        const { keyId, keyData } = generateEncryptionKey();
+        return { success: true, keyId, keyData };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "Failed to generate key" };
+      }
+    });
+    electron.ipcMain.handle("integrations:storeKey", (_event, options) => {
+      return storeEncryptionKey(options.keyId, options.keyData);
+    });
+    electron.ipcMain.handle("integrations:getKey", (_event, options) => {
+      const result = getEncryptionKey(options.keyId);
+      if (result.success) {
+        return { success: true, keyId: options.keyId, keyData: result.keyData };
+      }
+      return result;
+    });
+    electron.ipcMain.handle("integrations:deleteKey", (_event, options) => {
+      return deleteEncryptionKey(options.keyId);
+    });
+    electron.ipcMain.handle("integrations:keyExists", (_event, options) => {
+      return keyExists(options.keyId);
+    });
+    electron.ipcMain.handle("integrations:encrypt", async (_event, options) => {
+      const keyResult = getEncryptionKey(options.keyId);
+      if (!keyResult.success || !keyResult.keyData) {
+        return { success: false, error: keyResult.error || "Failed to retrieve encryption key" };
+      }
+      return encryptCredentials(options.credentials, keyResult.keyData);
+    });
+    electron.ipcMain.handle("integrations:decrypt", async (_event, options) => {
+      const keyResult = getEncryptionKey(options.keyId);
+      if (!keyResult.success || !keyResult.keyData) {
+        return { success: false, error: keyResult.error || "Failed to retrieve encryption key" };
+      }
+      return decryptCredentials$1(options.encrypted, keyResult.keyData);
+    });
+    electron.ipcMain.handle("integrations:startOAuth", async (_event, options) => {
+      return startOAuthFlow(options.provider, options.orgId);
+    });
+    electron.ipcMain.handle("integrations:runTool", async (_event, options) => {
+      return runIntegrationTool(options);
+    });
+    electron.ipcMain.handle("integrations:isToolAvailable", (_event, options) => {
+      return isIntegrationTool(options.toolName);
+    });
+    electron.ipcMain.handle("integrations:getToolDefinition", (_event, options) => {
+      const def = getIntegrationToolDefinition(options.toolName);
+      if (!def) return null;
+      return {
+        provider: def.provider,
+        name: def.name,
+        displayName: def.displayName,
+        command: def.command,
+        description: def.description
+      };
+    });
+    electron.ipcMain.handle("integrations:listTools", () => {
+      return INTEGRATION_TOOLS.map((t) => ({
+        provider: t.provider,
+        name: t.name,
+        displayName: t.displayName,
+        command: t.command,
+        description: t.description
+      }));
+    });
+  }
+}
 function base64UrlEncode(value) {
   const base64 = (typeof value === "string" ? Buffer.from(value) : value).toString("base64");
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -2167,55 +2557,47 @@ async function firestoreListDocuments(options) {
     nextPageToken: typeof nextPageToken === "string" ? nextPageToken : void 0
   };
 }
+class DatabaseService {
+  constructor() {
+  }
+  static getInstance() {
+    if (!DatabaseService.instance) {
+      DatabaseService.instance = new DatabaseService();
+    }
+    return DatabaseService.instance;
+  }
+  registerIpcHandlers() {
+    electron.ipcMain.handle("db:supabase:select", async (_event, options) => {
+      try {
+        const { rows } = await supabaseSelect(options);
+        return { success: true, rows };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "Supabase query failed" };
+      }
+    });
+    electron.ipcMain.handle("db:firestore:listDocuments", async (_event, options) => {
+      try {
+        const { documents, nextPageToken } = await firestoreListDocuments(options);
+        return { success: true, documents, nextPageToken };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "Firestore query failed" };
+      }
+    });
+  }
+}
 let xxhasher = null;
 const devServerProcesses = /* @__PURE__ */ new Map();
-const terminals = /* @__PURE__ */ new Map();
-const projectTerminals = /* @__PURE__ */ new Map();
-function detectTerminalProfiles() {
-  const profiles = [];
-  if (process.platform !== "win32") {
-    if (fs.existsSync("/bin/zsh")) {
-      profiles.push({ id: "zsh", name: "zsh", path: "/bin/zsh", icon: "terminal" });
-    }
-    if (fs.existsSync("/bin/bash")) {
-      profiles.push({ id: "bash", name: "bash", path: "/bin/bash", icon: "terminal" });
-    }
-    if (fs.existsSync("/bin/sh")) {
-      profiles.push({ id: "sh", name: "sh", path: "/bin/sh", icon: "terminal" });
-    }
-  }
-  if (process.platform === "win32") {
-    profiles.push({ id: "powershell", name: "PowerShell", path: "powershell.exe", icon: "terminal-powershell" });
-    profiles.push({ id: "cmd", name: "Command Prompt", path: "cmd.exe", icon: "terminal-cmd" });
-  }
-  profiles.push({ id: "node", name: "Node.js", path: "node", icon: "symbol-event" });
-  return profiles;
-}
-function getTerminalProfile(profileId) {
-  const profiles = detectTerminalProfiles();
-  if (profileId) {
-    const profile = profiles.find((p) => p.id === profileId);
-    if (profile) return profile;
-  }
-  return profiles[0] || { id: "sh", name: "sh", path: "/bin/sh", icon: "terminal" };
-}
 const execAsync = node_util.promisify(node_child_process.exec);
 const __dirname$1 = path.dirname(node_url.fileURLToPath(require("url").pathToFileURL(__filename).href));
 process.env.APP_ROOT = path.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"] || process.env["ELECTRON_RENDERER_URL"];
-const isProductionBuild = !VITE_DEV_SERVER_URL;
 const MAIN_DIST = path.join(process.env.APP_ROOT, "out/main");
 const RENDERER_DIST = path.join(process.env.APP_ROOT, "out/renderer");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
-const AUTH_SERVER_URL = process.env.AUTH_SERVER_URL || "https://crosscode-auth-gateway-production.up.railway.app";
+process.env.AUTH_SERVER_URL || "https://crosscode-auth-gateway-production.up.railway.app";
 const PROTOCOL = "cozea";
-let _sessionPath = null;
 let _settingsPath = null;
 let _defaultSettings = null;
-function getSessionPath() {
-  if (!_sessionPath) _sessionPath = path.join(electron.app.getPath("userData"), "session.enc");
-  return _sessionPath;
-}
 function getSettingsPath() {
   if (!_settingsPath) _settingsPath = path.join(electron.app.getPath("userData"), "settings.json");
   return _settingsPath;
@@ -2249,58 +2631,6 @@ function saveSettings(settings) {
   }
 }
 let win;
-function saveSession(session) {
-  const jsonData = JSON.stringify(session);
-  if (electron.safeStorage.isEncryptionAvailable()) {
-    const encryptedData = electron.safeStorage.encryptString(jsonData);
-    fs.writeFileSync(getSessionPath(), encryptedData);
-  } else if (isProductionBuild) {
-    electron.dialog.showErrorBox(
-      "Security Error",
-      "Session encryption is not available on this system. Please ensure your operating system keychain is properly configured."
-    );
-    throw new Error("Session encryption required in production");
-  } else {
-    console.warn("safeStorage not available, storing session unencrypted (dev mode only)");
-    fs.writeFileSync(getSessionPath(), jsonData);
-  }
-}
-function loadSession() {
-  try {
-    if (!fs.existsSync(getSessionPath())) {
-      return null;
-    }
-    const fileData = fs.readFileSync(getSessionPath());
-    if (electron.safeStorage.isEncryptionAvailable()) {
-      try {
-        const decryptedData = electron.safeStorage.decryptString(fileData);
-        return JSON.parse(decryptedData);
-      } catch {
-        const plainData = fileData.toString("utf-8");
-        return JSON.parse(plainData);
-      }
-    } else {
-      const data = fileData.toString("utf-8");
-      return JSON.parse(data);
-    }
-  } catch (err) {
-    console.error("Failed to load session:", err);
-  }
-  return null;
-}
-function clearSession() {
-  try {
-    if (fs.existsSync(getSessionPath())) {
-      fs.unlinkSync(getSessionPath());
-    }
-    const oldSessionPath = getSessionPath().replace(".enc", ".json");
-    if (fs.existsSync(oldSessionPath)) {
-      fs.unlinkSync(oldSessionPath);
-    }
-  } catch (err) {
-    console.error("Failed to clear session:", err);
-  }
-}
 function handleBillingCallback(url) {
   const urlObj = new URL(url);
   const urlPath = urlObj.pathname;
@@ -2329,29 +2659,7 @@ function handleBillingCallback(url) {
   }
 }
 async function handleAuthCallback(url) {
-  const urlObj = new URL(url);
-  const token = urlObj.searchParams.get("token");
-  if (!token) {
-    console.error("No token in callback URL");
-    win?.webContents.send("auth:error", "No token received");
-    return;
-  }
-  try {
-    const response = await fetch(`${AUTH_SERVER_URL}/auth/desktop/exchange`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token })
-    });
-    if (!response.ok) {
-      throw new Error("Token exchange failed");
-    }
-    const session = await response.json();
-    saveSession(session);
-    win?.webContents.send("auth:success", session);
-  } catch (err) {
-    console.error("Auth callback error:", err);
-    win?.webContents.send("auth:error", "Authentication failed");
-  }
+  await AuthService.getInstance().handleAuthCallback(url, win);
 }
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
@@ -2368,7 +2676,8 @@ electron.app.on("open-url", async (event, url) => {
     handleBillingCallback(url);
   } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
     try {
-      const result = await handleOAuthCallback(url);
+      await IntegrationService.getInstance().handleOAuthCallback(url);
+      const result = await IntegrationService.getInstance().handleOAuthCallback(url);
       if (result.success) {
         win?.webContents.send("integrations:oauthSuccess", result);
       } else {
@@ -2381,10 +2690,10 @@ electron.app.on("open-url", async (event, url) => {
         error: err instanceof Error ? err.message : "OAuth callback failed"
       });
     }
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+  }
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
   }
 });
 const gotTheLock = electron.app.requestSingleInstanceLock();
@@ -2403,7 +2712,7 @@ if (!gotTheLock) {
       } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
         handleBillingCallback(url);
       } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
-        handleOAuthCallback(url).then((result) => {
+        IntegrationService.getInstance().handleOAuthCallback(url).then((result) => {
           if (result.success) {
             win?.webContents.send("integrations:oauthSuccess", result);
           } else {
@@ -2421,17 +2730,35 @@ if (!gotTheLock) {
   });
 }
 function createWindow() {
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1200,
+    defaultHeight: 800
+  });
   win = new electron.BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
+    show: false,
+    // Hide initially for smooth launch
     webPreferences: {
       preload: path.join(__dirname$1, "../preload/index.js"),
       nodeIntegration: false,
       contextIsolation: true
     },
-    backgroundColor: "#000000",
+    // Dynamic background color to prevent white flash
+    backgroundColor: electron.nativeTheme.shouldUseDarkColors ? "#000000" : "#ffffff",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 15, y: 10 }
+  });
+  mainWindowState.manage(win);
+  win.once("ready-to-show", () => {
+    win?.show();
+    win?.focus();
+  });
+  electron.nativeTheme.on("updated", () => {
+    const bgColor = electron.nativeTheme.shouldUseDarkColors ? "#000000" : "#ffffff";
+    win?.setBackgroundColor(bgColor);
   });
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
@@ -2440,148 +2767,10 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, "index.html"));
   }
 }
-electron.ipcMain.handle("auth:login", async () => {
-  const loginUrl = `${AUTH_SERVER_URL}/auth/login?client=desktop`;
-  await electron.shell.openExternal(loginUrl);
-  return { success: true };
-});
-electron.ipcMain.handle("auth:logout", async () => {
-  clearSession();
-  try {
-    await fetch(`${AUTH_SERVER_URL}/auth/logout`, { method: "POST" });
-  } catch {
-  }
-  return { success: true };
-});
-electron.ipcMain.handle("auth:getSession", () => {
-  return loadSession();
-});
-electron.ipcMain.handle("auth:updateOrganizations", (_event, organizations) => {
-  const session = loadSession();
-  if (!session) {
-    return { success: false, error: "No session found" };
-  }
-  const updatedSession = {
-    ...session,
-    organizations
-  };
-  saveSession(updatedSession);
-  return { success: true };
-});
-electron.ipcMain.handle("auth:refresh", async () => {
-  const session = loadSession();
-  if (!session?.refreshToken) {
-    return null;
-  }
-  try {
-    const response = await fetch(`${AUTH_SERVER_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: session.refreshToken })
-    });
-    if (!response.ok) {
-      clearSession();
-      return null;
-    }
-    const data = await response.json();
-    const newSession = {
-      ...session,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken
-    };
-    saveSession(newSession);
-    return newSession;
-  } catch {
-    clearSession();
-    return null;
-  }
-});
-electron.ipcMain.handle("integrations:isEncryptionAvailable", () => {
-  return isEncryptionAvailable();
-});
-electron.ipcMain.handle("integrations:generateKey", () => {
-  try {
-    const { keyId, keyData } = generateEncryptionKey();
-    return { success: true, keyId, keyData };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Failed to generate key" };
-  }
-});
-electron.ipcMain.handle("integrations:storeKey", (_event, options) => {
-  return storeEncryptionKey(options.keyId, options.keyData);
-});
-electron.ipcMain.handle("integrations:getKey", (_event, options) => {
-  const result = getEncryptionKey(options.keyId);
-  if (result.success) {
-    return { success: true, keyId: options.keyId, keyData: result.keyData };
-  }
-  return result;
-});
-electron.ipcMain.handle("integrations:deleteKey", (_event, options) => {
-  return deleteEncryptionKey(options.keyId);
-});
-electron.ipcMain.handle("integrations:keyExists", (_event, options) => {
-  return keyExists(options.keyId);
-});
-electron.ipcMain.handle("integrations:encrypt", async (_event, options) => {
-  const keyResult = getEncryptionKey(options.keyId);
-  if (!keyResult.success || !keyResult.keyData) {
-    return { success: false, error: keyResult.error || "Failed to retrieve encryption key" };
-  }
-  return encryptCredentials(options.credentials, keyResult.keyData);
-});
-electron.ipcMain.handle("integrations:decrypt", async (_event, options) => {
-  const keyResult = getEncryptionKey(options.keyId);
-  if (!keyResult.success || !keyResult.keyData) {
-    return { success: false, error: keyResult.error || "Failed to retrieve encryption key" };
-  }
-  return decryptCredentials$1(options.encrypted, keyResult.keyData);
-});
-electron.ipcMain.handle("integrations:startOAuth", async (_event, options) => {
-  return startOAuthFlow(options.provider, options.orgId);
-});
-electron.ipcMain.handle("integrations:runTool", async (_event, options) => {
-  return runIntegrationTool(options);
-});
-electron.ipcMain.handle("integrations:isToolAvailable", (_event, options) => {
-  return isIntegrationTool(options.toolName);
-});
-electron.ipcMain.handle("integrations:getToolDefinition", (_event, options) => {
-  const def = getIntegrationToolDefinition(options.toolName);
-  if (!def) return null;
-  return {
-    provider: def.provider,
-    name: def.name,
-    displayName: def.displayName,
-    command: def.command,
-    description: def.description
-  };
-});
-electron.ipcMain.handle("integrations:listTools", () => {
-  return INTEGRATION_TOOLS.map((t) => ({
-    provider: t.provider,
-    name: t.name,
-    displayName: t.displayName,
-    command: t.command,
-    description: t.description
-  }));
-});
-electron.ipcMain.handle("db:supabase:select", async (_event, options) => {
-  try {
-    const { rows } = await supabaseSelect(options);
-    return { success: true, rows };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Supabase query failed" };
-  }
-});
-electron.ipcMain.handle("db:firestore:listDocuments", async (_event, options) => {
-  try {
-    const { documents, nextPageToken } = await firestoreListDocuments(options);
-    return { success: true, documents, nextPageToken };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Firestore query failed" };
-  }
-});
+AuthService.getInstance().registerIpcHandlers();
+TerminalService.getInstance().registerIpcHandlers();
+IntegrationService.getInstance().registerIpcHandlers();
+DatabaseService.getInstance().registerIpcHandlers();
 electron.ipcMain.handle("tools:run", async (_event, request) => {
   return runTool(request);
 });
@@ -3364,146 +3553,6 @@ electron.ipcMain.handle(
   }
 );
 electron.ipcMain.handle(
-  "terminal:create",
-  async (_event, {
-    projectPath,
-    profileId,
-    cwd,
-    cols = 80,
-    rows = 24
-  }) => {
-    try {
-      const terminalId = crypto.randomUUID();
-      const profile = getTerminalProfile(profileId);
-      console.log(`[Terminal] Creating terminal ${terminalId} with profile ${profile.name} in ${cwd || projectPath}`);
-      const ptyProcess = pty__namespace.spawn(profile.path, profile.args || [], {
-        name: "xterm-256color",
-        cols,
-        rows,
-        cwd: cwd || projectPath,
-        env: {
-          ...process.env,
-          ...profile.env,
-          TERM: "xterm-256color",
-          COLORTERM: "truecolor"
-        }
-      });
-      const terminal = {
-        id: terminalId,
-        projectPath,
-        ptyProcess,
-        profile,
-        title: profile.name
-      };
-      terminals.set(terminalId, terminal);
-      const projectTerms = projectTerminals.get(projectPath) || [];
-      projectTerms.push(terminalId);
-      projectTerminals.set(projectPath, projectTerms);
-      ptyProcess.onData((data) => {
-        win?.webContents.send("terminal:output", { terminalId, data });
-      });
-      ptyProcess.onExit(({ exitCode }) => {
-        console.log(`[Terminal] Terminal ${terminalId} exited with code ${exitCode}`);
-        win?.webContents.send("terminal:exit", { terminalId, exitCode });
-        terminals.delete(terminalId);
-        const projectTerms2 = projectTerminals.get(projectPath);
-        if (projectTerms2) {
-          const idx = projectTerms2.indexOf(terminalId);
-          if (idx !== -1) projectTerms2.splice(idx, 1);
-          if (projectTerms2.length === 0) {
-            projectTerminals.delete(projectPath);
-          }
-        }
-      });
-      return { success: true, terminalId };
-    } catch (err) {
-      console.error("[Terminal] Failed to create terminal:", err);
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Failed to create terminal"
-      };
-    }
-  }
-);
-electron.ipcMain.handle(
-  "terminal:input",
-  async (_event, { terminalId, data }) => {
-    const terminal = terminals.get(terminalId);
-    if (terminal) {
-      terminal.ptyProcess.write(data);
-    }
-  }
-);
-electron.ipcMain.handle(
-  "terminal:resize",
-  (_event, { terminalId, cols, rows }) => {
-    const terminal = terminals.get(terminalId);
-    if (terminal) {
-      try {
-        terminal.ptyProcess.resize(cols, rows);
-        return { success: true };
-      } catch (err) {
-        console.error("[Terminal] Failed to resize:", err);
-        return { success: false };
-      }
-    }
-    return { success: false };
-  }
-);
-electron.ipcMain.handle(
-  "terminal:kill",
-  async (_event, { terminalId }) => {
-    const terminal = terminals.get(terminalId);
-    if (terminal) {
-      try {
-        console.log(`[Terminal] Killing terminal ${terminalId}`);
-        terminal.ptyProcess.kill();
-        terminals.delete(terminalId);
-        const projectTerms = projectTerminals.get(terminal.projectPath);
-        if (projectTerms) {
-          const idx = projectTerms.indexOf(terminalId);
-          if (idx !== -1) projectTerms.splice(idx, 1);
-          if (projectTerms.length === 0) {
-            projectTerminals.delete(terminal.projectPath);
-          }
-        }
-        return { success: true };
-      } catch (err) {
-        console.error("[Terminal] Failed to kill:", err);
-        return { success: false };
-      }
-    }
-    return { success: true };
-  }
-);
-electron.ipcMain.handle(
-  "terminal:getProfiles",
-  () => {
-    return detectTerminalProfiles();
-  }
-);
-electron.ipcMain.handle(
-  "terminal:list",
-  (_event, { projectPath }) => {
-    return projectTerminals.get(projectPath) || [];
-  }
-);
-electron.ipcMain.handle(
-  "terminal:getInfo",
-  (_event, { terminalId }) => {
-    const terminal = terminals.get(terminalId);
-    if (terminal) {
-      return {
-        id: terminal.id,
-        profileId: terminal.profile.id,
-        profileName: terminal.profile.name,
-        title: terminal.title
-      };
-    }
-    return null;
-  }
-);
-electron.ipcMain.handle(
   "contextMenu:showTerminalSelection",
   async (_event, { selectedText, x, y }) => {
     return new Promise((resolve) => {
@@ -3568,15 +3617,7 @@ electron.app.on("window-all-closed", () => {
     }
   }
   devServerProcesses.clear();
-  for (const [terminalId, terminal] of terminals) {
-    console.log(`[Terminal] Killing terminal ${terminalId}`);
-    try {
-      terminal.ptyProcess.kill();
-    } catch {
-    }
-  }
-  terminals.clear();
-  projectTerminals.clear();
+  TerminalService.getInstance().killAll();
   if (process.platform !== "darwin") {
     electron.app.quit();
     win = null;

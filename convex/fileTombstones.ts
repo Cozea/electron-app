@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server"
+import { mutation, query, internalMutation } from "./_generated/server"
 import { v } from "convex/values"
 
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -134,8 +134,7 @@ export const getProjectTombstones = query({
 })
 
 /**
- * Cleanup expired tombstones.
- * Should be called periodically by a cron job.
+ * Cleanup expired tombstones for a specific project.
  */
 export const cleanupExpiredTombstones = mutation({
   args: { projectId: v.id("projects") },
@@ -151,6 +150,30 @@ export const cleanupExpiredTombstones = mutation({
       await ctx.db.delete(tombstone._id)
     }
 
+    return { deleted: expired.length }
+  },
+})
+
+/**
+ * Cleanup ALL expired tombstones across all projects.
+ * Called by daily cron job.
+ */
+export const cleanupAllExpiredTombstones = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+
+    // Get all expired tombstones
+    const expired = await ctx.db
+      .query("fileTombstones")
+      .filter((q) => q.lt(q.field("expiresAt"), now))
+      .collect()
+
+    for (const tombstone of expired) {
+      await ctx.db.delete(tombstone._id)
+    }
+
+    console.log(`[Tombstones] Cleaned up ${expired.length} expired tombstones`)
     return { deleted: expired.length }
   },
 })

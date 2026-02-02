@@ -375,6 +375,10 @@ export function Billing() {
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
 
+  const headerContent = (
+    <h1 className="text-lg font-semibold">Billing & Usage</h1>
+  )
+
   const isLoading = !convexOrg
 
   if (isLoading) {
@@ -383,6 +387,7 @@ export function Billing() {
         user={user}
         onLogout={logout}
         breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
+        header={headerContent}
       >
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -426,108 +431,107 @@ export function Billing() {
         {/* Current Plan */}
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0">
-                {/* Header row */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">{planInfo?.name} plan</h3>
-                    {subscription?.status === 'active' && (
-                      <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20">
-                        Active
-                      </Badge>
-                    )}
-                  </div>
-                  <Button onClick={() => setShowUpgradeOptions(!showUpgradeOptions)}>
-                    {showUpgradeOptions ? 'Hide Plans' : 'Upgrade Plan'}
-                  </Button>
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold">{planInfo?.name} plan</h3>
+                {subscription?.status === 'active' && (
+                  <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20">
+                    Active
+                  </Badge>
+                )}
+              </div>
+              <Button onClick={() => setShowUpgradeOptions(!showUpgradeOptions)}>
+                {showUpgradeOptions ? 'Hide Plans' : 'Upgrade Plan'}
+              </Button>
+            </div>
+
+            {/* Description */}
+            <p className="text-sm text-muted-foreground mb-4">
+              {planInfo?.features[0]}
+            </p>
+
+            {/* Price */}
+            <div className="mb-6">
+              <span className="text-3xl font-bold">{planInfo?.price}</span>
+              <span className="text-muted-foreground">{planInfo?.period}</span>
+            </div>
+
+            {/* Team Usage */}
+            {memberLimit > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Team Usage</span>
+                  <span className="text-muted-foreground">{memberCount} of {memberLimit} seats</span>
                 </div>
-
-                {/* Description */}
-                <p className="text-sm text-muted-foreground mb-4">
-                  {planInfo?.features[0]}
-                </p>
-
-                {/* Price */}
-                <div className="mb-6">
-                  <span className="text-3xl font-bold">{planInfo?.price}</span>
-                  <span className="text-muted-foreground">{planInfo?.period}</span>
-                </div>
-
-                {/* Team Usage */}
-                {memberLimit > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Team Usage</span>
-                      <span className="text-muted-foreground">{memberCount} of {memberLimit} seats</span>
+                <Progress value={(memberCount / memberLimit) * 100} className="h-2" />
+                {/* Member Avatars */}
+                {members && members.length > 0 && (
+                  <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                    <div className="flex -space-x-2">
+                      {members.slice(0, 4).map((member) => {
+                        const displayName = member.user?.firstName
+                          ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                          : member.user?.email
+                        return (
+                          <Avatar key={member._id} className="ring-background ring-2">
+                            <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
+                            <AvatarFallback className="text-xs">
+                              {(displayName || '?').slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )
+                      })}
                     </div>
-                    <Progress value={(memberCount / memberLimit) * 100} className="h-2" />
-                    {/* Member Avatars */}
-                    {members && members.length > 0 && (
-                      <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
-                        <div className="flex -space-x-2">
-                          {members.slice(0, 4).map((member) => {
-                            const displayName = member.user?.firstName
-                              ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
-                              : member.user?.email
-                            return (
-                              <Avatar key={member._id} className="ring-background ring-2">
-                                <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
-                                <AvatarFallback className="text-xs">
-                                  {(displayName || '?').slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                            )
-                          })}
-                        </div>
-                        {members.length > 4 && (
-                          <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
-                            +{members.length - 4}
-                          </span>
-                        )}
-                      </div>
+                    {members.length > 4 && (
+                      <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
+                        +{members.length - 4}
+                      </span>
                     )}
                   </div>
                 )}
-                {memberLimit < 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Team Usage</span>
-                      <span className="text-muted-foreground">{memberCount} members (unlimited)</span>
+              </div>
+            )}
+            {memberLimit < 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Team Usage</span>
+                  <span className="text-muted-foreground">{memberCount} members (unlimited)</span>
+                </div>
+                {/* Member Avatars */}
+                {members && members.length > 0 && (
+                  <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                    <div className="flex -space-x-2">
+                      {members.slice(0, 4).map((member) => {
+                        const displayName = member.user?.firstName
+                          ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                          : member.user?.email
+                        return (
+                          <Avatar key={member._id} className="ring-background ring-2">
+                            <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
+                            <AvatarFallback className="text-xs">
+                              {(displayName || '?').slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )
+                      })}
                     </div>
-                    {/* Member Avatars */}
-                    {members && members.length > 0 && (
-                      <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
-                        <div className="flex -space-x-2">
-                          {members.slice(0, 4).map((member) => {
-                            const displayName = member.user?.firstName
-                              ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
-                              : member.user?.email
-                            return (
-                              <Avatar key={member._id} className="ring-background ring-2">
-                                <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
-                                <AvatarFallback className="text-xs">
-                                  {(displayName || '?').slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                            )
-                          })}
-                        </div>
-                        {members.length > 4 && (
-                          <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
-                            +{members.length - 4}
-                          </span>
-                        )}
-                      </div>
+                    {members.length > 4 && (
+                      <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
+                        +{members.length - 4}
+                      </span>
                     )}
                   </div>
                 )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
         {/* Upgrade Options (collapsible with animation) */}
         <div
-          className={`grid transition-all duration-300 ease-in-out ${
-            showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-          }`}
+          className={`grid transition-all duration-300 ease-in-out ${showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
         >
           <div className="overflow-hidden">
             <Card className="border-none shadow-none bg-transparent">
@@ -553,13 +557,11 @@ export function Billing() {
                     return (
                       <div
                         key={plan.id}
-                        className={`relative rounded-lg border bg-card p-5 flex flex-col transition-all duration-300 ${
-                          isCurrent ? 'ring-2 ring-primary' : ''
-                        } ${
-                          showUpgradeOptions
+                        className={`relative rounded-lg border bg-card p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'ring-2 ring-primary' : ''
+                          } ${showUpgradeOptions
                             ? 'opacity-100 translate-y-0'
                             : 'opacity-0 -translate-y-4'
-                        }`}
+                          }`}
                         style={{
                           transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(plans.length - 1 - index) * 50}ms`,
                         }}
@@ -597,186 +599,186 @@ export function Billing() {
         {/* Credits & Usage */}
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0">
-              {/* Usage Chart */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="font-medium">Usage Over Time</p>
-                    <p className="text-sm text-muted-foreground">
-                      Daily credit consumption
-                    </p>
-                  </div>
-                  <Select value={usageTimeRange} onValueChange={setUsageTimeRange}>
-                    <SelectTrigger className="w-[140px]" aria-label="Select time range">
-                      <SelectValue placeholder="Last 30 days" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl">
-                      <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
-                      <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                      <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {/* Usage Chart */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="font-medium">Usage Over Time</p>
+                  <p className="text-sm text-muted-foreground">
+                    Daily credit consumption
+                  </p>
                 </div>
-                <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="fillCredits" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--color-credits)" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="var(--color-credits)" stopOpacity={0.1} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                      dataKey="date"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      minTickGap={32}
-                      tickFormatter={(value) => {
-                        const date = new Date(value)
-                        return date.toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      }}
-                    />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          labelFormatter={(value) => {
-                            return new Date(value).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })
-                          }}
-                          indicator="dot"
-                        />
-                      }
-                    />
-                    <Area
-                      dataKey="credits"
-                      type="natural"
-                      fill="url(#fillCredits)"
-                      stroke="var(--color-credits)"
-                    />
-                  </AreaChart>
-                </ChartContainer>
+                <Select value={usageTimeRange} onValueChange={setUsageTimeRange}>
+                  <SelectTrigger className="w-[140px]" aria-label="Select time range">
+                    <SelectValue placeholder="Last 30 days" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
+                    <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                    <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="fillCredits" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-credits)" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="var(--color-credits)" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={32}
+                    tickFormatter={(value) => {
+                      const date = new Date(value)
+                      return date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    }}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) => {
+                          return new Date(value).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        }}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <Area
+                    dataKey="credits"
+                    type="natural"
+                    fill="url(#fillCredits)"
+                    stroke="var(--color-credits)"
+                  />
+                </AreaChart>
+              </ChartContainer>
+            </div>
 
-              {/* Total Credits Summary */}
-              <div className="mt-6 pt-6 border-t">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Total Available Credits</p>
-                    <p className="text-sm text-muted-foreground">
-                      Subscription + purchased credits
-                    </p>
-                  </div>
-                  <p className="text-3xl font-bold">{totalCreditsRemaining.toLocaleString()}</p>
+            {/* Total Credits Summary */}
+            <div className="mt-6 pt-6 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Total Available Credits</p>
+                  <p className="text-sm text-muted-foreground">
+                    Subscription + purchased credits
+                  </p>
                 </div>
+                <p className="text-3xl font-bold">{totalCreditsRemaining.toLocaleString()}</p>
               </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* Buy Credits */}
-      <Card className="border-none shadow-none bg-transparent">
-        <CardHeader>
-          <CardTitle>Buy Credits</CardTitle>
-          <CardDescription>
-            Purchase additional credits that never expire (valid for 12 months)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {creditPacks.map((pack) => (
-              <Card key={pack.id} className="cursor-pointer hover:border-primary transition-colors">
-                <CardContent className="pt-4 text-center">
-                  <p className="text-2xl font-bold">{pack.credits.toLocaleString()}</p>
-                  <p className="text-sm text-muted-foreground mb-3">credits</p>
-                  <p className="text-lg font-semibold mb-3">{pack.price}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => handleBuyCredits(pack.id)}
-                  >
-                    Buy {pack.name}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Invoice History */}
-      <Card className="border-none shadow-none bg-transparent">
-        <CardHeader className="pt-0">
-          <CardTitle>Invoice History</CardTitle>
-          <CardDescription>
-            View and download your past invoices
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {invoicesLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader>
+            <CardTitle>Buy Credits</CardTitle>
+            <CardDescription>
+              Purchase additional credits that never expire (valid for 12 months)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {creditPacks.map((pack) => (
+                <Card key={pack.id} className="cursor-pointer hover:border-primary transition-colors">
+                  <CardContent className="pt-4 text-center">
+                    <p className="text-2xl font-bold">{pack.credits.toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground mb-3">credits</p>
+                    <p className="text-lg font-semibold mb-3">{pack.price}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleBuyCredits(pack.id)}
+                    >
+                      Buy {pack.name}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          ) : stripeInvoices.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Invoice</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stripeInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>{formatDate(invoice.date)}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {invoice.description}
-                    </TableCell>
-                    <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
-                        className="capitalize"
-                      >
-                        {invoice.status || 'unknown'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {invoice.hostedInvoiceUrl && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1"
-                          onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
-                        >
-                          View
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </TableCell>
+          </CardContent>
+        </Card>
+
+        {/* Invoice History */}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader className="pt-0">
+            <CardTitle>Invoice History</CardTitle>
+            <CardDescription>
+              View and download your past invoices
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {invoicesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : stripeInvoices.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Invoice</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No invoices yet</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {stripeInvoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell>{formatDate(invoice.date)}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {invoice.description}
+                      </TableCell>
+                      <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
+                          className="capitalize"
+                        >
+                          {invoice.status || 'unknown'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {invoice.hostedInvoiceUrl && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1"
+                            onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                          >
+                            View
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No invoices yet</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-    </div>
+      </div>
     </DashboardLayout>
   )
 }

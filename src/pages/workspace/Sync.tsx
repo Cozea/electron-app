@@ -1,285 +1,444 @@
+import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import { Progress } from '../../components/ui/progress'
-import { Switch } from '../../components/ui/switch'
-import { Label } from '../../components/ui/label'
-import { Checkbox } from '../../components/ui/checkbox'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../components/ui/alert-dialog'
 import {
   Cloud,
-  RefreshCw,
-  Check,
-  AlertCircle,
-  Clock,
-  Download,
-  HardDrive,
   FileCode,
-  Settings,
-  MessageSquare,
-  FileText,
+  History,
+  Database,
+  Trash2,
+  Users,
+  GitBranch,
+  Sparkles,
+  Archive,
+  Image,
+  Loader2,
 } from 'lucide-react'
+import type { Id } from '../../../convex/_generated/dataModel'
 
-const syncHistory = [
-  { id: '1', time: '2 minutes ago', status: 'success', files: 12 },
-  { id: '2', time: '1 hour ago', status: 'success', files: 45 },
-  { id: '3', time: '3 hours ago', status: 'success', files: 8 },
-  { id: '4', time: 'Yesterday', status: 'error', files: 0, error: 'Network timeout' },
-  { id: '5', time: 'Yesterday', status: 'success', files: 156 },
-]
+interface StorageCategory {
+  id: string
+  categoryKey: string // Key for the mutation (e.g., 'collaborationData')
+  name: string
+  description: string
+  size: number // in GB
+  icon: typeof FileCode
+  color: string
+  canClear: boolean
+  clearWarning?: string
+}
+
+// Default categories with static descriptions and settings
+const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
+  sourceAndConfig: {
+    id: 'source',
+    categoryKey: 'sourceAndConfig',
+    name: 'Source & Config',
+    description: 'Project source code, configurations, and dependencies',
+    icon: FileCode,
+    color: 'bg-blue-500',
+    canClear: false,
+  },
+  collaborationData: {
+    id: 'collab',
+    categoryKey: 'collaborationData',
+    name: 'Collaboration Data',
+    description: 'Real-time sync state, document history (Yjs)',
+    icon: Users,
+    color: 'bg-purple-500',
+    canClear: true,
+    clearWarning: 'This will reset collaboration history. Active sessions will resync from source files.',
+  },
+  aiHistory: {
+    id: 'ai',
+    categoryKey: 'aiHistory',
+    name: 'AI History',
+    description: 'Chat conversations, prompts, and AI context',
+    icon: Sparkles,
+    color: 'bg-amber-500',
+    canClear: true,
+    clearWarning: 'This will permanently delete all AI chat history across your workspace.',
+  },
+  buildCache: {
+    id: 'builds',
+    categoryKey: 'buildCache',
+    name: 'Build Cache',
+    description: 'Compiled assets, bundled output, and build artifacts',
+    icon: Archive,
+    color: 'bg-orange-500',
+    canClear: true,
+    clearWarning: 'Build caches will be regenerated on next build. This is safe to clear.',
+  },
+  snapshots: {
+    id: 'snapshots',
+    categoryKey: 'snapshots',
+    name: 'Snapshots',
+    description: 'Auto-saved project states and point-in-time backups',
+    icon: History,
+    color: 'bg-green-500',
+    canClear: true,
+    clearWarning: 'This will delete all restore points. You won\'t be able to revert to previous states.',
+  },
+  gitHistory: {
+    id: 'git',
+    categoryKey: 'gitHistory',
+    name: 'Git History',
+    description: 'Version control data and file history',
+    icon: GitBranch,
+    color: 'bg-rose-500',
+    canClear: false,
+  },
+  databaseBackups: {
+    id: 'database',
+    categoryKey: 'databaseBackups',
+    name: 'Database Backups',
+    description: 'Local database snapshots and migration history',
+    icon: Database,
+    color: 'bg-cyan-500',
+    canClear: true,
+    clearWarning: 'This will delete database backups. Current databases are not affected.',
+  },
+  assets: {
+    id: 'assets',
+    categoryKey: 'assets',
+    name: 'Assets',
+    description: 'Images, fonts, and other media files',
+    icon: Image,
+    color: 'bg-teal-500',
+    canClear: false,
+  },
+}
+
+const formatSize = (gb: number): string => {
+  if (gb >= 1) {
+    return `${gb.toFixed(1)} GB`
+  }
+  if (gb >= 0.001) {
+    return `${Math.round(gb * 1024)} MB`
+  }
+  return `${Math.round(gb * 1024 * 1024)} KB`
+}
+
+const bytesToGB = (bytes: number): number => bytes / (1024 * 1024 * 1024)
 
 export function Sync() {
-  const { user, logout } = useAuth()
+  const { user, logout, currentOrganization, convexUserId } = useAuth()
+  const navigate = useNavigate()
+  const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
+  const [isClearing, setIsClearing] = useState(false)
 
-  const storage = {
-    used: 12.5,
-    total: 50,
-    breakdown: [
-      { name: 'Project Files', size: '8.2 GB', percentage: 65 },
-      { name: 'Build Artifacts', size: '2.8 GB', percentage: 22 },
-      { name: 'Chat History', size: '1.0 GB', percentage: 8 },
-      { name: 'Settings', size: '0.5 GB', percentage: 5 },
-    ],
+  // Get the Convex organization ID
+  const convexOrgId = currentOrganization?.convexOrgId as Id<"organizations"> | undefined
+
+  // Mutation for clearing storage categories
+  const clearStorageMutation = useMutation(api.organizations.clearStorageCategory)
+
+  // Query usage limits from Convex (reactive - updates automatically)
+  const usageLimits = useQuery(
+    api.organizations.getUsageLimits,
+    convexOrgId ? { orgId: convexOrgId } : "skip"
+  )
+
+  // Build storage categories from the breakdown data
+  const storageCategories = useMemo<StorageCategory[]>(() => {
+    if (!usageLimits?.storage.breakdown) {
+      // Return empty categories while loading
+      return Object.values(categoryConfig).map((config) => ({
+        ...config,
+        size: 0,
+      }))
+    }
+
+    const breakdown = usageLimits.storage.breakdown
+    return Object.entries(categoryConfig).map(([key, config]) => ({
+      ...config,
+      size: bytesToGB(breakdown[key as keyof typeof breakdown] ?? 0),
+    }))
+  }, [usageLimits])
+
+  // Calculate totals
+  const totalUsed = usageLimits?.storage.currentBytes
+    ? bytesToGB(usageLimits.storage.currentBytes)
+    : storageCategories.reduce((sum, cat) => sum + cat.size, 0)
+
+  const totalLimit = usageLimits?.storage.limitGB ?? 1
+  const isUnlimited = usageLimits?.storage.isUnlimited ?? false
+
+  const clearableSize = storageCategories
+    .filter(cat => cat.canClear)
+    .reduce((sum, cat) => sum + cat.size, 0)
+
+  const handleClear = async () => {
+    if (!clearingCategory || !convexOrgId || !convexUserId) return
+
+    const categoryKey = clearingCategory.categoryKey as
+      | 'collaborationData'
+      | 'aiHistory'
+      | 'buildCache'
+      | 'snapshots'
+      | 'databaseBackups'
+
+    setIsClearing(true)
+    try {
+      await clearStorageMutation({
+        orgId: convexOrgId,
+        userId: convexUserId,
+        category: categoryKey,
+      })
+    } catch (error) {
+      console.error('Failed to clear storage:', error)
+    } finally {
+      setIsClearing(false)
+      setClearingCategory(null)
+    }
   }
+
+  // Plan upgrade messages
+  const getUpgradeMessage = (plan: string) => {
+    switch (plan) {
+      case 'free':
+        return 'Upgrade to Pro for 10 GB storage.'
+      case 'pro':
+        return 'Upgrade to Max for 20 GB storage.'
+      case 'max':
+        return 'Upgrade to Team for 30 GB storage.'
+      case 'team':
+        return 'Contact sales for Enterprise with unlimited storage.'
+      default:
+        return ''
+    }
+  }
+
+  const headerContent = (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <h1 className="text-lg font-semibold">Workspace Storage</h1>
+      </div>
+      <Badge variant="secondary" className="gap-1">
+        <Cloud className="h-3 w-3" />
+        Synced
+      </Badge>
+    </div>
+  )
+
+
 
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'Cloud Sync' }]}
+      breadcrumbs={[{ label: 'Workspace' }, { label: 'Cloud Storage' }]}
+      header={headerContent}
     >
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Cloud Sync</h1>
-        <p className="text-muted-foreground">
-          Manage cloud backup and synchronization settings
-        </p>
-      </div>
+      <div className="space-y-6">
+        {/* Header Stats */}
+        <div className="px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Total Storage */}
+            <div className="md:col-span-2">
+              <div className="space-y-4">
+                <div className="flex items-end justify-between">
+                  <div className="flex items-end gap-2">
+                    <span className="text-4xl font-bold">{totalUsed.toFixed(1)}</span>
+                    <span className="text-lg text-muted-foreground mb-1">
+                      / {isUnlimited ? '∞' : totalLimit} GB
+                    </span>
+                    <Badge variant="secondary" className="mb-1.5">
+                      {usageLimits?.planDisplayName ?? 'Free'}
+                    </Badge>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {isUnlimited
+                      ? 'Unlimited storage'
+                      : `${(totalLimit - totalUsed).toFixed(1)} GB available`}
+                  </span>
+                </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* Sync Status */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Cloud className="h-5 w-5" />
-                    Sync Status
-                  </CardTitle>
-                  <CardDescription>
-                    Last synced 2 minutes ago
-                  </CardDescription>
+                {/* Stacked Bar */}
+                <div className="h-4 rounded-full overflow-hidden flex bg-muted">
+                  {storageCategories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className={`${cat.color} transition-all relative group`}
+                      style={{
+                        width: isUnlimited || totalUsed === 0
+                          ? `${(cat.size / Math.max(totalUsed, 0.001)) * 100}%`
+                          : `${(cat.size / totalLimit) * 100}%`
+                      }}
+                      title={`${cat.name}: ${formatSize(cat.size)}`}
+                    />
+                  ))}
                 </div>
-                <Badge variant="secondary" className="gap-1">
-                  <Check className="h-3 w-3" />
-                  Synced
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
-                    <Check className="h-5 w-5 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">All changes synced</p>
-                    <p className="text-sm text-muted-foreground">
-                      Your workspace is up to date
-                    </p>
-                  </div>
-                </div>
-                <Button className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Now
-                </Button>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Switch id="auto-sync" defaultChecked />
-                  <Label htmlFor="auto-sync">Enable auto-sync</Label>
-                </div>
-                <div className="flex-1" />
-                <div className="flex items-center gap-2">
-                  <Label>Frequency</Label>
-                  <Select defaultValue="realtime">
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="realtime">Real-time</SelectItem>
-                      <SelectItem value="5min">Every 5 minutes</SelectItem>
-                      <SelectItem value="1hour">Every hour</SelectItem>
-                      <SelectItem value="manual">Manual only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* What Gets Synced */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Sync Settings</CardTitle>
-              <CardDescription>
-                Choose what data to sync to the cloud
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <FileCode className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label>Project Files</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Source code, assets, and configurations
-                    </p>
-                  </div>
+                {/* Legend */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {storageCategories.map((cat) => (
+                    <div key={cat.id} className="flex items-center gap-1.5 text-xs">
+                      <div className={`w-2 h-2 rounded-full ${cat.color}`} />
+                      <span className="text-muted-foreground">{cat.name}</span>
+                    </div>
+                  ))}
                 </div>
-                <Checkbox defaultChecked />
               </div>
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <Settings className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label>Settings</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Editor preferences and workspace settings
-                    </p>
-                  </div>
-                </div>
-                <Checkbox defaultChecked />
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label>Chat History</Label>
-                    <p className="text-sm text-muted-foreground">
-                      AI conversations and prompts
-                    </p>
-                  </div>
-                </div>
-                <Checkbox defaultChecked />
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label>Build Logs</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Build and deployment history
-                    </p>
-                  </div>
-                </div>
-                <Checkbox />
-              </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Sync History */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Sync History</CardTitle>
-              <CardDescription>
-                Recent synchronization events
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+            {/* Quick Actions */}
+            <div className="md:border-l md:border-border md:pl-4">
+              <div className="pb-2">
+                <h2 className="text-base font-semibold">Free Up Space</h2>
+                <p className="text-sm text-muted-foreground">Clear cached and temporary data</p>
+              </div>
               <div className="space-y-3">
-                {syncHistory.map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-center justify-between py-2 border-b last:border-0"
-                  >
+                <div className="text-sm">
+                  <span className="font-medium">{formatSize(clearableSize)}</span>
+                  <span className="text-muted-foreground"> can be cleared</span>
+                </div>
+                <Progress
+                  value={totalUsed > 0 ? (clearableSize / totalUsed) * 100 : 0}
+                  className="h-2"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Source code and git history cannot be cleared from here.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Storage Categories */}
+        <div className="px-4">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Storage by Category</h2>
+            <p className="text-sm text-muted-foreground">
+              Manage cloud storage across your workspace. Clear categories to free up space.
+            </p>
+          </div>
+          <Table className="w-full">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[280px]">Category</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[100px] text-right">Size</TableHead>
+                <TableHead className="w-[80px] text-right">% Total</TableHead>
+                <TableHead className="w-[100px] text-right"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {storageCategories.map((category) => (
+                <TableRow key={category.id}>
+                  <TableCell>
                     <div className="flex items-center gap-3">
-                      {event.status === 'success' ? (
-                        <Check className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      )}
-                      <div>
-                        <p className="text-sm">
-                          {event.status === 'success'
-                            ? `Synced ${event.files} files`
-                            : event.error}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{event.time}</p>
+                      <div className={`w-8 h-8 rounded-lg ${category.color}/10 flex items-center justify-center`}>
+                        <category.icon className={`h-4 w-4 ${category.color.replace('bg-', 'text-')}`} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{category.name}</span>
+                        {!category.canClear && (
+                          <Badge variant="outline" className="text-xs">Protected</Badge>
+                        )}
                       </div>
                     </div>
-                    {event.status === 'error' && (
-                      <Button variant="ghost" size="sm">
-                        Retry
+                  </TableCell>
+                  <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                    {category.description}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatSize(category.size)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {totalUsed > 0 ? ((category.size / totalUsed) * 100).toFixed(0) : 0}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {category.canClear ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setClearingCategory(category)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Clear
                       </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Storage Usage */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5" />
-                Storage
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>{storage.used} GB used</span>
-                  <span className="text-muted-foreground">{storage.total} GB total</span>
-                </div>
-                <Progress value={(storage.used / storage.total) * 100} />
+        {/* Storage Plan */}
+        {usageLimits?.plan !== 'enterprise' && (
+          <div className="px-4">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {getUpgradeMessage(usageLimits?.plan ?? 'free')}
+                </p>
+                <Button size="sm" onClick={() => navigate('/workspace/billing')}>Upgrade Plan</Button>
               </div>
-              <div className="space-y-2">
-                {storage.breakdown.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{item.name}</span>
-                    <span>{item.size}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Force Full Sync
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2">
-                <Download className="h-4 w-4" />
-                Download Backup
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2 text-destructive">
-                <Clock className="h-4 w-4" />
-                Clear Sync History
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Clear Confirmation Dialog */}
+      <AlertDialog open={!!clearingCategory} onOpenChange={() => setClearingCategory(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear {clearingCategory?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clearingCategory?.clearWarning}
+              <br /><br />
+              This will free up <strong>{clearingCategory && formatSize(clearingCategory.size)}</strong> of storage.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClear}
+              disabled={isClearing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isClearing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Clearing...
+                </>
+              ) : (
+                'Clear Data'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   )
 }

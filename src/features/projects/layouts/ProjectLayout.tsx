@@ -4,6 +4,7 @@ import { type ReactNode, useRef, useState, useCallback, useEffect } from "react"
 import { Outlet, useLocation, useParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
+import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
 import { FileTree, type FileTreeHandle } from "../components/FileTree"
 import { SiteHeader } from "@/components/layout/SiteHeader"
@@ -22,7 +23,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
-import { Loader2 } from "lucide-react"
+
 
 interface ProjectLayoutProps {
     children?: ReactNode
@@ -39,33 +40,49 @@ export function ProjectLayout({
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
 
-    // Get Convex organization and user for sync
-    const convexOrg = useQuery(
+    // Get Convex organization and user for sync (with caching)
+    const freshConvexOrg = useQuery(
         api.organizations.getByWorkosId,
         currentOrganization?.organizationId
             ? { workosId: currentOrganization.organizationId }
             : "skip"
     )
+    const convexOrg = useCachedQuery(
+        `layout-org-${currentOrganization?.organizationId}`,
+        freshConvexOrg
+    )
 
-    const convexUser = useQuery(
+    const freshConvexUser = useQuery(
         api.users.getByWorkosId,
         user?.id ? { workosId: user.id } : "skip"
     )
+    const convexUser = useCachedQuery(
+        `layout-user-${user?.id}`,
+        freshConvexUser
+    )
 
-    // Get project data
-    const project = useQuery(
+    // Get project data (with caching)
+    const freshProject = useQuery(
         api.projects.getBySlug,
         convexOrg?._id && slug
             ? { organizationId: convexOrg._id, slug }
             : "skip"
     )
+    const project = useCachedQuery(
+        `layout-project-${slug}`,
+        freshProject
+    )
 
-    // Get per-user local path for this project (machine-specific)
-    const memberLocalPath = useQuery(
+    // Get per-user local path for this project (machine-specific) (with caching)
+    const freshMemberLocalPath = useQuery(
         api.projectMembers.getMemberLocalPath,
         project?._id && convexUser?._id
             ? { projectId: project._id, userId: convexUser._id }
             : "skip"
+    )
+    const memberLocalPath = useCachedQuery(
+        `layout-localpath-${project?._id}-${convexUser?._id}`,
+        freshMemberLocalPath
     )
 
     // Per-user local path only (no fallback to shared project.localPath)
@@ -138,21 +155,7 @@ export function ProjectLayout({
     // Determine if we can enable sync (need project + user data)
     const canSync = project?._id && convexUser?._id && slug
 
-    // Check if queries are still loading (undefined = loading in Convex)
-    const isLoadingData =
-        (currentOrganization?.organizationId && convexOrg === undefined) ||
-        (user?.id && convexUser === undefined) ||
-        (convexOrg?._id && slug && project === undefined)
 
-    // Loading content for the main area (not full-page)
-    const loadingContent = (
-        <div className="flex flex-col items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-4">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Loading project...</p>
-            </div>
-        </div>
-    )
 
     // Main layout content
     const layoutContent = (
@@ -190,13 +193,13 @@ export function ProjectLayout({
                             opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
                         }}
                     >
-                        {isLoadingData ? loadingContent : (children || <Outlet />)}
+                        {children || <Outlet />}
                     </div>
                     <ChatPanel />
                     <AssistantPanel
-                      projectPath={effectiveLocalPath ?? undefined}
-                      projectName={project?.name}
-                      projectSlug={slug}
+                        projectPath={effectiveLocalPath ?? undefined}
+                        projectName={project?.name}
+                        projectSlug={slug}
                     />
                 </SidebarInset>
             </div >

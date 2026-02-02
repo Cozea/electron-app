@@ -78,13 +78,49 @@ type ConvexOrganizationShape = {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+const STORAGE_KEY_USER = 'auth_user'
+const STORAGE_KEY_TOKEN = 'auth_token'
+const STORAGE_KEY_ORGS = 'auth_orgs'
+const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  // Initialize state from localStorage for instant load
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_USER)
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
+
   const [convexUserId, setConvexUserId] = useState<Id<"users"> | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
-  const [organizations, setOrganizationsState] = useState<OrganizationMembership[]>([])
-  const [currentOrganization, setCurrentOrganization] = useState<OrganizationMembership | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+
+  const [accessToken, setAccessToken] = useState<string | null>(() => {
+    return localStorage.getItem(STORAGE_KEY_TOKEN)
+  })
+
+  const [organizations, setOrganizationsState] = useState<OrganizationMembership[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_ORGS)
+      return stored ? JSON.parse(stored) : []
+    } catch { return [] }
+  })
+
+  const [currentOrganization, setCurrentOrganization] = useState<OrganizationMembership | null>(() => {
+    try {
+      const storedOrgs = localStorage.getItem(STORAGE_KEY_ORGS)
+      const storedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT_ORG_ID)
+      if (storedOrgs && storedCurrentId) {
+        const orgs: OrganizationMembership[] = JSON.parse(storedOrgs)
+        return orgs.find(o => o.id === storedCurrentId || o.organizationId === storedCurrentId) || null
+      }
+      return null
+    } catch { return null }
+  })
+
+  // specific isLoading logic: only true if we don't have a user (cold start) or explicitly loading
+  const [isLoading, setIsLoading] = useState(() => {
+    return !localStorage.getItem(STORAGE_KEY_USER)
+  })
   const [convexLoading, setConvexLoading] = useState(false)
 
   // Query Convex for user's organizations (source of truth)
@@ -153,15 +189,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleSession = useCallback(async (session: Session | null) => {
     if (session) {
       setUser(session.user)
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(session.user))
+
       setAccessToken(session.accessToken)
+      localStorage.setItem(STORAGE_KEY_TOKEN, session.accessToken)
+
       const orgs = session.organizations || []
       setOrganizationsState(orgs)
+      localStorage.setItem(STORAGE_KEY_ORGS, JSON.stringify(orgs))
+
       // Set current org to first active one
       if (orgs.length > 0) {
-        const activeOrg = orgs.find(o => o.status === 'active') || orgs[0]
-        setCurrentOrganization(activeOrg)
+        // use existing choice if available
+        const storedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT_ORG_ID)
+        let activeOrg: OrganizationMembership | undefined
+
+        if (storedCurrentId) {
+          activeOrg = orgs.find(o => o.id === storedCurrentId || o.organizationId === storedCurrentId)
+        }
+
+        if (!activeOrg) {
+          activeOrg = orgs.find(o => o.status === 'active') || orgs[0]
+        }
+
+        if (activeOrg) {
+          setCurrentOrganization(activeOrg)
+          localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, activeOrg.organizationId)
+        }
       } else {
         setCurrentOrganization(null)
+        localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
       }
 
       // Sync user to Convex and get their ID
@@ -205,6 +262,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOrganizationsState([])
       setCurrentOrganization(null)
       setConvexLoading(false)
+
+      // Clear local storage
+      localStorage.removeItem(STORAGE_KEY_USER)
+      localStorage.removeItem(STORAGE_KEY_TOKEN)
+      localStorage.removeItem(STORAGE_KEY_ORGS)
+      localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
     }
     setIsLoading(false)
   }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex])
@@ -287,6 +350,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentOrganization(null)
     setConvexLoading(false)
     setIsLoading(false)
+
+    // Clear local storage
+    localStorage.removeItem(STORAGE_KEY_USER)
+    localStorage.removeItem(STORAGE_KEY_TOKEN)
+    localStorage.removeItem(STORAGE_KEY_ORGS)
+    localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
   }, [])
 
   // Refresh the access token using the refresh token
@@ -359,13 +428,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         organizations,
         currentOrganization,
         isAuthenticated: !!user,
-        isLoading: isLoading || convexLoading,
+        isLoading: isLoading, // Only block on initial hydration, not background sync
         needsOnboarding,
         login,
         logout,
         refreshToken,
         setOrganizations,
-        setCurrentOrganization,
+        setCurrentOrganization: (org) => {
+          setCurrentOrganization(org)
+          if (org) {
+            localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, org.organizationId)
+          } else {
+            localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
+          }
+        },
       }}
     >
       {children}

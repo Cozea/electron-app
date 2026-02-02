@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
+import { checkProjectLimit } from "./lib/workspaceLimits"
 
 // Helper to generate URL-safe slug from project name
 function generateSlug(name: string): string {
@@ -117,11 +118,25 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Check project limit before creating
+    const limitStatus = await checkProjectLimit(ctx, args.organizationId)
+
+    if (!limitStatus.allowed) {
+      throw new Error(
+        limitStatus.message ||
+          "Project limit reached. Upgrade your plan to create more projects."
+      )
+    }
+
     const now = Date.now()
 
     // Generate unique slug
     const baseSlug = generateSlug(args.name)
     const slug = await ensureUniqueSlug(ctx, args.organizationId, baseSlug)
+
+    // For repo imports, code already exists - set to active
+    // For prompt/fresh, start as draft until AI generates/builds
+    const initialStatus = args.creationPath === 'repo' ? 'active' : 'draft'
 
     // Create project with all fields
     const projectId = await ctx.db.insert("projects", {
@@ -136,7 +151,7 @@ export const create = mutation({
       sourceControl: args.sourceControl,
       visuals: args.visuals,
       creationPath: args.creationPath,
-      status: "draft",
+      status: initialStatus,
       wizardStep: 0,
       originalPrompt: args.originalPrompt,
       promptSettings: args.promptSettings,
@@ -152,12 +167,15 @@ export const create = mutation({
     })
 
     // Add creator as project manager
+    // For local folder imports, also set the localPath so sync knows where files are
+    const memberLocalPath = args.repoSource?.provider === 'local' ? args.repoSource.repoUrl : undefined
     await ctx.db.insert("projectMembers", {
       projectId,
       userId: args.userId,
       role: "project_manager",
       addedAt: now,
       addedBy: args.userId,
+      localPath: memberLocalPath,
     })
 
     return { projectId, slug }

@@ -1,8 +1,15 @@
-import { mutation, query } from "./_generated/server"
+import { mutation, query, internalMutation } from "./_generated/server"
 import { v } from "convex/values"
 import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
 import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
 import { checkSeatLimit } from "./lib/seatLimits"
+import {
+  checkProjectLimit,
+  checkStorageUsage,
+  getPlanStorageLimitGB,
+  formatBytes,
+  estimateStorageBreakdown,
+} from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -982,5 +989,238 @@ export const getSeatStatus = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
     return await checkSeatLimit(ctx, args.orgId)
+  },
+})
+
+// Get usage limits and current usage for an organization
+// Used by Settings and Sync pages to display usage information
+export const getUsageLimits = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const org = await ctx.db.get(args.orgId)
+    if (!org) return null
+
+    const plan = org.subscription.plan
+
+    // Get all limits
+    const projectStatus = await checkProjectLimit(ctx, args.orgId)
+    const storageStatus = await checkStorageUsage(ctx, args.orgId)
+    const seatStatus = await checkSeatLimit(ctx, args.orgId)
+
+    return {
+      plan,
+      planDisplayName: plan.charAt(0).toUpperCase() + plan.slice(1),
+
+      // Project limits
+      projects: {
+        current: projectStatus.current,
+        limit: projectStatus.limit,
+        isUnlimited: projectStatus.isUnlimited,
+        allowed: projectStatus.allowed,
+        message: projectStatus.message,
+      },
+
+      // Storage limits
+      storage: {
+        currentBytes: storageStatus.currentBytes,
+        limitBytes: storageStatus.limitBytes,
+        currentFormatted: formatBytes(storageStatus.currentBytes),
+        limitFormatted: storageStatus.isUnlimited
+          ? "Unlimited"
+          : formatBytes(storageStatus.limitBytes),
+        limitGB: getPlanStorageLimitGB(plan),
+        usagePercent: storageStatus.usagePercent,
+        isUnlimited: storageStatus.isUnlimited,
+        allowed: storageStatus.allowed,
+        breakdown: storageStatus.breakdown,
+        message: storageStatus.message,
+      },
+
+      // Seat limits (existing)
+      seats: {
+        current: seatStatus.current,
+        limit: seatStatus.limit,
+        isUnlimited: seatStatus.limit === -1,
+        allowed: seatStatus.allowed,
+        message: seatStatus.message,
+      },
+
+      // When storage was last calculated
+      storageLastCalculated: org.storageUsage?.lastCalculatedAt,
+    }
+  },
+})
+
+// Recalculate storage usage for an organization
+// Called by cron job or after significant storage operations
+export const recalculateStorageUsage = internalMutation({
+  args: {
+    organizationId: v.id("organizations"),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db.get(args.organizationId)
+    if (!org) return { success: false, reason: "Organization not found" }
+
+    const breakdown = await estimateStorageBreakdown(ctx, args.organizationId)
+    const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
+
+    await ctx.db.patch(args.organizationId, {
+      storageUsage: {
+        totalBytes,
+        lastCalculatedAt: Date.now(),
+        breakdown,
+      },
+      updatedAt: Date.now(),
+    })
+
+    return { success: true, totalBytes, breakdown }
+  },
+})
+
+// Recalculate storage for all organizations
+// Called by weekly cron job
+export const recalculateStorageUsageAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const organizations = await ctx.db.query("organizations").collect()
+
+    let processed = 0
+    for (const org of organizations) {
+      const breakdown = await estimateStorageBreakdown(ctx, org._id)
+      const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
+
+      await ctx.db.patch(org._id, {
+        storageUsage: {
+          totalBytes,
+          lastCalculatedAt: Date.now(),
+          breakdown,
+        },
+        updatedAt: Date.now(),
+      })
+      processed++
+    }
+
+    return { processed }
+  },
+})
+
+// Clear a specific storage category for an organization
+// Deletes all data in that category across all projects
+export const clearStorageCategory = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    category: v.union(
+      v.literal("collaborationData"),
+      v.literal("aiHistory"),
+      v.literal("buildCache"),
+      v.literal("snapshots"),
+      v.literal("databaseBackups")
+    ),
+  },
+  handler: async (ctx, args) => {
+    // Verify user is admin
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_organization_and_user", (q) =>
+        q.eq("organizationId", args.orgId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
+      throw new Error("Unauthorized to clear storage")
+    }
+
+    // Get all projects for this organization
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .collect()
+
+    const projectIds = projects.map((p) => p._id)
+    let deletedCount = 0
+
+    for (const projectId of projectIds) {
+      switch (args.category) {
+        case "collaborationData": {
+          // Clear yjsUpdates
+          const updates = await ctx.db
+            .query("yjsUpdates")
+            .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+            .collect()
+          for (const update of updates) {
+            await ctx.db.delete(update._id)
+            deletedCount++
+          }
+          break
+        }
+        case "aiHistory": {
+          // Clear aiConversations
+          const conversations = await ctx.db
+            .query("aiConversations")
+            .filter((q) => q.eq(q.field("projectId"), projectId))
+            .collect()
+          for (const conv of conversations) {
+            await ctx.db.delete(conv._id)
+            deletedCount++
+          }
+          break
+        }
+        case "buildCache": {
+          // Clear builderRuns
+          const runs = await ctx.db
+            .query("builderRuns")
+            .withIndex("by_project", (q) => q.eq("projectId", projectId))
+            .collect()
+          for (const run of runs) {
+            await ctx.db.delete(run._id)
+            deletedCount++
+          }
+          break
+        }
+        case "snapshots": {
+          // Clear yjsDocuments
+          const snapshots = await ctx.db
+            .query("yjsDocuments")
+            .withIndex("by_project", (q) => q.eq("projectId", projectId))
+            .collect()
+          for (const snapshot of snapshots) {
+            await ctx.db.delete(snapshot._id)
+            deletedCount++
+          }
+          break
+        }
+        case "databaseBackups": {
+          // Reserved - no action yet
+          break
+        }
+      }
+    }
+
+    // Recalculate storage usage after clearing
+    const breakdown = await estimateStorageBreakdown(ctx, args.orgId)
+    const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
+
+    await ctx.db.patch(args.orgId, {
+      storageUsage: {
+        totalBytes,
+        lastCalculatedAt: Date.now(),
+        breakdown,
+      },
+      updatedAt: Date.now(),
+    })
+
+    // Audit log
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "storage.cleared",
+      resourceType: "organization",
+      resourceId: args.orgId,
+      metadata: { category: args.category, deletedCount },
+      timestamp: Date.now(),
+    })
+
+    return { success: true, deletedCount }
   },
 })
