@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sparkles, Upload, Check } from 'lucide-react'
 import type { WizardVisuals } from '@/hooks/useWizardState'
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 interface VisualsStepProps {
@@ -194,7 +194,7 @@ function OptionCard({
   description: string,
   selected: boolean,
   onClick: () => void,
-  variants?: any
+  variants?: Variants
 }) {
   return (
     <motion.button

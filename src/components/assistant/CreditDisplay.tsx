@@ -101,7 +101,7 @@ export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayP
       <Progress
         value={100 - percentUsed}
         className="h-2"
-        // @ts-ignore - indicatorClassName not in types but supported
+        // @ts-expect-error - indicatorClassName not in types but supported
         indicatorClassName={getProgressColor()}
       />
 

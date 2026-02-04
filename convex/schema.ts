@@ -49,6 +49,7 @@ export default defineSchema({
         anthropicKey: v.optional(v.string()),
         openaiKey: v.optional(v.string()),
         googleKey: v.optional(v.string()),
+        xaiKey: v.optional(v.string()),
       })
     ),
 
@@ -64,7 +65,12 @@ export default defineSchema({
       v.object({
         // Providers allowed for this workspace
         allowedProviders: v.array(
-          v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google"))
+          v.union(
+            v.literal("anthropic"),
+            v.literal("openai"),
+            v.literal("google"),
+            v.literal("xai")
+          )
         ),
         // Optional model allowlist (if set, only these model IDs are allowed)
         allowedModels: v.optional(v.array(v.string())),
@@ -307,7 +313,12 @@ export default defineSchema({
     // Request details
     model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.1"
     modelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
-    provider: v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google")),
+    provider: v.union(
+      v.literal("anthropic"),
+      v.literal("openai"),
+      v.literal("google"),
+      v.literal("xai")
+    ),
 
     // Token counts from AI SDK response.usage
     promptTokens: v.number(),
@@ -520,7 +531,14 @@ export default defineSchema({
     ),
 
     // Provider (for provider-supplied tools like web search)
-    provider: v.optional(v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google"))),
+    provider: v.optional(
+      v.union(
+        v.literal("anthropic"),
+        v.literal("openai"),
+        v.literal("google"),
+        v.literal("xai")
+      )
+    ),
 
     // Tool type (function/provider/dynamic)
     toolType: v.optional(

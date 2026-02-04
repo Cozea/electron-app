@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
@@ -54,7 +55,6 @@ export const useQueryCache = create<QueryCacheState>()(
       clear: (key?: string) => {
         if (key) {
           set((state) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { [key]: _removed, ...rest } = state.cache
             return { cache: rest }
           })
@@ -88,13 +88,16 @@ export function useCachedQuery<T>(
   })
 
   // Update cache when fresh data arrives
-  if (freshData !== undefined) {
-    // Use getState to avoid re-render loop
-    const currentCache = useQueryCache.getState().cache[key]
-    if (!currentCache || currentCache.data !== freshData) {
-      useQueryCache.getState().set(key, freshData)
+  useEffect(() => {
+    if (freshData !== undefined) {
+      // Use getState to avoid re-render loop
+      const currentCache = useQueryCache.getState().cache[key]
+      // Simple reference check is usually sufficient for Convex data
+      if (!currentCache || currentCache.data !== freshData) {
+        useQueryCache.getState().set(key, freshData)
+      }
     }
-  }
+  }, [key, freshData])
 
   // Return fresh data if available, otherwise cached
   return freshData ?? cached

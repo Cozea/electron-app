@@ -23,6 +23,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
+import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
+import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 
 
 interface ProjectLayoutProps {
@@ -88,6 +90,9 @@ export function ProjectLayout({
     // Per-user local path only (no fallback to shared project.localPath)
     const effectiveLocalPath = memberLocalPath ?? null
 
+    useDiagnosticsBridge(effectiveLocalPath)
+    useDependenciesMonitor(effectiveLocalPath)
+
     // Ensure project-scoped runtime processes don't leak across navigation.
     // - Stops any dev server PTY (devServer API)
     // - Kills any terminals started for this projectPath (terminal API)
@@ -140,6 +145,14 @@ export function ProjectLayout({
         }
     }, [])
 
+    const handleCreateFile = useCallback(() => {
+        fileTreeRef.current?.startCreateFile()
+    }, [])
+
+    const handleCreateFolder = useCallback(() => {
+        fileTreeRef.current?.startCreateFolder()
+    }, [])
+
     // Check if we have open files (to remove padding for editor)
     const projectTabs = useFileTabsStore(state => slug ? state.projectTabs[slug] : null)
     const hasOpenFiles = (projectTabs?.openFiles?.length || 0) > 0
@@ -179,6 +192,8 @@ export function ProjectLayout({
                     fileTree={<FileTree ref={fileTreeRef} />}
                     onRefreshFiles={handleRefreshFiles}
                     isRefreshing={isRefreshing}
+                    onCreateFile={handleCreateFile}
+                    onCreateFolder={handleCreateFolder}
                 />
                 <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                     <div

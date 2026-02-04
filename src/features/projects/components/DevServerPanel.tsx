@@ -7,7 +7,7 @@ import { SearchAddon } from "@xterm/addon-search"
 import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
-import { useDevToolsStore } from "@/stores/useDevToolsStore"
+import { useProblemsStore, selectProjectProblems, selectUnreadCount } from "@/stores/useProblemsStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 type TabType = "console" | "problems"
@@ -20,7 +20,8 @@ interface DevServerPanelProps {
 
 export function DevServerPanel({ className, defaultCollapsed = false, projectPath }: DevServerPanelProps) {
     const { serverStatus, serverOutput, consolePanelHeight, actions } = useProjectPagesStore()
-    const { errors, unreadErrorCount } = useDevToolsStore()
+    const errors = useProblemsStore(selectProjectProblems(projectPath))
+    const unreadErrorCount = useProblemsStore(selectUnreadCount(projectPath))
     const [activeTab, setActiveTab] = useState<TabType>("console")
     const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
     const [isDragging, setIsDragging] = useState(false)
@@ -494,7 +495,11 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
-                                            e.shiftKey ? handleSearchPrev() : handleSearchNext()
+                                            if (e.shiftKey) {
+                                                handleSearchPrev()
+                                            } else {
+                                                handleSearchNext()
+                                            }
                                         }
                                         if (e.key === 'Escape') {
                                             handleCloseSearch()

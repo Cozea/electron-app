@@ -24,7 +24,8 @@ function assertGatewaySecret(secret: string | undefined) {
 const providerValidator = v.union(
   v.literal("anthropic"),
   v.literal("openai"),
-  v.literal("google")
+  v.literal("google"),
+  v.literal("xai")
 )
 
 // Extended usage from AI SDK v6
@@ -244,10 +245,12 @@ export const log = mutation({
     }
 
     // Calculate credits using model tier pricing
+    const cachedInputTokens = args.extendedUsage?.cachedInputTokens ?? 0
     const creditsUsed = calculateCredits(
       args.model,
       args.promptTokens,
-      args.completionTokens
+      args.completionTokens,
+      cachedInputTokens
     )
     const modelTier = getModelTier(args.model)
 

@@ -121,9 +121,98 @@ interface ToolMeta {
   supportsDeferredResults?: boolean
 }
 
+interface ModelOption {
+  id: string
+  name: string
+  chef: string
+  chefSlug: string
+  tier: string
+  providers: string[]
+}
+
+interface ModelCapabilities {
+  reasoningType?: 'effort' | 'token' | 'budget' | string
+  supportsEffortParameter?: boolean
+  supportsExtendedThinking?: boolean
+  reasoningRange?: unknown
+}
+
+interface ModelApiModel {
+  id: string
+  displayName: string
+  provider: string
+  tier: string
+  capabilities?: ModelCapabilities
+}
+
+interface ModelApiResponse {
+  models: ModelApiModel[]
+}
+
+interface ToolPolicy {
+  allowProviderTools: boolean
+  allowWebSearch: boolean
+  maxReasoningDepth: 'low' | 'medium' | 'high'
+}
+
+interface ToolsApiResponse {
+  tools: ToolMeta[]
+  policy?: ToolPolicy
+}
+
+interface ToolCallPayload {
+  toolName: string
+  input: unknown
+  toolCallId: string
+  dynamic?: boolean
+  providerExecuted?: boolean
+}
+
+interface ToolPart {
+  type: string
+  toolCallId?: string
+  toolName?: string
+  state?: string
+  input?: unknown
+  output?: unknown
+  result?: unknown
+  args?: unknown
+  plans?: unknown
+  errorText?: string
+}
+
+interface ReasoningPart {
+  duration?: number
+  text?: string
+}
+
+interface UsageData {
+  model?: string
+  provider?: string
+  creditsUsed?: number
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
+  cachedInputTokens?: number
+}
+
+interface SourcePart {
+  url?: string
+  uri?: string
+  title?: string
+  favicon?: string
+  source?: { url?: string; title?: string }
+}
+
+type ChatHookResult = ReturnType<typeof useChat>
+
 // AI Gateway endpoint
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
 const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 // Tools allowed during planning phase (read-only + display_plan)
 const PLANNING_TOOLS = new Set([
@@ -131,11 +220,10 @@ const PLANNING_TOOLS = new Set([
 ])
 
 // Model catalog (same as AIConversation)
-const defaultModels = [
+const defaultModels: ModelOption[] = [
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'fast', providers: ['anthropic'] },
   { id: 'gemini-3-flash', name: 'Gemini 3 Flash', chef: 'Google', chefSlug: 'google', tier: 'fast', providers: ['google'] },
   { id: 'gpt-5.1', name: 'GPT-5.1', chef: 'OpenAI', chefSlug: 'openai', tier: 'standard', providers: ['openai'] },
-  { id: 'gpt-5.1-mini', name: 'GPT-5.1 Mini', chef: 'OpenAI', chefSlug: 'openai', tier: 'standard', providers: ['openai'] },
   { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'standard', providers: ['anthropic'] },
   { id: 'gpt-5.2', name: 'GPT-5.2', chef: 'OpenAI', chefSlug: 'openai', tier: 'powerful', providers: ['openai'] },
   { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'powerful', providers: ['anthropic'] },
@@ -154,14 +242,10 @@ export function WizardConversation({
 
   // State
   const [input, setInput] = useState('')
-  const [availableModels, setAvailableModels] = useState(defaultModels)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
   const [model, setModel] = useState(promptSettings.model)
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<{
-    allowProviderTools: boolean
-    allowWebSearch: boolean
-    maxReasoningDepth: 'low' | 'medium' | 'high'
-  } | null>(null)
+  const [toolPolicy, setToolPolicy] = useState<ToolPolicy | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<'Agent' | 'Assistant'>(
     promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant'
@@ -175,7 +259,7 @@ export function WizardConversation({
   const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
     () => loadModelSettings()
   )
-  const [modelCapabilities, setModelCapabilities] = useState<Record<string, any>>({})
+  const [modelCapabilities, setModelCapabilities] = useState<Record<string, ModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
@@ -185,7 +269,8 @@ export function WizardConversation({
   const hasSentInitialMessageRef = useRef(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
+  const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
+  const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
   const selectedModelData = availableModels.find((m) => m.id === model)
@@ -314,9 +399,9 @@ export function WizardConversation({
         }
         return res.json()
       })
-      .then((data) => {
+      .then((data: ModelApiResponse) => {
         if (!data?.models) return
-        const mapped = data.models.map((m: any) => ({
+        const mapped = data.models.map((m) => ({
           id: m.id,
           name: m.displayName,
           chef: m.provider === 'openai' ? 'OpenAI' : m.provider === 'anthropic' ? 'Anthropic' : 'Google',
@@ -324,7 +409,7 @@ export function WizardConversation({
           tier: m.tier,
           providers: [m.provider],
         }))
-        const caps: Record<string, any> = {}
+        const caps: Record<string, ModelCapabilities> = {}
         for (const m of data.models) {
           if (m.capabilities) caps[m.id] = m.capabilities
         }
@@ -332,7 +417,7 @@ export function WizardConversation({
         setModelsError(null)
         if (mapped.length > 0) {
           setAvailableModels(mapped)
-          if (!mapped.some((item: any) => item.id === model)) {
+          if (!mapped.some((item) => item.id === model)) {
             setModel(mapped[0].id)
           }
         }
@@ -365,9 +450,9 @@ export function WizardConversation({
         }
         return res.json()
       })
-      .then((data) => {
+      .then((data: ToolsApiResponse) => {
         if (!data?.tools) return
-        setAvailableTools(data.tools as ToolMeta[])
+        setAvailableTools(data.tools)
         setToolPolicy(data.policy ?? null)
         setToolsError(null)
       })
@@ -449,7 +534,7 @@ export function WizardConversation({
     return toolMeta.requiresApproval
   }, [isAgentMode])
 
-  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: any }) => {
+  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
@@ -478,6 +563,10 @@ export function WizardConversation({
         toolCallId: toolCall.toolCallId,
       })
 
+      if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+        return
+      }
+
       if (result.success) {
         void addToolOutput({
           tool: toolCall.toolName,
@@ -493,6 +582,9 @@ export function WizardConversation({
         })
       }
     } catch (err) {
+      if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+        return
+      }
       void addToolOutput({
         state: 'output-error',
         tool: toolCall.toolName,
@@ -516,7 +608,7 @@ export function WizardConversation({
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onToolCall: handleToolCall,
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error('Chat error:', err)
       const billingErr = parseBillingError(err)
       if (billingErr) {
@@ -526,6 +618,50 @@ export function WizardConversation({
   })
 
   addToolOutputRef.current = addToolOutput
+
+  const cancelPendingToolOutputs = useCallback(() => {
+    const addToolOutput = addToolOutputRef.current
+    if (!addToolOutput) return
+
+    const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
+
+    for (const message of messages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
+          continue
+        }
+
+        const toolPart = part as ToolPart
+        const toolCallId = toolPart.toolCallId
+        if (!toolCallId) continue
+
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        const toolName = part.type === 'dynamic-tool'
+          ? toolPart.toolName
+          : part.type.replace(/^tool-/, '')
+        if (!toolName) continue
+
+        pendingToolCalls.set(toolCallId, { toolName, toolCallId })
+        cancelledToolCallsRef.current.add(toolCallId)
+      }
+    }
+
+    for (const pending of pendingToolCalls.values()) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+        errorText: 'Cancelled by the current user.',
+      })
+    }
+  }, [messages])
 
   const genericErrorMessage = useMemo(() => {
     if (!error) return null
@@ -596,18 +732,21 @@ export function WizardConversation({
       if (message.role !== 'assistant') continue
 
       // Debug: Log all part types to understand the structure
-      console.log('[Wizard] Message parts:', message.parts.map((p: any) => ({
-        type: p.type,
-        toolName: p.toolName,
-        state: p.state,
-        hasOutput: !!p.output,
-        hasInput: !!p.input,
-      })))
+      console.log('[Wizard] Message parts:', message.parts.map((part) => {
+        const toolPart = part as ToolPart
+        return {
+          type: part.type,
+          toolName: toolPart.toolName,
+          state: toolPart.state,
+          hasOutput: Boolean(toolPart.output),
+          hasInput: Boolean(toolPart.input),
+        }
+      }))
 
       for (const part of message.parts) {
         // Check for present_plans tool with output - handle various formats from different providers
         const partType = part.type as string
-        const toolPart = part as any
+        const toolPart = part as ToolPart
         const isPresntPlans = partType === 'tool-present_plans' ||
           partType.includes('present_plans') ||
           toolPart.toolName === 'present_plans' ||
@@ -628,15 +767,15 @@ export function WizardConversation({
           })
 
           // Get output from various possible fields (different providers use different formats)
-          const rawOutput = toolPart.output || toolPart.result
-          const rawInput = toolPart.input || toolPart.args
+          const rawOutput = toolPart.output ?? toolPart.result
+          const rawInput = toolPart.input ?? toolPart.args
 
           // Check if we have output (complete tool result)
           if ((toolPart.state === 'output-available' || toolPart.state === 'result') && rawOutput) {
             try {
               const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
               console.log('[Wizard] Parsed output plans:', output?.plans?.length || 0, 'plans')
-              if (output?.plans && Array.isArray(output.plans)) {
+              if (isRecord(output) && Array.isArray(output.plans)) {
                 const validPlans = validatePlans(output.plans)
                 console.log('[Wizard] Valid plans after validation:', validPlans.length)
                 if (validPlans.length > extractedPlanCountRef.current) {
@@ -651,7 +790,7 @@ export function WizardConversation({
             }
           }
           // Also check input/args if output not yet available (streaming or Gemini format)
-          else if (rawInput?.plans && Array.isArray(rawInput.plans)) {
+          else if (isRecord(rawInput) && Array.isArray(rawInput.plans)) {
             const validPlans = validatePlans(rawInput.plans)
             console.log('[Wizard] Input plans (streaming):', rawInput.plans.length, 'raw,', validPlans.length, 'valid')
             if (validPlans.length > extractedPlanCountRef.current) {
@@ -662,7 +801,7 @@ export function WizardConversation({
             }
           }
           // Direct plans field check (some providers put it at top level)
-          else if (toolPart.plans && Array.isArray(toolPart.plans)) {
+          else if (Array.isArray(toolPart.plans)) {
             const validPlans = validatePlans(toolPart.plans)
             console.log('[Wizard] Direct plans field:', toolPart.plans.length, 'raw,', validPlans.length, 'valid')
             if (validPlans.length > extractedPlanCountRef.current) {
@@ -675,8 +814,8 @@ export function WizardConversation({
         }
         // Legacy support for data-plan-options
         if (part.type === 'data-plan-options') {
-          const data = (part as any).data
-          if (data && Array.isArray(data)) {
+          const data = (part as { data?: unknown }).data
+          if (Array.isArray(data)) {
             const validPlans = validatePlans(data)
             if (validPlans.length > extractedPlanCountRef.current) {
               extractedPlanCountRef.current = validPlans.length
@@ -699,12 +838,7 @@ export function WizardConversation({
     for (const message of messages) {
       for (const part of message.parts) {
         if (part.type === 'data-usage') {
-          const data = (part as any).data as {
-            promptTokens?: number
-            completionTokens?: number
-            reasoningTokens?: number
-            cachedInputTokens?: number
-          } | undefined
+          const data = (part as { data?: UsageData }).data
           if (data) {
             inputTokens += data.promptTokens ?? 0
             outputTokens += data.completionTokens ?? 0
@@ -754,6 +888,8 @@ export function WizardConversation({
 
   const handleStop = (e: React.MouseEvent) => {
     e.preventDefault()
+    cancelPendingToolOutputs()
+    void localRuntime.cancelRun(conversationId)
     stop()
   }
 
@@ -1120,7 +1256,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
           }
 
           if (part.type === 'reasoning') {
-            const reasoningPart = part as any
+            const reasoningPart = part as ReasoningPart
             return (
               <Reasoning
                 key={`${message.id}-reasoning-${index}`}
@@ -1134,14 +1270,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
           }
 
           if (part.type === 'data-usage') {
-            const usage = (part as any).data as {
-              model?: string
-              provider?: string
-              creditsUsed?: number
-              promptTokens?: number
-              completionTokens?: number
-              totalTokens?: number
-            } | undefined
+            const usage = (part as { data?: UsageData }).data
 
             if (!usage) return null
 
@@ -1175,10 +1304,11 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
 
           // Tool calls
           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
-            const toolPart = part as any
+            const toolPart = part as ToolPart
             const toolName = part.type === 'dynamic-tool'
               ? toolPart.toolName
               : part.type.replace(/^tool-/, '')
+            const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
 
             // Skip present_plans tool - it's rendered as PlanSelector below messages
             if (toolName === 'present_plans') {
@@ -1204,7 +1334,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
                 <ToolStatic
                   key={`${message.id}-tool-${index}`}
                   toolName={toolName}
-                  input={toolPart.input as Record<string, unknown> | undefined}
+                  input={toolInput}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
@@ -1215,22 +1345,22 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
               <Tool key={`${message.id}-tool-${index}`}>
                 <ToolHeader
                   toolName={toolName}
-                  input={toolPart.input as Record<string, unknown> | undefined}
+                  input={toolInput}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
                 <ToolContent>
                   {/* For file edit tools, show Monaco diff viewer */}
-                  {isEditTool && toolPart.input && (
+                  {isEditTool && toolInput && (
                     <ToolDiffOutput
                       toolName={toolName}
-                      input={toolPart.input as Record<string, unknown>}
+                      input={toolInput}
                       maxHeight={300}
                     />
                   )}
                   {/* For non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolPart.input && (
-                    <ToolInput input={formatToolPayload(toolPart.input)} />
+                  {!isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                    <ToolInput input={formatToolPayload(toolInput)} />
                   )}
                   {toolPart.state === 'output-available' && (
                     toolName === 'todo_list'
@@ -1289,7 +1419,7 @@ function formatToolPayload(value: unknown): string {
 }
 
 function extractTasksFromToolOutput(output: unknown): TaskData[] {
-  let payload = output as any
+  let payload: unknown = output
   if (typeof payload === 'string') {
     try {
       payload = JSON.parse(payload)
@@ -1298,23 +1428,27 @@ function extractTasksFromToolOutput(output: unknown): TaskData[] {
     }
   }
 
-  const tasks = Array.isArray(payload?.tasks) ? payload.tasks : []
+  if (!isRecord(payload)) return []
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : []
   return tasks
-    .filter((task: any) => task && typeof task === 'object')
-    .map((task: any) => ({
-      id: String(task.id ?? crypto.randomUUID()),
-      title: String(task.title ?? 'Untitled task'),
-      status: (task.status ?? 'pending') as TaskData['status'],
-      files: Array.isArray(task.files) ? task.files.map((f: any) => String(f)) : undefined,
-      details: task.details ? String(task.details) : undefined,
-    }))
+    .filter((task): task is Record<string, unknown> => isRecord(task))
+    .map((task) => {
+      const status = typeof task.status === 'string' ? task.status : 'pending'
+      return {
+        id: String(task.id ?? crypto.randomUUID()),
+        title: String(task.title ?? 'Untitled task'),
+        status: status as TaskData['status'],
+        files: Array.isArray(task.files) ? task.files.map((file) => String(file)) : undefined,
+        details: task.details ? String(task.details) : undefined,
+      }
+    })
 }
 
 function extractSourcesFromParts(parts: UIMessage['parts']) {
   const sources: Array<{ url: string; title: string; favicon?: string }> = []
   for (const part of parts) {
     if (part.type !== 'source-url') continue
-    const sourcePart = part as any
+    const sourcePart = part as SourcePart
     const url = sourcePart.url || sourcePart.uri || sourcePart.source?.url
     if (!url) continue
     sources.push({

@@ -9,6 +9,8 @@ export interface ToolRequest {
   name: string
   input: Record<string, unknown>
   projectPath?: string
+  runId?: string
+  toolCallId?: string
 }
 
 export interface ToolResult {
@@ -94,6 +96,97 @@ interface BackgroundProcess {
 }
 
 const backgroundProcesses = new Map<string, BackgroundProcess>()
+const activeRunProcesses = new Map<string, Set<ReturnType<typeof spawn>>>()
+const DEFAULT_KILL_GRACE_MS = 1500
+
+function isProcessRunning(child: ReturnType<typeof spawn>) {
+  return child.exitCode === null && child.signalCode === null
+}
+
+function terminateProcess(child: ReturnType<typeof spawn>, options?: { forceAfterMs?: number }) {
+  const pid = child.pid
+  if (!pid) return
+  const forceAfterMs = options?.forceAfterMs ?? DEFAULT_KILL_GRACE_MS
+  const isWin = process.platform === 'win32'
+  const useProcessGroup = Boolean((child as { __agentDetached?: boolean }).__agentDetached)
+
+  try {
+    if (isWin) {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // ignore
+      }
+      try {
+        spawn('taskkill', ['/PID', String(pid), '/T', '/F'])
+      } catch {
+        // ignore
+      }
+    } else if (useProcessGroup) {
+      try {
+        process.kill(-pid, 'SIGTERM')
+      } catch {
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          // ignore
+        }
+      }
+    } else {
+      child.kill('SIGTERM')
+    }
+  } catch {
+    // ignore
+  }
+
+  if (forceAfterMs <= 0) return
+
+  setTimeout(() => {
+    if (!isProcessRunning(child)) return
+    try {
+      if (isWin) {
+        try {
+          spawn('taskkill', ['/PID', String(pid), '/T', '/F'])
+        } catch {
+          // ignore
+        }
+      } else if (useProcessGroup) {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          try {
+            child.kill('SIGKILL')
+          } catch {
+            // ignore
+          }
+        }
+      } else {
+        child.kill('SIGKILL')
+      }
+    } catch {
+      // ignore
+    }
+  }, forceAfterMs)
+}
+
+function registerRunProcess(runId: string | undefined, child: ReturnType<typeof spawn>) {
+  if (!runId) return
+  const set = activeRunProcesses.get(runId) ?? new Set()
+  set.add(child)
+  activeRunProcesses.set(runId, set)
+
+  const cleanup = () => {
+    const current = activeRunProcesses.get(runId)
+    if (!current) return
+    current.delete(child)
+    if (current.size === 0) {
+      activeRunProcesses.delete(runId)
+    }
+  }
+
+  child.on('close', cleanup)
+  child.on('error', cleanup)
+}
 
 function truncateOutput(output: string) {
   if (output.length <= MAX_OUTPUT_LENGTH) return output
@@ -116,28 +209,90 @@ function resolveToolPath(inputPath: string, workingDir: string): string {
   return resolved
 }
 
-async function runRipgrep(args: string[], workingDir: string): Promise<string> {
+async function runRipgrep(
+  args: string[],
+  workingDir: string,
+  context?: {
+    runId?: string
+    timeoutMs?: number
+    onLine?: (line: string) => boolean
+  }
+): Promise<{ stdout: string; terminatedEarly: boolean; timedOut: boolean }> {
   return new Promise((resolve, reject) => {
     const rg = spawn(rgPath, args, { cwd: workingDir })
+    registerRunProcess(context?.runId, rg)
     let stdout = ''
     let stderr = ''
+    let buffer = ''
+    let terminatedEarly = false
+    let timedOut = false
+    let timeoutHandle: NodeJS.Timeout | undefined
+
+    const handleLine = (line: string) => {
+      if (!context?.onLine) {
+        stdout += `${line}\n`
+        return
+      }
+      const shouldStop = context.onLine(line)
+      if (shouldStop && !terminatedEarly) {
+        terminatedEarly = true
+        try {
+          rg.kill('SIGTERM')
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     rg.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
+      const text = chunk.toString()
+      if (!context?.onLine) {
+        stdout += text
+        return
+      }
+      buffer += text
+      let idx = buffer.indexOf('\n')
+      while (idx !== -1) {
+        const line = buffer.slice(0, idx)
+        buffer = buffer.slice(idx + 1)
+        handleLine(line)
+        if (terminatedEarly) {
+          buffer = ''
+          break
+        }
+        idx = buffer.indexOf('\n')
+      }
     })
     rg.stderr.on('data', (chunk) => {
       stderr += chunk.toString()
     })
     rg.on('error', (err) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
       reject(err)
     })
     rg.on('close', (code) => {
-      if (code && code !== 0) {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (context?.onLine && buffer && !terminatedEarly) {
+        handleLine(buffer)
+        buffer = ''
+      }
+      if (!terminatedEarly && !timedOut && code && code !== 0) {
         reject(new Error(stderr.trim() || `rg exited with code ${code}`))
         return
       }
-      resolve(stdout)
+      resolve({ stdout, terminatedEarly, timedOut })
     })
+
+    if (context?.timeoutMs && context.timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true
+        try {
+          rg.kill('SIGTERM')
+        } catch {
+          // ignore
+        }
+      }, context.timeoutMs)
+    }
   })
 }
 
@@ -203,28 +358,46 @@ async function listDir(input: { path: string }, workingDir: string) {
   }
 }
 
-async function findFiles(input: { query: string; maxResults?: number }, workingDir: string) {
+async function findFiles(
+  input: { query: string; maxResults?: number },
+  workingDir: string,
+  context?: { runId?: string }
+) {
   const pattern = input.query
   const args = ['--files', '-g', pattern]
-  const raw = await runRipgrep(args, workingDir)
-  const results = raw.split(/\r?\n/).filter(Boolean)
   const max = input.maxResults ? Math.max(1, input.maxResults) : 20
+  const results: string[] = []
+  const { terminatedEarly, timedOut } = await runRipgrep(args, workingDir, {
+    runId: context?.runId,
+    timeoutMs: 6000,
+    onLine: (line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return false
+      results.push(trimmed)
+      return results.length >= max
+    },
+  })
 
   return {
     query: pattern,
-    results: results.slice(0, max),
+    results,
     total: results.length,
-    truncated: results.length > max,
+    truncated: terminatedEarly || timedOut,
+    timedOut,
   }
 }
 
-async function grepSearch(input: {
-  query: string
-  isRegexp?: boolean
-  includePattern?: string
-  maxResults?: number
-  includeIgnoredFiles?: boolean
-}, workingDir: string) {
+async function grepSearch(
+  input: {
+    query: string
+    isRegexp?: boolean
+    includePattern?: string
+    maxResults?: number
+    includeIgnoredFiles?: boolean
+  },
+  workingDir: string,
+  context?: { runId?: string }
+) {
   const max = input.maxResults ? Math.max(1, input.maxResults) : 20
   const args = ['--json']
 
@@ -242,29 +415,35 @@ async function grepSearch(input: {
 
   args.push(input.query)
 
-  const raw = await runRipgrep(args, workingDir)
   const matches: Array<{ filePath: string; line: number; text: string }> = []
-
-  for (const line of raw.split(/\r?\n/)) {
-    if (!line.trim()) continue
-    try {
-      const event = JSON.parse(line)
-      if (event.type === 'match') {
-        const filePath = event.data.path.text
-        const lineNumber = event.data.line_number
-        const text = event.data.lines.text
-        matches.push({ filePath, line: lineNumber, text })
+  const { terminatedEarly, timedOut } = await runRipgrep(args, workingDir, {
+    runId: context?.runId,
+    timeoutMs: 8000,
+    onLine: (line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return false
+      try {
+        const event = JSON.parse(trimmed)
+        if (event.type === 'match') {
+          const filePath = event.data.path.text
+          const lineNumber = event.data.line_number
+          const text = event.data.lines.text
+          matches.push({ filePath, line: lineNumber, text })
+          return matches.length >= max
+        }
+      } catch {
+        // ignore malformed lines
       }
-    } catch {
-      // ignore malformed lines
-    }
-  }
+      return false
+    },
+  })
 
   return {
     query: input.query,
-    results: matches.slice(0, max),
+    results: matches,
     total: matches.length,
-    truncated: matches.length > max,
+    truncated: terminatedEarly || timedOut,
+    timedOut,
   }
 }
 
@@ -361,19 +540,28 @@ async function runInTerminal(input: {
   explanation?: string
   isBackground?: boolean
   timeout?: number
-}, workingDir: string) {
+}, workingDir: string, context?: { runId?: string }) {
   if (!input.command || typeof input.command !== 'string') {
     throw new Error('command is required')
   }
 
-  const timeoutMs = typeof input.timeout === 'number' ? Math.max(0, input.timeout) : 0
   const isBackground = Boolean(input.isBackground)
+  const timeoutMs = typeof input.timeout === 'number'
+    ? Math.max(0, input.timeout)
+    : isBackground
+      ? 0
+      : 120_000
 
+  const shouldDetach = process.platform !== 'win32'
   const child = spawn(input.command, {
     cwd: workingDir,
     shell: true,
     env: process.env,
+    detached: shouldDetach,
   })
+  if (shouldDetach) {
+    ;(child as { __agentDetached?: boolean }).__agentDetached = true
+  }
 
   if (isBackground) {
     const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -385,6 +573,8 @@ async function runInTerminal(input: {
       stderr: '',
       process: child,
     }
+
+    registerRunProcess(context?.runId, child)
 
     child.stdout.on('data', (chunk) => {
       entry.stdout = appendOutput(entry.stdout, chunk.toString())
@@ -406,11 +596,7 @@ async function runInTerminal(input: {
       setTimeout(() => {
         if (!entry.endedAt) {
           entry.timedOut = true
-          try {
-            child.kill('SIGTERM')
-          } catch {
-            // ignore
-          }
+          terminateProcess(child)
         }
       }, timeoutMs)
     }
@@ -418,6 +604,8 @@ async function runInTerminal(input: {
     backgroundProcesses.set(id, entry)
     return { id, pid: child.pid, command: input.command, isBackground: true }
   }
+
+  registerRunProcess(context?.runId, child)
 
   return new Promise((resolve) => {
     let stdout = ''
@@ -451,11 +639,7 @@ async function runInTerminal(input: {
     if (timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
         timedOut = true
-        try {
-          child.kill('SIGTERM')
-        } catch {
-          // ignore
-        }
+        terminateProcess(child)
       }, timeoutMs)
     }
   })
@@ -495,9 +679,19 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
       case 'list_dir':
         return { success: true, output: await listDir(request.input as ListDirInput, workingDir) }
       case 'file_search':
-        return { success: true, output: await findFiles(request.input as FindFilesInput, workingDir) }
+        return {
+          success: true,
+          output: await findFiles(request.input as FindFilesInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
       case 'grep_search':
-        return { success: true, output: await grepSearch(request.input as GrepSearchInput, workingDir) }
+        return {
+          success: true,
+          output: await grepSearch(request.input as GrepSearchInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
       case 'create_file':
         return { success: true, output: await createFile(request.input as CreateFileInput, workingDir, { notify: shouldNotify }) }
       case 'create_directory':
@@ -513,7 +707,12 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
           output: multiReplaceString(request.input as MultiReplaceInput, workingDir, { notify: shouldNotify }),
         }
       case 'run_in_terminal':
-        return { success: true, output: await runInTerminal(request.input as RunInTerminalInput, workingDir) }
+        return {
+          success: true,
+          output: await runInTerminal(request.input as RunInTerminalInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
       case 'get_terminal_output':
         return { success: true, output: await getTerminalOutput(request.input as GetTerminalOutputInput) }
       case 'apply_patch':
@@ -524,6 +723,22 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Tool failed' }
   }
+}
+
+export function cancelToolRuns(runId: string): { success: boolean; canceled: number } {
+  if (!runId) return { success: false, canceled: 0 }
+  const processes = activeRunProcesses.get(runId)
+  if (!processes || processes.size === 0) {
+    return { success: true, canceled: 0 }
+  }
+
+  let canceled = 0
+  for (const child of processes) {
+    terminateProcess(child)
+    canceled++
+  }
+
+  return { success: true, canceled }
 }
 
 export function getWorkspaceRoot() {

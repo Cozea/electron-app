@@ -20,9 +20,12 @@ export type BridgeMessageType =
   | 'bridge:element-selected'
   | 'bridge:element-contextmenu'
   | 'bridge:element-hover'
+  | 'bridge:selection-cleared'
   | 'bridge:screenshot-ready'
   | 'bridge:style-update-ack'
   | 'bridge:navigation'
+  | 'bridge:runtime-error'
+  | 'bridge:console'
   // host → iframe
   | 'host:enable-inspector'
   | 'host:disable-inspector'

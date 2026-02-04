@@ -104,6 +104,71 @@ interface ToolMeta {
   supportsDeferredResults?: boolean
 }
 
+interface ModelOption {
+  id: string
+  name: string
+  chef: string
+  chefSlug: string
+  tier: string
+  providers: string[]
+}
+
+interface ModelCapabilities {
+  reasoningType?: 'effort' | 'token' | string
+  supportsEffortParameter?: boolean
+  supportsExtendedThinking?: boolean
+}
+
+interface ModelApiModel {
+  id: string
+  displayName: string
+  provider: string
+  tier: string
+  capabilities?: ModelCapabilities
+}
+
+interface ModelApiResponse {
+  models: ModelApiModel[]
+}
+
+interface ToolPolicy {
+  allowProviderTools: boolean
+  allowWebSearch: boolean
+  maxReasoningDepth: 'low' | 'medium' | 'high'
+}
+
+interface ToolsApiResponse {
+  tools: ToolMeta[]
+  policy?: ToolPolicy
+}
+
+interface ToolCallPayload {
+  toolName: string
+  input: unknown
+  toolCallId: string
+  dynamic?: boolean
+  providerExecuted?: boolean
+}
+
+interface ToolPart {
+  type: string
+  toolCallId?: string
+  toolName?: string
+  state?: string
+  input?: unknown
+  output?: unknown
+  errorText?: string
+  approval?: { id?: string }
+}
+
+interface UsageData {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
+  cachedInputTokens?: number
+}
+
 // Tool categories for context-based gating
 const READ_ONLY_TOOLS = new Set([
   'read_file', 'list_dir', 'file_search', 'grep_search'
@@ -118,9 +183,14 @@ const WRITE_TOOLS = new Set([
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
 const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+type ChatHookResult = ReturnType<typeof useChat>
+
 // Model catalog per CrossCode Pricing Spec v3
 // Tiers: Fast (1/2 credits), Standard (5/10 credits), Powerful (25/50 credits)
-const defaultModels = [
+const defaultModels: ModelOption[] = [
   // ============================================
   // FAST TIER - 1 input / 2 output credits per 1K tokens
   // ============================================
@@ -146,14 +216,6 @@ const defaultModels = [
   {
     id: 'gpt-5.1',
     name: 'GPT-5.1',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    tier: 'standard',
-    providers: ['openai'],
-  },
-  {
-    id: 'gpt-5.1-mini',
-    name: 'GPT-5.1 Mini',
     chef: 'OpenAI',
     chefSlug: 'openai',
     tier: 'standard',
@@ -218,9 +280,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     api.projects.getBySlug,
     currentOrganization?.convexOrgId && projectSlug
       ? {
-          organizationId: currentOrganization.convexOrgId as Id<'organizations'>,
-          slug: projectSlug,
-        }
+        organizationId: currentOrganization.convexOrgId as Id<'organizations'>,
+        slug: projectSlug,
+      }
       : 'skip'
   )
 
@@ -232,19 +294,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const saveConversationMessages = useMutation(api.aiConversations.saveMessages)
   const storedConversation = useQuery(
     api.aiConversations.get,
-    currentConversationId ? { id: currentConversationId } : "skip"
+    currentConversationId && projectSlug ? { id: currentConversationId } : "skip"
   )
 
   // Input State
   const [input, setInput] = useState("")
-  const [availableModels, setAvailableModels] = useState(defaultModels)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
   const [model, setModel] = useState<string>('gemini-3-pro')
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<{
-    allowProviderTools: boolean
-    allowWebSearch: boolean
-    maxReasoningDepth: 'low' | 'medium' | 'high'
-  } | null>(null)
+  const [toolPolicy, setToolPolicy] = useState<ToolPolicy | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<"Agent" | "Assistant">("Agent")
   const [selectedPerformance, setSelectedPerformance] = useState<"High" | "Medium" | "Low">("High")
@@ -252,19 +310,21 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
-  const [modelCapabilities, setModelCapabilities] = useState<Record<string, any>>({})
+  const [modelCapabilities, setModelCapabilities] = useState<Record<string, ModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
-  const addToolApprovalResponseRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
+  const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
+  const addToolApprovalResponseRef = useRef<ChatHookResult['addToolApprovalResponse'] | null>(null)
+  const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const recordedApprovalIdsRef = useRef<Set<string>>(new Set())
   const conversationInitializedRef = useRef<string | null>(null)
   const isSavingRef = useRef(false)
+  const lastProjectSlugRef = useRef<string | null>(null)
 
   const selectedModelData = availableModels.find((m) => m.id === model)
 
@@ -391,11 +451,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           }
           throw new Error('Failed to load models')
         }
-        return res.json()
+        return (await res.json()) as ModelApiResponse
       })
       .then((data) => {
         if (!data?.models) return
-        const mapped = data.models.map((m: any) => ({
+        const mapped = data.models.map((m) => ({
           id: m.id,
           name: m.displayName,
           chef: m.provider === 'openai' ? 'OpenAI' : m.provider === 'anthropic' ? 'Anthropic' : 'Google',
@@ -404,7 +464,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           providers: [m.provider],
         }))
         // Store capabilities by model ID
-        const caps: Record<string, any> = {}
+        const caps: Record<string, ModelCapabilities> = {}
         for (const m of data.models) {
           if (m.capabilities) {
             caps[m.id] = m.capabilities
@@ -414,7 +474,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         setModelsError(null)
         if (mapped.length > 0) {
           setAvailableModels(mapped)
-          if (!mapped.some((item: any) => item.id === model)) {
+          if (!mapped.some((item) => item.id === model)) {
             setModel(mapped[0].id)
           }
         }
@@ -446,11 +506,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           }
           throw new Error('Failed to load tools')
         }
-        return res.json()
+        return (await res.json()) as ToolsApiResponse
       })
       .then((data) => {
         if (!data?.tools) return
-        setAvailableTools(data.tools as ToolMeta[])
+        setAvailableTools(data.tools)
         setToolPolicy(data.policy ?? null)
         setToolsError(null)
       })
@@ -571,7 +631,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return normalized.replace(/^\/+/, '')
   }, [projectPath])
 
-  const getToolFilePaths = useCallback((toolName: string, input: any): string[] => {
+  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null | undefined): string[] => {
     if (!input) return []
 
     if (toolName === 'create_file' || toolName === 'replace_string_in_file' || toolName === 'read_file') {
@@ -582,8 +642,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (toolName === 'multi_replace_string_in_file') {
       const replacements = Array.isArray(input.replacements) ? input.replacements : []
       return replacements
-        .map((r: any) => r?.filePath)
-        .filter((p: any): p is string => typeof p === 'string' && p.trim().length > 0)
+        .filter(isRecord)
+        .map((r) => r.filePath)
+        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
     }
 
     return []
@@ -664,7 +725,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return READ_ONLY_TOOLS.has(toolName) || !WRITE_TOOLS.has(toolName)
   }, [hasProjectContext])
 
-  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: any }) => {
+  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
@@ -694,7 +755,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    const normalizedInput = normalizeToolInput(toolCall.toolName, toolCall.input) as any
+    const normalizedInput = normalizeToolInput(toolCall.toolName, toolCall.input)
 
     const validation = validateInputAgainstSchema(toolMeta.inputSchema, normalizedInput)
     if (!validation.valid) {
@@ -707,12 +768,23 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
+    const toolInput = isRecord(normalizedInput) ? normalizedInput : null
+    if (!toolInput) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        errorText: 'Tool input must be an object.',
+      })
+      return
+    }
+
     try {
-      const toolFilePaths = getToolFilePaths(toolCall.toolName, normalizedInput)
+      const toolFilePaths = getToolFilePaths(toolCall.toolName, toolInput)
       const run = () =>
         localRuntime.requestToolExecution(conversationId, {
           toolName: toolCall.toolName,
-          input: normalizedInput,
+          input: toolInput,
           toolCallId: toolCall.toolCallId,
           projectPath: projectPath ?? undefined,
         })
@@ -721,6 +793,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         toolFilePaths.length > 0 && WRITE_TOOLS.has(toolCall.toolName)
           ? await withFileLocks(toolFilePaths, run)
           : await run()
+
+      if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+        return
+      }
 
       if (result.success) {
         void addToolOutput({
@@ -737,6 +813,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         })
       }
     } catch (err) {
+      if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+        return
+      }
       void addToolOutput({
         state: 'output-error',
         tool: toolCall.toolName,
@@ -770,7 +849,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onToolCall: handleToolCall,
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error('Chat error:', err)
       // Try to parse as billing error for nice display
       const billingErr = parseBillingError(err)
@@ -783,10 +862,89 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
 
+  const uniqueMessages = useMemo(() => {
+    if (messages.length <= 1) return messages
+    const seen = new Set<string>()
+    return messages.filter((message) => {
+      if (!message.id) return true
+      if (seen.has(message.id)) return false
+      seen.add(message.id)
+      return true
+    })
+  }, [messages])
+
+  const hasPendingToolCalls = useMemo(() => {
+    for (const message of uniqueMessages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
+          continue
+        }
+
+        const toolPart = part as ToolPart
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        return true
+      }
+    }
+
+    return false
+  }, [uniqueMessages])
+
+  const cancelPendingToolOutputs = useCallback(() => {
+    const addToolOutput = addToolOutputRef.current
+    if (!addToolOutput) return
+
+    const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
+
+    for (const message of uniqueMessages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
+          continue
+        }
+
+        const toolPart = part as ToolPart
+        const toolCallId = toolPart.toolCallId as string | undefined
+        if (!toolCallId) continue
+
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        const toolName = part.type === 'dynamic-tool'
+          ? toolPart.toolName
+          : part.type.replace(/^tool-/, '')
+        if (!toolName) continue
+
+        pendingToolCalls.set(toolCallId, { toolName, toolCallId })
+        cancelledToolCallsRef.current.add(toolCallId)
+      }
+    }
+
+    for (const pending of pendingToolCalls.values()) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+        errorText: 'Cancelled by the current user.',
+      })
+    }
+  }, [uniqueMessages])
+
   // Load stored messages when conversation changes
   useEffect(() => {
     if (!storedConversation) return
     if (conversationInitializedRef.current === currentConversationId) return
+    if (project && storedConversation.projectId !== project._id) return
 
     // Convert stored messages to UIMessage format
     const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => ({
@@ -796,14 +954,58 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       createdAt: new Date(msg.createdAt),
     }))
 
-    setMessages(uiMessages)
+    const dedupedMessages = uiMessages.filter((message, index, all) => {
+      if (!message.id) return true
+      return all.findIndex((m) => m.id === message.id) === index
+    })
+
+    setMessages(dedupedMessages)
     conversationInitializedRef.current = currentConversationId
 
     // Update chat title
     if (storedConversation.title) {
       useAssistantPanelStore.getState().setChatTitle(storedConversation.title)
     }
-  }, [storedConversation, currentConversationId, setMessages])
+  }, [storedConversation, currentConversationId, project, setMessages])
+
+  // Clear project-scoped conversations when leaving or switching projects.
+  useEffect(() => {
+    const nextSlug = projectSlug ?? null
+    if (lastProjectSlugRef.current === null) {
+      lastProjectSlugRef.current = nextSlug
+      return
+    }
+
+    if (lastProjectSlugRef.current !== nextSlug) {
+      setCurrentConversationId(null)
+      setMessages([])
+      useAssistantPanelStore.getState().setChatTitle("New Chat")
+      lastProjectSlugRef.current = nextSlug
+    }
+  }, [projectSlug, setCurrentConversationId, setMessages])
+
+  // If a conversation doesn't belong to the current project, drop it.
+  useEffect(() => {
+    if (!projectSlug) return
+    if (!project) return
+    if (!currentConversationId || !storedConversation) return
+    if (storedConversation.projectId === project._id) return
+
+    setCurrentConversationId(null)
+    setMessages([])
+    useAssistantPanelStore.getState().setChatTitle("New Chat")
+  }, [projectSlug, project, currentConversationId, storedConversation, setCurrentConversationId, setMessages])
+
+  // If project slug exists but project is missing, ensure we don't reuse old conversations.
+  useEffect(() => {
+    if (!projectSlug) return
+    if (project !== null) return
+    if (!currentConversationId) return
+
+    setCurrentConversationId(null)
+    setMessages([])
+    useAssistantPanelStore.getState().setChatTitle("New Chat")
+  }, [projectSlug, project, currentConversationId, setCurrentConversationId, setMessages])
 
   // Reset initialization ref when conversation changes to null
   useEffect(() => {
@@ -814,8 +1016,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Save messages to Convex when they change (debounced)
   useEffect(() => {
+    if (!projectSlug) return
     if (!currentConversationId) return
-    if (messages.length === 0) return
+    if (uniqueMessages.length === 0) return
     if (isSavingRef.current) return
     if (status === 'streaming' || status === 'submitted') return
 
@@ -823,7 +1026,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       isSavingRef.current = true
       try {
         // Convert UIMessages to storage format
-        const storedMessages = messages.map((msg) => {
+        const storedMessages = uniqueMessages.map((msg) => {
           const textParts = msg.parts.filter((p) => p.type === 'text')
           const content = textParts.map((p) => (p as { text: string }).text).join('')
 
@@ -831,7 +1034,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             id: msg.id,
             role: msg.role as 'user' | 'assistant' | 'system',
             content,
-            createdAt: msg.createdAt?.getTime() ?? Date.now(),
+            createdAt: msg.createdAt ? msg.createdAt.getTime() : Date.now(),
           }
         })
 
@@ -856,7 +1059,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     // Debounce saves
     const timeoutId = setTimeout(saveMessages, 500)
     return () => clearTimeout(timeoutId)
-  }, [messages, currentConversationId, status, saveConversationMessages])
+  }, [uniqueMessages, currentConversationId, projectSlug, status, saveConversationMessages])
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
@@ -895,16 +1098,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     let reasoningTokens = 0
     let cachedInputTokens = 0
 
-    for (const message of messages) {
+    for (const message of uniqueMessages) {
       for (const part of message.parts) {
         if (part.type === 'data-usage') {
-          const data = (part as any).data as {
-            promptTokens?: number
-            completionTokens?: number
-            totalTokens?: number
-            reasoningTokens?: number
-            cachedInputTokens?: number
-          } | undefined
+          const data = (part as { data?: UsageData }).data
           if (data) {
             inputTokens += data.promptTokens ?? 0
             outputTokens += data.completionTokens ?? 0
@@ -937,7 +1134,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         },
       },
     }
-  }, [messages])
+  }, [uniqueMessages])
 
   const recordToolApprovalRequest = useCallback(async (params: {
     approvalId: string
@@ -993,7 +1190,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [accessToken])
 
-  const runLocalTool = useCallback(async (toolName: string, toolCallId: string, input: any) => {
+  const runLocalTool = useCallback(async (toolName: string, toolCallId: string, input: unknown) => {
     // Context-based gating
     if (!isToolAllowedInContext(toolName)) {
       void addToolOutput({
@@ -1005,7 +1202,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
-    const normalizedInput = normalizeToolInput(toolName, input) as any
+    const normalizedInput = normalizeToolInput(toolName, input)
 
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta && toolMeta.executionEnvironment !== 'local') {
@@ -1031,12 +1228,27 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       }
     }
 
+    const toolInput = isRecord(normalizedInput) ? normalizedInput : null
+    if (!toolInput) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: 'Tool input must be an object.',
+      })
+      return
+    }
+
     const result = await localRuntime.requestToolExecution(conversationId, {
       toolName,
-      input: normalizedInput,
+      input: toolInput,
       toolCallId,
       projectPath: projectPath ?? undefined,
     })
+
+    if (cancelledToolCallsRef.current.has(toolCallId)) {
+      return
+    }
 
     if (result.success) {
       void addToolOutput({
@@ -1057,7 +1269,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const handleApprovedTool = useCallback(async (
     toolName: string,
     toolCallId: string,
-    input: any,
+    input: unknown,
     approvalId?: string
   ) => {
     try {
@@ -1104,7 +1316,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     })
   }, [addToolOutput, persistToolApproval])
 
-  const isLoading = status === 'streaming' || status === 'submitted'
+  const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
 
   // Clear chat when triggered from panel
   useEffect(() => {
@@ -1116,8 +1328,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Update chat title based on first message
   useEffect(() => {
-    if (messages.length > 0) {
-      const firstMessage = messages[0]
+    if (uniqueMessages.length > 0) {
+      const firstMessage = uniqueMessages[0]
       if (firstMessage.role === 'user') {
         const text = getMessageText(firstMessage)
         if (text) {
@@ -1128,12 +1340,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     } else {
       useAssistantPanelStore.getState().setChatTitle("New Chat")
     }
-  }, [messages])
+  }, [uniqueMessages])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [uniqueMessages])
 
   useEffect(() => {
     if (!currentOrganization?.organizationId || !accessToken) return
@@ -1145,7 +1357,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       messageId: string
     }> = []
 
-    for (const message of messages) {
+    for (const message of uniqueMessages) {
       if (message.role !== 'assistant') continue
 
       for (const part of message.parts) {
@@ -1153,7 +1365,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           continue
         }
 
-        const toolPart = part as any
+        const toolPart = part as ToolPart
         if (toolPart.state !== 'approval-requested') {
           continue
         }
@@ -1180,7 +1392,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     for (const approval of pendingApprovals) {
       void recordToolApprovalRequest(approval)
     }
-  }, [messages, accessToken, currentOrganization?.organizationId, recordToolApprovalRequest])
+  }, [uniqueMessages, accessToken, currentOrganization?.organizationId, recordToolApprovalRequest])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1227,6 +1439,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const handleStop = (e: React.MouseEvent) => {
     e.preventDefault()
+    cancelPendingToolOutputs()
+    void localRuntime.cancelRun(conversationId)
     stop()
   }
 
@@ -1246,13 +1460,13 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className={cn(messages.length === 0 && "h-full p-0")}>
-            {messages.length === 0 ? (
+          <ConversationContent className={cn(uniqueMessages.length === 0 && "h-full p-0")}>
+            {uniqueMessages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center">
                 <EmptyState />
               </div>
             ) : (
-              messages.map((message) => (
+              uniqueMessages.map((message) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
@@ -1267,7 +1481,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Thinking...</span>
+                <span className="text-sm">Generating...</span>
               </div>
             )}
 
@@ -1281,7 +1495,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       <div
         className={cn(
           "px-3 pb-3 shrink-0 mt-auto bg-background z-10 w-full max-w-2xl mx-auto",
-          messages.length === 0 ? "pt-1" : "pt-2"
+          uniqueMessages.length === 0 ? "pt-1" : "pt-2"
         )}
       >
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">

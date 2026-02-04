@@ -11,6 +11,29 @@ import {
     checkDependenciesInstalled,
     hasPackageJson,
 } from "@/utils/projectDetector"
+import { useProblemsStore, type ProblemSeverity } from "@/stores/useProblemsStore"
+
+const stripAnsi = (input: string) =>
+    // eslint-disable-next-line no-control-regex
+    input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+
+const FILE_LOCATION_PATTERN = /(?:File:\s*)?((?:[A-Za-z]:)?[^:\s]+?\.(?:tsx?|jsx?|vue|svelte|astro|css|scss|less|styl|mdx|json|html|yml|yaml)):(\d+)(?::(\d+))?/i
+
+const normalizeFilePath = (rawPath: string) => {
+    const trimmed = rawPath.replace(/^file:\/\//i, '')
+    return trimmed.replace(/\\/g, '/')
+}
+
+const toSeverity = (line: string): ProblemSeverity | null => {
+    if (/warning/i.test(line)) return 'warning'
+    if (/error/i.test(line)) return 'error'
+    return null
+}
+
+const isProblemHeader = (line: string) =>
+    /internal server error/i.test(line) ||
+    /failed to compile/i.test(line) ||
+    /error:\s/i.test(line)
 
 interface ServerControlProps {
     projectPath?: string | null
@@ -22,6 +45,7 @@ interface ServerControlProps {
 export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: ServerControlProps) {
     const { serverStatus, serverPort, actions } = useProjectPagesStore()
     const { addTerminal, removeTerminal, updateTerminalStatus, setPanelOpen } = useTerminalActions()
+    const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
 
     // Track the dev server terminal ID
@@ -30,6 +54,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     // Ref for timeout fallback when ready patterns don't match
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingProblemRef = useRef<{ message: string; severity: ProblemSeverity } | null>(null)
 
     // Clear the ready timeout
     const clearReadyTimeout = useCallback(() => {
@@ -38,6 +63,47 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             readyTimeoutRef.current = null
         }
     }, [])
+
+    const reportProblemsFromOutput = useCallback((data: string) => {
+        if (!projectPath) return
+        const cleaned = stripAnsi(data)
+        const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+        for (const line of lines) {
+            const severity = toSeverity(line)
+            if (isProblemHeader(line)) {
+                pendingProblemRef.current = {
+                    message: line,
+                    severity: severity ?? 'error',
+                }
+            }
+
+            const match = line.match(FILE_LOCATION_PATTERN)
+            if (match) {
+                const filePath = normalizeFilePath(match[1])
+                const lineNumber = match[2] ? Number(match[2]) : undefined
+                const columnNumber = match[3] ? Number(match[3]) : undefined
+                const pending = pendingProblemRef.current
+                addRuntimeProblem(projectPath, {
+                    message: pending?.message || line,
+                    severity: pending?.severity || severity || 'error',
+                    source: 'build',
+                    file: filePath,
+                    line: Number.isFinite(lineNumber) ? lineNumber : undefined,
+                    column: Number.isFinite(columnNumber) ? columnNumber : undefined,
+                })
+                pendingProblemRef.current = null
+                continue
+            }
+
+            if (severity && /error|warning/i.test(line)) {
+                addRuntimeProblem(projectPath, {
+                    message: line,
+                    severity,
+                    source: 'build',
+                })
+            }
+        }
+    }, [addRuntimeProblem, projectPath])
 
     // Cleanup dev server terminal when switching projects or leaving page
     useEffect(() => {
@@ -59,10 +125,6 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     // Subscribe to terminal events for dev server detection
     useEffect(() => {
-        const stripAnsi = (input: string) =>
-            // eslint-disable-next-line no-control-regex
-            input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
-
         const extractPort = (input: string): number | null => {
             const cleaned = stripAnsi(input)
             const match =
@@ -80,6 +142,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             if (terminalId === devServerTerminalIdRef.current) {
                 // Forward output to store so DevServerPanel can display it
                 actions.addServerOutput(data)
+                reportProblemsFromOutput(data)
 
                 const detectedPort = extractPort(data)
                 if (detectedPort) {
@@ -137,7 +200,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             unsubExit()
             clearReadyTimeout()
         }
-    }, [actions, clearReadyTimeout, updateTerminalStatus])
+    }, [actions, clearReadyTimeout, updateTerminalStatus, reportProblemsFromOutput])
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return
@@ -271,7 +334,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-8 w-8 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
+                            className="h-7 w-7 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
                             onClick={handleStart}
                             disabled={isUpdating || !projectPath}
                         >
@@ -303,7 +366,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     <Button
                         size="sm"
                         variant="ghost"
-                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/20"
+                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20"
                         onClick={handleStop}
                         title="Stop server"
                         disabled={isUpdating}

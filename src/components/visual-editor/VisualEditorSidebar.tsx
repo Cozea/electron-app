@@ -731,9 +731,6 @@ function StrokeAdvancedCornerRadius({
 const SLIDER_WRAPPER_CLASS = 'flex-1 min-w-0'
 const SLIDER_THUMB_CLASS =
   'w-full min-w-0 h-2 accent-sidebar-primary bg-sidebar-accent/60 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-sidebar-primary [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-0'
-const NUMBER_INPUT_CLASS =
-  'w-12 h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40 shrink-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
-
 const CORNER_RADIUS_MAX = 100
 const CORNER_RADIUS_STEP = 1
 

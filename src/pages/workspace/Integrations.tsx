@@ -31,7 +31,7 @@ import type {
   IntegrationCategory,
   IntegrationCredentials,
 } from '@/lib/integrations/types'
-import { Plus, Loader2, Filter, Plug } from 'lucide-react'
+import { Plus, Loader2, Plug } from 'lucide-react'
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 
@@ -132,38 +132,37 @@ export function Integrations() {
     }
   }
 
+  const breadcrumbAddon = (
+    <>
+      {INTEGRATIONS.length > 0 && (
+        <Badge variant="secondary" className="text-xs font-normal h-8 px-2">
+          {connectedIntegrations.length}/{INTEGRATIONS.length}
+        </Badge>
+      )}
+    </>
+  )
+
   const headerContent = (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">CLI Tools</h1>
-        {INTEGRATIONS.length > 0 && (
-          <Badge variant="secondary" className="text-xs font-normal">
-            {connectedIntegrations.length}/{INTEGRATIONS.length}
-          </Badge>
-        )}
-      </div>
+    <div className="flex items-center gap-2">
+      {/* Filter Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-full">
+            <Plug className="h-3.5 w-3.5" />
+            {getFilterLabel()}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setFilter('all')}>All</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setFilter('connected')}>Connected</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setFilter('disconnected')}>Disconnected</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      <div className="flex items-center gap-2">
-        {/* Filter Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2 h-8 px-2 text-xs">
-              <Plug className="h-3.5 w-3.5" />
-              {getFilterLabel()}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setFilter('all')}>All</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setFilter('connected')}>Connected</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setFilter('disconnected')}>Disconnected</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Button className="gap-2 h-8 px-2 text-xs" onClick={() => setFilter('disconnected')}>
-          <Plus className="h-3.5 w-3.5" />
-          Add Integration
-        </Button>
-      </div>
+      <Button className="gap-2 h-7 px-2 text-xs rounded-full" onClick={() => setFilter('disconnected')}>
+        <Plus className="h-3.5 w-3.5" />
+        Add Integration
+      </Button>
     </div>
   )
 
@@ -172,6 +171,7 @@ export function Integrations() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'CLI Tools' }]}
+      breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
       {/* Loading state */}

@@ -429,60 +429,60 @@ export function Members() {
   const circumference = 2 * Math.PI * 8 // radius = 8
   const strokeDashoffset = circumference - (seatPercentage / 100) * circumference
 
-  const headerContent = (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-semibold">Members</h1>
-        {seatStatus === undefined ? (
-          <Skeleton className="h-5 w-16 rounded-full" />
-        ) : seatStatus && seatStatus.limit > 0 && (
-          <Badge
-            variant="secondary"
-            className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-            title={`${seatStatus.current} / ${seatStatus.limit} seats used`}
-          >
-            <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
-              {/* Background circle */}
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                className="text-muted-foreground/30"
-              />
-              {/* Progress circle */}
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset}
-                className={seatStatus.current >= seatStatus.limit ? 'text-destructive' : seatStatus.current >= seatStatus.limit - 1 ? 'text-amber-500' : 'text-primary'}
-              />
-            </svg>
-            <span>{seatStatus.current}/{seatStatus.limit}</span>
-          </Badge>
-        )}
-      </div>
+  const breadcrumbAddon = (
+    <>
+      {seatStatus === undefined ? (
+        <Skeleton className="h-5 w-16 rounded-full" />
+      ) : seatStatus && seatStatus.limit > 0 && (
+        <Badge
+          variant="secondary"
+          className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
+          title={`${seatStatus.current} / ${seatStatus.limit} seats used`}
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
+            {/* Background circle */}
+            <circle
+              cx="10"
+              cy="10"
+              r="8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              className="text-muted-foreground/30"
+            />
+            {/* Progress circle */}
+            <circle
+              cx="10"
+              cy="10"
+              r="8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              className={seatStatus.current >= seatStatus.limit ? 'text-destructive' : seatStatus.current >= seatStatus.limit - 1 ? 'text-amber-500' : 'text-primary'}
+            />
+          </svg>
+          <span>{seatStatus.current}/{seatStatus.limit}</span>
+        </Badge>
+      )}
+    </>
+  )
 
-      <div className="flex items-center gap-2">
-        {selected.length > 0 && (
-          <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-            <Trash className="mr-2 h-4 w-4" />
-            Delete ({selected.length})
-          </Button>
-        )}
-        <ButtonGroup>
+  const headerContent = (
+    <div className="flex items-center gap-2">
+      {selected.length > 0 && (
+        <Button variant="destructive" size="sm" className="h-7 rounded-full" onClick={handleBulkDelete}>
+          <Trash className="mr-2 h-4 w-4" />
+          Delete ({selected.length})
+        </Button>
+      )}
+      <ButtonGroup className="rounded-full">
           {/* Role Filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-r-none border-r-0 focus:z-10">
+              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-l-full border-r-0 focus:z-10">
                 <IconFilter className="h-3.5 w-3.5" />
                 {roleFilter === 'all' ? 'All Roles' : roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}
               </Button>
@@ -498,7 +498,7 @@ export function Members() {
           {/* Sort By */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-none border-r-0 focus:z-10">
+              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-none border-r-0 focus:z-10">
                 <ArrowUpDown className="h-3.5 w-3.5" />
                 {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
               </Button>
@@ -513,7 +513,7 @@ export function Members() {
           {/* Sort Direction */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-l-none focus:z-10">
+              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-r-full rounded-l-none focus:z-10">
                 {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
               </Button>
             </DropdownMenuTrigger>
@@ -525,7 +525,7 @@ export function Members() {
         </ButtonGroup>
         <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 h-8 px-2 text-xs" disabled={!canInvite}>
+            <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
               <UserPlus className="h-3.5 w-3.5" />
               Invite
             </Button>
@@ -629,7 +629,6 @@ export function Members() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
     </div>
   )
 
@@ -638,6 +637,7 @@ export function Members() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Teams' }, { label: 'Members' }]}
+      breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
       <div>

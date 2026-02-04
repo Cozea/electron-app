@@ -375,10 +375,6 @@ export function Billing() {
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
 
-  const headerContent = (
-    <h1 className="text-lg font-semibold">Billing & Usage</h1>
-  )
-
   const isLoading = !convexOrg
 
   if (isLoading) {
@@ -387,7 +383,6 @@ export function Billing() {
         user={user}
         onLogout={logout}
         breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
-        header={headerContent}
       >
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

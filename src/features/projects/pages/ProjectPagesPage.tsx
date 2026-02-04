@@ -8,6 +8,7 @@ import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
+import { useProblemsStore } from '@/stores/useProblemsStore'
 import { scanForRoutes } from '@/utils/routeScanner'
 import {
     injectBridgeScript,
@@ -71,14 +72,15 @@ export function ProjectPagesPage() {
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
     const { openWithScreenshot } = useAssistantPanelStore()
+    const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
 
     // Local state
     const [isScanningAI, setIsScanningAI] = useState(false)
     const [inspectorEnabled, setInspectorEnabled] = useState(false)
     const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
     const [bridgeReady, setBridgeReady] = useState(false)
-    const [bridgeError, setBridgeError] = useState<string | null>(null)
-    const [bridgeLogs, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
+    const [, setBridgeError] = useState<string | null>(null)
+    const [, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
         const focus = searchParams.get('focus')
@@ -167,18 +169,27 @@ export function ProjectPagesPage() {
     const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
 
     // Extract stored framework info from project
-    const storedFrameworkInfo = project?.frameworkInfo ? {
-        framework: project.frameworkInfo.framework,
-        devCommand: project.frameworkInfo.devCommand,
-        devPort: project.frameworkInfo.devPort,
-    } : null
+    const storedFrameworkInfo = useMemo(() => {
+        if (!project?.frameworkInfo) return null
+        return {
+            framework: project.frameworkInfo.framework,
+            devCommand: project.frameworkInfo.devCommand,
+            devPort: project.frameworkInfo.devPort,
+        }
+    }, [project?.frameworkInfo])
+
+    const refreshRoutes = useCallback(async () => {
+        if (!projectPath) return
+        const result = await scanForRoutes(projectPath, storedFrameworkInfo)
+        actions.setRoutes(result.routes.map(r => ({ ...r, status: 'active' as const })))
+    }, [actions, projectPath, storedFrameworkInfo])
 
     // Scan for routes when project loads
     useEffect(() => {
         if (projectPath) {
             refreshRoutes()
         }
-    }, [projectPath])
+    }, [projectPath, refreshRoutes])
 
     // Capture home page screenshot and upload as project preview (for Projects dashboard showcase)
     const [isCapturingPreview, setIsCapturingPreview] = useState(false)
@@ -220,7 +231,7 @@ export function ProjectPagesPage() {
         if (serverStatus !== 'running' || !project?._id) return
         setIsCapturingPreview(true)
         void captureAndUploadProjectPreview()
-    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+    }, [serverStatus, project?._id, captureAndUploadProjectPreview])
 
     // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
     useEffect(() => {
@@ -268,7 +279,7 @@ export function ProjectPagesPage() {
         setInspectedElement(null)
         setInspectorContextMenu(null)
         closeVisualEditor()
-    }, [setSelectedElement, closeVisualEditor])
+    }, [setSelectedElement, setInspectedElement, closeVisualEditor])
 
     // Arrow keys for navigation in focused view
     useEffect(() => {
@@ -366,6 +377,12 @@ export function ProjectPagesPage() {
                 case 'bridge:element-selected':
                     setSelectedElement(payload as SelectedElementData)
                     break
+                case 'bridge:selection-cleared':
+                    setSelectedElement(null)
+                    setInspectedElement(null)
+                    setInspectorContextMenu(null)
+                    closeVisualEditor()
+                    break
 
                 case 'bridge:element-contextmenu': {
                     const data = payload as ElementContextMenuData
@@ -441,12 +458,49 @@ export function ProjectPagesPage() {
                     }
                     break
                 }
+
+                case 'bridge:runtime-error': {
+                    const data = payload as {
+                        message?: string
+                        stack?: string
+                        filename?: string
+                        line?: number | null
+                        column?: number | null
+                    }
+                    if (!projectPath) break
+                    addRuntimeProblem(projectPath, {
+                        message: data.message || 'Runtime error',
+                        severity: 'error',
+                        source: 'runtime',
+                        file: data.filename || undefined,
+                        line: data.line ?? undefined,
+                        column: data.column ?? undefined,
+                    })
+                    break
+                }
+
+                case 'bridge:console': {
+                    const data = payload as {
+                        level?: 'error' | 'warn' | 'info' | 'log'
+                        message?: string
+                        stack?: string
+                    }
+                    const level = data.level || 'error'
+                    const severity = level === 'warn' ? 'warning' : level === 'info' ? 'info' : 'error'
+                    if (!projectPath) break
+                    addRuntimeProblem(projectPath, {
+                        message: data.message || 'Console message',
+                        severity,
+                        source: 'runtime',
+                    })
+                    break
+                }
             }
         }
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -701,18 +755,21 @@ export function ProjectPagesPage() {
         closeInspectorContextMenu()
     }, [inspectorContextMenu, closeInspectorContextMenu, navigate, slug])
 
-    const refreshRoutes = async () => {
-        if (!projectPath) return
-        const result = await scanForRoutes(projectPath, storedFrameworkInfo)
-        actions.setRoutes(result.routes.map(r => ({ ...r, status: 'active' as const })))
-    }
-
-    const handleOpenCode = (file: string) => {
+    const handleOpenCode = (file: string, line?: number, column?: number) => {
         // Use full path when available so Files page can open/select the file in tree and tabs
-        const pathForUrl = projectPath
-            ? `${projectPath.replace(/\\/g, '/').replace(/\/+$/, '')}/${file.replace(/^[/\\]+/, '')}`
-            : file
-        navigate(`/projects/${slug}?path=${encodeURIComponent(pathForUrl)}`)
+        const normalizedFile = file.replace(/\\/g, '/')
+        const normalizedProject = projectPath ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '') : null
+        const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
+        const pathForUrl = normalizedProject
+            ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
+                ? normalizedFile
+                : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
+            : normalizedFile
+        const params = new URLSearchParams()
+        params.set('path', pathForUrl)
+        if (line) params.set('line', String(line))
+        if (column) params.set('column', String(column))
+        navigate(`/projects/${slug}?${params.toString()}`)
     }
 
     // Loading state - show shell immediately
@@ -746,7 +803,7 @@ export function ProjectPagesPage() {
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => setFocusedPageIndex(null)}
-                                            className="gap-2 h-8 px-2"
+                                            className="gap-2 h-7 px-2"
                                         >
                                             <LayoutGrid className="h-3.5 w-3.5" />
                                             {toolbarDensity === 'full' && <span className="text-xs">Grid</span>}
@@ -1186,11 +1243,19 @@ export function ProjectPagesPage() {
                                         className="flex-1 flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
                                     >
                                         {routes.map((route, index) => (
-                                            <button
+                                            <div
                                                 key={route.path}
                                                 onClick={() => setFocusedPageIndex(index)}
+                                                role="button"
+                                                tabIndex={0}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault()
+                                                        setFocusedPageIndex(index)
+                                                    }
+                                                }}
                                                 className={cn(
-                                                    "group shrink-0 flex flex-col items-center gap-1 transition-all",
+                                                    "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer",
                                                     index === focusedPageIndex
                                                         ? "opacity-100"
                                                         : "opacity-50 hover:opacity-100"
@@ -1248,7 +1313,7 @@ export function ProjectPagesPage() {
                                                 )}>
                                                     {route.name}
                                                 </span>
-                                            </button>
+                                            </div>
                                         ))}
                                     </div>
                                     {focusedPageIndex !== null && (
@@ -1408,7 +1473,7 @@ export function ProjectPagesPage() {
 
             {/* Terminal Panel */}
             {projectPath && (
-                <TerminalPanel projectPath={projectPath} />
+                <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenCode} />
             )}
         </div>
     )

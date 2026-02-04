@@ -1,5 +1,5 @@
 import type { LocalFileEntry, CloudFileEntry, SyncPlan, SyncOperation } from "./types"
-import { syncCheckpointStore, type FileCheckpoint } from "./SyncCheckpointStore"
+import { syncCheckpointStore } from "./SyncCheckpointStore"
 import { threeWayMerge } from "./ThreeWayMerge"
 import type { Id } from "../../../convex/_generated/dataModel"
 

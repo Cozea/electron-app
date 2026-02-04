@@ -182,7 +182,7 @@ export function ProjectDetailPage() {
       newParams.delete('path')
       setSearchParams(newParams)
     }
-  }, [activeFile, openFiles.length, searchParams])
+  }, [activeFile, openFiles.length, searchParams, setSearchParams])
 
   // Loading state - show shell immediately
   // Only show 404 if we are loaded (project === null) and explicitly not found

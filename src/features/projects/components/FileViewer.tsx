@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import * as monaco from 'monaco-editor'
 import { MonacoEditor } from '@/components/editor/MonacoEditor'
 import { EditorBreadcrumb } from '@/components/editor/EditorBreadcrumb'
@@ -21,6 +21,7 @@ interface FileViewerProps {
 
 export function FileViewer({ path }: FileViewerProps) {
   const { slug } = useParams<{ slug: string }>()
+  const [searchParams] = useSearchParams()
   const editorActions = useEditorStore((state) => state.actions)
   const model = useEditorStore((state) => state.models[path])
   const syncContext = useOptionalProjectSyncContext()
@@ -36,6 +37,21 @@ export function FileViewer({ path }: FileViewerProps) {
     editorRef.current = editor
     setEditorReady(true)
   }, [])
+
+  // Reveal position from URL params (line/column)
+  useEffect(() => {
+    if (!editorReady || !editorRef.current) return
+    const lineParam = searchParams.get('line')
+    if (!lineParam) return
+    const line = Number(lineParam)
+    if (!Number.isFinite(line) || line <= 0) return
+    const columnParam = searchParams.get('column')
+    const column = columnParam ? Number(columnParam) : 1
+    const safeColumn = Number.isFinite(column) && column > 0 ? column : 1
+    editorRef.current.setPosition({ lineNumber: line, column: safeColumn })
+    editorRef.current.revealPositionInCenter({ lineNumber: line, column: safeColumn })
+    editorRef.current.focus()
+  }, [editorReady, searchParams, path])
 
   // Always get projectPath for breadcrumb (even if model exists)
   useEffect(() => {
@@ -117,7 +133,7 @@ export function FileViewer({ path }: FileViewerProps) {
     return () => {
       mounted = false
     }
-  }, [path, syncContext?.projectPath, slug, model])
+  }, [path, syncContext?.projectPath, slug, model, editorActions])
 
   const handleRetry = () => {
     setError(null)

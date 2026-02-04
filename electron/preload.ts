@@ -27,6 +27,31 @@ export interface AppSettings {
   projectsDirectory: string
 }
 
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+
+export interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface UpdateState {
+  status: UpdateStatus
+  version?: string
+  releaseName?: string
+  releaseNotes?: string
+  progress?: UpdateProgress
+  error?: string
+}
+
 export interface StorageUsage {
   projects: number
   dependencies: number
@@ -204,6 +229,29 @@ export interface DbFirestoreListDocumentsResult {
   error?: string
 }
 
+export interface PerfHistogram {
+  buckets: number[]
+  counts: number[]
+  count: number
+  sum: number
+  max: number
+}
+
+export interface PerfMetric {
+  name: string
+  unit: 'ms'
+  histogram: PerfHistogram
+  tags?: Record<string, string>
+}
+
+export interface PerfBatch {
+  sessionId: string
+  source: 'renderer'
+  timestamp: number
+  metrics: PerfMetric[]
+  context?: Record<string, string>
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   auth: {
@@ -353,6 +401,38 @@ export interface ElectronAPI {
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
+    showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) =>
+      Promise<{ action: string | null }>
+  }
+  performance: {
+    report: (payload: PerfBatch) => Promise<{ success: boolean }>
+  }
+  diagnostics: {
+    start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    openFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
+    updateFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
+    closeFile: (options: { projectPath: string; filePath: string }) => Promise<{ success: boolean; error?: string }>
+    refresh: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    onDiagnostics: (
+      callback: (payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => void
+    ) => () => void
   }
 }
 
@@ -457,8 +537,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('db:firestore:listDocuments', options),
   },
   tools: {
-    run: (request: { name: string; input: Record<string, unknown>; projectPath?: string }) =>
+    run: (request: {
+      name: string
+      input: Record<string, unknown>
+      projectPath?: string
+      runId?: string
+      toolCallId?: string
+    }) =>
       ipcRenderer.invoke('tools:run', request),
+    cancel: (request: { runId: string }) => ipcRenderer.invoke('tools:cancel', request),
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
@@ -498,6 +585,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
     renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) =>
       ipcRenderer.invoke('project:renameFile', options),
+    deletePath: (options: { projectPath: string; targetPath: string }) =>
+      ipcRenderer.invoke('project:deletePath', options),
+    copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) =>
+      ipcRenderer.invoke('project:copyPath', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
   },
@@ -584,5 +675,118 @@ contextBridge.exposeInMainWorld('electronAPI', {
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showTerminalSelection', options),
+    showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) =>
+      ipcRenderer.invoke('contextMenu:showFileTreeMenu', options),
+  },
+  updates: {
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    getState: () => ipcRenderer.invoke('updates:getState'),
+    onStatus: (callback: (state: UpdateState) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)
+      ipcRenderer.on('updates:status', handler)
+      return () => ipcRenderer.removeListener('updates:status', handler)
+    },
+  },
+  performance: {
+    report: (payload: PerfBatch) => ipcRenderer.invoke('performance:report', payload),
+  },
+  dependencies: {
+    inspect: (options: { projectPath: string }) => ipcRenderer.invoke('dependencies:inspect', options),
+    run: (options: {
+      projectPath: string
+      action: 'add' | 'update' | 'remove'
+      packageName: string
+      version?: string
+      dev?: boolean
+      updateMode?: 'latest' | 'range'
+    }) => ipcRenderer.invoke('dependencies:run', options),
+    searchRegistry: (options: { query: string; size?: number }) =>
+      ipcRenderer.invoke('dependencies:searchRegistry', options),
+    fetchPackageMeta: (options: { names: string[] }) =>
+      ipcRenderer.invoke('dependencies:fetchPackageMeta', options),
+    onJobStatus: (callback: (payload: {
+      projectPath: string
+      job: {
+        id: string
+        action: 'add' | 'update' | 'remove'
+        packageName: string
+        status: 'running' | 'success' | 'error'
+        startedAt: number
+        finishedAt?: number
+        stdout?: string
+        stderr?: string
+        error?: string
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: {
+        projectPath: string
+        job: {
+          id: string
+          action: 'add' | 'update' | 'remove'
+          packageName: string
+          status: 'running' | 'success' | 'error'
+          startedAt: number
+          finishedAt?: number
+          stdout?: string
+          stderr?: string
+          error?: string
+        }
+      }) => callback(payload)
+      ipcRenderer.on('dependencies:job-status', handler)
+      return () => ipcRenderer.removeListener('dependencies:job-status', handler)
+    },
+  },
+  diagnostics: {
+    start: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('diagnostics:start', options),
+    stop: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('diagnostics:stop', options),
+    openFile: (options: { projectPath: string; filePath: string; content: string }) =>
+      ipcRenderer.invoke('diagnostics:openFile', options),
+    updateFile: (options: { projectPath: string; filePath: string; content: string }) =>
+      ipcRenderer.invoke('diagnostics:updateFile', options),
+    closeFile: (options: { projectPath: string; filePath: string }) =>
+      ipcRenderer.invoke('diagnostics:closeFile', options),
+    refresh: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('diagnostics:refresh', options),
+    onDiagnostics: (callback: (payload: {
+      projectPath: string
+      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => callback(payload)
+      ipcRenderer.on('diagnostics:publish', handler)
+      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
+    },
   },
 } satisfies ElectronAPI)

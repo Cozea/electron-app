@@ -1,4 +1,5 @@
-import { useRef, useEffect, ReactNode } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 
 interface CachedRoute {
@@ -25,7 +26,7 @@ export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps)
   const currentPath = location.pathname
 
   // Check if this path should be cached
-  const shouldCache = (path: string) => {
+  const shouldCache = useCallback((path: string) => {
     if (!include) return true
     return include.some(pattern => {
       if (pattern.endsWith('*')) {
@@ -33,7 +34,7 @@ export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps)
       }
       return path === pattern
     })
-  }
+  }, [include])
 
   // Update cached routes
   useEffect(() => {
@@ -53,7 +54,7 @@ export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps)
       const [route] = cachedRoutes.current.splice(existingIndex, 1)
       cachedRoutes.current.unshift(route)
     }
-  }, [currentPath, children, maxCached])
+  }, [currentPath, children, maxCached, shouldCache])
 
   // If current path shouldn't be cached, just render normally
   if (!shouldCache(currentPath)) {

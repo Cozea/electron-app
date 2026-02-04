@@ -10,12 +10,18 @@ mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
   target:
-    - dir
+    - dmg
+    - zip
 win:
   icon: build/icon.ico
   target:
-    - dir
+    - nsis
 linux:
   icon: build/icon.png
   target:
     - dir
+publish:
+  provider: github
+  owner: 20023136kelyan
+  repo: cozea-prod
+  releaseType: release

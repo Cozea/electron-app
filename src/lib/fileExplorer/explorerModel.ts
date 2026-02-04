@@ -97,6 +97,7 @@ export class ExplorerItem {
   // Get the path from root to this item
   getPath(): ExplorerItem[] {
     const path: ExplorerItem[] = []
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     let current: ExplorerItem | null = this
     while (current) {
       path.unshift(current)

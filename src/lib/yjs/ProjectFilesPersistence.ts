@@ -71,7 +71,7 @@ export class ProjectFilesPersistence {
     this.filesMap.observeDeep(this.handleFilesChange)
   }
 
-  private handleFilesChange = (events: Y.YEvent<any>[], transaction: Y.Transaction) => {
+  private handleFilesChange = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
     // Skip changes from remote sources or snapshot loading
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"

@@ -23,10 +23,10 @@ export interface BuilderTerminalProps {
 export const BuilderTerminal = memo(function BuilderTerminal({
   terminalId,
   command,
-  projectPath,
+  projectPath: _projectPath,
   isStreaming = true,
   onComplete,
-  onError,
+  onError: _onError,
   className,
 }: BuilderTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,21 +58,25 @@ export const BuilderTerminal = memo(function BuilderTerminal({
     const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
     const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
+    const computed = getComputedStyle(container)
+    const background = computed.backgroundColor || '#09090b'
+    const foreground = computed.color || '#fafafa'
+
     const term = new Terminal({
       theme: {
-        background: '#09090b',
-        foreground: '#fafafa',
-        cursor: '#fafafa',
-        cursorAccent: '#09090b',
-        selectionBackground: '#27272a',
-        black: '#09090b',
+        background,
+        foreground,
+        cursor: foreground,
+        cursorAccent: background,
+        selectionBackground: 'rgba(127, 127, 127, 0.3)',
+        black: background,
         red: '#f87171',
         green: '#4ade80',
         yellow: '#facc15',
         blue: '#60a5fa',
         magenta: '#c084fc',
         cyan: '#22d3ee',
-        white: '#d4d4d8',
+        white: foreground,
         brightBlack: '#52525b',
         brightRed: '#fca5a5',
         brightGreen: '#86efac',
@@ -80,7 +84,7 @@ export const BuilderTerminal = memo(function BuilderTerminal({
         brightBlue: '#93c5fd',
         brightMagenta: '#d8b4fe',
         brightCyan: '#67e8f9',
-        brightWhite: '#f4f4f5',
+        brightWhite: foreground,
       },
       cols,
       rows,
@@ -193,18 +197,18 @@ export const BuilderTerminal = memo(function BuilderTerminal({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-zinc-950 overflow-hidden transition-all',
+        'rounded-lg border border-border/50 bg-background/70 text-foreground overflow-hidden transition-all',
         isExpanded ? 'h-96' : 'h-48',
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
+      <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <TerminalIcon className="h-4 w-4" />
           <span>Terminal</span>
           {isRunning && (
-            <span className="ml-2 flex items-center gap-1 text-xs text-emerald-500">
+            <span className="ml-2 flex items-center gap-1 text-xs text-emerald-600">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Running
             </span>
@@ -215,7 +219,7 @@ export const BuilderTerminal = memo(function BuilderTerminal({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-zinc-400 hover:bg-zinc-800 hover:text-red-400"
+              className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-red-500"
               onClick={handleStop}
               title="Stop process"
             >
@@ -225,7 +229,7 @@ export const BuilderTerminal = memo(function BuilderTerminal({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={() => setIsExpanded(!isExpanded)}
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
@@ -238,7 +242,7 @@ export const BuilderTerminal = memo(function BuilderTerminal({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={handleCopy}
             title="Copy output"
           >
@@ -280,20 +284,21 @@ export function useBuilderTerminal(projectPath: string) {
       })
 
       if (result.terminalId) {
-        setTerminalId(result.terminalId)
+        const newTerminalId = result.terminalId
+        setTerminalId(newTerminalId)
 
         // If a command is provided, send it to the terminal
         if (command) {
           // Small delay to ensure terminal is ready
           setTimeout(() => {
             window.electronAPI.terminal.input({
-              terminalId: result.terminalId,
+              terminalId: newTerminalId,
               data: command + '\r',
             })
           }, 100)
         }
 
-        return result.terminalId
+        return newTerminalId
       } else {
         throw new Error('Failed to create terminal')
       }

@@ -52,6 +52,22 @@ export function RepoSourceStep({
 
   const currentProvider = repoSource?.provider || 'github'
 
+  useEffect(() => {
+    const updates: Partial<WizardRepoSource> = {}
+
+    if (!repoSource?.provider) {
+      updates.provider = currentProvider
+    }
+
+    if (!repoSource?.branch) {
+      updates.branch = 'main'
+    }
+
+    if (Object.keys(updates).length > 0) {
+      onUpdate(updates)
+    }
+  }, [currentProvider, onUpdate, repoSource?.branch, repoSource?.provider])
+
   // Load file tree when local folder is selected
   useEffect(() => {
     if (currentProvider === 'local' && repoSource?.repoUrl) {
@@ -68,16 +84,18 @@ export function RepoSourceStep({
       if (entries && Array.isArray(entries)) {
         const tree = entries
           .filter((entry: { name: string }) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
-          .sort((a: { isDirectory: boolean; name: string }, b: { isDirectory: boolean; name: string }) => {
-            if (a.isDirectory && !b.isDirectory) return -1
-            if (!a.isDirectory && b.isDirectory) return 1
+          .sort((a: { type?: string; name: string }, b: { type?: string; name: string }) => {
+            const aIsDir = a.type === 'directory'
+            const bIsDir = b.type === 'directory'
+            if (aIsDir && !bIsDir) return -1
+            if (!aIsDir && bIsDir) return 1
             return a.name.localeCompare(b.name)
           })
           .slice(0, 50) // Limit to first 50 entries
-          .map((entry: { name: string; isDirectory: boolean }) => ({
+          .map((entry: { name: string; type?: string }) => ({
             name: entry.name,
             path: `${folderPath}/${entry.name}`,
-            isDirectory: entry.isDirectory,
+            isDirectory: entry.type === 'directory',
           }))
         setFileTree(tree)
         // Auto-expand root level
@@ -116,16 +134,18 @@ export function RepoSourceStep({
           if (entries && Array.isArray(entries)) {
             const children = entries
               .filter((entry: { name: string }) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
-              .sort((a: { isDirectory: boolean; name: string }, b: { isDirectory: boolean; name: string }) => {
-                if (a.isDirectory && !b.isDirectory) return -1
-                if (!a.isDirectory && b.isDirectory) return 1
+              .sort((a: { type?: string; name: string }, b: { type?: string; name: string }) => {
+                const aIsDir = a.type === 'directory'
+                const bIsDir = b.type === 'directory'
+                if (aIsDir && !bIsDir) return -1
+                if (!aIsDir && bIsDir) return 1
                 return a.name.localeCompare(b.name)
               })
               .slice(0, 50)
-              .map((entry: { name: string; isDirectory: boolean }) => ({
+              .map((entry: { name: string; type?: string }) => ({
                 name: entry.name,
                 path: `${path}/${entry.name}`,
-                isDirectory: entry.isDirectory,
+                isDirectory: entry.type === 'directory',
               }))
 
             // Update tree with children
@@ -173,7 +193,11 @@ export function RepoSourceStep({
   }
 
   const handleUrlChange = (url: string) => {
-    onUpdate({ repoUrl: url })
+    onUpdate({
+      repoUrl: url,
+      provider: repoSource?.provider || currentProvider,
+      branch: repoSource?.branch || 'main',
+    })
     setValidationResult(null)
   }
 

@@ -505,7 +505,7 @@ export function ProjectBackendStudioPage() {
       devCommand: info.devCommand,
       devPort: info.devPort,
     }
-  }, [project?.frameworkInfo?.devCommand, project?.frameworkInfo?.devPort, project?.frameworkInfo?.framework])
+  }, [project?.frameworkInfo])
 
   useEffect(() => {
     if (!projectPath) return

@@ -46,7 +46,7 @@ export const syncFromWorkOS = mutation({
 
       if (!existingOrg.aiSettings) {
         updates.aiSettings = {
-          allowedProviders: ["anthropic", "openai", "google"],
+          allowedProviders: ["anthropic", "openai", "google", "xai"],
           byokPolicy: "required",
           allowProviderTools: false,
           allowWebSearch: false,
@@ -103,7 +103,7 @@ export const syncFromWorkOS = mutation({
         defaultModel: "claude-sonnet-4-20250514",
       },
       aiSettings: {
-        allowedProviders: ["anthropic", "openai", "google"],
+        allowedProviders: ["anthropic", "openai", "google", "xai"],
         byokPolicy: "required",
         allowProviderTools: false,
         allowWebSearch: false,
@@ -246,6 +246,7 @@ export const getAiCredentialsStatus = query({
       anthropic: { connected: !!creds.anthropicKey },
       openai: { connected: !!creds.openaiKey },
       google: { connected: !!creds.googleKey },
+      xai: { connected: !!creds.xaiKey },
     }
   },
 })
@@ -280,6 +281,7 @@ export const getByWorkosIdForServer = query({
         anthropicKey: await decryptOrPass(encrypted.anthropicKey),
         openaiKey: await decryptOrPass(encrypted.openaiKey),
         googleKey: await decryptOrPass(encrypted.googleKey),
+        xaiKey: await decryptOrPass(encrypted.xaiKey),
       },
     }
   },
@@ -361,7 +363,7 @@ export const create = mutation({
         defaultModel: "claude-sonnet-4-20250514",
       },
       aiSettings: {
-        allowedProviders: ["anthropic", "openai", "google"],
+        allowedProviders: ["anthropic", "openai", "google", "xai"],
         byokPolicy: "required",
         allowProviderTools: false,
         allowWebSearch: false,
@@ -498,6 +500,7 @@ export const updateAiCredentials = mutation({
     anthropicKey: v.optional(v.string()),
     openaiKey: v.optional(v.string()),
     googleKey: v.optional(v.string()),
+    xaiKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Verify user is admin or owner
@@ -536,6 +539,12 @@ export const updateAiCredentials = mutation({
       }
       updates.googleKey = args.googleKey ? await ensureEncrypted(args.googleKey) : undefined
     }
+    if (args.xaiKey !== undefined) {
+      if (args.xaiKey && !validateKeyFormat("xai", args.xaiKey)) {
+        throw new Error("Invalid xAI API key format")
+      }
+      updates.xaiKey = args.xaiKey ? await ensureEncrypted(args.xaiKey) : undefined
+    }
 
     const now = Date.now()
     await ctx.db.patch(args.orgId, {
@@ -564,7 +573,14 @@ export const updateAiSettings = mutation({
     orgId: v.id("organizations"),
     userId: v.id("users"),
     aiSettings: v.object({
-      allowedProviders: v.array(v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google"))),
+      allowedProviders: v.array(
+        v.union(
+          v.literal("anthropic"),
+          v.literal("openai"),
+          v.literal("google"),
+          v.literal("xai")
+        )
+      ),
       allowedModels: v.optional(v.array(v.string())),
       byokPolicy: v.union(v.literal("required"), v.literal("optional"), v.literal("disabled")),
       allowProviderTools: v.optional(v.boolean()),

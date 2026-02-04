@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Query completed but no orgs
       setConvexLoading(false)
     }
-  }, [convexUserWithOrgs, organizations.length, currentOrganization])
+  }, [convexUserWithOrgs, organizations, currentOrganization])
 
   // Derived state: user needs onboarding if authenticated, Convex loaded, and has no orgs
   const needsOnboarding = !!user && !convexLoading && convexUserWithOrgs !== undefined &&

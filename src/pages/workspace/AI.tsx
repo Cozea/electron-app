@@ -215,18 +215,11 @@ export function AI() {
 
 
 
-  const headerContent = (
-    <h1 className="text-lg font-semibold">Usage Overview</h1>
-  )
-
-
-
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
-      header={headerContent}
     >
       <div className="space-y-6">
         {/* Subscription Status Banner */}

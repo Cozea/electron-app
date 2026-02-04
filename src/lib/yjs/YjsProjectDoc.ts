@@ -89,6 +89,7 @@ export class YjsProjectDoc {
 
   initializeFile(path: string, content: string): void {
     const yText = this.getFileText(path)
+    if (!yText) return
     this.doc.transact(() => {
       yText.delete(0, yText.length)
       yText.insert(0, content)
@@ -102,6 +103,7 @@ export class YjsProjectDoc {
    */
   applyExternalChange(path: string, newContent: string, origin: string = 'agent'): void {
     const yText = this.getFileText(path)
+    if (!yText) return
     const currentContent = yText.toString()
     if (currentContent === newContent) return
 

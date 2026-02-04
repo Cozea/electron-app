@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import {
     MoreHorizontal,
     Trash2,
@@ -43,9 +44,21 @@ import { cn } from '@/lib/utils'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
+interface ProjectSummary {
+    _id: Id<'projects'>
+    slug: string
+    name: string
+    status: string
+    updatedAt: number
+    stack?: {
+        backend?: string
+        hosting?: string
+    }
+}
+
 interface ProjectListRowProps {
-    project: any
-    userId?: string
+    project: ProjectSummary
+    userId?: Id<'users'>
     creatorName?: string
     creatorImage?: string
 }
@@ -109,7 +122,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         try {
             await deleteProject({
                 projectId: project._id,
-                userId: userId as any,
+                userId,
                 confirmName: deleteConfirmName,
             })
             setShowDeleteDialog(false)
@@ -160,7 +173,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
             if (effectiveLocalPath && userId) {
                 await updateMemberLocalPath({
                     projectId: project._id,
-                    userId: userId as any,
+                    userId,
                     localPath: effectiveLocalPath,
                 })
             }
@@ -336,11 +349,11 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                         <div
                             className={cn(
                                 "h-full transition-all duration-300",
-                                syncState === 'ready' ? "bg-green-500" : "bg-primary"
+                                syncState === 'ready' ? "bg-green-500" : "bg-primary",
+                                syncState !== 'ready' && "animate-pulse"
                             )}
                             style={{
-                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%',
-                                animation: syncState !== 'ready' ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%'
                             }}
                         />
                     </div>

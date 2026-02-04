@@ -21,6 +21,8 @@ function useSyncStatus(
 ) {
     const { diffs, setDiffStatus, setChecking } = useProjectDiffStore()
     const diffStatus = diffs[projectSlug]
+    const isChecking = diffStatus?.isChecking
+    const lastChecked = diffStatus?.lastChecked ?? 0
 
     // Get cloud manifest
     const cloudManifest = useQuery(
@@ -31,9 +33,7 @@ function useSyncStatus(
     useEffect(() => {
         async function checkDiff() {
             if (!localPath || cloudManifest === undefined) return
-            if (diffStatus?.isChecking) return
-
-            const lastChecked = diffStatus?.lastChecked ?? 0
+            if (isChecking) return
             if (Date.now() - lastChecked < MIN_CHECK_INTERVAL) return
 
             setChecking(projectSlug, true)
@@ -81,7 +81,7 @@ function useSyncStatus(
         }
 
         checkDiff()
-    }, [cloudManifest, localPath, projectSlug, lastSyncAt])
+    }, [cloudManifest, localPath, projectSlug, lastSyncAt, isChecking, lastChecked, setChecking, setDiffStatus])
 
     return diffStatus
 }
