@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import {
     Clock,
     MoreHorizontal,
@@ -37,8 +38,20 @@ import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
 
 // Types based on what we saw in the schema and Projects.tsx
+interface ProjectSummary {
+    _id: Id<'projects'>
+    slug: string
+    name: string
+    status: string
+    stack?: {
+        backend?: string
+        hosting?: string
+    }
+}
+
 interface ProjectCardProps {
-    project: any // We'll use any for now to avoid strict type issues with the complex Convex schema, but ideally this matches the schema
+    project: ProjectSummary
+    userId?: Id<'users'>
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -59,7 +72,7 @@ function formatRelativeTime(timestamp: number): string {
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: string }) {
+export function ProjectCard({ project, userId }: ProjectCardProps) {
     const navigate = useNavigate()
     const [showDeleteDialog, setShowDeleteDialog] = useState(false)
     const [deleteConfirmName, setDeleteConfirmName] = useState('')
@@ -140,7 +153,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: s
             if (effectiveLocalPath && userId) {
                 await updateMemberLocalPath({
                     projectId: project._id,
-                    userId: userId as any,
+                    userId,
                     localPath: effectiveLocalPath,
                 })
             }
@@ -190,7 +203,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: s
         try {
             await deleteProject({
                 projectId: project._id,
-                userId: userId as any,
+                userId,
                 confirmName: deleteConfirmName,
             })
             setShowDeleteDialog(false)
@@ -305,16 +318,16 @@ export function ProjectCard({ project, userId }: ProjectCardProps & { userId?: s
                 </div>
 
                 {/* Progress bar at the border between preview and content */}
-                <div className="relative h-0.5 w-full bg-border/50">
+                <div className="relative h-0.5 w-full bg-border/50 overflow-hidden">
                     {syncState !== 'idle' && syncState !== 'error' && (
                         <div
                             className={cn(
-                                "absolute inset-0 h-full transition-all duration-300",
-                                syncState === 'ready' ? "bg-green-500" : "bg-primary"
+                                "absolute left-0 top-0 h-full transition-all duration-300",
+                                syncState === 'ready' ? "bg-green-500" : "bg-primary",
+                                syncState !== 'ready' && "animate-pulse"
                             )}
                             style={{
-                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%',
-                                animation: syncState !== 'ready' ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%'
                             }}
                         />
                     )}

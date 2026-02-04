@@ -143,7 +143,7 @@ export function ToolDiffOutput({
         filePath={diffData.filePath}
         maxHeight={maxHeight}
         inline={inline}
-        showHeader={true}
+        showHeader={false}
       />
     </div>
   )

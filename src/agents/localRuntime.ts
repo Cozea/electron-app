@@ -7,6 +7,7 @@ import type {
   AgentToolCall,
   AgentToolResult,
 } from './runtime'
+import type { UIMessage } from 'ai'
 
 export class LocalAgentRuntime implements AgentRuntime {
   kind: AgentRuntime['kind'] = 'local'
@@ -20,7 +21,7 @@ export class LocalAgentRuntime implements AgentRuntime {
     }
   }
 
-  streamEvents(_runId: string, _onEvent: (event: any) => void): () => void {
+  streamEvents(_runId: string, _onEvent: (event: UIMessage) => void): () => void {
     return () => {}
   }
 
@@ -33,6 +34,8 @@ export class LocalAgentRuntime implements AgentRuntime {
       name: toolCall.toolName,
       input: toolCall.input,
       projectPath: toolCall.projectPath,
+      runId: _runId,
+      toolCallId: toolCall.toolCallId,
     })
   }
 
@@ -45,7 +48,9 @@ export class LocalAgentRuntime implements AgentRuntime {
   }
 
   async cancelRun(_runId: string): Promise<void> {
-    return
+    if (window.electronAPI?.tools?.cancel) {
+      await window.electronAPI.tools.cancel({ runId: _runId })
+    }
   }
 
   async finalizeRun(_runId: string): Promise<void> {

@@ -156,10 +156,6 @@ export function General() {
     })
   }
 
-  const headerContent = (
-    <h1 className="text-lg font-semibold">Workspace Details</h1>
-  )
-
   const isLoading = convexOrg === undefined
 
   if (isLoading) {
@@ -168,7 +164,6 @@ export function General() {
         user={user}
         onLogout={logout}
         breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
-        header={headerContent}
       >
         <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -190,7 +185,6 @@ export function General() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
-      header={headerContent}
     >
       <div className="max-w-2xl space-y-6">
         {/* Workspace Details */}

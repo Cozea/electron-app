@@ -5,6 +5,8 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { CollaborativeMonacoEditor } from './CollaborativeMonacoEditor'
 import { useMonacoTheme } from '@/hooks/useMonacoTheme'
+import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
+import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
 
 // Import Monaco workers for Vite
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -47,6 +49,17 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
     const { yjsDoc } = useYjsProject()
     const theme = useMonacoTheme()
 
+    useDiagnosticsFileSync({
+        projectPath: model?.projectPath,
+        filePath: path,
+        content: model?.currentContent ?? '',
+    })
+
+    useMonacoDiagnostics({
+        projectPath: model?.projectPath,
+        filePath: path,
+    })
+
     // Handle save for collaborative editor
     const handleSave = useCallback(() => {
         actions.saveFile(path)
@@ -87,6 +100,8 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
         )
     }
 
+    const modelPath = monaco.Uri.file(path).toString()
+
     // Use collaborative editor when Yjs is available
     if (yjsDoc) {
         return (
@@ -103,6 +118,7 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
         <Editor
             height="100%"
             language={model.language}
+            path={modelPath}
             value={model.currentContent}
             theme={theme}
             onChange={handleChange}

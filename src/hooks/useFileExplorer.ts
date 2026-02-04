@@ -48,7 +48,6 @@ export function useFileExplorer({
 
   // Initialize services when excludePatterns change
   useEffect(() => {
-    console.log('[useFileExplorer] Initializing FileService and DataSource')
     fileServiceRef.current = new FileService({ excludePatterns })
     dataSourceRef.current = new ExplorerDataSource(fileServiceRef.current)
   }, [excludePatterns])
@@ -67,7 +66,6 @@ export function useFileExplorer({
     }
 
     const loadRoot = async () => {
-      console.log('[useFileExplorer] loadRoot called with path:', rootPath)
       setIsLoading(true)
       setError(null)
 
@@ -85,19 +83,12 @@ export function useFileExplorer({
           isDirectory: true,
         })
 
-        console.log('[useFileExplorer] Created root item:', rootItem.name)
-
         // Pre-load first level
         if (dataSourceRef.current) {
-          console.log('[useFileExplorer] Loading children via dataSource...')
-          const children = await dataSourceRef.current.getChildren(rootItem, cts.token)
-          console.log('[useFileExplorer] Loaded children:', children.length, children.map(c => c.name))
-        } else {
-          console.warn('[useFileExplorer] dataSourceRef.current is null!')
+          await dataSourceRef.current.getChildren(rootItem, cts.token)
         }
 
         if (!cts.token.isCancellationRequested) {
-          console.log('[useFileExplorer] Setting root with', rootItem.sortedChildren.length, 'children')
           setRoot(rootItem)
         }
       } catch (err) {

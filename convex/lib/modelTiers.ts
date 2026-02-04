@@ -4,7 +4,7 @@
  * Defines the model catalog, tiers, and credit calculation logic
  * per CrossCode Pricing Spec v3.
  *
- * Model Tiers:
+ * Model Tiers (fallback rates):
  * - Fast: 1 input / 2 output credits per 1K tokens
  * - Standard: 5 input / 10 output credits per 1K tokens
  * - Powerful: 25 input / 50 output credits per 1K tokens
@@ -16,6 +16,12 @@ export type Provider = "anthropic" | "openai" | "google"
 export interface TierRates {
   inputCreditsPerK: number
   outputCreditsPerK: number
+}
+
+export interface ModelCreditsPerK {
+  inputCreditsPerK: number
+  outputCreditsPerK: number
+  cachedInputCreditsPerK?: number
 }
 
 export interface ModelInfo {
@@ -43,6 +49,22 @@ export const TIER_RATES: Record<ModelTier, TierRates> = {
     inputCreditsPerK: 25,
     outputCreditsPerK: 50,
   },
+}
+
+// Per-model credit rates (credits per 1K tokens)
+// Tuned to meet Pro plan targets at a 50/50 input-output mix:
+// - fast: ~1B tokens total
+// - standard: ~500M tokens total
+// - powerful: ~80M tokens total
+export const MODEL_CREDITS_PER_1K: Record<string, ModelCreditsPerK> = {
+  "claude-haiku-4-5": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
+  "gemini-3-flash": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
+  "gpt-5.1": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.1-mini": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "claude-sonnet-4-5": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.2": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "claude-opus-4-5": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gemini-3-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
 }
 
 // Model catalog - maps our model IDs to provider model IDs and tiers
@@ -234,15 +256,18 @@ export function getProviderModelId(modelId: string): string {
 export function calculateCredits(
   modelId: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cachedInputTokens: number = 0
 ): number {
-  const tier = getModelTier(modelId)
-  const rates = TIER_RATES[tier]
+  const rates = MODEL_CREDITS_PER_1K[modelId] ?? TIER_RATES[getModelTier(modelId)]
+  const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens)
+  const cachedRate = rates.cachedInputCreditsPerK ?? rates.inputCreditsPerK
 
-  const inputCredits = Math.ceil(inputTokens / 1000) * rates.inputCreditsPerK
+  const inputCredits = Math.ceil(billableInputTokens / 1000) * rates.inputCreditsPerK
+  const cachedInputCredits = Math.ceil(cachedInputTokens / 1000) * cachedRate
   const outputCredits = Math.ceil(outputTokens / 1000) * rates.outputCreditsPerK
 
-  return inputCredits + outputCredits
+  return inputCredits + cachedInputCredits + outputCredits
 }
 
 /**
@@ -251,24 +276,30 @@ export function calculateCredits(
 export function calculateCreditsDetailed(
   modelId: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cachedInputTokens: number = 0
 ): {
   total: number
   inputCredits: number
   outputCredits: number
+  cachedInputCredits?: number
   tier: ModelTier
   rates: TierRates
 } {
   const tier = getModelTier(modelId)
-  const rates = TIER_RATES[tier]
+  const rates = MODEL_CREDITS_PER_1K[modelId] ?? TIER_RATES[tier]
+  const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens)
+  const cachedRate = rates.cachedInputCreditsPerK ?? rates.inputCreditsPerK
 
-  const inputCredits = Math.ceil(inputTokens / 1000) * rates.inputCreditsPerK
+  const inputCredits = Math.ceil(billableInputTokens / 1000) * rates.inputCreditsPerK
+  const cachedInputCredits = Math.ceil(cachedInputTokens / 1000) * cachedRate
   const outputCredits = Math.ceil(outputTokens / 1000) * rates.outputCreditsPerK
 
   return {
-    total: inputCredits + outputCredits,
+    total: inputCredits + cachedInputCredits + outputCredits,
     inputCredits,
     outputCredits,
+    cachedInputCredits,
     tier,
     rates,
   }

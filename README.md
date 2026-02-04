@@ -112,3 +112,11 @@ Convex:
 3) Start the Electron renderer: `npm run dev`
 4) Optional: bootstrap Stripe catalog and store in Convex:
    `cd server && npx tsx src/scripts/bootstrap-stripe.ts`
+
+## Releasing the desktop app (GitHub Releases)
+1) Bump `package.json` version.
+2) Set release env vars:
+   - `GH_TOKEN` (repo scope)
+   - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` (mac notarization)
+3) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
+4) Users receive updates automatically (checks on launch and every 6 hours).

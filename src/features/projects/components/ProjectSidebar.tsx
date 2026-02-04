@@ -17,7 +17,9 @@ import {
     ChevronDown,
     Plus,
     RefreshCw,
-    GripVertical
+    GripVertical,
+    FilePlus,
+    FolderPlus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -67,6 +69,8 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     fileTree?: React.ReactNode
     onRefreshFiles?: () => void
     isRefreshing?: boolean
+    onCreateFile?: () => void
+    onCreateFolder?: () => void
 }
 
 // Route mappings for all navigation items
@@ -89,7 +93,17 @@ const DEFAULT_SECONDARY_WIDTH = 224 // 14rem = 224px
 const MIN_SECONDARY_WIDTH = 180
 const MAX_SECONDARY_WIDTH = 400
 
-export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRefreshing, className, ...props }: ProjectSidebarProps) {
+export function ProjectSidebar({
+    user,
+    onLogout,
+    fileTree,
+    onRefreshFiles,
+    isRefreshing,
+    onCreateFile,
+    onCreateFolder,
+    className,
+    ...props
+}: ProjectSidebarProps) {
     const navigate = useNavigate()
     const { slug } = useParams<{ slug: string }>()
     const location = useLocation()
@@ -230,12 +244,12 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
     ]
 
     return (
-        <div className={cn("flex h-full app-region-drag bg-sidebar", className)}>
+        <div className={cn("flex h-full titlebar-drag-region bg-sidebar", className)}>
             {/* 1. Primary Icon Rail Sidebar */}
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="w-56 border-r border-border/50 shrink-0 z-20 h-full"
+                    className="w-56 border-r border-border/50 shrink-0 z-20 h-full titlebar-no-drag"
                     {...props}
                 >
                     <SidebarHeader className="mt-9">
@@ -335,11 +349,29 @@ export function ProjectSidebar({ user, onLogout, fileTree, onRefreshFiles, isRef
                             side="left"
                             variant="sidebar"
                             collapsible="none"
-                            className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0"
+                            className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag"
                         >
                             <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
                                 <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
                                 <div className="flex items-center gap-1">
+                                    {activeTab === 'Files' && onCreateFile && (
+                                        <button
+                                            onClick={onCreateFile}
+                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            title="New File"
+                                        >
+                                            <FilePlus className="h-3.5 w-3.5" />
+                                        </button>
+                                    )}
+                                    {activeTab === 'Files' && onCreateFolder && (
+                                        <button
+                                            onClick={onCreateFolder}
+                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            title="New Folder"
+                                        >
+                                            <FolderPlus className="h-3.5 w-3.5" />
+                                        </button>
+                                    )}
                                     {activeTab === 'Files' && onRefreshFiles && (
                                         <button
                                             onClick={onRefreshFiles}

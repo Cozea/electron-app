@@ -3,6 +3,7 @@ import { Cloud, CloudOff, ArrowUp, ArrowDown } from "lucide-react"
 import { TitleBar } from "../TitleBar"
 import { CommandSearch } from "../CommandSearch"
 import { AssistantToggleButton } from "@/components/assistant/AssistantToggleButton"
+import { UpdateMenu } from "@/components/updates/UpdateMenu"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -107,6 +108,7 @@ export function SiteHeader({ breadcrumbs = [], presenceUsers }: SiteHeaderProps)
           {presenceUsers && presenceUsers.length > 0 && (
             <PresenceAvatarGroup users={presenceUsers} maxVisible={4} />
           )}
+          <UpdateMenu />
           <CommandSearch />
           <AssistantToggleButton />
         </div>

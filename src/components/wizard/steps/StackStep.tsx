@@ -1,6 +1,6 @@
 import { Label } from '@/components/ui/label'
 import type { WizardStack } from '@/hooks/useWizardState'
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { Check } from 'lucide-react'
 
@@ -137,7 +137,7 @@ function OptionCard({
   description: string,
   selected: boolean,
   onClick: () => void,
-  variants?: any
+  variants?: Variants
 }) {
   return (
     <motion.button

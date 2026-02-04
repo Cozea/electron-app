@@ -4,11 +4,11 @@ import {
     useTerminalStore,
     useTerminalActions,
 } from "@/stores/useTerminalStore"
-import { useDevToolsStore } from "@/stores/useDevToolsStore"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { useProblemsStore, selectUnreadCount } from "@/stores/useProblemsStore"
 import { TerminalTabBar } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
+import { ProblemsView } from "./ProblemsView"
 
 // Panel height constraints
 const MIN_PANEL_HEIGHT = 150
@@ -17,9 +17,10 @@ const MAX_PANEL_HEIGHT = 600
 interface TerminalPanelProps {
     className?: string
     projectPath: string
+    onOpenFile?: (filePath: string, line?: number, column?: number) => void
 }
 
-export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
+export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPanelProps) {
     // Use individual primitive selectors to avoid infinite loops
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
     const isMaximized = useTerminalStore((s) => s.isMaximized)
@@ -27,7 +28,8 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
     const terminals = useTerminalStore((s) => s.terminals)
     const groups = useTerminalStore((s) => s.groups)
     const activeGroupId = useTerminalStore((s) => s.activeGroupId)
-    const { errors, unreadErrorCount } = useDevToolsStore()
+    const unreadErrorCount = useProblemsStore(selectUnreadCount(projectPath))
+    const markRead = useProblemsStore((state) => state.actions.markRead)
     const { setPanelHeight, setPanelOpen, reset: resetTerminals } = useTerminalActions()
 
     // Compute derived values with useMemo
@@ -54,12 +56,14 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
             // Reset the terminal store
             resetTerminals()
         }
-    }, []) // Empty deps - only run on unmount
+    }, [resetTerminals]) // Empty deps - only run on unmount
 
     const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
     const [isDragging, setIsDragging] = useState(false)
     const dragStartY = useRef(0)
     const dragStartHeight = useRef(0)
+
+    const [problemsSearchQuery, setProblemsSearchQuery] = useState("")
 
     // Resize handlers
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -92,6 +96,13 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
     const actualHeight = isMaximized ? '100%' : `${panelHeight}px`
 
     // Hide panel instead of unmounting to keep terminals alive
+    const handleViewChange = useCallback((view: "terminal" | "problems") => {
+        setActiveView(view)
+        if (view === "problems") {
+            markRead(projectPath)
+        }
+    }, [markRead, projectPath])
+
     return (
         <div
             className={cn(
@@ -122,10 +133,12 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
             {/* Tab Bar */}
             <TerminalTabBar
                 activeView={activeView}
-                onViewChange={setActiveView}
+                onViewChange={handleViewChange}
                 problemCount={unreadErrorCount}
                 projectPath={projectPath}
                 onClose={() => setPanelOpen(false)}
+                problemsSearchQuery={problemsSearchQuery}
+                onProblemsSearchChange={setProblemsSearchQuery}
             />
 
             {/* Panel Content */}
@@ -164,45 +177,11 @@ export function TerminalPanel({ className, projectPath }: TerminalPanelProps) {
 
                 {/* Problems view */}
                 {activeView === "problems" && (
-                    <div className="h-full bg-sidebar">
-                        <ScrollArea className="h-full">
-                            <div className="p-2 space-y-1">
-                                {errors.length === 0 ? (
-                                    <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
-                                        No problems detected
-                                    </div>
-                                ) : (
-                                    errors.map((error) => (
-                                        <div
-                                            key={error.id}
-                                            className={cn(
-                                                "p-2 rounded border text-xs",
-                                                error.severity === 'error' && "bg-destructive/10 border-destructive/20 text-destructive",
-                                                error.severity === 'warning' && "bg-yellow-500/10 border-yellow-500/20 text-yellow-600 dark:text-yellow-400",
-                                                error.dismissed && "opacity-50"
-                                            )}
-                                        >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-medium truncate">{error.message}</p>
-                                                    {error.file && (
-                                                        <p className="text-muted-foreground mt-0.5">
-                                                            {error.file}
-                                                            {error.line && `:${error.line}`}
-                                                            {error.column && `:${error.column}`}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <span className="text-[10px] text-muted-foreground shrink-0">
-                                                    {error.source}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </ScrollArea>
-                    </div>
+                    <ProblemsView
+                        projectPath={projectPath}
+                        onOpenFile={onOpenFile}
+                        searchQuery={problemsSearchQuery}
+                    />
                 )}
             </div>
         </div>

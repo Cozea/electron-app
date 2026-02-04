@@ -3,51 +3,55 @@
  *
  * Uses the new file explorer architecture with:
  * - Lazy loading (directories load on expand)
- * - Automatic filtering (node_modules, .git, etc.)
+ * - Optional filtering via FileService (currently shows all files)
  * - Proper state management via useFileExplorer hook
  */
 
-import { useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
+import { useCallback, useEffect, useImperativeHandle, forwardRef, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
 import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { FileTreeNode } from './FileTreeNode'
 import { Loader2, FolderOpen } from 'lucide-react'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
+import { Input } from '@/components/ui/input'
+import { getFileIcon, getFolderIcon } from '@/lib/fileExplorer/fileIcons'
 import {
   SidebarGroup,
   SidebarGroupContent,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarMenu,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
 
 export interface FileTreeHandle {
   refresh: () => void
   isLoading: boolean
+  startCreateFile: () => void
+  startCreateFolder: () => void
 }
 
 export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const syncContext = useOptionalProjectSyncContext()
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId
-      ? { workosId: currentOrganization.organizationId }
-      : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
+  const [lastSelectedItem, setLastSelectedItem] = useState<ExplorerItem | null>(null)
+  const [selectedResource, setSelectedResource] = useState<string | null>(null)
+  const [createKind, setCreateKind] = useState<'file' | 'folder'>('file')
+  const [createName, setCreateName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createTarget, setCreateTarget] = useState<ExplorerItem | null>(null)
+  const createInputRef = useRef<HTMLInputElement>(null)
+  const [renameTarget, setRenameTarget] = useState<ExplorerItem | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const [dragItem, setDragItem] = useState<ExplorerItem | null>(null)
 
   // Use file explorer hook
   const {
@@ -57,30 +61,584 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
     expandNode,
     collapseNode,
     refresh,
+    refreshNode,
     expandedPaths,
   } = useFileExplorer({
     rootPath: syncContext?.projectPath ?? null,
   })
 
-  // Debug logging
-  console.log('[FileTree] project:', project?.name, 'localPath:', syncContext?.projectPath)
-  console.log('[FileTree] root:', root?.name, 'children:', root?.sortedChildren.length, 'isLoading:', isLoading, 'error:', error)
+  const rootPath = syncContext?.projectPath ?? null
+
+  const getCreateTarget = useCallback((): ExplorerItem | null => {
+    if (!syncContext?.projectPath) return null
+    if (lastSelectedItem?.isDirectory) return lastSelectedItem
+    if (lastSelectedItem?.parent) return lastSelectedItem.parent
+    return root
+  }, [lastSelectedItem, root, syncContext?.projectPath])
+
+  const getCreateTargetForItem = useCallback((item: ExplorerItem): ExplorerItem | null => {
+    if (!syncContext?.projectPath) return null
+    if (item.isDirectory) return item
+    return item.parent ?? root
+  }, [root, syncContext?.projectPath])
 
   // Expose refresh and isLoading via ref
   useImperativeHandle(ref, () => ({
     refresh,
     isLoading,
-  }), [refresh, isLoading])
+    startCreateFile: () => {
+      setRenameTarget(null)
+      setRenameValue('')
+      setRenameError(null)
+      setCreateKind('file')
+      setCreateName('')
+      setCreateError(null)
+      const target = getCreateTarget()
+      if (!target) return
+      setCreateTarget(target)
+    },
+    startCreateFolder: () => {
+      setRenameTarget(null)
+      setRenameValue('')
+      setRenameError(null)
+      setCreateKind('folder')
+      setCreateName('')
+      setCreateError(null)
+      const target = getCreateTarget()
+      if (!target) return
+      setCreateTarget(target)
+    },
+  }), [refresh, isLoading, getCreateTarget])
 
   // Handle file selection
   const handleSelectFile = useCallback((item: ExplorerItem) => {
+    setLastSelectedItem(item)
+    setSelectedResource(item.resource)
     if (!item.isDirectory) {
       setSearchParams({ path: item.resource })
     }
   }, [setSearchParams])
 
+  useEffect(() => {
+    if (createTarget) {
+      requestAnimationFrame(() => createInputRef.current?.focus())
+    }
+  }, [createTarget])
+
+  useEffect(() => {
+    if (renameTarget) {
+      requestAnimationFrame(() => renameInputRef.current?.focus())
+    }
+  }, [renameTarget])
+
+  useEffect(() => {
+    if (createTarget) {
+      void expandNode(createTarget)
+    }
+  }, [createTarget, expandNode])
+
+  useEffect(() => {
+    setCreateTarget(null)
+    setCreateName('')
+    setCreateError(null)
+    setRenameTarget(null)
+    setRenameValue('')
+    setRenameError(null)
+  }, [rootPath])
+
+  const normalizedRootPath = useMemo(
+    () => (syncContext?.projectPath ?? '').replace(/\\/g, '/'),
+    [syncContext?.projectPath]
+  )
+
+  const createTargetRelative = useMemo(() => {
+    if (!createTarget || !normalizedRootPath) return ''
+    const normalizedBase = createTarget.resource.replace(/\\/g, '/')
+    if (!normalizedBase.startsWith(normalizedRootPath)) return ''
+    return normalizedBase.slice(normalizedRootPath.length).replace(/^\/+/, '')
+  }, [createTarget, normalizedRootPath])
+
+  const validateCreateName = useCallback((value: string): string | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return 'Name is required.'
+    const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '')
+    if (!normalized) return 'Name is required.'
+    if (normalized.startsWith('/')) return 'Path must be relative.'
+    if (/(\0)/.test(normalized)) return 'Name contains invalid characters.'
+    if (/(^|\/)\.\.(\/|$)/.test(normalized)) return 'Name cannot include "..".'
+    return null
+  }, [])
+
+  const validateRenameName = useCallback((value: string): string | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return 'Name is required.'
+    if (trimmed.includes('/') || trimmed.includes('\\')) return 'Name cannot include path separators.'
+    if (trimmed.includes('\0')) return 'Name contains invalid characters.'
+    if (trimmed === '.' || trimmed === '..') return 'Name is invalid.'
+    return null
+  }, [])
+
+  const normalizePath = useCallback((value: string) => value.replace(/\\/g, '/'), [])
+
+  const toRelativePath = useCallback((absolutePath: string): string => {
+    if (!rootPath) return absolutePath
+    const normalizedAbsolute = normalizePath(absolutePath)
+    const normalizedRoot = normalizePath(rootPath)
+    if (normalizedAbsolute === normalizedRoot) return ''
+    if (normalizedAbsolute.startsWith(`${normalizedRoot}/`)) {
+      return normalizedAbsolute.slice(normalizedRoot.length + 1)
+    }
+    return normalizedAbsolute
+  }, [normalizePath, rootPath])
+
+  const toAbsolutePath = useCallback((relativePath: string): string => {
+    if (!rootPath) return relativePath
+    const normalizedRoot = normalizePath(rootPath)
+    if (!relativePath) return normalizedRoot
+    return `${normalizedRoot}/${relativePath}`
+  }, [normalizePath, rootPath])
+
+  const isAncestorPath = useCallback((ancestor: string, candidate: string): boolean => {
+    const normalizedAncestor = normalizePath(ancestor).replace(/\/+$/, '')
+    const normalizedCandidate = normalizePath(candidate)
+    return normalizedCandidate === normalizedAncestor || normalizedCandidate.startsWith(`${normalizedAncestor}/`)
+  }, [normalizePath])
+
+  const handleCreate = useCallback(async () => {
+    if (!syncContext?.projectPath) {
+      setCreateError('Project path is not available yet.')
+      return
+    }
+    if (!createTarget) {
+      setCreateError('Select a folder or file to create inside.')
+      return
+    }
+    const validationError = validateCreateName(createName)
+    if (validationError) {
+      setCreateError(validationError)
+      return
+    }
+
+    const normalizedName = createName
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '')
+
+    const baseDirRelative = createTargetRelative ? `${createTargetRelative}/` : ''
+    const relativeTarget = `${baseDirRelative}${normalizedName}`
+    const filePath =
+      createKind === 'folder'
+        ? `${relativeTarget}/.gitkeep`
+        : relativeTarget
+
+    try {
+      setIsCreating(true)
+      setCreateError(null)
+      const result = await window.electronAPI.project.writeFile({
+        projectPath: syncContext.projectPath,
+        filePath,
+        content: '',
+      })
+
+      if (!result.success) {
+        setCreateError(result.error ?? 'Failed to create item.')
+        return
+      }
+
+      setCreateName('')
+      setCreateError(null)
+      setCreateTarget(null)
+
+      await refreshNode(createTarget)
+      await expandNode(createTarget)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create item.')
+    } finally {
+      setIsCreating(false)
+    }
+  }, [
+    createKind,
+    createName,
+    createTarget,
+    createTargetRelative,
+    expandNode,
+    refreshNode,
+    syncContext?.projectPath,
+    validateCreateName,
+  ])
+
+  const startRename = useCallback((item: ExplorerItem) => {
+    setCreateTarget(null)
+    setCreateName('')
+    setCreateError(null)
+    setRenameTarget(item)
+    setRenameValue(item.name)
+    setRenameError(null)
+  }, [])
+
+  const cancelRename = useCallback(() => {
+    if (isRenaming) return
+    setRenameTarget(null)
+    setRenameValue('')
+    setRenameError(null)
+  }, [isRenaming])
+
+  const handleRename = useCallback(async () => {
+    if (!syncContext?.projectPath) {
+      setRenameError('Project path is not available yet.')
+      return
+    }
+    if (!renameTarget) return
+
+    const validationError = validateRenameName(renameValue)
+    if (validationError) {
+      setRenameError(validationError)
+      return
+    }
+
+    const parentRelative = renameTarget.parent ? toRelativePath(renameTarget.parent.resource) : ''
+    const newRelativePath = parentRelative ? `${parentRelative}/${renameValue.trim()}` : renameValue.trim()
+    const oldRelativePath = toRelativePath(renameTarget.resource)
+
+    if (newRelativePath === oldRelativePath) {
+      cancelRename()
+      return
+    }
+
+    try {
+      setIsRenaming(true)
+      setRenameError(null)
+      const result = await window.electronAPI.project.renameFile({
+        projectPath: syncContext.projectPath,
+        oldPath: oldRelativePath,
+        newPath: newRelativePath,
+      })
+
+      if (!result.success) {
+        setRenameError(result.error ?? 'Failed to rename item.')
+        return
+      }
+
+      const newAbsolute = toAbsolutePath(newRelativePath)
+      setSelectedResource(newAbsolute)
+      setRenameTarget(null)
+      setRenameValue('')
+      setRenameError(null)
+
+      if (renameTarget.parent) {
+        await refreshNode(renameTarget.parent)
+        await expandNode(renameTarget.parent)
+      } else {
+        await refresh()
+      }
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename item.')
+    } finally {
+      setIsRenaming(false)
+    }
+  }, [
+    cancelRename,
+    expandNode,
+    refresh,
+    refreshNode,
+    renameTarget,
+    renameValue,
+    syncContext?.projectPath,
+    toAbsolutePath,
+    toRelativePath,
+    validateRenameName,
+  ])
+
+  const handleRenameChange = useCallback((value: string) => {
+    setRenameValue(value)
+    if (renameError) {
+      setRenameError(null)
+    }
+  }, [renameError])
+
+  const handleDelete = useCallback(async (item: ExplorerItem) => {
+    if (!syncContext?.projectPath) return
+    const confirmed = window.confirm(`Delete ${item.isDirectory ? 'folder' : 'file'} "${item.name}"?`)
+    if (!confirmed) return
+
+    const targetRelative = toRelativePath(item.resource)
+    const result = await window.electronAPI.project.deletePath({
+      projectPath: syncContext.projectPath,
+      targetPath: targetRelative,
+    })
+
+    if (!result.success) {
+      console.warn('[FileTree] Delete failed:', result.error)
+      return
+    }
+
+    if (item.parent) {
+      await refreshNode(item.parent)
+    } else {
+      await refresh()
+    }
+  }, [refresh, refreshNode, syncContext?.projectPath, toRelativePath])
+
+  const getSiblingNames = useCallback((item: ExplorerItem): Set<string> => {
+    const parent = item.parent ?? root
+    if (!parent) return new Set()
+    return new Set(Array.from(parent.children.values()).map((child) => child.name.toLowerCase()))
+  }, [root])
+
+  const getAvailableName = useCallback((name: string, isDirectory: boolean, existingNames: Set<string>): string => {
+    if (!existingNames.has(name.toLowerCase())) {
+      return name
+    }
+
+    if (!isDirectory) {
+      const lastDot = name.lastIndexOf('.')
+      const base = lastDot > 0 ? name.slice(0, lastDot) : name
+      const ext = lastDot > 0 ? name.slice(lastDot) : ''
+      let candidate = `${base} copy${ext}`
+      let counter = 2
+      while (existingNames.has(candidate.toLowerCase())) {
+        candidate = `${base} copy ${counter}${ext}`
+        counter += 1
+      }
+      return candidate
+    }
+
+    let candidate = `${name} copy`
+    let counter = 2
+    while (existingNames.has(candidate.toLowerCase())) {
+      candidate = `${name} copy ${counter}`
+      counter += 1
+    }
+    return candidate
+  }, [])
+
+  const getDuplicateName = useCallback((item: ExplorerItem): string => {
+    return getAvailableName(item.name, item.isDirectory, getSiblingNames(item))
+  }, [getAvailableName, getSiblingNames])
+
+  const handleDuplicate = useCallback(async (item: ExplorerItem) => {
+    if (!syncContext?.projectPath) return
+    const parent = item.parent ?? root
+    if (!parent) return
+
+    const newName = getDuplicateName(item)
+    const parentRelative = parent ? toRelativePath(parent.resource) : ''
+    const sourceRelative = toRelativePath(item.resource)
+    const destinationRelative = parentRelative ? `${parentRelative}/${newName}` : newName
+
+    const result = await window.electronAPI.project.copyPath({
+      projectPath: syncContext.projectPath,
+      sourcePath: sourceRelative,
+      destinationPath: destinationRelative,
+    })
+
+    if (!result.success) {
+      console.warn('[FileTree] Duplicate failed:', result.error)
+      return
+    }
+
+    await refreshNode(parent)
+    await expandNode(parent)
+  }, [expandNode, getDuplicateName, refreshNode, root, syncContext?.projectPath, toRelativePath])
+
+  const handleCopyToTarget = useCallback(async (source: ExplorerItem, target: ExplorerItem) => {
+    if (!syncContext?.projectPath) return
+    const targetDirectory = target.isDirectory ? target : target.parent ?? root
+    if (!targetDirectory) return
+
+    if (source.isDirectory && isAncestorPath(source.resource, targetDirectory.resource)) return
+
+    const existingNames = new Set(
+      Array.from(targetDirectory.children.values()).map((child) => child.name.toLowerCase())
+    )
+    const newName = getAvailableName(source.name, source.isDirectory, existingNames)
+    const sourceRelative = toRelativePath(source.resource)
+    const targetRelative = toRelativePath(targetDirectory.resource)
+    const destinationRelative = targetRelative ? `${targetRelative}/${newName}` : newName
+
+    const result = await window.electronAPI.project.copyPath({
+      projectPath: syncContext.projectPath,
+      sourcePath: sourceRelative,
+      destinationPath: destinationRelative,
+    })
+
+    if (!result.success) {
+      console.warn('[FileTree] Copy failed:', result.error)
+      return
+    }
+
+    await refreshNode(targetDirectory)
+    await expandNode(targetDirectory)
+  }, [expandNode, getAvailableName, isAncestorPath, refreshNode, root, syncContext?.projectPath, toRelativePath])
+
+  const handleMove = useCallback(async (source: ExplorerItem, target: ExplorerItem) => {
+    if (!syncContext?.projectPath) return
+    const targetDirectory = target.isDirectory ? target : target.parent ?? root
+    if (!targetDirectory) return
+
+    if (source.resource === targetDirectory.resource) return
+    if (source.isDirectory && isAncestorPath(source.resource, targetDirectory.resource)) return
+
+    const sourceRelative = toRelativePath(source.resource)
+    const targetRelative = toRelativePath(targetDirectory.resource)
+    const destinationRelative = targetRelative ? `${targetRelative}/${source.name}` : source.name
+
+    if (destinationRelative === sourceRelative) return
+
+    const result = await window.electronAPI.project.renameFile({
+      projectPath: syncContext.projectPath,
+      oldPath: sourceRelative,
+      newPath: destinationRelative,
+    })
+
+    if (!result.success) {
+      console.warn('[FileTree] Move failed:', result.error)
+      return
+    }
+
+    if (source.parent) {
+      await refreshNode(source.parent)
+    }
+    await refreshNode(targetDirectory)
+    await expandNode(targetDirectory)
+  }, [expandNode, isAncestorPath, refreshNode, root, syncContext?.projectPath, toRelativePath])
+
+  const handleContextMenu = useCallback(async (item: ExplorerItem, event: MouseEvent) => {
+    event.preventDefault()
+    setLastSelectedItem(item)
+    setSelectedResource(item.resource)
+
+    const result = await window.electronAPI.contextMenu.showFileTreeMenu({
+      targetPath: item.resource,
+      isDirectory: item.isDirectory,
+      x: event.clientX,
+      y: event.clientY,
+    })
+
+    if (!result?.action) return
+
+    if (result.action === 'new-file' || result.action === 'new-folder') {
+      setCreateKind(result.action === 'new-file' ? 'file' : 'folder')
+      setCreateName('')
+      setCreateError(null)
+      const target = getCreateTargetForItem(item)
+      if (target) {
+        setCreateTarget(target)
+      }
+      return
+    }
+
+    if (result.action === 'rename') {
+      startRename(item)
+      return
+    }
+
+    if (result.action === 'delete') {
+      void handleDelete(item)
+      return
+    }
+
+    if (result.action === 'duplicate') {
+      void handleDuplicate(item)
+      return
+    }
+
+    if (result.action === 'copy-relative-path') {
+      const relativePath = toRelativePath(item.resource)
+      if (relativePath) {
+        void navigator.clipboard.writeText(relativePath)
+      }
+      return
+    }
+  }, [getCreateTargetForItem, handleDelete, handleDuplicate, startRename, toRelativePath])
+
+  const handleDragStart = useCallback((item: ExplorerItem, event: React.DragEvent) => {
+    setDragItem(item)
+    event.dataTransfer.effectAllowed = 'copyMove'
+    event.dataTransfer.setData('text/plain', item.resource)
+  }, [])
+
+  const handleDragEnd = useCallback((_event?: React.DragEvent) => {
+    setDragItem(null)
+  }, [])
+
+  const handleDragOver = useCallback((item: ExplorerItem, event: React.DragEvent) => {
+    const targetDirectory = item.isDirectory ? item : item.parent ?? root
+    if (!targetDirectory) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = event.altKey || event.ctrlKey ? 'copy' : 'move'
+  }, [root])
+
+  const handleDrop = useCallback(async (item: ExplorerItem, event: React.DragEvent) => {
+    event.preventDefault()
+    const dragPath = event.dataTransfer.getData('text/plain')
+    const source = dragItem ?? (dragPath && root ? root.find(dragPath) ?? null : null)
+    if (!source) return
+    const shouldCopy = event.altKey || event.ctrlKey
+    if (shouldCopy) {
+      await handleCopyToTarget(source, item)
+    } else {
+      await handleMove(source, item)
+    }
+    setDragItem(null)
+  }, [dragItem, handleCopyToTarget, handleMove, root])
+
+  const cancelCreate = useCallback(() => {
+    if (isCreating) return
+    setCreateName('')
+    setCreateError(null)
+    setCreateTarget(null)
+  }, [isCreating])
+
+  const inlineCreateRow = useCallback(
+    (depth: number) => {
+      const Wrapper = depth === 0 ? SidebarMenuItem : SidebarMenuSubItem
+      const Button = depth === 0 ? SidebarMenuButton : SidebarMenuSubButton
+      const displayName = createName.trim().split(/[\\/]/).filter(Boolean).slice(-1)[0] || 'New'
+      const icon =
+        createKind === 'folder'
+          ? getFolderIcon(displayName, false)
+          : getFileIcon(displayName)
+
+      return (
+        <Wrapper key="inline-create">
+          <Button asChild>
+            <div className="flex items-center gap-2 w-full">
+              {icon}
+              <Input
+                ref={createInputRef}
+                value={createName}
+                onChange={(event) => {
+                  setCreateName(event.target.value)
+                  if (createError) setCreateError(null)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void handleCreate()
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelCreate()
+                  }
+                }}
+                onBlur={() => cancelCreate()}
+                disabled={isCreating}
+                placeholder={createKind === 'folder' ? 'New Folder' : 'New File'}
+                className="h-6 px-2 text-xs"
+              />
+            </div>
+          </Button>
+          {createError && (
+            <div className="px-2 text-xs text-destructive">{createError}</div>
+          )}
+        </Wrapper>
+      )
+    },
+    [cancelCreate, createError, createKind, createName, handleCreate, isCreating]
+  )
+
   // When opening a file (from URL or elsewhere), expand ancestor folders and ensure it's selected
-  const rootPath = syncContext?.projectPath ?? null
   const activeFileFromStore = useFileTabsStore((state) =>
     slug ? state.projectTabs[slug]?.activeFile ?? null : null
   )
@@ -168,6 +726,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
           )}
 
           {/* File tree */}
+          {root && createTarget && createTarget.resource === root.resource && inlineCreateRow(0)}
           {root && root.sortedChildren.map(child => (
             <FileTreeNode
               key={child.resource}
@@ -175,10 +734,25 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
               depth={0}
               isExpanded={expandedPaths.has(child.resource)}
               selectedPath={selectedPathForHighlight}
+              selectedResource={selectedResource}
               onExpand={expandNode}
               onCollapse={collapseNode}
               onSelect={handleSelectFile}
+              onContextMenu={handleContextMenu}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
               expandedPaths={expandedPaths}
+              inlineCreateTarget={createTarget?.resource ?? null}
+              renderInlineCreateRow={inlineCreateRow}
+              renameTarget={renameTarget}
+              renameValue={renameValue}
+              renameError={renameError}
+              renameInputRef={renameInputRef}
+              onRenameChange={handleRenameChange}
+              onRenameCommit={handleRename}
+              onRenameCancel={cancelRename}
             />
           ))}
         </SidebarMenu>

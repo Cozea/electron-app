@@ -346,6 +346,56 @@ body {
 }
 
 /* ============================================
+   macOS Native Utilities
+   ============================================ */
+
+/* Draggable regions for custom titlebar */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Vibrancy support: ensure backgrounds are translucent where needed */
+:root {
+  --sidebar-opacity: 0.8;
+}
+
+.bg-sidebar {
+  /* Override standard bg-sidebar to allow vibrancy to show through */
+  background-color: color-mix(in oklch, var(--sidebar), transparent calc(100% - var(--sidebar-opacity) * 100%));
+}
+
+.dark .bg-sidebar, 
+.navy .bg-sidebar,
+.wine .bg-sidebar,
+.forest .bg-sidebar {
+  /* Slightly more opaque on dark modes for readability */
+  --sidebar-opacity: 0.7;
+}
+
+/* Sidebar outward curve on the top-right edge */
+.sidebar-outward-curve [data-slot="sidebar-inner"] {
+  position: relative;
+  overflow: visible;
+}
+
+.sidebar-outward-curve [data-slot="sidebar-inner"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background-color: inherit;
+  pointer-events: none;
+}
+
+/* ============================================
    Yjs Remote Cursor Styling (y-monaco)
    ============================================ */
 

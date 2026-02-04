@@ -1,4 +1,4 @@
-import { useState, useEffect, type MouseEvent } from "react"
+import { useState, useEffect, useMemo, useCallback, type MouseEvent } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -41,13 +41,16 @@ export function PagesList() {
     )
 
     // Extract stored framework info
-    const storedFrameworkInfo = project?.frameworkInfo ? {
-        framework: project.frameworkInfo.framework,
-        devCommand: project.frameworkInfo.devCommand,
-        devPort: project.frameworkInfo.devPort,
-    } : null
+    const storedFrameworkInfo = useMemo(() => {
+        if (!project?.frameworkInfo) return null
+        return {
+            framework: project.frameworkInfo.framework,
+            devCommand: project.frameworkInfo.devCommand,
+            devPort: project.frameworkInfo.devPort,
+        }
+    }, [project?.frameworkInfo])
 
-    const refreshRoutes = async () => {
+    const refreshRoutes = useCallback(async () => {
         if (!projectPath) return
 
         setIsLoading(true)
@@ -60,14 +63,14 @@ export function PagesList() {
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [projectPath, storedFrameworkInfo])
 
     // Scan routes when project loads
     useEffect(() => {
         if (projectPath) {
             refreshRoutes()
         }
-    }, [projectPath])
+    }, [projectPath, refreshRoutes])
 
     const handlePageClick = (index: number) => {
         // Navigate to the pages view with this route focused

@@ -37,7 +37,7 @@ export function SyncScreen({
 }: SyncScreenProps) {
   const { status, message, current, total, logs } = progress
   const summary = plan ? getSyncPlanSummary(plan) : null
-  const conflicts = plan?.conflicts ?? []
+  const conflicts = useMemo(() => plan?.conflicts ?? [], [plan])
 
   const [conflictResolutions, setConflictResolutions] = useState<Record<string, string>>({})
 

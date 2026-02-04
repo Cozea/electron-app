@@ -5,6 +5,8 @@ import { MonacoBinding } from 'y-monaco'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useMonacoTheme } from '@/hooks/useMonacoTheme'
+import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
+import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
 
 // Import Monaco workers for Vite
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -85,6 +87,10 @@ export function CollaborativeMonacoEditor({
 
       // Get or create the Y.Text for this file path
       const yText = yjsDoc.getFileText(path)
+      if (!yText) {
+        console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', path)
+        return
+      }
 
       // Initialize Y.Text content if empty and we have content from EditorStore
       if (yText.length === 0 && model?.currentContent) {
@@ -154,6 +160,17 @@ export function CollaborativeMonacoEditor({
     }
   }, [path])
 
+  useDiagnosticsFileSync({
+    projectPath: model?.projectPath,
+    filePath: path,
+    content: model?.currentContent ?? '',
+  })
+
+  useMonacoDiagnostics({
+    projectPath: model?.projectPath,
+    filePath: path,
+  })
+
   if (!model) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
@@ -162,10 +179,13 @@ export function CollaborativeMonacoEditor({
     )
   }
 
+  const modelPath = monaco.Uri.file(path).toString()
+
   return (
     <Editor
       height="100%"
       language={model.language}
+      path={modelPath}
       // Don't set value prop - y-monaco manages content
       defaultValue={model.currentContent}
       theme={theme}

@@ -5,19 +5,26 @@ import path from 'node:path'
 import fs from 'node:fs' // Used by DevServer logic
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
-import { runTool } from './tools'
+import { performance } from 'node:perf_hooks'
+import { cancelToolRuns, runTool } from './tools'
+import { autoUpdater } from 'electron-updater'
 import { BRIDGE_SCRIPT } from '../shared/previewBridgeScript'
 import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import * as pty from 'node-pty' // Still used for DevServer PTY
 import { resolvePathWithinDirectory } from './pathUtils'
 import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from './projectWatcher'
+import { createApplicationMenu } from './menu'
+import { getManifestFromWorker } from './workers/fileOpsManager'
 
 // Services
 import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { DatabaseService } from './services/DatabaseService'
+import { PerformanceService, type PerfBatch } from './services/PerformanceService'
+import { DiagnosticsService } from './services/DiagnosticsService'
+import { DependenciesService } from './services/DependenciesService'
 
 // xxhash instance for file hashing
 // The hasher object contains h64Raw for direct hashing of Uint8Array
@@ -33,6 +40,7 @@ const devServerProcesses = new Map<string, pty.IPty>()
 // Logic moved to TerminalService
 
 const execAsync = promisify(exec)
+const mainStart = performance.now()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -42,15 +50,11 @@ process.env.APP_ROOT = path.join(__dirname, '..')
 export const VITE_DEV_SERVER_URL =
   process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
 
-// Determine if this is a production build (not running with dev server)
-const isProductionBuild = !VITE_DEV_SERVER_URL
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'out/main')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'out/renderer')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-// Auth configuration
-const AUTH_SERVER_URL = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 const PROTOCOL = 'cozea'
 
 // Default settings
@@ -59,14 +63,8 @@ interface AppSettings {
 }
 
 // Lazy-loaded paths (app.getPath not available at module load time in ESM)
-let _sessionPath: string | null = null
 let _settingsPath: string | null = null
 let _defaultSettings: AppSettings | null = null
-
-function getSessionPath(): string {
-  if (!_sessionPath) _sessionPath = path.join(app.getPath('userData'), 'session.enc')
-  return _sessionPath
-}
 
 function getSettingsPath(): string {
   if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -105,6 +103,150 @@ function saveSettings(settings: Partial<AppSettings>): void {
 }
 
 let win: InstanceType<typeof BrowserWindow> | null
+const performanceService = PerformanceService.getInstance()
+
+type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+
+interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+interface UpdateState {
+  status: UpdateStatus
+  version?: string
+  releaseName?: string
+  releaseNotes?: string
+  progress?: UpdateProgress
+  error?: string
+}
+
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+let updateState: UpdateState = { status: 'idle' }
+let updateInterval: NodeJS.Timeout | null = null
+
+const isAutoUpdateEnabled = () => app.isPackaged
+
+function broadcastUpdateState(state: UpdateState): void {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('updates:status', state)
+  })
+}
+
+function setUpdateState(next: Partial<UpdateState>): void {
+  updateState = { ...updateState, ...next }
+  broadcastUpdateState(updateState)
+}
+
+function normalizeReleaseNotes(releaseNotes: unknown): string | undefined {
+  if (!releaseNotes) return undefined
+  if (typeof releaseNotes === 'string') return releaseNotes
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes
+      .map((note) => {
+        if (typeof note === 'string') return note
+        if (note && typeof note === 'object' && 'note' in note) {
+          return String((note as { note?: unknown }).note ?? '')
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  return String(releaseNotes)
+}
+
+function registerAutoUpdater(): void {
+  if (!isAutoUpdateEnabled()) return
+
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () => {
+    setUpdateState({ status: 'checking', error: undefined })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    setUpdateState({
+      status: 'available',
+      version: info?.version,
+      releaseName: info?.releaseName,
+      releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
+      error: undefined,
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    setUpdateState({ status: 'not-available', error: undefined, progress: undefined })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    setUpdateState({
+      status: 'downloading',
+      progress: {
+        percent: progress.percent,
+        transferred: progress.transferred,
+        total: progress.total,
+        bytesPerSecond: progress.bytesPerSecond,
+      },
+      error: undefined,
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdateState({
+      status: 'downloaded',
+      version: info?.version,
+      releaseName: info?.releaseName,
+      releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
+      error: undefined,
+      progress: undefined,
+    })
+  })
+
+  autoUpdater.on('error', (err) => {
+    setUpdateState({
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+}
+
+async function checkForUpdates(): Promise<void> {
+  if (!isAutoUpdateEnabled()) return
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    setUpdateState({
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+function startUpdateChecks(): void {
+  if (!isAutoUpdateEnabled()) return
+  void checkForUpdates()
+  updateInterval = setInterval(() => {
+    void checkForUpdates()
+  }, UPDATE_CHECK_INTERVAL_MS)
+}
+
+function stopUpdateChecks(): void {
+  if (updateInterval) {
+    clearInterval(updateInterval)
+    updateInterval = null
+  }
+}
 
 // Session management logic moved to AuthService
 
@@ -260,19 +402,29 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    // Dynamic background color to prevent white flash
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#000000' : '#ffffff',
+    // Dynamic background color to prevent white flash - set to transparent for vibrancy
+    backgroundColor: undefined,
+    vibrancy: 'sidebar', // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
+    visualEffectState: 'active', // keep vibrancy active even when window is backgrounded
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 10 },
   })
+
+  // Set application menu
+  createApplicationMenu()
 
   // Register window state listeners
   mainWindowState.manage(win)
 
   // Show window when ready to prevent flickering
   win.once('ready-to-show', () => {
+    performanceService.recordMainMetric('window.ready_to_show', performance.now() - mainStart)
     win?.show()
     win?.focus()
+  })
+
+  win.webContents.once('did-finish-load', () => {
+    performanceService.recordMainMetric('window.did_finish_load', performance.now() - mainStart)
   })
 
   // Update background color on system theme change
@@ -295,10 +447,61 @@ AuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
+DiagnosticsService.getInstance().registerIpcHandlers()
+DependenciesService.getInstance().registerIpcHandlers()
+performanceService.start()
 
 // Local tool execution (agent runtime)
-ipcMain.handle('tools:run', async (_event, request: { name: string; input: Record<string, unknown> }) => {
+ipcMain.handle('tools:run', async (_event, request: {
+  name: string
+  input: Record<string, unknown>
+  projectPath?: string
+  runId?: string
+  toolCallId?: string
+}) => {
   return runTool(request)
+})
+
+ipcMain.handle('performance:report', async (_event, payload: PerfBatch) => {
+  return performanceService.reportRendererBatch(payload)
+})
+
+ipcMain.handle('tools:cancel', async (_event, request: { runId: string }) => {
+  return cancelToolRuns(request.runId)
+})
+
+// Auto-updater IPC handlers
+ipcMain.handle('updates:getState', () => updateState)
+
+ipcMain.handle('updates:check', async () => {
+  if (!isAutoUpdateEnabled()) return updateState
+  await checkForUpdates()
+  return updateState
+})
+
+ipcMain.handle('updates:download', async () => {
+  if (!isAutoUpdateEnabled()) return updateState
+  try {
+    await autoUpdater.downloadUpdate()
+  } catch (err) {
+    setUpdateState({
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return updateState
+})
+
+ipcMain.handle('updates:install', async () => {
+  if (!isAutoUpdateEnabled()) {
+    return { success: false, error: 'Updates are disabled in development builds.' }
+  }
+  try {
+    autoUpdater.quitAndInstall()
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
 })
 
 // Open URL in system browser
@@ -1038,6 +1241,95 @@ ipcMain.handle(
   }
 )
 
+// Delete a file or directory within project folder
+ipcMain.handle(
+  'project:deletePath',
+  async (
+    _event,
+    {
+      projectPath,
+      targetPath,
+    }: {
+      projectPath: string
+      targetPath: string
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const fullPath = resolvePathWithinDirectory(projectPath, targetPath)
+
+      if (!fs.existsSync(fullPath)) {
+        return { success: false, error: 'Target not found' }
+      }
+
+      const stats = fs.statSync(fullPath)
+      if (stats.isDirectory()) {
+        fs.rmSync(fullPath, { recursive: true, force: true })
+      } else {
+        fs.unlinkSync(fullPath)
+      }
+
+      console.log(`[Project] Deleted: ${targetPath}`)
+      return { success: true }
+    } catch (error) {
+      console.error('[Project] Failed to delete path:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
+// Copy a file or directory within project folder
+ipcMain.handle(
+  'project:copyPath',
+  async (
+    _event,
+    {
+      projectPath,
+      sourcePath,
+      destinationPath,
+    }: {
+      projectPath: string
+      sourcePath: string
+      destinationPath: string
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const fullSource = resolvePathWithinDirectory(projectPath, sourcePath)
+      const fullDestination = resolvePathWithinDirectory(projectPath, destinationPath)
+
+      if (!fs.existsSync(fullSource)) {
+        return { success: false, error: 'Source not found' }
+      }
+      if (fs.existsSync(fullDestination)) {
+        return { success: false, error: 'Destination already exists' }
+      }
+
+      const destinationDir = path.dirname(fullDestination)
+      if (!fs.existsSync(destinationDir)) {
+        fs.mkdirSync(destinationDir, { recursive: true })
+      }
+
+      const stats = fs.statSync(fullSource)
+      if (stats.isDirectory()) {
+        fs.cpSync(fullSource, fullDestination, { recursive: true })
+      } else {
+        fs.copyFileSync(fullSource, fullDestination)
+      }
+
+      console.log(`[Project] Copied: ${sourcePath} -> ${destinationPath}`)
+      return { success: true }
+    } catch (error) {
+      console.error('[Project] Failed to copy path:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+)
+
 // Watch/unwatch a project folder for external filesystem edits.
 ipcMain.handle(
   'project:watchStart',
@@ -1074,11 +1366,6 @@ ipcMain.handle(
       const result: FileEntry[] = []
 
       for (const entry of entries) {
-        // Skip hidden files and common non-essential directories
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
-          continue
-        }
-
         const fullPath = path.join(dirPath, entry.name)
         const isDirectory = entry.isDirectory()
 
@@ -1156,6 +1443,12 @@ ipcMain.handle(
     manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
     totalFiles: number
   }> => {
+    try {
+      return await getManifestFromWorker(projectPath, excludePatterns)
+    } catch (error) {
+      console.warn('[Sync] Worker manifest failed, falling back to main thread:', error)
+    }
+
     if (!xxhasher) throw new Error('xxhash not initialized')
 
     const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
@@ -1511,6 +1804,114 @@ ipcMain.handle(
   }
 )
 
+ipcMain.handle(
+  'contextMenu:showFileTreeMenu',
+  async (
+    event,
+    {
+      targetPath,
+      isDirectory,
+      x,
+      y,
+    }: { targetPath: string; isDirectory: boolean; x: number; y: number }
+  ): Promise<{ action: string | null }> => {
+    return new Promise((resolve) => {
+      let resolved = false
+      const window = BrowserWindow.fromWebContents(event.sender) ?? win
+      const revealLabel =
+        process.platform === 'darwin'
+          ? 'Reveal in Finder'
+          : process.platform === 'win32'
+            ? 'Show in Explorer'
+            : 'Show in File Manager'
+
+      const template: Electron.MenuItemConstructorOptions[] = [
+        {
+          label: 'New File',
+          click: () => {
+            resolved = true
+            resolve({ action: 'new-file' })
+          },
+        },
+        {
+          label: 'New Folder',
+          click: () => {
+            resolved = true
+            resolve({ action: 'new-folder' })
+          },
+        },
+        {
+          label: 'Rename',
+          click: () => {
+            resolved = true
+            resolve({ action: 'rename' })
+          },
+        },
+        {
+          label: 'Duplicate',
+          click: () => {
+            resolved = true
+            resolve({ action: 'duplicate' })
+          },
+        },
+        {
+          label: 'Delete',
+          click: () => {
+            resolved = true
+            resolve({ action: 'delete' })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: revealLabel,
+          click: () => {
+            shell.showItemInFolder(targetPath)
+            resolved = true
+            resolve({ action: 'reveal' })
+          },
+        },
+        {
+          label: 'Copy Path',
+          click: () => {
+            clipboard.writeText(targetPath)
+            resolved = true
+            resolve({ action: 'copy-path' })
+          },
+        },
+        {
+          label: 'Copy Relative Path',
+          click: () => {
+            resolved = true
+            resolve({ action: 'copy-relative-path' })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: isDirectory ? 'Copy Folder Name' : 'Copy File Name',
+          click: () => {
+            clipboard.writeText(path.basename(targetPath))
+            resolved = true
+            resolve({ action: 'copy-name' })
+          },
+        },
+      ]
+
+      const menu = Menu.buildFromTemplate(template)
+
+      menu.popup({
+        window: window || undefined,
+        x,
+        y,
+        callback: () => {
+          if (!resolved) {
+            resolve({ action: null })
+          }
+        },
+      })
+    })
+  }
+)
+
 app.on('window-all-closed', () => {
   // Kill all running dev servers when app closes
   for (const [projectPath, ptyProcess] of devServerProcesses) {
@@ -1532,6 +1933,10 @@ app.on('window-all-closed', () => {
   }
 })
 
+app.on('before-quit', () => {
+  stopUpdateChecks()
+})
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
@@ -1539,11 +1944,12 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  performanceService.recordMainMetric('app.when_ready', performance.now() - mainStart)
   // Initialize xxhash for file sync
   xxhasher = await xxhashInit()
   console.log('[Sync] xxhash initialized')
 
+  registerAutoUpdater()
   createWindow()
+  startUpdateChecks()
 })
-
-

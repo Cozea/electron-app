@@ -24,15 +24,21 @@ import {
   type OrgMember,
 } from '../components/wizard'
 import { useWizardState, type CreationPath } from '../hooks/useWizardState'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
 import { detectFramework, detectPackageManager } from '../utils/projectDetector'
 import { scanForRoutes } from '../utils/routeScanner'
+import { computeSyncPlan, hasSyncOperations } from '@/lib/sync/syncEngine'
+import { executeSyncPlan } from '@/lib/sync/syncExecutor'
+import type { SyncExecutorResult } from '@/lib/sync/syncExecutor'
+import { saveLocalSyncHistory } from '@/lib/sync/syncHistory'
+import type { CloudFileEntry, LocalFileEntry } from '@/lib/sync/types'
 
 export function NewProject() {
   const { user, logout, convexUserId, currentOrganization } = useAuth()
   const navigate = useNavigate()
+  const convex = useConvex()
 
   // Get Convex org ID from currentOrganization (populated after Convex sync)
   const organizationId = currentOrganization?.convexOrgId as Id<"organizations"> | undefined
@@ -49,12 +55,19 @@ export function NewProject() {
   const [pendingPromptText, setPendingPromptText] = useState<string>('')
 
   // Repo import state
-  const [isImporting, setIsImporting] = useState(false)
+  const [importSyncState, setImportSyncState] = useState<'idle' | 'checking' | 'syncing' | 'ready' | 'error'>('idle')
+  const [importSyncMessage, setImportSyncMessage] = useState<string>('')
   const [isScanning, setIsScanning] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const isImporting = importSyncState !== 'idle' && importSyncState !== 'error'
 
   // Convex mutation for creating project
   const createProject = useMutation(api.projects.create)
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
+  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
+  const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
+  const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
+  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
 
   // Fetch organization members for the team step
   const orgMembersData = useQuery(
@@ -137,13 +150,19 @@ export function NewProject() {
     if (currentStepDef?.id === 'repo-source' && state.repoSource?.repoUrl) {
       setIsScanning(true)
       try {
+        const baseRepoSource = {
+          ...state.repoSource,
+          provider: state.repoSource.provider || 'github',
+          branch: state.repoSource.branch || 'main',
+        }
+
         let detectedStack: NonNullable<typeof state.repoSource.detectedStack> = {
           pageCount: 0,
           componentCount: 0,
         }
 
-        if (state.repoSource.provider === 'local') {
-          const projectPath = state.repoSource.repoUrl
+        if (baseRepoSource.provider === 'local') {
+          const projectPath = baseRepoSource.repoUrl
 
           // Detect framework
           const frameworkInfo = await detectFramework(projectPath)
@@ -217,7 +236,7 @@ export function NewProject() {
         }
 
         // Update repo source with detected stack
-        setRepoSource({ ...state.repoSource, detectedStack })
+        setRepoSource({ ...baseRepoSource, detectedStack })
         setIsScanning(false)
         nextStep()
       } catch (error) {
@@ -299,6 +318,102 @@ export function NewProject() {
     goToStep(stepIndex)
   }
 
+  const runInitialLocalSync = async (
+    projectId: Id<"projects">,
+    projectPath: string
+  ): Promise<SyncExecutorResult> => {
+    if (!convexUserId) {
+      throw new Error('Missing user for sync')
+    }
+
+    setImportSyncState('checking')
+    setImportSyncMessage('Checking files...')
+
+    const [localResult, cloudManifest] = await Promise.all([
+      window.electronAPI.sync.getLocalManifest({ projectPath }),
+      convex.query(api.projectFiles.getManifestForProject, { projectId }),
+    ])
+
+    const localFiles: LocalFileEntry[] = localResult.manifest
+    const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
+      _id: f._id,
+      path: f.path,
+      hash: f.hash,
+      size: f.size,
+      version: f.version,
+      storageId: f.storageId,
+      uploadedAt: f.uploadedAt,
+    }))
+
+    const plan = computeSyncPlan(localFiles, cloudFiles, undefined)
+
+    if (!hasSyncOperations(plan)) {
+      const now = Date.now()
+      saveLocalSyncHistory(projectId, {
+        lastSyncAt: now,
+        cloudPathsAtLastSync: cloudFiles.map((f) => f.path),
+      })
+      return {
+        success: true,
+        downloadedCount: 0,
+        uploadedCount: 0,
+        deletedCount: 0,
+        mergedCount: 0,
+      }
+    }
+
+    setImportSyncState('syncing')
+    setImportSyncMessage('Syncing files...')
+
+    await updateSyncStatus({
+      projectId,
+      userId: convexUserId,
+      status: 'syncing',
+    })
+
+    const result = await executeSyncPlan(plan, {
+      projectId,
+      userId: convexUserId,
+      projectPath,
+      onProgress: (progress) => {
+        if (progress.message) {
+          setImportSyncMessage(progress.message)
+        }
+      },
+      generateUploadUrl: () => generateUploadUrl({ projectId }),
+      saveFiles: (args) => saveFilesMutation(args),
+      markFilesDeleted: (args) => markFilesDeletedMutation(args),
+      getStorageUrl: async (storageId) => {
+        try {
+          return await convex.query(api.projectFiles.getFileUrl, { storageId })
+        } catch {
+          return null
+        }
+      },
+    })
+
+    await updateSyncStatus({
+      projectId,
+      userId: convexUserId,
+      status: result.success ? 'synced' : 'error',
+      errorMessage: result.error,
+    })
+
+    if (result.success) {
+      const now = Date.now()
+      const cloudPaths = new Set(cloudFiles.map((f) => f.path))
+      for (const op of plan.uploads) cloudPaths.add(op.path)
+      for (const op of plan.cloudDeletes) cloudPaths.delete(op.path)
+      for (const op of plan.autoMerged ?? []) cloudPaths.add(op.path)
+      saveLocalSyncHistory(projectId, {
+        lastSyncAt: now,
+        cloudPathsAtLastSync: cloudPaths,
+      })
+    }
+
+    return result
+  }
+
   // Handle repo import from ReviewStep button
   const handleImportProject = async () => {
     if (!organizationId || !convexUserId) {
@@ -306,9 +421,35 @@ export function NewProject() {
       return
     }
 
-    const repoName = state.repoSource?.repoUrl?.split('/').pop() || 'Imported Project'
-    console.log('[Import] Starting import:', { repoName, repoSource: state.repoSource })
-    setIsImporting(true)
+    setImportError(null)
+    setImportSyncState('checking')
+    setImportSyncMessage('Preparing project...')
+
+    const repoSource = state.repoSource
+      ? {
+        ...state.repoSource,
+        provider: state.repoSource.provider || 'github',
+        branch: state.repoSource.branch || 'main',
+      }
+      : null
+
+    if (!repoSource?.repoUrl) {
+      setImportError('Please select a repository before importing.')
+      setImportSyncState('error')
+      setImportSyncMessage('Repository required')
+      return
+    }
+
+    if (!repoSource.provider || !repoSource.branch) {
+      setImportError('Repository provider and branch are required.')
+      setImportSyncState('error')
+      setImportSyncMessage('Repository details required')
+      return
+    }
+
+    const repoName = repoSource.repoUrl.split(/[/\\]/).pop() || 'Imported Project'
+    console.log('[Import] Starting import:', { repoName, repoSource })
+    setImportSyncMessage('Creating project...')
 
     try {
       console.log('[Import] Calling createProject mutation...')
@@ -317,20 +458,51 @@ export function NewProject() {
         userId: convexUserId,
         name: repoName,
         creationPath: 'repo',
-        repoSource: state.repoSource,
+        repoSource,
       })
       console.log('[Import] Project created:', result)
 
+      if (repoSource.provider === 'local') {
+        try {
+          const syncResult = await runInitialLocalSync(result.projectId, repoSource.repoUrl)
+          if (!syncResult.success) {
+            const syncMessage = syncResult.error ?? 'Initial sync failed'
+            setImportSyncState('error')
+            setImportSyncMessage(syncMessage)
+            setImportError(syncMessage)
+            return
+          }
+        } catch (syncError) {
+          const syncMessage =
+            syncError instanceof Error ? syncError.message : 'Initial sync failed'
+          setImportSyncState('error')
+          setImportSyncMessage(syncMessage)
+          setImportError(syncMessage)
+          return
+        }
+      }
+
       if (result.slug) {
-        console.log('[Import] Navigating to:', `/projects/${result.slug}`)
-        navigate(`/projects/${result.slug}`)
+        setImportSyncState('ready')
+        setImportSyncMessage('Opening project...')
+        setTimeout(() => {
+          console.log('[Import] Navigating to:', `/projects/${result.slug}`)
+          navigate(`/projects/${result.slug}`)
+          setImportSyncState('idle')
+          setImportSyncMessage('')
+        }, 200)
       } else {
         console.error('[Import] No slug returned from createProject')
+        setImportSyncState('error')
+        setImportSyncMessage('Project created but no slug was returned.')
+        setImportError('Project created but no slug was returned.')
       }
     } catch (error) {
       console.error('[Import] Failed to create project:', error)
-    } finally {
-      setIsImporting(false)
+      const message = error instanceof Error ? error.message : 'Failed to create project'
+      setImportError(message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, ''))
+      setImportSyncState('error')
+      setImportSyncMessage('Import failed')
     }
   }
 
@@ -396,6 +568,9 @@ export function NewProject() {
             onEditStep={handleEditStep}
             onImport={state.path === 'repo' ? handleImportProject : undefined}
             isImporting={isImporting}
+            importError={importError}
+            importSyncState={importSyncState}
+            importSyncMessage={importSyncMessage}
           />
         )
 
@@ -436,7 +611,12 @@ export function NewProject() {
           <RepoSourceStep
             repoSource={state.repoSource}
             onUpdate={(partial) => {
-              setRepoSource({ ...state.repoSource, ...partial } as any)
+              const baseRepoSource = state.repoSource ?? {
+                provider: 'github',
+                repoUrl: '',
+                branch: 'main',
+              }
+              setRepoSource({ ...baseRepoSource, ...partial })
             }}
           />
         )

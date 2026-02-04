@@ -8,6 +8,31 @@ export interface AppSettings {
   projectsDirectory: string
 }
 
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+
+export interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface UpdateState {
+  status: UpdateStatus
+  version?: string
+  releaseName?: string
+  releaseNotes?: string
+  progress?: UpdateProgress
+  error?: string
+}
+
 export interface StorageUsage {
   projects: number
   dependencies: number
@@ -70,6 +95,11 @@ export interface PreviewCaptureScreenshotResult {
 }
 
 export interface WatchProjectResult {
+  success: boolean
+  error?: string
+}
+
+export interface ProjectOperationResult {
   success: boolean
   error?: string
 }
@@ -180,6 +210,29 @@ export interface DbFirestoreListDocumentsResult {
   error?: string
 }
 
+export interface PerfHistogram {
+  buckets: number[]
+  counts: number[]
+  count: number
+  sum: number
+  max: number
+}
+
+export interface PerfMetric {
+  name: string
+  unit: 'ms'
+  histogram: PerfHistogram
+  tags?: Record<string, string>
+}
+
+export interface PerfBatch {
+  sessionId: string
+  source: 'renderer'
+  timestamp: number
+  metrics: PerfMetric[]
+  context?: Record<string, string>
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   auth: {
@@ -248,7 +301,14 @@ export interface ElectronAPI {
     }) => Promise<DbFirestoreListDocumentsResult>
   }
   tools: {
-    run: (request: { name: string; input: Record<string, unknown>; projectPath?: string }) => Promise<{ success: boolean; output?: unknown; error?: string }>
+    run: (request: {
+      name: string
+      input: Record<string, unknown>
+      projectPath?: string
+      runId?: string
+      toolCallId?: string
+    }) => Promise<{ success: boolean; output?: unknown; error?: string }>
+    cancel: (request: { runId: string }) => Promise<{ success: boolean; canceled?: number; error?: string }>
   }
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean }>
@@ -280,6 +340,9 @@ export interface ElectronAPI {
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
+    renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<{ success: boolean; error?: string }>
+    deletePath: (options: { projectPath: string; targetPath: string }) => Promise<ProjectOperationResult>
+    copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<ProjectOperationResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
@@ -328,6 +391,97 @@ export interface ElectronAPI {
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
+    showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) =>
+      Promise<{ action: string | null }>
+  }
+  updates: {
+    check: () => Promise<UpdateState>
+    download: () => Promise<UpdateState>
+    install: () => Promise<{ success: boolean; error?: string }>
+    getState: () => Promise<UpdateState>
+    onStatus: (callback: (state: UpdateState) => void) => () => void
+  }
+  performance: {
+    report: (payload: PerfBatch) => Promise<{ success: boolean }>
+  }
+  dependencies: {
+    inspect: (options: { projectPath: string }) => Promise<{ success: boolean; snapshot?: {
+      items: Array<{
+        name: string
+        type: 'dependency' | 'devDependency' | 'optionalDependency' | 'peerDependency'
+        declared: string
+        installed?: string
+        wanted?: string
+        latest?: string
+        status: 'upToDate' | 'outdated' | 'missing' | 'unknown'
+      }>
+      pm: 'npm' | 'yarn' | 'pnpm' | 'bun'
+      lastCheckedAt: number
+      error?: string
+    }; error?: string }>
+    run: (options: {
+      projectPath: string
+      action: 'add' | 'update' | 'remove'
+      packageName: string
+      version?: string
+      dev?: boolean
+      updateMode?: 'latest' | 'range'
+    }) => Promise<{ success: boolean; jobId?: string; error?: string }>
+    searchRegistry: (options: { query: string; size?: number }) => Promise<{ success: boolean; results?: {
+      objects: Array<{
+        package: {
+          name: string
+          version: string
+          description?: string
+          links?: Record<string, string>
+        }
+        score?: { final?: number }
+        searchScore?: number
+      }>
+      total?: number
+    }; error?: string }>
+    fetchPackageMeta: (options: { names: string[] }) => Promise<{ success: boolean; results?: Record<string, { latest?: string; description?: string }> }>
+    onJobStatus: (callback: (payload: {
+      projectPath: string
+      job: {
+        id: string
+        action: 'add' | 'update' | 'remove'
+        packageName: string
+        status: 'running' | 'success' | 'error'
+        startedAt: number
+        finishedAt?: number
+        stdout?: string
+        stderr?: string
+        error?: string
+      }
+    }) => void) => () => void
+  }
+  diagnostics: {
+    start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    openFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
+    updateFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
+    closeFile: (options: { projectPath: string; filePath: string }) => Promise<{ success: boolean; error?: string }>
+    refresh: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    onDiagnostics: (
+      callback: (payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => void
+    ) => () => void
   }
 }
 

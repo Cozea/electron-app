@@ -62,7 +62,6 @@ const FRAMEWORK_ICONS: Record<string, React.ComponentType<{ className?: string }
 
 export function RepoScanStep({
   repoSource,
-  projectSlug,
   onScanComplete,
 }: RepoScanStepProps) {
   const [phase, setPhase] = useState<ScanPhase>('idle')
@@ -221,7 +220,7 @@ export function RepoScanStep({
       setPhase('error')
       setStatusMessage('')
     }
-  }, [repoSource, projectSlug, onScanComplete])
+  }, [repoSource, onScanComplete])
 
   // Auto-start scan when component mounts
   useEffect(() => {
@@ -248,7 +247,7 @@ export function RepoScanStep({
       </div>
 
       {/* Progress Section */}
-      {(phase === 'cloning' || phase === 'scanning') && (
+      {(phase === 'copying' || phase === 'scanning') && (
         <div className="space-y-4">
           <Progress value={progress} className="h-2" />
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">

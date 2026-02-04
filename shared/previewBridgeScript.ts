@@ -42,6 +42,8 @@ export const BRIDGE_SCRIPT = `
   let selectedOverlay = null;
   let currentSelectedElement = null;
   let lastContextMenuTime = 0;
+  let selectedTrackRaf = null;
+  let lastSelectedRect = null;
 
   // Create highlight overlay element
   function createOverlay(id, color) {
@@ -69,6 +71,46 @@ export const BRIDGE_SCRIPT = `
     overlay.style.top = rect.y + 'px';
     overlay.style.width = rect.width + 'px';
     overlay.style.height = rect.height + 'px';
+  }
+
+  function updateSelectedOverlay() {
+    if (!currentSelectedElement || !selectedOverlay) return;
+    const rect = currentSelectedElement.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      selectedOverlay.style.display = 'none';
+      return;
+    }
+    if (
+      !lastSelectedRect ||
+      rect.x !== lastSelectedRect.x ||
+      rect.y !== lastSelectedRect.y ||
+      rect.width !== lastSelectedRect.width ||
+      rect.height !== lastSelectedRect.height
+    ) {
+      positionOverlay(selectedOverlay, rect);
+      lastSelectedRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }
+  }
+
+  function startSelectionTracking() {
+    if (selectedTrackRaf) return;
+    const tick = () => {
+      if (!inspectorEnabled || !currentSelectedElement) {
+        selectedTrackRaf = null;
+        return;
+      }
+      updateSelectedOverlay();
+      selectedTrackRaf = requestAnimationFrame(tick);
+    };
+    selectedTrackRaf = requestAnimationFrame(tick);
+  }
+
+  function stopSelectionTracking() {
+    if (selectedTrackRaf) {
+      cancelAnimationFrame(selectedTrackRaf);
+      selectedTrackRaf = null;
+    }
+    lastSelectedRect = null;
   }
 
   // Generate CSS selector for element
@@ -199,9 +241,106 @@ export const BRIDGE_SCRIPT = `
     }
   }
 
+  function formatConsoleArg(arg) {
+    if (arg instanceof Error) {
+      return { message: arg.message || 'Error', stack: arg.stack || '' };
+    }
+    if (typeof arg === 'string') {
+      return { message: arg, stack: '' };
+    }
+    try {
+      return { message: JSON.stringify(arg), stack: '' };
+    } catch (_err) {
+      return { message: String(arg), stack: '' };
+    }
+  }
+
+  function emitConsole(level, args) {
+    try {
+      const parts = [];
+      let stack = '';
+      for (const arg of args) {
+        const formatted = formatConsoleArg(arg);
+        parts.push(formatted.message);
+        if (!stack && formatted.stack) stack = formatted.stack;
+      }
+      const message = parts.join(' ').trim();
+      if (!message) return;
+      postToParent({
+        type: 'bridge:console',
+        payload: { level, message, stack }
+      });
+    } catch (_err) {
+      // ignore
+    }
+  }
+
+  // Forward console errors/warnings to host
+  try {
+    const originalConsoleError = console.error.bind(console);
+    console.error = function(...args) {
+      originalConsoleError(...args);
+      emitConsole('error', args);
+    };
+    const originalConsoleWarn = console.warn.bind(console);
+    console.warn = function(...args) {
+      originalConsoleWarn(...args);
+      emitConsole('warn', args);
+    };
+    const originalConsoleInfo = console.info.bind(console);
+    console.info = function(...args) {
+      originalConsoleInfo(...args);
+      emitConsole('info', args);
+    };
+  } catch (_err) {
+    // ignore
+  }
+
+  // Forward runtime errors to host
+  window.addEventListener('error', function(event) {
+    try {
+      const error = event.error;
+      postToParent({
+        type: 'bridge:runtime-error',
+        payload: {
+          message: event.message || (error && error.message) || 'Runtime error',
+          stack: error && error.stack ? error.stack : '',
+          filename: event.filename || '',
+          line: event.lineno || null,
+          column: event.colno || null
+        }
+      });
+    } catch (_err) {
+      // ignore
+    }
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    try {
+      const reason = event.reason;
+      const formatted = formatConsoleArg(reason);
+      postToParent({
+        type: 'bridge:runtime-error',
+        payload: {
+          message: formatted.message || 'Unhandled promise rejection',
+          stack: formatted.stack || '',
+          filename: '',
+          line: null,
+          column: null
+        }
+      });
+    } catch (_err) {
+      // ignore
+    }
+  });
+
   // Handle mouse move during inspection
   function handleMouseMove(e) {
     if (!inspectorEnabled) return;
+    if (currentSelectedElement) {
+      if (highlightOverlay) highlightOverlay.style.display = 'none';
+      return;
+    }
 
     const el = document.elementFromPoint(e.clientX, e.clientY);
     if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
@@ -219,6 +358,10 @@ export const BRIDGE_SCRIPT = `
     });
   }
 
+  function hideHoverOverlay() {
+    if (highlightOverlay) highlightOverlay.style.display = 'none';
+  }
+
   // Handle click during inspection
   function handleClick(e) {
     if (!inspectorEnabled) return;
@@ -228,6 +371,11 @@ export const BRIDGE_SCRIPT = `
 
     const el = document.elementFromPoint(e.clientX, e.clientY);
     if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+    if (currentSelectedElement === el) {
+      clearSelection();
+      postToParent({ type: 'bridge:selection-cleared' });
+      return;
+    }
 
     currentSelectedElement = el;
     const rect = el.getBoundingClientRect();
@@ -235,6 +383,7 @@ export const BRIDGE_SCRIPT = `
     // Show selection overlay, hide hover
     positionOverlay(selectedOverlay, rect);
     if (highlightOverlay) highlightOverlay.style.display = 'none';
+    startSelectionTracking();
 
     postToParent({
       type: 'bridge:element-selected',
@@ -273,6 +422,7 @@ export const BRIDGE_SCRIPT = `
     // Show selection overlay, hide hover
     positionOverlay(selectedOverlay, rect);
     if (highlightOverlay) highlightOverlay.style.display = 'none';
+    startSelectionTracking();
 
     postToParent({
       type: 'bridge:element-contextmenu',
@@ -369,6 +519,7 @@ export const BRIDGE_SCRIPT = `
     currentSelectedElement = null;
     if (selectedOverlay) selectedOverlay.style.display = 'none';
     if (highlightOverlay) highlightOverlay.style.display = 'none';
+    stopSelectionTracking();
   }
 
   // Listen for messages from parent
@@ -422,6 +573,24 @@ export const BRIDGE_SCRIPT = `
   document.addEventListener('mousemove', handleMouseMove, true);
   document.addEventListener('click', handleClick, true);
   document.addEventListener('contextmenu', handleContextMenu, true);
+  document.addEventListener('mouseleave', () => {
+    if (!inspectorEnabled || currentSelectedElement) return;
+    hideHoverOverlay();
+  }, true);
+  document.addEventListener('mouseout', (e) => {
+    if (!inspectorEnabled || currentSelectedElement) return;
+    if (!e.relatedTarget) {
+      hideHoverOverlay();
+    }
+  }, true);
+  window.addEventListener('scroll', () => {
+    if (!inspectorEnabled || currentSelectedElement) return;
+    hideHoverOverlay();
+  }, true);
+  window.addEventListener('blur', () => {
+    if (!inspectorEnabled || currentSelectedElement) return;
+    hideHoverOverlay();
+  });
 
   // Prevent default on click during inspection
   document.addEventListener('click', (e) => {

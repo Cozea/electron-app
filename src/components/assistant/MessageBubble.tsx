@@ -44,7 +44,7 @@ export interface MessageBubbleProps {
   toolsByName: Map<string, MessageToolMeta>
   status: 'ready' | 'submitted' | 'streaming' | 'error'
   shouldRequireLocalApproval?: (toolMeta?: MessageToolMeta) => boolean
-  onApproveTool?: (toolName: string, toolCallId: string, input: any, approvalId?: string) => void
+  onApproveTool?: (toolName: string, toolCallId: string, input: unknown, approvalId?: string) => void
   onDenyTool?: (toolName: string, toolCallId: string, approvalId?: string) => void
   // For live terminal rendering
   terminalSessions?: Map<string, string> // toolCallId -> terminalId
@@ -56,6 +56,39 @@ interface ExtractedSource {
   title: string
   favicon?: string
 }
+
+interface ToolPart {
+  type: string
+  toolCallId?: string
+  toolName?: string
+  state?: string
+  input?: Record<string, unknown>
+  output?: unknown
+  errorText?: string
+  approval?: { id?: string }
+}
+
+interface ReasoningPart {
+  duration?: number
+  text?: string
+}
+
+interface ErrorPart {
+  error?: string
+  message?: string
+  text?: string
+}
+
+interface SourcePart {
+  url?: string
+  uri?: string
+  title?: string
+  favicon?: string
+  source?: { url?: string; title?: string }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export function MessageBubble({
   message,
@@ -89,7 +122,7 @@ export function MessageBubble({
           }
 
           if (part.type === 'reasoning') {
-            const reasoningPart = part as any
+            const reasoningPart = part as ReasoningPart
             // Only mark as streaming if this is the last reasoning block AND message is still streaming
             // If there are subsequent parts after this reasoning, it's already complete
             const hasSubsequentParts = message.parts.slice(index + 1).some(
@@ -108,52 +141,16 @@ export function MessageBubble({
             )
           }
 
-          if (part.type === 'data-usage') {
-            const usage = (part as any).data as {
-              model?: string
-              provider?: string
-              creditsUsed?: number
-              promptTokens?: number
-              completionTokens?: number
-              totalTokens?: number
-            } | undefined
 
-            if (!usage) return null
 
-            const stats: string[] = []
-            if (usage.creditsUsed !== undefined) {
-              stats.push(`${usage.creditsUsed} credits`)
-            }
-            if (usage.totalTokens !== undefined) {
-              stats.push(`${usage.totalTokens} tokens`)
-            } else if (
-              usage.promptTokens !== undefined &&
-              usage.completionTokens !== undefined
-            ) {
-              stats.push(`${usage.promptTokens + usage.completionTokens} tokens`)
-            }
-            if (usage.model) {
-              stats.push(usage.model)
-            }
-
-            if (stats.length === 0) return null
-
-            return (
-              <div
-                key={`${message.id}-usage-${index}`}
-                className="rounded-md bg-background/70 px-2 py-1 text-[11px] text-muted-foreground"
-              >
-                Usage: {stats.join(' · ')}
-              </div>
-            )
-          }
+          const partType = (part as { type?: string }).type
 
           // Handle error parts (data-error or error type)
-          if (part.type === 'error' || part.type === 'data-error') {
+          if (partType === 'error' || partType === 'data-error') {
             if (dismissedErrors.has(index)) {
               return null
             }
-            const errorPart = part as any
+            const errorPart = part as ErrorPart
             const errorMessage = errorPart.error || errorPart.message || errorPart.text || 'Error'
             return (
               <div
@@ -175,7 +172,7 @@ export function MessageBubble({
           }
 
           if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
-            const toolPart = part as any
+            const toolPart = part as ToolPart
             const toolName = part.type === 'dynamic-tool'
               ? toolPart.toolName
               : part.type.replace(/^tool-/, '')
@@ -412,31 +409,36 @@ function extractTerminalOutput(output: unknown): string {
 }
 
 function extractTasksFromInput(input: unknown): TaskData[] {
-  const payload = input as any
+  const payload = isRecord(input) ? input : null
   // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-  let tasks: any[] = []
-  if (Array.isArray(payload?.tasks)) {
+  let tasks: unknown[] = []
+  if (payload && Array.isArray(payload.tasks)) {
     tasks = payload.tasks
-  } else if (payload?.tasks_json) {
+  } else if (payload && typeof payload.tasks_json === 'string') {
     const parsed = parseJsonArrayLoose(payload.tasks_json)
     if (parsed) tasks = parsed
   }
   return tasks
-    .filter((task: any) => task && typeof task === 'object')
-    .map((task: any) => {
-      const title = task.title ?? task.content ?? 'Untitled task'
+    .filter(isRecord)
+    .map((task) => {
+      const titleValue = typeof task.title === 'string'
+        ? task.title
+        : typeof task.content === 'string'
+          ? task.content
+          : 'Untitled task'
+      const statusValue = typeof task.status === 'string' ? task.status : 'pending'
       return {
-        id: String(task.id ?? title ?? crypto.randomUUID()),
-        title: String(title),
-        status: (task.status ?? 'pending') as TaskData['status'],
-        files: Array.isArray(task.files) ? task.files.map((f: any) => String(f)) : undefined,
+        id: String(task.id ?? titleValue ?? crypto.randomUUID()),
+        title: String(titleValue),
+        status: statusValue as TaskData['status'],
+        files: Array.isArray(task.files) ? task.files.map((f) => String(f)) : undefined,
         details: task.activeForm ? String(task.activeForm) : undefined,
       }
     })
 }
 
 function extractTasksFromToolOutput(output: unknown): TaskData[] {
-  let payload = output as any
+  let payload: unknown = output
   if (typeof payload === 'string') {
     try {
       payload = JSON.parse(payload)
@@ -445,16 +447,22 @@ function extractTasksFromToolOutput(output: unknown): TaskData[] {
     }
   }
 
-  const tasks = Array.isArray(payload?.tasks) ? payload.tasks : []
+  const taskContainer = isRecord(payload) ? payload : null
+  const tasks = Array.isArray(taskContainer?.tasks) ? taskContainer?.tasks : []
   return tasks
-    .filter((task: any) => task && typeof task === 'object')
-    .map((task: any) => {
-      const title = task.title ?? task.content ?? 'Untitled task'
+    .filter(isRecord)
+    .map((task) => {
+      const titleValue = typeof task.title === 'string'
+        ? task.title
+        : typeof task.content === 'string'
+          ? task.content
+          : 'Untitled task'
+      const statusValue = typeof task.status === 'string' ? task.status : 'pending'
       return {
-        id: String(task.id ?? title ?? crypto.randomUUID()),
-        title: String(title),
-        status: (task.status ?? 'pending') as TaskData['status'],
-        files: Array.isArray(task.files) ? task.files.map((f: any) => String(f)) : undefined,
+        id: String(task.id ?? titleValue ?? crypto.randomUUID()),
+        title: String(titleValue),
+        status: statusValue as TaskData['status'],
+        files: Array.isArray(task.files) ? task.files.map((f) => String(f)) : undefined,
         details: task.activeForm ? String(task.activeForm) : undefined,
       }
     })
@@ -465,7 +473,7 @@ function extractSourcesFromParts(parts: UIMessage['parts']): ExtractedSource[] {
   for (const part of parts) {
     // Check for source-url type or any source-like part
     if (part.type !== 'source-url' && !part.type.startsWith('source')) continue
-    const sourcePart = part as any
+    const sourcePart = part as SourcePart
     const url = sourcePart.url || sourcePart.uri || sourcePart.source?.url
     if (!url) continue
     sources.push({
@@ -509,37 +517,36 @@ function extractSourcesFromToolOutput(output: unknown, toolName: string): Extrac
         })
       }
     } else if (Array.isArray(output)) {
-      output.forEach((item: any) => {
-        if (item?.url) {
-          sources.push({
-            url: item.url,
-            title: item.title || item.name || new URL(item.url).hostname,
-            favicon: item.favicon || item.icon,
-          })
-        } else if (item?.link) {
-          sources.push({
-            url: item.link,
-            title: item.title || item.name || new URL(item.link).hostname,
-            favicon: item.favicon || item.icon,
-          })
-        }
+      output.forEach((item) => {
+        if (!isRecord(item)) return
+        const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : null
+        if (!url) return
+        sources.push({
+          url,
+          title: (typeof item.title === 'string' && item.title)
+            || (typeof item.name === 'string' && item.name)
+            || new URL(url).hostname,
+          favicon: typeof item.favicon === 'string' ? item.favicon : typeof item.icon === 'string' ? item.icon : undefined,
+        })
       })
     } else if (typeof output === 'object' && output !== null) {
-      const obj = output as Record<string, any>
-      if (obj.results && Array.isArray(obj.results)) {
+      const obj = output as Record<string, unknown>
+      if (Array.isArray(obj.results)) {
         return extractSourcesFromToolOutput(obj.results, toolName)
       }
-      if (obj.sources && Array.isArray(obj.sources)) {
+      if (Array.isArray(obj.sources)) {
         return extractSourcesFromToolOutput(obj.sources, toolName)
       }
-      if (obj.organic && Array.isArray(obj.organic)) {
+      if (Array.isArray(obj.organic)) {
         return extractSourcesFromToolOutput(obj.organic, toolName)
       }
-      if (obj.url) {
+      if (typeof obj.url === 'string') {
         sources.push({
           url: obj.url,
-          title: obj.title || obj.name || new URL(obj.url).hostname,
-          favicon: obj.favicon || obj.icon,
+          title: (typeof obj.title === 'string' && obj.title)
+            || (typeof obj.name === 'string' && obj.name)
+            || new URL(obj.url).hostname,
+          favicon: typeof obj.favicon === 'string' ? obj.favicon : typeof obj.icon === 'string' ? obj.icon : undefined,
         })
       }
     }

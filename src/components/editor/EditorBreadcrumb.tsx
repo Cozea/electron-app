@@ -131,7 +131,16 @@ export function EditorBreadcrumb({ path, editorRef, projectPath, editorReady = f
       if (cancelled) return
 
       try {
-        const docSymbols = await monaco.languages.getDocumentSymbols(model)
+        const getDocumentSymbols = (monaco.languages as {
+          getDocumentSymbols?: (model: monaco.editor.ITextModel) => Promise<monaco.languages.DocumentSymbol[]>
+        }).getDocumentSymbols
+
+        if (!getDocumentSymbols) {
+          setSymbols([])
+          return
+        }
+
+        const docSymbols = await getDocumentSymbols(model)
         if (cancelled) return
 
         if (docSymbols && docSymbols.length > 0) {

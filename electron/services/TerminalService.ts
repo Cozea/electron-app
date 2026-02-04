@@ -1,7 +1,6 @@
 import { ipcMain } from 'electron'
 import * as pty from 'node-pty'
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 
 export interface TerminalProfile {
     id: string
@@ -223,7 +222,7 @@ export class TerminalService {
 
     // Cleanup all terminals (used on app exit)
     killAll() {
-        for (const [terminalId, terminal] of this.terminals) {
+        for (const terminal of this.terminals.values()) {
             try {
                 terminal.ptyProcess.kill()
             } catch {

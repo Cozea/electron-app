@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Users, X, AlertCircle, Plus, UserPlus, ChevronDown, Trash2 } from 'lucide-react'
+import { Users, X, AlertCircle, UserPlus, ChevronDown, Trash2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DropdownMenu,

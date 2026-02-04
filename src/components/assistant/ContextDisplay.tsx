@@ -18,7 +18,6 @@ import {
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // OpenAI - GPT-5.x series (400K context)
   "gpt-5.1": 400_000,
-  "gpt-5.1-mini": 400_000,
   "gpt-5.2": 400_000,
   // OpenAI - Legacy models
   "gpt-4o": 128_000,
@@ -45,9 +44,6 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // Google - Gemini 3 series (1M context)
   "gemini-3-flash": 1_000_000,
   "gemini-3-pro": 1_000_000,
-  // Google - Gemini 2.5 series
-  "gemini-2.5-flash": 1_000_000,
-  "gemini-2.5-pro": 1_000_000,
   // Google - Legacy models
   "gemini-2.0-flash-exp": 1_048_576,
   "gemini-2.0-flash": 1_048_576,

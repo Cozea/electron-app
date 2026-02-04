@@ -482,7 +482,7 @@ export const syncBuiltinTools = mutation({
         displayName: tool.displayName,
         description: tool.description,
         category: tool.category as "filesystem" | "web" | "code" | "data" | "custom",
-        provider: tool.provider as "anthropic" | "openai" | "google" | undefined,
+        provider: tool.provider as "anthropic" | "openai" | "google" | "xai" | undefined,
         inputSchema: tool.inputSchema,
         toolType: (tool.toolType ?? "function") as "function" | "provider",
         providerToolId: tool.providerToolId,

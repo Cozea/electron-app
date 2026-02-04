@@ -97,10 +97,10 @@ export function IntentStep({ intent, onUpdate }: IntentStepProps) {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-base font-medium">What does success look like?</Label>
+              <Label className="text-base font-medium">What does success look like?</Label>
             <Select
               value={intent.successCriteria || ''}
-              onValueChange={(value) => onUpdate({ successCriteria: value as any })}
+              onValueChange={(value) => onUpdate({ successCriteria: value as WizardIntent['successCriteria'] })}
             >
               <SelectTrigger className="h-11 bg-muted/30 border-muted/60 focus:bg-background transition-colors">
                 <SelectValue placeholder="Select success criteria" />

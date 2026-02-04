@@ -21,36 +21,8 @@ export interface CancellationToken {
   onCancellationRequested: (listener: () => void) => void
 }
 
-// Default patterns to exclude
-const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  '.next',
-  'coverage',
-  '__pycache__',
-  '.DS_Store',
-  '.cache',
-  '.turbo',
-  '.vercel',
-  '.output',
-  'out',
-]
-
-// Files that start with . but should be shown
-const ALLOWED_DOT_FILES = [
-  '.env',
-  '.env.local',
-  '.env.development',
-  '.env.production',
-  '.gitignore',
-  '.prettierrc',
-  '.eslintrc',
-  '.editorconfig',
-  '.npmrc',
-  '.nvmrc',
-]
+// Default patterns to exclude (empty = show everything)
+const DEFAULT_EXCLUDE_PATTERNS: string[] = []
 
 export class FileService {
   private readonly excludePatterns: Set<string>
@@ -73,9 +45,7 @@ export class FileService {
     }
 
     try {
-      console.log('[FileService] readDirectory called with path:', path)
       const entries = await window.electronAPI.fs.readDir(path)
-      console.log('[FileService] IPC returned entries:', entries.length, entries.map(e => e.name))
 
       // Filter out excluded patterns and map to ExplorerItemData
       const filtered = entries
@@ -88,7 +58,6 @@ export class FileService {
           size: entry.size,
         }))
 
-      console.log('[FileService] After filtering:', filtered.length, filtered.map(e => e.name))
       return filtered
     } catch (error) {
       console.error(`[FileService] Failed to read directory: ${path}`, error)
@@ -130,23 +99,7 @@ export class FileService {
    */
   private isExcluded(name: string): boolean {
     // Check against exclude patterns (exact match)
-    if (this.excludePatterns.has(name)) {
-      return true
-    }
-
-    // Handle dot files
-    if (name.startsWith('.')) {
-      // Allow specific dot files
-      if (ALLOWED_DOT_FILES.some(allowed =>
-        name === allowed || name.startsWith(allowed)
-      )) {
-        return false
-      }
-      // Exclude other dot files/folders
-      return true
-    }
-
-    return false
+    return this.excludePatterns.has(name)
   }
 
   /**

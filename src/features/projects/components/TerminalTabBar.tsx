@@ -10,6 +10,7 @@ import {
     X,
     Circle,
     AlertTriangle,
+    Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -22,6 +23,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 
 interface TerminalTabBarProps {
     activeView: "terminal" | "problems"
@@ -29,6 +31,8 @@ interface TerminalTabBarProps {
     problemCount?: number
     projectPath: string
     onClose?: () => void
+    problemsSearchQuery?: string
+    onProblemsSearchChange?: (query: string) => void
 }
 
 export function TerminalTabBar({
@@ -37,6 +41,8 @@ export function TerminalTabBar({
     problemCount = 0,
     projectPath,
     onClose,
+    problemsSearchQuery = "",
+    onProblemsSearchChange,
 }: TerminalTabBarProps) {
     // Use individual primitive selectors
     const terminals = useTerminalStore((s) => s.terminals)
@@ -192,6 +198,19 @@ export function TerminalTabBar({
                     )}
                 </button>
             </div>
+
+            {/* Search Bar (only for problems view) */}
+            {activeView === "problems" && (
+                <div className="relative w-48 mr-2 hidden sm:block">
+                    <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
+                    <Input
+                        value={problemsSearchQuery}
+                        onChange={(event) => onProblemsSearchChange?.(event.target.value)}
+                        placeholder="Filter (text or file)"
+                        className="h-6 pl-7 text-[11px] bg-background/50 border-input/50 focus-visible:bg-background"
+                    />
+                </div>
+            )}
 
             {/* Right: Controls */}
             <div className="flex items-center gap-0.5 pr-2 shrink-0">

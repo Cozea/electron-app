@@ -136,7 +136,7 @@ export const listByProject = query({
     category: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let assetsQuery = ctx.db
+    const assetsQuery = ctx.db
       .query("projectAssets")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
 

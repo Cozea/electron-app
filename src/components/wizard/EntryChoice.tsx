@@ -111,14 +111,6 @@ const defaultModels = [
     providers: ['openai'],
   },
   {
-    id: 'gpt-5.1-mini',
-    name: 'GPT-5.1 Mini',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    tier: 'standard',
-    providers: ['openai'],
-  },
-  {
     id: 'claude-sonnet-4-5',
     name: 'Claude Sonnet 4.5',
     chef: 'Anthropic',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { DependenciesAddDialog } from '../components/DependenciesAddDialog'
+import { useDependenciesStore, selectDependenciesSnapshot, selectDependencyJobs } from '@/stores/useDependenciesStore'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -32,6 +33,7 @@ import {
   ArrowUp,
   Trash2,
   MoreHorizontal,
+  List,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -42,23 +44,22 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ButtonGroup } from '@/components/ui/button-group'
 
-interface Dependency {
-  name: string
-  version: string
-  type: 'dependency' | 'devDependency'
-}
-
 export function ProjectDependenciesPage() {
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization } = useAuth()
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const [filter, setFilter] = useState<'all' | 'dependencies' | 'devDependencies'>('all')
-  const [isLoading, setIsLoading] = useState(false)
-  const [dependencies, setDependencies] = useState<Dependency[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'outdated' | 'missing'>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const ITEMS_PER_PAGE = 20
+
+  const snapshot = useDependenciesStore(selectDependenciesSnapshot(projectPath))
+  const jobs = useDependenciesStore(selectDependencyJobs(projectPath))
+  const dependencies = useMemo(() => snapshot?.items ?? [], [snapshot?.items])
+  const error = snapshot?.error ?? null
+  const runningJobs = jobs.filter((job) => job.status === 'running')
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -72,63 +73,15 @@ export function ProjectDependenciesPage() {
     convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
   )
 
-  const loadDependencies = useCallback(async () => {
-    if (!projectPath) return
+  const sortedDeps = useMemo(() => {
+    return [...dependencies].sort((a, b) => a.name.localeCompare(b.name))
+  }, [dependencies])
 
-    setIsLoading(true)
-    setError(null)
-    try {
-      const result = await window.electronAPI.project.readFile({
-        projectPath,
-        filePath: 'package.json',
-      })
-
-      if (result.success && result.content) {
-        try {
-          const pkg = JSON.parse(result.content)
-          const deps: Dependency[] = []
-
-          if (pkg.dependencies) {
-            Object.entries(pkg.dependencies).forEach(([name, version]) => {
-              deps.push({ name, version: version as string, type: 'dependency' })
-            })
-          }
-
-          if (pkg.devDependencies) {
-            Object.entries(pkg.devDependencies).forEach(([name, version]) => {
-              deps.push({ name, version: version as string, type: 'devDependency' })
-            })
-          }
-
-          // Sort alphabetically
-          deps.sort((a, b) => a.name.localeCompare(b.name))
-          setDependencies(deps)
-        } catch (e) {
-          setError('Failed to parse package.json')
-          console.error('Failed to parse package.json', e)
-        }
-      } else {
-        setError('package.json not found')
-        setDependencies([])
-      }
-    } catch (err) {
-      setError('Failed to read package.json')
-      console.error('Failed to read package.json', err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [projectPath])
-
-  // Initial load
-  useEffect(() => {
-    if (projectPath) {
-      loadDependencies()
-    }
-  }, [projectPath, loadDependencies])
-
-  const filteredDeps = dependencies.filter((dep) => {
-    if (filter === 'dependencies') return dep.type === 'dependency'
-    if (filter === 'devDependencies') return dep.type === 'devDependency'
+  const filteredDeps = sortedDeps.filter((dep) => {
+    if (filter === 'dependencies' && dep.type !== 'dependency') return false
+    if (filter === 'devDependencies' && dep.type !== 'devDependency') return false
+    if (statusFilter === 'outdated' && dep.status !== 'outdated') return false
+    if (statusFilter === 'missing' && dep.status !== 'missing') return false
     return true
   })
 
@@ -145,7 +98,7 @@ export function ProjectDependenciesPage() {
   // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [filter])
+  }, [filter, statusFilter])
 
   // Generate page numbers with ellipsis
   const getPageNumbers = () => {
@@ -164,6 +117,41 @@ export function ProjectDependenciesPage() {
     return pages
   }
 
+  const handleRefresh = useCallback(() => {
+    if (!projectPath || !window.electronAPI?.dependencies) return
+    void window.electronAPI.dependencies.inspect({ projectPath })
+  }, [projectPath])
+
+  const handleAdd = useCallback((name: string, options: { dev?: boolean; version?: string }) => {
+    if (!projectPath || !window.electronAPI?.dependencies) return
+    void window.electronAPI.dependencies.run({
+      projectPath,
+      action: 'add',
+      packageName: name,
+      version: options.version,
+      dev: options.dev,
+    })
+  }, [projectPath])
+
+  const handleUpdate = useCallback((name: string, updateMode: 'latest' | 'range') => {
+    if (!projectPath || !window.electronAPI?.dependencies) return
+    void window.electronAPI.dependencies.run({
+      projectPath,
+      action: 'update',
+      packageName: name,
+      updateMode,
+    })
+  }, [projectPath])
+
+  const handleRemove = useCallback((name: string) => {
+    if (!projectPath || !window.electronAPI?.dependencies) return
+    void window.electronAPI.dependencies.run({
+      projectPath,
+      action: 'remove',
+      packageName: name,
+    })
+  }, [projectPath])
+
   if (project === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -173,9 +161,9 @@ export function ProjectDependenciesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-sidebar/60">
-      {/* Header */}
-      <div className="sticky top-0 z-20 flex items-center justify-between px-4 pt-4 pb-2 bg-sidebar/60 backdrop-blur-md">
+    <div className="flex flex-col h-full bg-[var(--sidebar)]">
+      {/* Fixed Header */}
+      <div className="flex-none flex items-center justify-between px-4 pt-4 pb-4 bg-[var(--sidebar)] z-20">
         <h1 className="text-sm font-medium">Dependencies</h1>
 
         <div className="flex items-center gap-2">
@@ -196,26 +184,55 @@ export function ProjectDependenciesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={loadDependencies}
-              disabled={isLoading}
+              onClick={handleRefresh}
               className="rounded-l-none px-2"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           </ButtonGroup>
-          <Button size="sm" className="gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <List className="h-3.5 w-3.5" />
+                {statusFilter === 'all' ? 'All statuses' : statusFilter === 'outdated' ? 'Outdated' : 'Missing'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStatusFilter('all')}>All statuses</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('outdated')}>Outdated</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('missing')}>Missing</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" className="gap-2" onClick={() => setAddDialogOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Package
           </Button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="px-6 pt-2 pb-4 space-y-2">
+          <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <span>Package manager: {snapshot?.pm ?? 'unknown'}</span>
+            <span>•</span>
+            <span>
+              Last checked: {snapshot?.lastCheckedAt ? new Date(snapshot.lastCheckedAt).toLocaleString() : '—'}
+            </span>
+          </div>
+          {runningJobs.length > 0 && (
+            <Card className="p-3 text-xs flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <div>
+                Running {runningJobs.length} task{runningJobs.length > 1 ? 's' : ''}…
+              </div>
+            </Card>
+          )}
+        </div>
 
         {/* Error State */}
         {error && (
-          <Card className="p-4 mx-6 mt-6 mb-6 border-destructive/50 bg-destructive/10 text-destructive text-sm text-center">
+          <Card className="p-4 mx-6 mt-2 mb-6 border-destructive/50 bg-destructive/10 text-destructive text-sm text-center">
             {error}
           </Card>
         )}
@@ -230,65 +247,97 @@ export function ProjectDependenciesPage() {
             </p>
           </Card>
         ) : (
-          <Card className="border-0 shadow-none bg-transparent px-4">
-            <Table>
-              <TableHeader className="sticky top-0 z-10">
-                <TableRow>
-                  <TableHead className="w-[350px]">Package</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right w-[80px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedDeps.map((dep) => (
-                  <TableRow key={dep.name}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                        {dep.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {dep.version}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={dep.type === 'dependency' ? 'default' : 'secondary'}>
-                        {dep.type === 'dependency' ? 'prod' : 'dev'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <ArrowUp className="h-4 w-4 mr-2" />
-                            Update to Latest
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Uninstall
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+          <div className="px-4 pb-4">
+            <Card className="border-0 shadow-none bg-transparent">
+              <div className="relative w-full">
+                <table className="w-full caption-bottom text-sm">
+                  <TableHeader className="sticky top-0 z-10 bg-[var(--sidebar)] shadow-sm after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-12px] after:h-3 after:bg-gradient-to-b after:from-black/5 after:to-transparent after:pointer-events-none">
+                    <TableRow className="hover:bg-transparent border-b border-border/50">
+                      <TableHead className="w-[280px]">Package</TableHead>
+                      <TableHead>Declared</TableHead>
+                      <TableHead>Installed</TableHead>
+                      <TableHead>Latest</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right w-[80px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedDeps.map((dep) => (
+                      <TableRow key={dep.name} className="hover:bg-muted/50">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                            {dep.name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {dep.declared}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {dep.installed ?? '—'}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {dep.latest ?? '—'}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={dep.status === 'outdated' ? 'destructive' : dep.status === 'missing' ? 'secondary' : 'default'}>
+                            {dep.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={dep.type === 'dependency' ? 'default' : 'secondary'}>
+                            {dep.type === 'dependency'
+                              ? 'prod'
+                              : dep.type === 'devDependency'
+                              ? 'dev'
+                              : dep.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'latest')}>
+                                <ArrowUp className="h-4 w-4 mr-2" />
+                                Update to Latest
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'range')}>
+                                <ArrowUp className="h-4 w-4 mr-2" />
+                                Update within range
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(dep.name)}>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Uninstall
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </table>
+              </div>
+            </Card>
+          </div>
         )}
+      </div>
 
-        {/* Pagination */}
-        {filteredDeps.length > ITEMS_PER_PAGE && (
-          <div className="flex justify-center py-4">
+      {/* Fixed Footer Pagination */}
+      {filteredDeps.length > ITEMS_PER_PAGE && (
+        <div className="flex-none border-t border-border/50 bg-sidebar/50 backdrop-blur p-2">
+          <div className="flex justify-center">
             <Pagination>
               <PaginationContent>
                 <PaginationItem>
@@ -305,7 +354,7 @@ export function ProjectDependenciesPage() {
                   ) : (
                     <PaginationItem key={page}>
                       <PaginationLink
-                        onClick={() => setCurrentPage(page)}
+                        onClick={() => setCurrentPage(page as number)}
                         isActive={currentPage === page}
                         className="cursor-pointer"
                       >
@@ -323,8 +372,17 @@ export function ProjectDependenciesPage() {
               </PaginationContent>
             </Pagination>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {projectPath && (
+        <DependenciesAddDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          projectPath={projectPath}
+          onAdd={handleAdd}
+        />
+      )}
     </div>
   )
 }

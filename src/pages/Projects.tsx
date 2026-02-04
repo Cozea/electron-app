@@ -167,61 +167,61 @@ export function Projects() {
   const strokeDashoffset = circumference - (projectPercentage / 100) * circumference
   const isLimitReached = projectLimit && !projectLimit.isUnlimited && projectLimit.current >= projectLimit.limit
 
-  const headerContent = (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Projects</h1>
-        {usageLimits === undefined ? (
-          <Skeleton className="h-5 w-16 rounded-full" />
-        ) : hasProjects && (projectLimit && projectLimit.limit > 0 ? (
-          <Badge
-            variant="secondary"
-            className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-            title={`${projectLimit.current} / ${projectLimit.limit} projects used`}
-          >
-            <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
-              {/* Background circle */}
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                className="opacity-20"
-              />
-              {/* Progress circle */}
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset}
-                className={projectLimit.current >= projectLimit.limit ? 'text-destructive stroke-current' : projectLimit.current >= projectLimit.limit - 1 ? 'text-amber-500 stroke-current' : 'text-primary stroke-current'}
-              />
-            </svg>
-            <span>{projectLimit.current}/{projectLimit.limit}</span>
-          </Badge>
-        ) : projectLimit?.isUnlimited ? (
-          <Badge variant="secondary" className="text-xs font-normal">
-            {projects?.length ?? 0}
-          </Badge>
-        ) : projects && projects.length > 0 ? (
-          <Badge variant="secondary" className="text-xs font-normal">
-            {projects.length}
-          </Badge>
-        ) : null)}
-      </div>
+  const breadcrumbAddon = (
+    <>
+      {usageLimits === undefined ? (
+        <Skeleton className="h-5 w-16 rounded-full" />
+      ) : hasProjects && (projectLimit && projectLimit.limit > 0 ? (
+        <Badge
+          variant="secondary"
+          className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
+          title={`${projectLimit.current} / ${projectLimit.limit} projects used`}
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
+            {/* Background circle */}
+            <circle
+              cx="10"
+              cy="10"
+              r="8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              className="opacity-20"
+            />
+            {/* Progress circle */}
+            <circle
+              cx="10"
+              cy="10"
+              r="8"
+              fill="none"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              className={projectLimit.current >= projectLimit.limit ? 'text-destructive stroke-current' : projectLimit.current >= projectLimit.limit - 1 ? 'text-amber-500 stroke-current' : 'text-primary stroke-current'}
+            />
+          </svg>
+          <span>{projectLimit.current}/{projectLimit.limit}</span>
+        </Badge>
+      ) : projectLimit?.isUnlimited ? (
+        <Badge variant="secondary" className="text-xs font-normal">
+          {projects?.length ?? 0}
+        </Badge>
+      ) : projects && projects.length > 0 ? (
+        <Badge variant="secondary" className="text-xs font-normal">
+          {projects.length}
+        </Badge>
+      ) : null)}
+    </>
+  )
 
-      <div className="flex items-center gap-2">
-        {hasProjects && <ButtonGroup>
+  const headerContent = (
+    <div className="flex items-center gap-2">
+      {hasProjects && <ButtonGroup className="rounded-full">
           {/* Status Filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-r-none border-r-0 focus:z-10">
+              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-l-full border-r-0 focus:z-10">
                 <FileCode className="h-3.5 w-3.5" />
                 {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
               </Button>
@@ -238,7 +238,7 @@ export function Projects() {
           {/* Sort */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-8 px-2 text-xs rounded-none border-r-0 focus:z-10">
+              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-none border-r-0 focus:z-10">
                 <ArrowUpDown className="h-3.5 w-3.5" />
                 Sort
               </Button>
@@ -254,7 +254,7 @@ export function Projects() {
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 px-0 rounded-l-none focus:z-10"
+            className="h-7 w-7 px-0 rounded-r-full rounded-l-none focus:z-10"
             onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
             disabled={isMobile}
             title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
@@ -263,29 +263,28 @@ export function Projects() {
           </Button>
         </ButtonGroup>}
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button
-                  className="gap-2 h-8 px-2 text-xs"
-                  onClick={() => navigate('/projects/new')}
-                  disabled={isLimitReached}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New Project
-                </Button>
-              </span>
-            </TooltipTrigger>
-            {isLimitReached && (
-              <TooltipContent>
-                <p>Project limit reached ({projectLimit?.current}/{projectLimit?.limit}).</p>
-                <p className="text-muted-foreground">Upgrade your plan for more projects.</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                className="gap-2 h-7 px-2 text-xs rounded-full"
+                onClick={() => navigate('/projects/new')}
+                disabled={isLimitReached}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New Project
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {isLimitReached && (
+            <TooltipContent>
+              <p>Project limit reached ({projectLimit?.current}/{projectLimit?.limit}).</p>
+              <p className="text-muted-foreground">Upgrade your plan for more projects.</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
     </div>
   )
 
@@ -296,6 +295,7 @@ export function Projects() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Projects' }]}
+      breadcrumbAddon={breadcrumbAddon}
       header={headerContent || undefined}
     >
       <TooltipProvider>

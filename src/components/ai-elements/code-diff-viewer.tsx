@@ -119,9 +119,10 @@ export function CodeDiffViewer({
   fillContainer = false,
   className,
 }: CodeDiffViewerProps) {
-  const theme = useMonacoTheme(themeVariant)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
+  const modelRef = useRef<monaco.editor.IDiffEditorModel | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const themeName = useMonacoTheme(themeVariant)
 
   // Detect language from file path or use provided language
   const detectedLanguage = useMemo(() => {
@@ -143,11 +144,14 @@ export function CodeDiffViewer({
 
   const handleMount: DiffOnMount = (editor) => {
     editorRef.current = editor
+    modelRef.current = editor.getModel()
 
     // Update layout on content change
     editor.onDidUpdateDiff(() => {
       editor.getModifiedEditor().layout()
     })
+
+    // Theme is handled by useMonacoTheme
   }
 
   // Update layout when container size changes
@@ -162,10 +166,23 @@ export function CodeDiffViewer({
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      const editor = editorRef.current
+      const model = modelRef.current
+      if (!editor || !model) return
+      editor.setModel(null)
+      model.original.dispose()
+      model.modified.dispose()
+      modelRef.current = null
+      editorRef.current = null
+    }
+  }, [])
+
   const fileName = filePath ? getFileName(filePath) : null
 
   return (
-    <div className={cn('overflow-hidden rounded-md border', className)}>
+    <div className={cn('overflow-hidden rounded-md border border-border/50 bg-sidebar text-foreground', className)}>
       {showHeader && fileName && (
         <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
           {getFileIcon(fileName, { width: 16, height: 16 })}
@@ -177,14 +194,19 @@ export function CodeDiffViewer({
           )}
         </div>
       )}
-      <div ref={containerRef} style={{ height: fillContainer ? '100%' : contentHeight }}>
+      <div
+        ref={containerRef}
+        className="bg-background/70 text-foreground"
+        style={{ height: fillContainer ? '100%' : contentHeight }}
+      >
         <DiffEditor
           height="100%"
           language={detectedLanguage}
           original={original}
           modified={modified}
-          theme={theme}
+          theme={themeName}
           onMount={handleMount}
+          keepCurrentModel
           options={{
             fontSize: 12,
             fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
@@ -203,11 +225,18 @@ export function CodeDiffViewer({
               verticalScrollbarSize: 10,
               horizontalScrollbarSize: 10,
             },
-            lineNumbers: 'on',
-            lineDecorationsWidth: 10,
+            lineNumbers: 'off',
+            lineDecorationsWidth: 0,
             glyphMargin: false,
             folding: false,
             renderLineHighlight: 'none',
+            renderOverviewRuler: false,
+
+            guides: {
+              indentation: false,
+              bracketPairs: false,
+              highlightActiveIndentation: false,
+            },
             overviewRulerBorder: false,
             overviewRulerLanes: 0,
             hideCursorInOverviewRuler: true,

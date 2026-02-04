@@ -28,8 +28,7 @@ export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = fals
 
   return (
     <div
-      className="h-9 w-full flex items-center fixed top-0 left-0 right-0 z-50 bg-sidebar border-b border-sidebar-border px-3 text-sidebar-foreground"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      className="h-9 w-full flex items-center fixed top-0 left-0 right-0 z-50 bg-sidebar border-b border-sidebar-border px-3 text-sidebar-foreground titlebar-drag-region"
     >
       {/* Traffic lights take ~70px on the left on macOS, but not in fullscreen */}
       <div

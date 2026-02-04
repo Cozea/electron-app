@@ -259,45 +259,10 @@ export function ProjectBuild() {
     localStorage.setItem(runStorageKey, JSON.stringify(payload))
   }, [runStorageKey, runId, runStatus, runAttempt, buildTasks, progress, statusMessage, logs])
 
-  // Check if we need to auto-pull (cloud files exist, no local folder)
-  useEffect(() => {
-    if (!project || projectFiles === undefined || autoPullTriggeredRef.current) return
-    if (!convexUserId) return
-    if (isAIGenerating || isPulling) return
-
-    const checkAndAutoPull = async () => {
-      const hasCloudFiles = projectFiles && projectFiles.length > 0
-      if (!hasCloudFiles) return
-
-      // Check if local folder exists
-      const folderExists = await window.electronAPI.project.exists(project.slug)
-
-      if (!folderExists) {
-        addLog('Cloud files found but no local folder - auto-pulling...')
-        autoPullTriggeredRef.current = true
-        await pullFilesFromCloud()
-      }
-    }
-
-    checkAndAutoPull()
-  }, [project, projectFiles, convexUserId, isAIGenerating, isPulling])
-
-  // Start build automatically when project loads (only if no cloud files to pull)
-  useEffect(() => {
-    // Wait for hasher to be ready before starting build (needed for checksums)
-    if (project && !isPulling && !isAIGenerating && runStatus === 'idle' && xxhasher) {
-      // Only auto-start if there are no cloud files (otherwise auto-pull handles it)
-      if (projectFiles !== undefined && projectFiles.length === 0) {
-        // Always use AI build - the AI will handle file generation
-        startAIBuild()
-      }
-    }
-  }, [project, projectFiles, isAIGenerating, runStatus, isPulling, xxhasher])
-
-  const addLog = (message: string) => {
+  const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
-  }
+  }, [])
 
   // Log dev server status changes
   useEffect(() => {
@@ -308,7 +273,7 @@ export function ProjectBuild() {
     } else if (devServer.status === 'starting') {
       addLog('Starting dev server...')
     }
-  }, [devServer.status, devServer.url, devServer.error])
+  }, [addLog, devServer.status, devServer.url, devServer.error])
 
   // Capture and upload preview screenshot
   const capturePreviewScreenshot = useCallback(async () => {
@@ -456,7 +421,7 @@ export function ProjectBuild() {
         capturePreviewScreenshot()
       }, 2000)
     }
-  }, [project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
+  }, [addLog, project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
 
   const handleAIError = useCallback((error: string) => {
     addLog(`AI Error: ${error}`)
@@ -473,7 +438,7 @@ export function ProjectBuild() {
         statusMessage: `Generation failed: ${error}`,
       })
     }
-  }, [project?._id, updateBuilderRunStatus])
+  }, [addLog, project?._id, updateBuilderRunStatus])
 
   const handleAIStop = useCallback(() => {
     setIsAIGenerating(false)
@@ -492,7 +457,7 @@ export function ProjectBuild() {
   }, [addLog, project?._id, updateBuilderRunStatus])
 
   // Start AI-powered build
-  const startAIBuild = async () => {
+  const startAIBuild = useCallback(async () => {
     if (!project || !convexUserId) return
 
     const newRunId = crypto.randomUUID()
@@ -595,7 +560,16 @@ export function ProjectBuild() {
     // Set AI generating state AFTER run is created to avoid race condition
     // where checkpointBuilderRun is called before the run exists
     setIsAIGenerating(true)
-  }
+  }, [
+    addLog,
+    convexUserId,
+    localPath,
+    project,
+    runAttempt,
+    startBuilderRun,
+    updateMemberLocalPath,
+    updateStatus,
+  ])
 
   const uploadFileToCloud = useCallback(async (
     file: { path: string; content: string }
@@ -651,7 +625,7 @@ export function ProjectBuild() {
   }, [addLog, uploadFileToCloud])
 
   // Pull files from cloud to local folder
-  const pullFilesFromCloud = async () => {
+  const pullFilesFromCloud = useCallback(async () => {
     if (!project || !projectFiles || projectFiles.length === 0 || !convexUserId) return
 
     setIsPulling(true)
@@ -751,7 +725,49 @@ export function ProjectBuild() {
     } finally {
       setIsPulling(false)
     }
-  }
+  }, [
+    addLog,
+    convexUserId,
+    localPath,
+    project,
+    projectFiles,
+    updateMemberLocalPath,
+  ])
+
+  // Check if we need to auto-pull (cloud files exist, no local folder)
+  useEffect(() => {
+    if (!project || projectFiles === undefined || autoPullTriggeredRef.current) return
+    if (!convexUserId) return
+    if (isAIGenerating || isPulling) return
+
+    const checkAndAutoPull = async () => {
+      const hasCloudFiles = projectFiles && projectFiles.length > 0
+      if (!hasCloudFiles) return
+
+      // Check if local folder exists
+      const folderExists = await window.electronAPI.project.exists(project.slug)
+
+      if (!folderExists) {
+        addLog('Cloud files found but no local folder - auto-pulling...')
+        autoPullTriggeredRef.current = true
+        await pullFilesFromCloud()
+      }
+    }
+
+    checkAndAutoPull()
+  }, [project, projectFiles, convexUserId, isAIGenerating, isPulling, addLog, pullFilesFromCloud])
+
+  // Start build automatically when project loads (only if no cloud files to pull)
+  useEffect(() => {
+    // Wait for hasher to be ready before starting build (needed for checksums)
+    if (project && !isPulling && !isAIGenerating && runStatus === 'idle' && xxhasher) {
+      // Only auto-start if there are no cloud files (otherwise auto-pull handles it)
+      if (projectFiles !== undefined && projectFiles.length === 0) {
+        // Always use AI build - the AI will handle file generation
+        startAIBuild()
+      }
+    }
+  }, [project, projectFiles, isAIGenerating, runStatus, isPulling, xxhasher, startAIBuild])
 
   const handleRetry = () => {
     setHasError(false)

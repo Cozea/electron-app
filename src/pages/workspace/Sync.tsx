@@ -233,16 +233,11 @@ export function Sync() {
     }
   }
 
-  const headerContent = (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Workspace Storage</h1>
-      </div>
-      <Badge variant="secondary" className="gap-1">
-        <Cloud className="h-3 w-3" />
-        Synced
-      </Badge>
-    </div>
+  const breadcrumbAddon = (
+    <Badge variant="secondary" className="gap-1 h-8 px-2 text-xs">
+      <Cloud className="h-3 w-3" />
+      Synced
+    </Badge>
   )
 
 
@@ -252,7 +247,7 @@ export function Sync() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'Cloud Storage' }]}
-      header={headerContent}
+      breadcrumbAddon={breadcrumbAddon}
     >
       <div className="space-y-6">
         {/* Header Stats */}

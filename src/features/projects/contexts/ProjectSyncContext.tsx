@@ -9,7 +9,7 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { computeSyncPlan, computeSyncPlanWithMerge, hasSyncOperations } from "@/lib/sync/syncEngine"
+import { computeSyncPlanWithMerge, hasSyncOperations } from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 import { loadLocalSyncHistory, saveLocalSyncHistory } from "@/lib/sync/syncHistory"
@@ -139,6 +139,128 @@ export function ProjectSyncProvider({
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   // Use per-user local path (stored in projectMembers, not projects)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+
+  /**
+   * Execute sync plan.
+   */
+  const executeSync = useCallback(async (projectPath: string, syncPlan: SyncPlan) => {
+    setIsSyncRunning(true)
+
+    if (!hasSyncOperations(syncPlan)) {
+      setIsSynced(true)
+      setShowSyncScreen(false)
+      setIsSyncRunning(false)
+      return
+    }
+
+    // Update project status
+    try {
+      await updateSyncStatus({ projectId, userId, status: "syncing" })
+    } catch (err) {
+      console.error("[Sync] Failed to update status:", err)
+    }
+
+    const result = await executeSyncPlan(syncPlan, {
+      projectId,
+      userId,
+      projectPath,
+      onProgress: setProgress,
+      generateUploadUrl: () => generateUploadUrl({ projectId }),
+      saveFiles: (args) => saveFilesMutation(args),
+      markFilesDeleted: (args) => markFilesDeletedMutation(args),
+      getStorageUrl: async (storageId) => {
+        const file = filesWithUrls?.find((f) => f.storageId === storageId)
+        return file?.url ?? null
+      },
+    })
+
+    // Update final status
+    try {
+      await updateSyncStatus({
+        projectId,
+        userId,
+        status: result.success ? "synced" : "error",
+        errorMessage: result.error,
+      })
+    } catch (err) {
+      console.error("[Sync] Failed to update final status:", err)
+    }
+
+    if (result.success) {
+      const now = Date.now()
+      const cloudPaths = new Set((cloudManifest ?? []).map((f) => f.path))
+      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
+      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
+      // Include auto-merged files in cloud paths
+      for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
+      saveLocalSyncHistory(projectId, {
+        lastSyncAt: now,
+        cloudPathsAtLastSync: cloudPaths,
+      })
+
+      // Save file checkpoints for future 3-way merges
+      try {
+        const checkpointFiles = new Map<string, { content: string; hash: string }>()
+
+        // Read all synced files and save as checkpoints
+        const filesToCheckpoint = [
+          ...syncPlan.downloads.map((op) => op.path),
+          ...syncPlan.uploads.map((op) => op.path),
+          ...(syncPlan.autoMerged ?? []).map((op) => op.path),
+        ]
+
+        for (const filePath of filesToCheckpoint) {
+          try {
+            const readResult = await window.electronAPI.project.readFile({
+              projectPath,
+              filePath,
+            })
+            if (readResult.success && readResult.content) {
+              // Compute hash
+              const encoder = new TextEncoder()
+              const data = encoder.encode(readResult.content)
+              const hashBuffer = await crypto.subtle.digest("SHA-256", data)
+              const hashArray = Array.from(new Uint8Array(hashBuffer))
+              const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+
+              checkpointFiles.set(filePath, { content: readResult.content, hash })
+            }
+          } catch {
+            // Skip files that can't be read (binary, etc.)
+          }
+        }
+
+        if (checkpointFiles.size > 0) {
+          await syncCheckpointStore.saveCheckpoint(projectId, checkpointFiles)
+        }
+      } catch (err) {
+        console.warn("[Sync] Failed to save checkpoints:", err)
+        // Non-fatal - sync still succeeded
+      }
+
+      setIsSynced(true)
+      setLastSyncAt(now)
+      setShowSyncScreen(false)
+      // Clear the diff badge for this project
+      clearDiff(projectSlug)
+      onFilesChanged?.()
+    }
+
+    // Mark sync as complete regardless of result
+    setIsSyncRunning(false)
+  }, [
+    clearDiff,
+    cloudManifest,
+    filesWithUrls,
+    generateUploadUrl,
+    markFilesDeletedMutation,
+    onFilesChanged,
+    projectId,
+    projectSlug,
+    saveFilesMutation,
+    updateSyncStatus,
+    userId,
+  ])
 
   /**
    * Run initial sync check when component mounts.
@@ -350,117 +472,18 @@ export function ProjectSyncProvider({
     }
 
     runInitialSync()
-  }, [cloudManifest, filesWithUrls, hasRunInitialSync, isSyncRunning])
-
-  /**
-   * Execute sync plan.
-   */
-  const executeSync = async (projectPath: string, syncPlan: SyncPlan) => {
-    setIsSyncRunning(true)
-
-    if (!hasSyncOperations(syncPlan)) {
-      setIsSynced(true)
-      setShowSyncScreen(false)
-      setIsSyncRunning(false)
-      return
-    }
-
-    // Update project status
-    try {
-      await updateSyncStatus({ projectId, userId, status: "syncing" })
-    } catch (err) {
-      console.error("[Sync] Failed to update status:", err)
-    }
-
-    const result = await executeSyncPlan(syncPlan, {
-      projectId,
-      userId,
-      projectPath,
-      onProgress: setProgress,
-      generateUploadUrl: () => generateUploadUrl({ projectId }),
-      saveFiles: (args) => saveFilesMutation(args),
-      markFilesDeleted: (args) => markFilesDeletedMutation(args),
-      getStorageUrl: async (storageId) => {
-        const file = filesWithUrls?.find((f) => f.storageId === storageId)
-        return file?.url ?? null
-      },
-    })
-
-    // Update final status
-    try {
-      await updateSyncStatus({
-        projectId,
-        userId,
-        status: result.success ? "synced" : "error",
-        errorMessage: result.error,
-      })
-    } catch (err) {
-      console.error("[Sync] Failed to update final status:", err)
-    }
-
-	    if (result.success) {
-	      const now = Date.now()
-	      const cloudPaths = new Set((cloudManifest ?? []).map((f) => f.path))
-	      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
-	      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
-	      // Include auto-merged files in cloud paths
-	      for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
-	      saveLocalSyncHistory(projectId, {
-	        lastSyncAt: now,
-	        cloudPathsAtLastSync: cloudPaths,
-	      })
-
-	      // Save file checkpoints for future 3-way merges
-	      try {
-	        const checkpointFiles = new Map<string, { content: string; hash: string }>()
-
-	        // Read all synced files and save as checkpoints
-	        const filesToCheckpoint = [
-	          ...syncPlan.downloads.map((op) => op.path),
-	          ...syncPlan.uploads.map((op) => op.path),
-	          ...(syncPlan.autoMerged ?? []).map((op) => op.path),
-	        ]
-
-	        for (const filePath of filesToCheckpoint) {
-	          try {
-	            const readResult = await window.electronAPI.project.readFile({
-	              projectPath,
-	              filePath,
-	            })
-	            if (readResult.success && readResult.content) {
-	              // Compute hash
-	              const encoder = new TextEncoder()
-	              const data = encoder.encode(readResult.content)
-	              const hashBuffer = await crypto.subtle.digest("SHA-256", data)
-	              const hashArray = Array.from(new Uint8Array(hashBuffer))
-	              const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-
-	              checkpointFiles.set(filePath, { content: readResult.content, hash })
-	            }
-	          } catch {
-	            // Skip files that can't be read (binary, etc.)
-	          }
-	        }
-
-	        if (checkpointFiles.size > 0) {
-	          await syncCheckpointStore.saveCheckpoint(projectId, checkpointFiles)
-	        }
-	      } catch (err) {
-	        console.warn("[Sync] Failed to save checkpoints:", err)
-	        // Non-fatal - sync still succeeded
-	      }
-
-	      setIsSynced(true)
-	      setLastSyncAt(now)
-	      setShowSyncScreen(false)
-	      // Clear the diff badge for this project
-	      clearDiff(projectSlug)
-	      onFilesChanged?.()
-	    }
-
-    // Mark sync as complete regardless of result
-    setIsSyncRunning(false)
-  }
+  }, [
+    cloudManifest,
+    filesWithUrls,
+    hasRunInitialSync,
+    isSyncRunning,
+    currentLocalPath,
+    projectId,
+    projectSlug,
+    updateMemberLocalPath,
+    userId,
+    executeSync,
+  ])
 
   /**
    * Manual sync trigger.
@@ -469,7 +492,7 @@ export function ProjectSyncProvider({
     if (!currentLocalPath || !plan) return
 
     await executeSync(currentLocalPath, plan)
-  }, [currentLocalPath, plan])
+  }, [currentLocalPath, plan, executeSync])
 
   /**
    * Handle continue (skip sync).

@@ -1,8 +1,9 @@
 "use client"
 
+import { useCallback, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronsUpDown, FolderOpen, Home, Plus, Building2 } from 'lucide-react'
-import { useQuery } from 'convex/react'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
+import { useQuery, useMutation, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import {
   DropdownMenu,
@@ -20,12 +21,27 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 
+type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
+
+interface ProjectListItem {
+  _id: string
+  slug: string
+  name?: string | null
+  status?: string
+}
+
 export function ContextSwitcher() {
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
   const location = useLocation()
   const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
+  const { currentOrganization, user } = useAuth()
+  const convex = useConvex()
+
+  const [open, setOpen] = useState(false)
+  const [syncState, setSyncState] = useState<SyncState>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -47,6 +63,13 @@ export function ContextSwitcher() {
     convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
   )
 
+  const convexUser = useQuery(
+    api.users.getByWorkosId,
+    user?.id ? { workosId: user.id } : 'skip'
+  )
+
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+
   // Get recent projects (up to 4, sorted by last updated)
   const recentProjects = projects
     ? [...projects]
@@ -66,9 +89,96 @@ export function ContextSwitcher() {
       : 'Free',
   }
 
-  const handleProjectSelect = (projectSlug: string) => {
-    navigate(`/projects/${projectSlug}`)
-  }
+  const resetSyncState = useCallback(() => {
+    setSyncState('idle')
+    setSyncMessage('')
+    setActiveProjectName(null)
+  }, [])
+
+  const handleProjectSelect = useCallback(async (project: ProjectListItem, event?: Event) => {
+    event?.preventDefault()
+    if (syncState !== 'idle') return
+
+    // Draft projects go straight to wizard
+    if (project.status === 'draft') {
+      setOpen(false)
+      navigate(`/projects/new?resume=${project._id}`)
+      return
+    }
+
+    setActiveProjectName(project.name ?? null)
+    setSyncState('checking')
+    setSyncMessage('Preparing project...')
+    setOpen(true)
+
+    try {
+      let effectiveLocalPath = await window.electronAPI.project.getLocalPath(project.slug)
+
+      if (!effectiveLocalPath) {
+        setSyncMessage('Creating local folder...')
+        const result = await window.electronAPI.project.createFolder({
+          slug: project.slug,
+          initGit: true,
+        })
+
+        if (!result.success || !result.localPath) {
+          throw new Error(result.error || 'Failed to create folder')
+        }
+
+        effectiveLocalPath = result.localPath
+      }
+
+      if (effectiveLocalPath && convexUser?._id) {
+        await updateMemberLocalPath({
+          projectId: project._id,
+          userId: convexUser._id,
+          localPath: effectiveLocalPath,
+        })
+      }
+
+      if (effectiveLocalPath) {
+        setSyncMessage('Checking files...')
+        let cloudManifest: Array<unknown> | null = null
+
+        try {
+          cloudManifest = await convex.query(api.projectFiles.getManifestForProject, {
+            projectId: project._id,
+          })
+        } catch {
+          cloudManifest = null
+        }
+
+        if (cloudManifest) {
+          const localResult = await window.electronAPI.sync.getLocalManifest({
+            projectPath: effectiveLocalPath,
+          })
+
+          const hasChanges = localResult.totalFiles !== cloudManifest.length
+          if (hasChanges) {
+            setSyncState('syncing')
+            setSyncMessage('Syncing files...')
+          }
+        }
+      }
+
+      setSyncState('ready')
+      setSyncMessage('Opening project...')
+
+      setTimeout(() => {
+        setOpen(false)
+        navigate(`/projects/${project.slug}`)
+        resetSyncState()
+      }, 200)
+    } catch (error) {
+      console.error('[ContextSwitcher] Project prep failed:', error)
+      setSyncState('error')
+      setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
+
+      setTimeout(() => {
+        resetSyncState()
+      }, 2000)
+    }
+  }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = () => {
     navigate('/projects')
@@ -78,10 +188,17 @@ export function ContextSwitcher() {
     navigate('/projects/new')
   }
 
+  const isBusy = syncState !== 'idle'
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (isBusy && !nextOpen) return
+    setOpen(nextOpen)
+  }
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={open} onOpenChange={handleOpenChange}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
@@ -111,9 +228,51 @@ export function ContextSwitcher() {
             side={isMobile ? 'bottom' : 'right'}
             sideOffset={4}
           >
+            {syncState !== 'idle' && (
+              <>
+                <div className="px-2 py-2">
+                  <div className="flex items-center gap-2">
+                    {syncState === 'error' ? (
+                      <div className="size-6 rounded-md bg-destructive/10 flex items-center justify-center">
+                        <Cloud className="size-3.5 text-destructive" />
+                      </div>
+                    ) : syncState === 'ready' ? (
+                      <div className="size-6 rounded-md bg-green-500/10 flex items-center justify-center">
+                        <Check className="size-3.5 text-green-500" />
+                      </div>
+                    ) : (
+                      <div className="size-6 rounded-md bg-primary/10 flex items-center justify-center">
+                        <Loader2 className="size-3.5 text-primary animate-spin" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground truncate">
+                        {syncMessage}
+                      </div>
+                      {activeProjectName && (
+                        <div className="text-[11px] text-muted-foreground/70 truncate">
+                          {activeProjectName}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 h-0.5 w-full bg-border/50">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        syncState === 'ready' ? 'bg-green-500' : syncState === 'error' ? 'bg-destructive' : 'bg-primary'
+                      } ${syncState !== 'ready' && syncState !== 'error' ? 'animate-pulse' : ''}`}
+                      style={{
+                        width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%',
+                      }}
+                    />
+                  </div>
+                </div>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {isInProject && (
               <>
-                <DropdownMenuItem onClick={handleGoHome} className="gap-2 p-2">
+                <DropdownMenuItem onClick={handleGoHome} className="gap-2 p-2" disabled={isBusy}>
                   <div className="flex size-6 items-center justify-center rounded-md border">
                     <Home className="size-3.5" />
                   </div>
@@ -133,8 +292,9 @@ export function ContextSwitcher() {
               recentProjects.map((project) => (
                 <DropdownMenuItem
                   key={project._id}
-                  onClick={() => handleProjectSelect(project.slug)}
+                  onSelect={(event) => handleProjectSelect(project, event)}
                   className="gap-2 p-2"
+                  disabled={isBusy}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">
                     <FolderOpen className="size-3.5 shrink-0" />
@@ -149,7 +309,7 @@ export function ContextSwitcher() {
               ))
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2">
+            <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2" disabled={isBusy}>
               <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                 <Plus className="size-4" />
               </div>

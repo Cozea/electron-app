@@ -7,13 +7,16 @@ export default defineConfig({
   main: {
     build: {
       lib: {
-        entry: 'electron/main.ts',
+        entry: {
+          index: 'electron/main.ts',
+          fileOpsWorker: 'electron/workers/fileOpsWorker.ts',
+        },
       },
       rollupOptions: {
-        external: ['electron', '@vscode/ripgrep', 'node-pty', 'xxhash-wasm'],
+        external: ['electron', '@vscode/ripgrep', 'node-pty', 'xxhash-wasm', 'electron-updater'],
         output: {
           format: 'cjs',
-          entryFileNames: 'index.js',
+          entryFileNames: '[name].js',
         },
       },
     },

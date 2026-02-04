@@ -189,7 +189,7 @@ export function useYjsFileWriteback(
     }
 
     // Handle renames from remote users
-    const renameFileToDisk = async (from: string, to: string, isDirectory: boolean) => {
+    const renameFileToDisk = async (from: string, to: string, _isDirectory: boolean) => {
       try {
         await window.electronAPI.project.renameFile({
           projectPath,
@@ -234,6 +234,8 @@ export function useYjsFileWriteback(
     // One-time initial hydration for empty local folders
     void hydrateLocalDiskIfEmpty()
 
+    const pendingWrites = pendingWritesRef.current
+
     return () => {
       cancelled = true
       // Cleanup: unobserve all files
@@ -243,10 +245,10 @@ export function useYjsFileWriteback(
       observedFiles.clear()
 
       // Cleanup: cancel pending writes
-      for (const timeout of pendingWritesRef.current.values()) {
+      for (const timeout of pendingWrites.values()) {
         clearTimeout(timeout)
       }
-      pendingWritesRef.current.clear()
+      pendingWrites.clear()
 
       // Cleanup: cancel pending deletes
       if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)

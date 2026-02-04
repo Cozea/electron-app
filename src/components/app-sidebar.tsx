@@ -53,11 +53,15 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
   ]
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="mt-9">
+    <Sidebar
+      collapsible="icon"
+      className="sidebar-outward-curve"
+      {...props}
+    >
+      <SidebarHeader className="pt-9">
         <ContextSwitcher />
       </SidebarHeader>
-      <SidebarContent className="group-data-[collapsible=icon]:mt-9">
+      <SidebarContent>
         <NavMain label="Platform" items={platformItems} />
         <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
         <NavMain label="Team" items={teamItems} />

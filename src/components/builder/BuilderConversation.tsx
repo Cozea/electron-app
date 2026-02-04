@@ -94,6 +94,25 @@ interface ToolMeta extends MessageToolMeta {
   supportsDeferredResults?: boolean
 }
 
+interface ToolCallPayload {
+  toolName: string
+  input: unknown
+  toolCallId: string
+  dynamic?: boolean
+  providerExecuted?: boolean
+}
+
+interface ToolPart {
+  type: string
+  toolCallId?: string
+  toolName?: string
+  state?: string
+  input?: Record<string, unknown>
+  output?: unknown
+  errorText?: string
+  approval?: { id?: string }
+}
+
 interface BuilderConversationProps {
   project: Project
   localPath: string
@@ -108,6 +127,11 @@ interface BuilderConversationProps {
 // AI Gateway endpoint
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
 const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+type ChatHookResult = ReturnType<typeof useChat>
 
 export function BuilderConversation({
   project,
@@ -131,14 +155,14 @@ export function BuilderConversation({
     allowWebSearch: boolean
     maxReasoningDepth: 'low' | 'medium' | 'high'
   } | null>(null)
+  const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
   const completedRef = useRef(false)
-  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   // Track active terminal sessions for live terminal rendering
   const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
 
-  const addToolOutputRef = useRef<((args: any) => void | PromiseLike<void>) | null>(null)
+  const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
 
@@ -384,12 +408,13 @@ Now begin by defining your task list with build_tasks, then start working throug
   const runLocalTool = useCallback(async (
     toolName: string,
     toolCallId: string,
-    input: any
+    input: unknown
   ) => {
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    const normalizedInput = normalizeToolInput(toolName, input) as any
+    const normalizedInput = normalizeToolInput(toolName, input)
+    const toolInput = isRecord(normalizedInput) ? normalizedInput : null
 
     const toolMeta = toolsByNameRef.current[toolName]
     if (toolMeta?.executionEnvironment && toolMeta.executionEnvironment !== 'local') {
@@ -420,10 +445,20 @@ Now begin by defining your task list with build_tasks, then start working throug
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
         let tasks: BuildTask[] | null = null
 
-        if (Array.isArray(normalizedInput?.tasks)) {
-          tasks = normalizedInput.tasks as BuildTask[]
-        } else if (normalizedInput?.tasks_json) {
-          const parsed = parseJsonArrayLoose(normalizedInput.tasks_json)
+        if (!toolInput) {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: 'build_tasks failed: input must be an object.',
+          })
+          return
+        }
+
+        if (Array.isArray(toolInput.tasks)) {
+          tasks = toolInput.tasks as BuildTask[]
+        } else if (typeof toolInput.tasks_json === 'string') {
+          const parsed = parseJsonArrayLoose(toolInput.tasks_json)
           if (parsed) {
             tasks = parsed as BuildTask[]
           } else {
@@ -474,7 +509,8 @@ Now begin by defining your task list with build_tasks, then start working throug
       }
 
       if (toolName === 'mark_complete') {
-        console.log('[Builder] mark_complete called with summary:', normalizedInput.summary)
+        const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
+        console.log('[Builder] mark_complete called with summary:', summary)
         if (!completedRef.current) {
           completedRef.current = true
           void addToolOutput({
@@ -494,31 +530,37 @@ Now begin by defining your task list with build_tasks, then start working throug
       }
 
       if (toolName === 'create_file') {
-        await withFileLocks([normalizedInput.filePath], async () => {
+        if (!toolInput || typeof toolInput.filePath !== 'string' || typeof toolInput.content !== 'string') {
+          throw new Error('create_file requires filePath and content')
+        }
+        await withFileLocks([toolInput.filePath], async () => {
           const result = await window.electronAPI.project.writeFile({
             projectPath: localPath,
-            filePath: normalizedInput.filePath,
-            content: normalizedInput.content,
+            filePath: toolInput.filePath,
+            content: toolInput.content,
           })
 
           if (!result.success) {
             throw new Error(result.error || 'Failed to create file')
           }
 
-          onFileCreated({ path: normalizedInput.filePath, content: normalizedInput.content })
+          onFileCreated({ path: toolInput.filePath, content: toolInput.content })
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, path: normalizedInput.filePath }),
+            output: JSON.stringify({ success: true, path: toolInput.filePath }),
           })
         })
         return
       }
 
       if (toolName === 'read_file') {
+        if (!toolInput || typeof toolInput.filePath !== 'string') {
+          throw new Error('read_file requires filePath')
+        }
         const result = await window.electronAPI.project.readFile({
           projectPath: localPath,
-          filePath: normalizedInput.filePath,
+          filePath: toolInput.filePath,
         })
         if (result.success) {
           void addToolOutput({
@@ -538,7 +580,9 @@ Now begin by defining your task list with build_tasks, then start working throug
       }
 
       if (toolName === 'list_dir') {
-        const targetPath = normalizeProjectPath(normalizedInput.path)
+        const targetPath = normalizeProjectPath(
+          typeof toolInput?.path === 'string' ? toolInput.path : ''
+        )
         const entries = await window.electronAPI.fs.readDir(targetPath || localPath)
         void addToolOutput({
           tool: toolName,
@@ -549,26 +593,34 @@ Now begin by defining your task list with build_tasks, then start working throug
       }
 
       if (toolName === 'replace_string_in_file') {
-        await withFileLocks([normalizedInput.filePath], async () => {
+        if (
+          !toolInput ||
+          typeof toolInput.filePath !== 'string' ||
+          typeof toolInput.oldString !== 'string' ||
+          typeof toolInput.newString !== 'string'
+        ) {
+          throw new Error('replace_string_in_file requires filePath, oldString, and newString')
+        }
+        await withFileLocks([toolInput.filePath], async () => {
           const result = await window.electronAPI.project.readFile({
             projectPath: localPath,
-            filePath: normalizedInput.filePath,
+            filePath: toolInput.filePath,
           })
           if (!result.success || result.content === undefined) {
             throw new Error(result.error || 'File not found')
           }
           const content = result.content
-          const occurrences = content.split(normalizedInput.oldString).length - 1
+          const occurrences = content.split(toolInput.oldString).length - 1
           if (occurrences === 0) {
             throw new Error('Old string not found in file')
           }
           if (occurrences > 1) {
             throw new Error('Old string must match exactly one occurrence')
           }
-          const updated = content.replace(normalizedInput.oldString, normalizedInput.newString)
+          const updated = content.replace(toolInput.oldString, toolInput.newString)
           const writeResult = await window.electronAPI.project.writeFile({
             projectPath: localPath,
-            filePath: normalizedInput.filePath,
+            filePath: toolInput.filePath,
             content: updated,
           })
           if (!writeResult.success) {
@@ -577,18 +629,24 @@ Now begin by defining your task list with build_tasks, then start working throug
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ filePath: normalizedInput.filePath, replacements: 1 }),
+            output: JSON.stringify({ filePath: toolInput.filePath, replacements: 1 }),
           })
         })
         return
       }
 
       if (toolName === 'multi_replace_string_in_file') {
-        const replacements = (normalizedInput.replacements || []) as Array<{
-          filePath: string
-          oldString: string
-          newString: string
-        }>
+        const replacements = Array.isArray(toolInput?.replacements)
+          ? toolInput?.replacements.filter(isRecord).map((replacement) => ({
+              filePath: replacement.filePath,
+              oldString: replacement.oldString,
+              newString: replacement.newString,
+            })).filter((replacement) =>
+              typeof replacement.filePath === 'string' &&
+              typeof replacement.oldString === 'string' &&
+              typeof replacement.newString === 'string'
+            )
+          : []
 
         const paths = replacements.map((r) => r.filePath)
         await withFileLocks(paths, async () => {
@@ -629,10 +687,13 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'run_in_terminal' && normalizedInput?.command && localPath) {
-        const command = normalizedInput.command as string
-        const isBackground = Boolean(normalizedInput.isBackground)
-        const timeout = typeof normalizedInput.timeout === 'number' ? normalizedInput.timeout : 120000 // 2 min default
+      if (toolName === 'run_in_terminal' && localPath) {
+        const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
+        if (!command) {
+          throw new Error('run_in_terminal requires command')
+        }
+        const isBackground = Boolean(toolInput?.isBackground)
+        const timeout = typeof toolInput?.timeout === 'number' ? toolInput.timeout : 120000 // 2 min default
 
         try {
           // Create a PTY terminal session for interactive command execution
@@ -812,7 +873,7 @@ Now begin by defining your task list with build_tasks, then start working throug
   const handleApprovedTool = useCallback(async (
     toolName: string,
     toolCallId: string,
-    input: any
+    input: unknown
   ) => {
     await runLocalTool(toolName, toolCallId, input)
   }, [runLocalTool])
@@ -832,7 +893,7 @@ Now begin by defining your task list with build_tasks, then start working throug
   }, [])
 
   // Handle tool calls - intercept build_tasks and file operations
-  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: any }) => {
+  const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
@@ -877,7 +938,7 @@ Now begin by defining your task list with build_tasks, then start working throug
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onToolCall: handleToolCall,
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error('Builder chat error:', err)
 
       const billingErr = parseBillingError(err)
@@ -889,7 +950,11 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      const message = err?.message || 'Build failed'
+      const message = err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'Build failed'
       lastErrorRef.current = message
 
       // Check if we should let auto-continue recover from this error
@@ -932,10 +997,14 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      const message = (error as { message?: string }).message || 'Build failed'
+      const message = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Build failed'
       onError(message)
     }
-  }, [error, onError, shouldAllowRecovery])
+  }, [error, onError, onBillingError, shouldAllowRecovery])
 
   // Clear recovery state when streaming starts (continuation is working)
   useEffect(() => {
@@ -957,7 +1026,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
           continue
         }
-        const toolPart = part as any
+        const toolPart = part as ToolPart
         const toolName = part.type === 'dynamic-tool'
           ? toolPart.toolName
           : part.type.replace(/^tool-/, '')
@@ -1029,7 +1098,7 @@ Now begin by defining your task list with build_tasks, then start working throug
       if (message.role !== 'assistant') continue
       for (const part of message.parts) {
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
-        const toolPart = part as any
+        const toolPart = part as ToolPart
         const toolName = part.type === 'dynamic-tool' ? toolPart.toolName : part.type.replace(/^tool-/, '')
         if (toolName !== 'build_tasks') continue
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)

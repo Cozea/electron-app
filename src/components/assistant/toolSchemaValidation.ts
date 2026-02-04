@@ -1,7 +1,17 @@
 type ToolValidationResult = { valid: true } | { valid: false; error: string }
 
+interface JsonSchema {
+  type?: string | string[]
+  anyOf?: JsonSchema[]
+  oneOf?: JsonSchema[]
+  properties?: Record<string, JsonSchema>
+  required?: string[]
+  minItems?: number
+  items?: JsonSchema
+}
+
 export function validateInputAgainstSchema(
-  schema: Record<string, any>,
+  schema: JsonSchema,
   value: unknown
 ): ToolValidationResult {
   if (!schema || typeof schema !== 'object') {
@@ -13,7 +23,7 @@ export function validateInputAgainstSchema(
 }
 
 function validateSchemaNode(
-  schema: Record<string, any>,
+  schema: JsonSchema,
   value: unknown,
   path: string
 ): ToolValidationResult {
@@ -59,7 +69,7 @@ function validateSchemaNode(
     for (const [key, propSchema] of Object.entries(properties)) {
       const propValue = (value as Record<string, unknown>)[key]
       if (propValue !== undefined && propSchema) {
-        const propResult = validateSchemaNode(propSchema as Record<string, any>, propValue, `${path}.${key}`)
+        const propResult = validateSchemaNode(propSchema, propValue, `${path}.${key}`)
         if (!propResult.valid) {
           return propResult
         }
@@ -78,7 +88,7 @@ function validateSchemaNode(
 
     if (schema.items) {
       for (let index = 0; index < value.length; index += 1) {
-        const itemResult = validateSchemaNode(schema.items as Record<string, any>, value[index], `${path}[${index}]`)
+        const itemResult = validateSchemaNode(schema.items, value[index], `${path}[${index}]`)
         if (!itemResult.valid) {
           return itemResult
         }

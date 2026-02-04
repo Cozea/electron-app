@@ -131,10 +131,15 @@ export class ThreeWayMerge {
     for (const region of regions) {
       if ('ok' in region) {
         // Non-conflicting region - could be unchanged or accepted from one side
-        mergedLines.push(...region.ok)
+        if (region.ok) {
+          mergedLines.push(...region.ok)
+        }
         unchanged++
       } else if ('conflict' in region) {
         // Conflicting region - both sides changed the same lines differently
+        if (!region.conflict) {
+          continue
+        }
         const { a: localConflict, o: baseConflict, b: cloudConflict } = region.conflict
 
         conflicts.push({

@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Pencil, GitBranch, Users, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2 } from 'lucide-react'
+import { Pencil, GitBranch, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2 } from 'lucide-react'
 import { IconBrandGithub, IconBrandGitlab } from '@tabler/icons-react'
 import type { WizardState } from '@/hooks/useWizardState'
 
@@ -10,9 +10,20 @@ interface ReviewStepProps {
   onEditStep: (step: number) => void
   onImport?: () => void
   isImporting?: boolean
+  importError?: string | null
+  importSyncState?: 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
+  importSyncMessage?: string | null
 }
 
-export function ReviewStep({ state, onEditStep, onImport, isImporting }: ReviewStepProps) {
+export function ReviewStep({
+  state,
+  onEditStep,
+  onImport,
+  isImporting,
+  importError,
+  importSyncState = 'idle',
+  importSyncMessage,
+}: ReviewStepProps) {
   const isRepoPath = state.path === 'repo'
 
   // For repo path, get the folder/repo name from the URL
@@ -303,7 +314,7 @@ export function ReviewStep({ state, onEditStep, onImport, isImporting }: ReviewS
 
         {/* Import Button - only for repo path */}
         {isRepoPath && onImport && (
-          <div className="p-6 flex justify-end">
+          <div className="p-6 flex flex-col items-end gap-2">
             <Button onClick={onImport} disabled={isImporting} className="gap-2">
               {isImporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -312,6 +323,42 @@ export function ReviewStep({ state, onEditStep, onImport, isImporting }: ReviewS
               )}
               {isImporting ? 'Importing...' : 'Import Project'}
             </Button>
+            {importSyncState !== 'idle' && (
+              <div className="w-full max-w-[18rem]">
+                <div className="h-0.5 w-full bg-border/50 overflow-hidden">
+                  <div
+                    className={[
+                      "h-full transition-all duration-300",
+                      importSyncState === 'ready' ? "bg-green-500" : importSyncState === 'error' ? "bg-destructive" : "bg-primary",
+                      importSyncState !== 'ready' && importSyncState !== 'error' ? "animate-pulse" : "",
+                    ].join(" ")}
+                    style={{
+                      width:
+                        importSyncState === 'ready'
+                          ? '100%'
+                          : importSyncState === 'syncing'
+                            ? '70%'
+                            : '30%',
+                    }}
+                  />
+                </div>
+                {importSyncMessage && (
+                  <p
+                    className={[
+                      "mt-1 text-[11px] text-right",
+                      importSyncState === 'error' ? "text-destructive" : "text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {importSyncMessage}
+                  </p>
+                )}
+              </div>
+            )}
+            {importError && (
+              <p className="text-xs text-destructive text-right max-w-[24rem]">
+                {importError}
+              </p>
+            )}
           </div>
         )}
       </div>

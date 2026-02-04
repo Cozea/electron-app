@@ -6,7 +6,7 @@
  * via the custom protocol (cozea://).
  */
 
-import { shell, BrowserWindow } from 'electron'
+import { shell } from 'electron'
 import { randomUUID, randomBytes, createHash } from 'node:crypto'
 
 // ============================================

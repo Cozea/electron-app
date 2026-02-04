@@ -39,13 +39,56 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       return
     }
 
+    // Convert CSS color (including oklch) to hex using canvas
+    const colorToHex = (cssColor: string): string => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return '#000000'
+
+      ctx.fillStyle = cssColor
+      ctx.fillRect(0, 0, 1, 1)
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+    }
+
+    // Get CSS variable value and convert to hex
+    const getThemeColor = (cssVar: string, fallback: string): string => {
+      // Use the terminal container's parent to get correct theme context
+      const themeRoot = container.closest('.dark, .navy, .wine, .sunny, .forest') || document.documentElement
+      const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+
+      if (!computed) {
+        return fallback
+      }
+
+      // Create temp element within the theme context to resolve the color
+      const tempDiv = document.createElement('div')
+      tempDiv.style.position = 'absolute'
+      tempDiv.style.visibility = 'hidden'
+      tempDiv.style.backgroundColor = computed
+      document.body.appendChild(tempDiv)
+      const resolvedColor = getComputedStyle(tempDiv).backgroundColor
+      document.body.removeChild(tempDiv)
+
+      if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
+        return fallback
+      }
+      return colorToHex(resolvedColor)
+    }
+
+    const background = getThemeColor('--sidebar', '#1a1a1a')
+    const foreground = getThemeColor('--sidebar-foreground', '#fafafa')
+    const muted = getThemeColor('--muted', '#27272a')
+
     const term = new Terminal({
       theme: {
-        background: '#09090b',
-        foreground: '#fafafa',
-        cursor: '#fafafa',
-        cursorAccent: '#09090b',
-        selectionBackground: '#27272a',
+        background,
+        foreground,
+        cursor: foreground,
+        cursorAccent: background,
+        selectionBackground: muted,
         black: '#09090b',
         red: '#f87171',
         green: '#4ade80',
@@ -67,10 +110,13 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       lineHeight: 1.2,
       cursorBlink: false,
-      cursorStyle: 'underline',
+      cursorStyle: 'block',
       disableStdin: true, // Read-only
       scrollback: 1000,
       convertEol: true,
+      allowProposedApi: true,
+      drawBoldTextInBrightColors: true,
+      minimumContrastRatio: 1,
     })
 
     const fitAddon = new FitAddon()
@@ -94,10 +140,7 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       term.writeln(`\x1b[90m$ ${command}\x1b[0m`)
       term.writeln('')
     }
-    if (output) {
-      term.write(output)
-      lastOutputRef.current = output
-    }
+    lastOutputRef.current = ''
 
     return () => {
       term.dispose()
@@ -152,12 +195,12 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
   }, [command, output])
 
   return (
-    <div className={cn('bg-zinc-950 overflow-hidden relative group px-3 py-2', className)}>
+    <div className={cn('bg-sidebar text-foreground border border-border/50 overflow-hidden relative group px-3 py-2 rounded-md', className)}>
       {/* Copy button - appears on hover */}
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-2 right-2 h-7 w-7 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity z-10"
         onClick={handleCopy}
       >
         {isCopied ? <CheckIcon className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}
