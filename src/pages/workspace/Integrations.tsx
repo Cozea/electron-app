@@ -216,7 +216,7 @@ export function Integrations() {
                     return (
                       <div
                         key={integration.id}
-                        className="rounded-lg bg-card flex flex-col"
+                        className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 flex flex-col"
                       >
                         {/* Top: icon, name, description */}
                         <div className="flex items-start gap-3 p-4">
@@ -232,7 +232,7 @@ export function Integrations() {
                         </div>
 
                         {/* Divider */}
-                        <div className="h-px bg-border/60" />
+                        <div className="h-px bg-transparent" />
 
                         {/* Bottom: buttons and toggle */}
                         <div className="flex items-center justify-between px-4 py-3">
@@ -273,7 +273,7 @@ export function Integrations() {
                   }).map((_, i) => (
                     <div
                       key={`empty-${i}`}
-                      className="rounded-lg bg-muted/20 p-4 hidden lg:block"
+                      className="rounded-2xl bg-secondary/30 dark:bg-secondary/15 p-4 hidden lg:block"
                     />
                   ))}
                 </div>
