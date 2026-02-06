@@ -250,7 +250,7 @@ export function Account() {
             Danger Zone
           </h3>
           <div className="space-y-4 mt-4">
-            <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">
+            <div className="flex items-center justify-between p-5 rounded-2xl bg-destructive/5">
               <div>
                 <h4 className="font-medium">Delete Account</h4>
                 <p className="text-sm text-muted-foreground">

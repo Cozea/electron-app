@@ -4,6 +4,7 @@ import { TitleBar } from "../TitleBar"
 import { CommandSearch } from "../CommandSearch"
 import { AssistantToggleButton } from "@/components/assistant/AssistantToggleButton"
 import { UpdateMenu } from "@/components/updates/UpdateMenu"
+import { BdryDivider } from "@/components/ui/bdry"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -56,7 +57,7 @@ export function SiteHeader({ breadcrumbs = [], presenceUsers }: SiteHeaderProps)
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <SidebarTrigger className="-ml-1" />
-          <div className="mx-2 h-4 w-[1px] bg-foreground/20" />
+          <BdryDivider orientation="vertical" className="mx-2 h-4" variant="muted" />
           <Breadcrumb>
             <BreadcrumbList>
               {breadcrumbs.map((crumb, index) => (

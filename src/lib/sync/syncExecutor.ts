@@ -113,6 +113,34 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes
 }
 
+const DEFAULT_CONCURRENCY = (() => {
+  if (typeof navigator !== "undefined" && navigator.hardwareConcurrency) {
+    return Math.min(8, Math.max(2, navigator.hardwareConcurrency))
+  }
+  return 4
+})()
+
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number
+): Promise<T[]> {
+  if (tasks.length === 0) return []
+
+  const results = new Array<T>(tasks.length)
+  let index = 0
+
+  const workers = new Array(Math.min(limit, tasks.length)).fill(0).map(async () => {
+    while (true) {
+      const current = index++
+      if (current >= tasks.length) break
+      results[current] = await tasks[current]()
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}
+
 export interface SyncExecutorOptions {
   projectId: Id<"projects">
   userId: Id<"users">
@@ -205,20 +233,20 @@ export async function executeSyncPlan(
 
       const filesToWrite: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }> = []
 
-      for (const op of plan.downloads) {
-        if (!op.cloudEntry) continue
+      const downloadTasks = plan.downloads.map((op) => async () => {
+        if (!op.cloudEntry) return
 
         try {
           const url = await getStorageUrl(op.cloudEntry.storageId)
           if (!url) {
             addLog(`⚠ Could not get URL for: ${op.path}`)
-            continue
+            return
           }
 
           const response = await fetch(url)
           if (!response.ok) {
             addLog(`⚠ Failed to download: ${op.path}`)
-            continue
+            return
           }
 
           if (isBinaryPath(op.path)) {
@@ -240,7 +268,9 @@ export async function executeSyncPlan(
         } catch (err) {
           addLog(`⚠ Error downloading ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
         }
-      }
+      })
+
+      await runWithConcurrency(downloadTasks, DEFAULT_CONCURRENCY)
 
       // Write all downloaded files to local
       if (filesToWrite.length > 0) {
@@ -269,8 +299,8 @@ export async function executeSyncPlan(
         checksum: string
       }> = []
 
-      for (const op of plan.autoMerged!) {
-        if (!op.mergeDetails) continue
+      const mergeTasks = (plan.autoMerged ?? []).map((op) => async () => {
+        if (!op.mergeDetails) return
 
         try {
           const mimeType = getMimeType(op.path)
@@ -322,7 +352,9 @@ export async function executeSyncPlan(
         } catch (err) {
           addLog(`⚠ Failed to merge ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
         }
-      }
+      })
+
+      await runWithConcurrency(mergeTasks, DEFAULT_CONCURRENCY)
 
       // Write merged files locally
       if (mergedFilesToWrite.length > 0) {

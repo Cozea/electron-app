@@ -121,68 +121,70 @@ export function Roles() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[300px]">Permission</TableHead>
-                <TableHead className="text-center">
-                  <Badge variant="outline" className={roles[0].color}>
-                    <Shield className="h-3 w-3 mr-1" />
-                    Admin
-                  </Badge>
-                </TableHead>
-                <TableHead className="text-center">
-                  <Badge variant="outline" className={roles[1].color}>
-                    <Users className="h-3 w-3 mr-1" />
-                    Member
-                  </Badge>
-                </TableHead>
-                <TableHead className="text-center">
-                  <Badge variant="outline" className={roles[2].color}>
-                    <Eye className="h-3 w-3 mr-1" />
-                    Viewer
-                  </Badge>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {permissions.map((category) => (
-                <Fragment key={category.category}>
-                  <TableRow>
-                    <TableCell colSpan={4} className="bg-muted/50 font-medium">
-                      {category.category}
-                    </TableCell>
-                  </TableRow>
-                  {category.items.map((perm) => (
-                    <TableRow key={perm.name}>
-                      <TableCell className="text-muted-foreground">{perm.name}</TableCell>
-                      <TableCell className="text-center">
-                        {perm.admin ? (
-                          <Check className="h-4 w-4 text-green-500 mx-auto" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {perm.member ? (
-                          <Check className="h-4 w-4 text-green-500 mx-auto" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {perm.viewer ? (
-                          <Check className="h-4 w-4 text-green-500 mx-auto" />
-                        ) : (
-                          <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
-                        )}
+          <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <Table className="[&_th]:px-4 [&_td]:px-4">
+              <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                <TableRow>
+                  <TableHead className="w-[300px]">Permission</TableHead>
+                  <TableHead className="text-center">
+                    <Badge variant="outline" className={roles[0].color}>
+                      <Shield className="h-3 w-3 mr-1" />
+                      Admin
+                    </Badge>
+                  </TableHead>
+                  <TableHead className="text-center">
+                    <Badge variant="outline" className={roles[1].color}>
+                      <Users className="h-3 w-3 mr-1" />
+                      Member
+                    </Badge>
+                  </TableHead>
+                  <TableHead className="text-center">
+                    <Badge variant="outline" className={roles[2].color}>
+                      <Eye className="h-3 w-3 mr-1" />
+                      Viewer
+                    </Badge>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                {permissions.map((category) => (
+                  <Fragment key={category.category}>
+                    <TableRow>
+                      <TableCell colSpan={4} className="bg-secondary/60 font-medium">
+                        {category.category}
                       </TableCell>
                     </TableRow>
-                  ))}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
+                    {category.items.map((perm) => (
+                      <TableRow key={perm.name}>
+                        <TableCell className="text-muted-foreground">{perm.name}</TableCell>
+                        <TableCell className="text-center">
+                          {perm.admin ? (
+                            <Check className="h-4 w-4 text-green-500 mx-auto" />
+                          ) : (
+                            <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {perm.member ? (
+                            <Check className="h-4 w-4 text-green-500 mx-auto" />
+                          ) : (
+                            <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {perm.viewer ? (
+                            <Check className="h-4 w-4 text-green-500 mx-auto" />
+                          ) : (
+                            <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </DashboardLayout>

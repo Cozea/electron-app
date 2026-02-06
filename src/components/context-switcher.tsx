@@ -273,7 +273,7 @@ export function ContextSwitcher() {
             {isInProject && (
               <>
                 <DropdownMenuItem onClick={handleGoHome} className="gap-2 p-2" disabled={isBusy}>
-                  <div className="flex size-6 items-center justify-center rounded-md border">
+                  <div className="flex size-6 items-center justify-center rounded-md">
                     <Home className="size-3.5" />
                   </div>
                   All Projects
@@ -296,7 +296,7 @@ export function ContextSwitcher() {
                   className="gap-2 p-2"
                   disabled={isBusy}
                 >
-                  <div className="flex size-6 items-center justify-center rounded-md border">
+                  <div className="flex size-6 items-center justify-center rounded-md">
                     <FolderOpen className="size-3.5 shrink-0" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -310,7 +310,7 @@ export function ContextSwitcher() {
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2" disabled={isBusy}>
-              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+              <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
                 <Plus className="size-4" />
               </div>
               <span className="text-muted-foreground font-medium">New Project</span>

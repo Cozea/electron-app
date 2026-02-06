@@ -173,6 +173,19 @@ export class SyncCheckpointStore {
   }
 
   /**
+   * Get checkpoint map for all files in a project.
+   *
+   * @param projectId - The project ID
+   * @returns Map of file path to checkpoint data
+   */
+  async getCheckpointMap(
+    projectId: Id<'projects'>
+  ): Promise<Record<string, FileCheckpoint>> {
+    const checkpoint = await this.loadCheckpoint(projectId)
+    return checkpoint?.files ?? {}
+  }
+
+  /**
    * Update checkpoint for specific files (after resolving individual files).
    *
    * @param projectId - The project ID

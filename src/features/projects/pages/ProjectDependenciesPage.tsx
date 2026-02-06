@@ -42,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ButtonGroup } from '@/components/ui/button-group'
+
 
 export function ProjectDependenciesPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -167,29 +167,27 @@ export function ProjectDependenciesPage() {
         <h1 className="text-sm font-medium">Dependencies</h1>
 
         <div className="flex items-center gap-2">
-          <ButtonGroup>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 rounded-r-none border-r-0">
-                  <Package className="h-3.5 w-3.5" />
-                  {filter === 'all' ? `All (${dependencies.length})` : filter === 'dependencies' ? `Dependencies (${prodCount})` : `Dev (${devCount})`}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setFilter('all')}>All ({dependencies.length})</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setFilter('dependencies')}>Dependencies ({prodCount})</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              className="rounded-l-none px-2"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          </ButtonGroup>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="sm" className="gap-2 rounded-full">
+                <Package className="h-3.5 w-3.5" />
+                {filter === 'all' ? `All (${dependencies.length})` : filter === 'dependencies' ? `Dependencies (${prodCount})` : `Dev (${devCount})`}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setFilter('all')}>All ({dependencies.length})</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilter('dependencies')}>Dependencies ({prodCount})</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRefresh}
+            className="rounded-full px-2"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
@@ -250,84 +248,86 @@ export function ProjectDependenciesPage() {
           <div className="px-4 pb-4">
             <Card className="border-0 shadow-none bg-transparent">
               <div className="relative w-full">
-                <table className="w-full caption-bottom text-sm">
-                  <TableHeader className="sticky top-0 z-10 bg-[var(--sidebar)] shadow-sm after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-12px] after:h-3 after:bg-gradient-to-b after:from-black/5 after:to-transparent after:pointer-events-none">
-                    <TableRow className="hover:bg-transparent border-b border-border/50">
-                      <TableHead className="w-[280px]">Package</TableHead>
-                      <TableHead>Declared</TableHead>
-                      <TableHead>Installed</TableHead>
-                      <TableHead>Latest</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right w-[80px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedDeps.map((dep) => (
-                      <TableRow key={dep.name} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                            {dep.name}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                            {dep.declared}
-                          </code>
-                        </TableCell>
-                        <TableCell>
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                            {dep.installed ?? '—'}
-                          </code>
-                        </TableCell>
-                        <TableCell>
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                            {dep.latest ?? '—'}
-                          </code>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={dep.status === 'outdated' ? 'destructive' : dep.status === 'missing' ? 'secondary' : 'default'}>
-                            {dep.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={dep.type === 'dependency' ? 'default' : 'secondary'}>
-                            {dep.type === 'dependency'
-                              ? 'prod'
-                              : dep.type === 'devDependency'
-                              ? 'dev'
-                              : dep.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'latest')}>
-                                <ArrowUp className="h-4 w-4 mr-2" />
-                                Update to Latest
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'range')}>
-                                <ArrowUp className="h-4 w-4 mr-2" />
-                                Update within range
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(dep.name)}>
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Uninstall
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                  <table className="w-full caption-bottom text-sm [&_th]:px-4 [&_td]:px-4">
+                    <TableHeader className="sticky top-0 z-10 bg-secondary/80 dark:bg-secondary/40 shadow-sm after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-12px] after:h-3 after:bg-gradient-to-b after:from-black/5 after:to-transparent after:pointer-events-none [&_tr]:border-b [&_tr]:border-border/60">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[280px]">Package</TableHead>
+                        <TableHead>Declared</TableHead>
+                        <TableHead>Installed</TableHead>
+                        <TableHead>Latest</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-right w-[80px]">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </table>
+                    </TableHeader>
+                    <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                      {paginatedDeps.map((dep) => (
+                        <TableRow key={dep.name} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                              {dep.name}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                              {dep.declared}
+                            </code>
+                          </TableCell>
+                          <TableCell>
+                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                              {dep.installed ?? '—'}
+                            </code>
+                          </TableCell>
+                          <TableCell>
+                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                              {dep.latest ?? '—'}
+                            </code>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={dep.status === 'outdated' ? 'destructive' : dep.status === 'missing' ? 'secondary' : 'default'}>
+                              {dep.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={dep.type === 'dependency' ? 'default' : 'secondary'}>
+                              {dep.type === 'dependency'
+                                ? 'prod'
+                                : dep.type === 'devDependency'
+                                  ? 'dev'
+                                  : dep.type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'latest')}>
+                                  <ArrowUp className="h-4 w-4 mr-2" />
+                                  Update to Latest
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleUpdate(dep.name, 'range')}>
+                                  <ArrowUp className="h-4 w-4 mr-2" />
+                                  Update within range
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(dep.name)}>
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Uninstall
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </table>
+                </div>
               </div>
             </Card>
           </div>

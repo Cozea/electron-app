@@ -147,7 +147,7 @@ export function Integrations() {
       {/* Filter Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-full">
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full">
             <Plug className="h-3.5 w-3.5" />
             {getFilterLabel()}
           </Button>
@@ -216,7 +216,7 @@ export function Integrations() {
                     return (
                       <div
                         key={integration.id}
-                        className="rounded-lg border bg-card flex flex-col"
+                        className="rounded-lg bg-card flex flex-col"
                       >
                         {/* Top: icon, name, description */}
                         <div className="flex items-start gap-3 p-4">
@@ -232,7 +232,7 @@ export function Integrations() {
                         </div>
 
                         {/* Divider */}
-                        <div className="border-t" />
+                        <div className="h-px bg-border/60" />
 
                         {/* Bottom: buttons and toggle */}
                         <div className="flex items-center justify-between px-4 py-3">
@@ -273,7 +273,7 @@ export function Integrations() {
                   }).map((_, i) => (
                     <div
                       key={`empty-${i}`}
-                      className="rounded-lg border border-dashed bg-muted/20 p-4 hidden lg:block"
+                      className="rounded-lg bg-muted/20 p-4 hidden lg:block"
                     />
                   ))}
                 </div>

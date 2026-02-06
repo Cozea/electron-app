@@ -93,8 +93,10 @@ export const useDependenciesStore = create<DependenciesState>()(
   }))
 )
 
+const EMPTY_JOBS: DependencyJob[] = []
+
 export const selectDependenciesSnapshot = (projectPath: string | null | undefined) => (state: DependenciesState) =>
   projectPath ? state.byProject[projectPath] : undefined
 
 export const selectDependencyJobs = (projectPath: string | null | undefined) => (state: DependenciesState) =>
-  projectPath ? state.jobsByProject[projectPath] ?? [] : []
+  projectPath ? state.jobsByProject[projectPath] ?? EMPTY_JOBS : EMPTY_JOBS

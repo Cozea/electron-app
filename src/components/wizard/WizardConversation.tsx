@@ -34,6 +34,7 @@ import {
   loadModelSettings,
   saveModelSettings,
 } from '@/lib/modelSettingsStorage'
+import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
   IconArrowUp,
   IconBolt,
@@ -274,6 +275,16 @@ export function WizardConversation({
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
   const selectedModelData = availableModels.find((m) => m.id === model)
+  const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
+  const activeProvider = selectedModelData?.chefSlug
+  const visibleChefs =
+    allowCrossProviderSwitching || !selectedModelData
+      ? ['Anthropic', 'OpenAI', 'Google']
+      : [selectedModelData.chef]
+  const visibleModels =
+    allowCrossProviderSwitching || !activeProvider
+      ? availableModels
+      : availableModels.filter((m) => m.chefSlug === activeProvider)
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
 
   // Determine which controls to show based on model capabilities
@@ -1031,9 +1042,9 @@ export function WizardConversation({
                   <ModelSelectorInput placeholder="Search models..." />
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {['Anthropic', 'OpenAI', 'Google'].map((chef) => (
+                    {visibleChefs.map((chef) => (
                       <ModelSelectorGroup heading={chef} key={chef}>
-                        {availableModels
+                        {visibleModels
                           .filter((m) => m.chef === chef)
                           .map((m) => (
                             <ModelSelectorItem

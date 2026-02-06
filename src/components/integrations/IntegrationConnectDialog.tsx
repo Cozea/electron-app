@@ -79,7 +79,7 @@ export function IntegrationConnectDialog({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50">
                 <IntegrationIcon provider={integration.id} size="lg" />
               </div>
               <div>
@@ -143,7 +143,7 @@ export function IntegrationConnectDialog({
         {/* Logo connection visualization */}
         <div className="flex items-center justify-center gap-4 py-8">
           {/* Cozea logo */}
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 border shadow-sm">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 shadow-sm">
             <Logo size={36} />
           </div>
 
@@ -155,7 +155,7 @@ export function IntegrationConnectDialog({
           </div>
 
           {/* Integration logo */}
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 border shadow-sm">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 shadow-sm">
             <IntegrationIcon provider={integration.id} size="xl" />
           </div>
         </div>
@@ -209,7 +209,7 @@ export function IntegrationConnectDialog({
 
         {/* Help link */}
         {integration.setupGuideUrl && (
-          <div className="mt-4 pt-4 border-t text-center">
+          <div className="mt-4 pt-4 text-center">
             <a
               href={integration.setupGuideUrl}
               target="_blank"

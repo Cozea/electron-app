@@ -71,7 +71,7 @@ export function BuilderLayout({
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden mt-10">
         {/* Phase Timeline */}
-        <div className="px-8 py-4 border-b border-border">
+        <div className="px-8 py-4 bdry-b">
           <div className="flex items-center justify-center gap-2">
             {phases.map((phase, index) => (
               <PhaseIndicator
@@ -84,7 +84,7 @@ export function BuilderLayout({
         </div>
 
         {/* Progress Section */}
-        <div className="px-8 py-8 border-b border-border">
+        <div className="px-8 py-8 bdry-b">
           <div className="max-w-2xl mx-auto text-center">
             {/* Status Icon */}
             <div className="mb-4">
@@ -145,7 +145,7 @@ export function BuilderLayout({
 
         {/* Logs Section */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-8 py-2 border-b border-border flex items-center justify-between">
+          <div className="px-8 py-2 bdry-b flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">Build Logs</h3>
             {logs.length > 0 && (
               <span className="text-xs text-muted-foreground">
@@ -176,7 +176,7 @@ export function BuilderLayout({
       </div>
 
       {/* Footer */}
-      <footer className="h-14 border-t border-border flex items-center justify-center px-8 bg-background gap-3">
+      <footer className="h-14 bdry-t flex items-center justify-center px-8 bg-background gap-3">
         {isRunning && !hasError && (
           <Button variant="outline" onClick={onStop} className="gap-2">
             <Square className="h-4 w-4" />

@@ -317,32 +317,34 @@ export function Storage() {
                 </p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
+              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <Table className="[&_th]:px-4 [&_td]:px-4">
+                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
                     <TableHead>Project</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Last Modified</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {localProjects.map((project) => (
-                    <TableRow key={project.path}>
-                      <TableCell className="font-medium">{project.name}</TableCell>
-                      <TableCell>{formatBytes(project.size)}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatRelativeTime(project.lastModified)}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                    {localProjects.map((project) => (
+                      <TableRow key={project.path}>
+                        <TableCell className="font-medium">{project.name}</TableCell>
+                        <TableCell>{formatBytes(project.size)}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatRelativeTime(project.lastModified)}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

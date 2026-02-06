@@ -12,6 +12,7 @@ interface ManifestEntry {
 interface ManifestResult {
   manifest: ManifestEntry[]
   totalFiles: number
+  dirMtimes: Record<string, number>
 }
 
 interface PendingRequest {
@@ -125,6 +126,44 @@ export async function getManifestFromWorker(
       payload: {
         projectPath,
         excludePatterns,
+      },
+    })
+
+    // Timeout after 60 seconds
+    setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id)
+        reject(new Error('Worker request timed out'))
+      }
+    }, 60000)
+  })
+}
+
+export async function getManifestFromWorkerIncremental(
+  projectPath: string,
+  excludePatterns?: string[],
+  previousEntries?: Record<string, ManifestEntry>,
+  previousDirMtimes?: Record<string, number>
+): Promise<ManifestResult> {
+  await ensureWorker()
+
+  if (!worker) {
+    throw new Error('Worker not available')
+  }
+
+  const id = `manifest-${++requestId}`
+
+  return new Promise((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject })
+
+    worker!.postMessage({
+      type: 'getManifestIncremental',
+      id,
+      payload: {
+        projectPath,
+        excludePatterns,
+        previousEntries,
+        previousDirMtimes,
       },
     })
 

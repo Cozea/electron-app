@@ -32,7 +32,7 @@ import {
   EmptyContent,
 } from '../components/ui/empty'
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip'
-import { ButtonGroup } from '../components/ui/button-group'
+
 import { Badge } from '../components/ui/badge'
 import { Skeleton } from '../components/ui/skeleton'
 import { IconFolderCode } from '@tabler/icons-react'
@@ -217,51 +217,51 @@ export function Projects() {
 
   const headerContent = (
     <div className="flex items-center gap-2">
-      {hasProjects && <ButtonGroup className="rounded-full">
-          {/* Status Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-l-full border-r-0 focus:z-10">
-                <FileCode className="h-3.5 w-3.5" />
-                {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {hasProjects && <>
+        {/* Status Filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+              <FileCode className="h-3.5 w-3.5" />
+              {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-          {/* Sort */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-none border-r-0 focus:z-10">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                Sort
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {/* Sort */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+              <ArrowUpDown className="h-3.5 w-3.5" />
+              Sort
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-          {/* View Mode Toggle */}
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7 px-0 rounded-r-full rounded-l-none focus:z-10"
-            onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
-            disabled={isMobile}
-            title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
-          >
-            {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
-          </Button>
-        </ButtonGroup>}
+        {/* View Mode Toggle */}
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-7 w-7 px-0 rounded-full focus:z-10"
+          onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
+          disabled={isMobile}
+          title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
+        >
+          {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+        </Button>
+      </>}
 
       <TooltipProvider>
         <Tooltip>

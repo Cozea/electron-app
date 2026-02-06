@@ -22,6 +22,7 @@ import {
   saveModelSettings,
   type StoredModelSettings,
 } from '@/lib/modelSettingsStorage'
+import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
   IconArrowUp,
   IconBolt,
@@ -327,6 +328,16 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const lastProjectSlugRef = useRef<string | null>(null)
 
   const selectedModelData = availableModels.find((m) => m.id === model)
+  const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
+  const activeProvider = selectedModelData?.chefSlug
+  const visibleChefs =
+    allowCrossProviderSwitching || !selectedModelData
+      ? ['Anthropic', 'OpenAI', 'Google']
+      : [selectedModelData.chef]
+  const visibleModels =
+    allowCrossProviderSwitching || !activeProvider
+      ? availableModels
+      : availableModels.filter((m) => m.chefSlug === activeProvider)
 
   // Apply pending prompt injections (e.g. from screenshot capture or inspector actions)
   useEffect(() => {
@@ -1617,9 +1628,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                   <ModelSelectorInput placeholder="Search models..." />
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {['Anthropic', 'OpenAI', 'Google'].map((chef) => (
+                    {visibleChefs.map((chef) => (
                       <ModelSelectorGroup heading={chef} key={chef}>
-                        {availableModels
+                        {visibleModels
                           .filter((m) => m.chef === chef)
                           .map((m) => (
                             <ModelSelectorItem

@@ -462,7 +462,7 @@ export function Billing() {
                 <Progress value={(memberCount / memberLimit) * 100} className="h-2" />
                 {/* Member Avatars */}
                 {members && members.length > 0 && (
-                  <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                  <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
                     <div className="flex -space-x-2">
                       {members.slice(0, 4).map((member) => {
                         const displayName = member.user?.firstName
@@ -495,7 +495,7 @@ export function Billing() {
                 </div>
                 {/* Member Avatars */}
                 {members && members.length > 0 && (
-                  <div className="flex items-center rounded-full border p-1 shadow-sm bg-background w-fit">
+                  <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
                     <div className="flex -space-x-2">
                       {members.slice(0, 4).map((member) => {
                         const displayName = member.user?.firstName
@@ -552,7 +552,7 @@ export function Billing() {
                     return (
                       <div
                         key={plan.id}
-                        className={`relative rounded-lg border bg-card p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'ring-2 ring-primary' : ''
+                        className={`relative rounded-2xl bg-card p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'shadow-md' : 'shadow-sm'
                           } ${showUpgradeOptions
                             ? 'opacity-100 translate-y-0'
                             : 'opacity-0 -translate-y-4'
@@ -595,7 +595,7 @@ export function Billing() {
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0">
             {/* Usage Chart */}
-            <div>
+            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="font-medium">Usage Over Time</p>
@@ -722,49 +722,51 @@ export function Billing() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : stripeInvoices.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Invoice</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stripeInvoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell>{formatDate(invoice.date)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {invoice.description}
-                      </TableCell>
-                      <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
-                          className="capitalize"
-                        >
-                          {invoice.status || 'unknown'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {invoice.hostedInvoiceUrl && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1"
-                            onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
-                          >
-                            View
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </TableCell>
+              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <Table className="[&_th]:px-4 [&_td]:px-4">
+                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Invoice</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                    {stripeInvoices.map((invoice) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell>{formatDate(invoice.date)}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {invoice.description}
+                        </TableCell>
+                        <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
+                            className="capitalize"
+                          >
+                            {invoice.status || 'unknown'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {invoice.hostedInvoiceUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1"
+                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                            >
+                              View
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <p>No invoices yet</p>

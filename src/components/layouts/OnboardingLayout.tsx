@@ -63,7 +63,7 @@ export function OnboardingLayout({
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden mt-10">
         {/* Steps List */}
-        <aside className="w-72 border-r border-border flex flex-col bg-muted/30">
+        <aside className="w-72 bdry-r flex flex-col bg-muted/30">
           <div className="p-6">
             <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg mb-4">
               C
@@ -108,7 +108,7 @@ export function OnboardingLayout({
           </ScrollArea>
 
           {/* Footer */}
-          <footer className="px-10 py-6 border-t border-border flex items-center justify-between">
+          <footer className="px-10 py-6 bdry-t flex items-center justify-between">
             <div>
               {!isFirstStep && (
                 <Button

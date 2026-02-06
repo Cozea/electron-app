@@ -15,7 +15,12 @@ import { resolvePathWithinDirectory } from './pathUtils'
 import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from './projectWatcher'
 import { createApplicationMenu } from './menu'
-import { getManifestFromWorker } from './workers/fileOpsManager'
+import { getManifestFromWorker, getManifestFromWorkerIncremental } from './workers/fileOpsManager'
+import {
+  loadManifestCache,
+  saveManifestCache,
+  consumeManifestDirtyPaths,
+} from './services/manifestCache'
 
 // Services
 import { AuthService } from './services/AuthService'
@@ -1443,16 +1448,83 @@ ipcMain.handle(
     manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
     totalFiles: number
   }> => {
+    const cached = loadManifestCache(projectPath)
+    const dirtyPaths = consumeManifestDirtyPaths(projectPath)
+
+    if (cached && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
+      if (!xxhasher) throw new Error('xxhash not initialized')
+
+      const updatedEntries = { ...cached.entries }
+
+      for (const relPath of dirtyPaths) {
+        const fullPath = path.join(projectPath, relPath)
+        if (!fs.existsSync(fullPath)) {
+          delete updatedEntries[relPath]
+          continue
+        }
+
+        try {
+          const stats = fs.statSync(fullPath)
+          if (!stats.isFile()) {
+            delete updatedEntries[relPath]
+            continue
+          }
+          const content = fs.readFileSync(fullPath)
+          const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+          updatedEntries[relPath] = {
+            path: relPath,
+            hash,
+            size: stats.size,
+            mtime: stats.mtimeMs,
+          }
+        } catch {
+          delete updatedEntries[relPath]
+        }
+      }
+
+      saveManifestCache(projectPath, updatedEntries, cached.dirMtimes)
+      const manifest = Object.values(updatedEntries)
+      return { manifest, totalFiles: manifest.length }
+    }
+
+    let workerResult:
+      | {
+          manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
+          totalFiles: number
+          dirMtimes: Record<string, number>
+        }
+      | null = null
+
     try {
-      return await getManifestFromWorker(projectPath, excludePatterns)
+      workerResult = await getManifestFromWorkerIncremental(
+        projectPath,
+        excludePatterns,
+        cached?.entries,
+        cached?.dirMtimes
+      )
     } catch (error) {
-      console.warn('[Sync] Worker manifest failed, falling back to main thread:', error)
+      console.warn('[Sync] Worker incremental manifest failed:', error)
+      try {
+        workerResult = await getManifestFromWorker(projectPath, excludePatterns)
+      } catch (err) {
+        console.warn('[Sync] Worker manifest failed, falling back to main thread:', err)
+      }
+    }
+
+    if (workerResult) {
+      const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
+      for (const entry of workerResult.manifest) {
+        entries[entry.path] = entry
+      }
+      saveManifestCache(projectPath, entries, workerResult.dirMtimes)
+      return { manifest: workerResult.manifest, totalFiles: workerResult.totalFiles }
     }
 
     if (!xxhasher) throw new Error('xxhash not initialized')
 
     const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
     const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])])
+    const previousByPath = cached?.entries ? new Map(Object.entries(cached.entries)) : null
 
     const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
 
@@ -1473,12 +1545,25 @@ ipcMain.handle(
           walkDir(fullPath, relPath)
         } else if (entry.isFile()) {
           try {
-            const content = fs.readFileSync(fullPath)
             const stats = fs.statSync(fullPath)
+            const normalizedPath = relPath.replace(/\\/g, '/')
+            const previous = previousByPath?.get(normalizedPath)
+
+            if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+              manifest.push({
+                path: normalizedPath,
+                hash: previous.hash,
+                size: stats.size,
+                mtime: stats.mtimeMs,
+              })
+              continue
+            }
+
+            const content = fs.readFileSync(fullPath)
             const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
 
             manifest.push({
-              path: relPath.replace(/\\/g, '/'), // Normalize to forward slashes
+              path: normalizedPath,
               hash,
               size: stats.size,
               mtime: stats.mtimeMs,
@@ -1495,6 +1580,11 @@ ipcMain.handle(
     }
 
     console.log(`[Sync] Generated manifest with ${manifest.length} files for ${projectPath}`)
+    const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
+    for (const entry of manifest) {
+      entries[entry.path] = entry
+    }
+    saveManifestCache(projectPath, entries, cached?.dirMtimes)
     return { manifest, totalFiles: manifest.length }
   }
 )

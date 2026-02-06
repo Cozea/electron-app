@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
+import { markManifestDirtyPath } from './services/manifestCache'
 
 const INTERNAL_IGNORE_MS = 1500
 const PROCESS_DEBOUNCE_MS = 200
@@ -116,6 +117,8 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
 
   const relNormalized = normalizeRelativePath(rel)
   if (shouldIgnoreRelativePath(relNormalized)) return
+
+  markManifestDirtyPath(handle.projectPath, relNormalized)
 
   try {
     const stats = fs.statSync(fullPath)
@@ -325,4 +328,3 @@ export function stopProjectWatcher(projectPath: string): { success: boolean; err
     return { success: false, error: err instanceof Error ? err.message : 'Failed to stop watcher' }
   }
 }
-

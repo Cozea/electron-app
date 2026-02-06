@@ -314,82 +314,84 @@ export function AI() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
-            <Table className="w-full">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-1/4">Provider</TableHead>
-                  <TableHead className="w-1/4">Status</TableHead>
-                  <TableHead className="w-1/4">Models</TableHead>
-                  <TableHead className="w-1/4 text-right"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(Object.keys(providerInfo) as Provider[]).map((provider) => {
-                  const info = providerInfo[provider]
-                  const status = credentialsStatus?.[provider]
-                  const isConnected = status?.connected || false
-                  const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-1/4">Provider</TableHead>
+                    <TableHead className="w-1/4">Status</TableHead>
+                    <TableHead className="w-1/4">Models</TableHead>
+                    <TableHead className="w-1/4 text-right"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {(Object.keys(providerInfo) as Provider[]).map((provider) => {
+                    const info = providerInfo[provider]
+                    const status = credentialsStatus?.[provider]
+                    const isConnected = status?.connected || false
+                    const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
 
-                  return (
-                    <TableRow key={provider}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                            <ProviderIcon provider={provider} className="h-4 w-4" />
+                    return (
+                      <TableRow key={provider}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                              <ProviderIcon provider={provider} className="h-4 w-4" />
+                            </div>
+                            <span className="font-medium">{info.name}</span>
                           </div>
-                          <span className="font-medium">{info.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {isConnected ? (
-                            <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                              <span className="h-2 w-2 rounded-full bg-green-500" />
-                              Connected
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5 text-muted-foreground">
-                              <span className="h-2 w-2 rounded-full bg-muted-foreground/50" />
-                              Not connected
-                            </span>
-                          )}
-                          {!isAllowed && (
-                            <Badge variant="outline" className="text-amber-500 ml-2">
-                              Disabled
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground">{info.models} models</span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {isConnected && (
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {isConnected ? (
+                              <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                                <span className="h-2 w-2 rounded-full bg-green-500" />
+                                Connected
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5 text-muted-foreground">
+                                <span className="h-2 w-2 rounded-full bg-muted-foreground/50" />
+                                Not connected
+                              </span>
+                            )}
+                            {!isAllowed && (
+                              <Badge variant="outline" className="text-amber-500 ml-2">
+                                Disabled
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground">{info.models} models</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {isConnected && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleRemoveKey(provider)}
+                                disabled={isSaving}
+                              >
+                                Remove
+                              </Button>
+                            )}
                             <Button
-                              variant="ghost"
+                              variant={isConnected ? 'outline' : 'default'}
                               size="sm"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleRemoveKey(provider)}
-                              disabled={isSaving}
+                              onClick={() => handleOpenKeyDialog(provider)}
                             >
-                              Remove
+                              {isConnected ? 'Update' : 'Connect'}
                             </Button>
-                          )}
-                          <Button
-                            variant={isConnected ? 'outline' : 'default'}
-                            size="sm"
-                            onClick={() => handleOpenKeyDialog(provider)}
-                          >
-                            {isConnected ? 'Update' : 'Connect'}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -406,34 +408,9 @@ export function AI() {
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
             {recentUsage === undefined ? (
-              <Table className="w-full">
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[12%]">Date</TableHead>
-                    <TableHead className="w-[18%]">Provider</TableHead>
-                    <TableHead className="w-[30%]">Model</TableHead>
-                    <TableHead className="w-[13%] text-right">Requests</TableHead>
-                    <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                    <TableHead className="w-[14%] text-right">Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Array.from({ length: usagePageSize }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><div className="h-4 w-16 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 w-24 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
-                      <TableCell className="text-right"><div className="h-4 w-8 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                      <TableCell className="text-right"><div className="h-4 w-12 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                      <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : recentUsage && recentUsage.length > 0 ? (
-              <>
-                <Table className="w-full">
-                  <TableHeader>
+              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="w-[12%]">Date</TableHead>
                       <TableHead className="w-[18%]">Provider</TableHead>
@@ -443,61 +420,90 @@ export function AI() {
                       <TableHead className="w-[14%] text-right">Cost</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {recentUsage
-                      .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
-                      .map((usage) => (
-                        <TableRow key={usage._id}>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <ProviderIcon
-                                provider={usage.provider as Provider}
-                                className="h-4 w-4"
-                              />
-                              <span className="capitalize">{usage.provider}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm">{usage.model}</span>
-                          </TableCell>
-                          <TableCell className="text-right">1</TableCell>
-                          <TableCell className="text-right">
-                            {(usage.totalTokens || 0).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className="text-muted-foreground">
-                              {(usage.creditsUsed || 0).toFixed(2)} cr
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                    {Array.from({ length: usagePageSize }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><div className="h-4 w-16 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 w-24 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
+                        <TableCell className="text-right"><div className="h-4 w-8 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                        <TableCell className="text-right"><div className="h-4 w-12 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                        <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded animate-pulse ml-auto" /></TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
+              </div>
+            ) : recentUsage && recentUsage.length > 0 ? (
+              <>
+                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                  <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+                    <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[12%]">Date</TableHead>
+                        <TableHead className="w-[18%]">Provider</TableHead>
+                        <TableHead className="w-[30%]">Model</TableHead>
+                        <TableHead className="w-[13%] text-right">Requests</TableHead>
+                        <TableHead className="w-[13%] text-right">Tokens</TableHead>
+                        <TableHead className="w-[14%] text-right">Cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                      {recentUsage
+                        .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
+                        .map((usage) => (
+                          <TableRow key={usage._id}>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(usage.timestamp).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon
+                                  provider={usage.provider as Provider}
+                                  className="h-4 w-4"
+                                />
+                                <span className="capitalize">{usage.provider}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-sm">{usage.model}</span>
+                            </TableCell>
+                            <TableCell className="text-right">1</TableCell>
+                            <TableCell className="text-right">
+                              {(usage.totalTokens || 0).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-muted-foreground">
+                                {(usage.creditsUsed || 0).toFixed(2)} cr
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
                 {recentUsage.length > usagePageSize && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t">
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
                     <span className="text-sm text-muted-foreground">
                       {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
                     </span>
                     <div className="flex items-center gap-1">
                       <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 rounded-full"
                         onClick={() => setUsagePage(p => p - 1)}
                         disabled={usagePage === 0}
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 rounded-full"
                         onClick={() => setUsagePage(p => p + 1)}
                         disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
                       >

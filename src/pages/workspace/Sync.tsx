@@ -332,66 +332,70 @@ export function Sync() {
               Manage cloud storage across your workspace. Clear categories to free up space.
             </p>
           </div>
-          <Table className="w-full">
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[280px]">Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="w-[100px] text-right">Size</TableHead>
-                <TableHead className="w-[80px] text-right">% Total</TableHead>
-                <TableHead className="w-[100px] text-right"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {storageCategories.map((category) => (
-                <TableRow key={category.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg ${category.color}/10 flex items-center justify-center`}>
-                        <category.icon className={`h-4 w-4 ${category.color.replace('bg-', 'text-')}`} />
+          <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+              <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[280px]">Category</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-[100px] text-right">Size</TableHead>
+                  <TableHead className="w-[80px] text-right">% Total</TableHead>
+                  <TableHead className="w-[100px] text-right"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                {storageCategories.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center">
+                        <category.icon className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{category.name}</span>
-                        {!category.canClear && (
-                          <Badge variant="outline" className="text-xs">Protected</Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{category.name}</span>
+                          {!category.canClear && (
+                          <Badge className="text-xs bg-secondary/60 text-muted-foreground border-0">
+                            Protected
+                          </Badge>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground max-w-[300px] truncate">
-                    {category.description}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatSize(category.size)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {totalUsed > 0 ? ((category.size / totalUsed) * 100).toFixed(0) : 0}%
-                  </TableCell>
-                  <TableCell className="text-right">
+                    </TableCell>
+                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                      {category.description}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatSize(category.size)}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {totalUsed > 0 ? ((category.size / totalUsed) * 100).toFixed(0) : 0}%
+                    </TableCell>
+                    <TableCell className="text-right">
                     {category.canClear ? (
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => setClearingCategory(category)}
+                        aria-label={`Clear ${category.name}`}
                       >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Clear
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
         {/* Storage Plan */}
         {usageLimits?.plan !== 'enterprise' && (
           <div className="px-4">
-            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <div className="rounded-2xl bg-primary/5 p-5">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   {getUpgradeMessage(usageLimits?.plan ?? 'free')}
