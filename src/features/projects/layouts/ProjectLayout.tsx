@@ -25,6 +25,7 @@ import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
 import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
+import { EditorTabs } from "@/features/editor/components/EditorTabs"
 
 
 interface ProjectLayoutProps {
@@ -179,7 +180,14 @@ export function ProjectLayout({
         { label: "Projects", href: "/projects" },
         ...(project?.name ? [{ label: project.name }] : []),
     ]
-    const showHeader = breadcrumbs.length > 0 || Boolean(headerContent) || Boolean(breadcrumbAddon)
+    const headerSlot = isFilesView ? (
+        <div className="flex items-center gap-2 min-w-0">
+            {headerContent}
+            <EditorTabs variant="header" />
+        </div>
+    ) : headerContent
+
+    const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
 
     const layoutContent = (
         <SidebarProvider
@@ -207,7 +215,7 @@ export function ProjectLayout({
                     >
                         <UnifiedHeader
                             breadcrumbs={breadcrumbs}
-                            header={headerContent ?? undefined}
+                            header={headerSlot ?? undefined}
                             breadcrumbAddon={breadcrumbAddon ?? undefined}
                         />
                         <div
