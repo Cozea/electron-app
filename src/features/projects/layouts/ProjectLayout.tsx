@@ -7,7 +7,6 @@ import { api } from "../../../../convex/_generated/api"
 import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
 import { FileTree, type FileTreeHandle } from "../components/FileTree"
-import { SiteHeader } from "@/components/layout/SiteHeader"
 import {
     SidebarInset,
     SidebarProvider,
@@ -175,18 +174,11 @@ export function ProjectLayout({
         <SidebarProvider
             className="flex flex-col h-screen"
         >
-            <SiteHeader
-                breadcrumbs={[
-                    { label: "Projects", href: "/projects" },
-                    ...(project?.name ? [{ label: project.name }] : []),
-                ]}
-                presenceUsers={presenceUsers}
-            />
-            {/* Main content - mt-9 accounts for fixed h-9 header */}
-            <div className="flex-1 flex min-h-0 overflow-hidden mt-9">
+            {/* Main content */}
+            <div className="flex-1 flex min-h-0 overflow-hidden">
                 <ProjectSidebar
                     color="currentColor"
-                    className="!top-9 !h-[calc(100svh-56px)]"
+                    className="!top-0 !h-[100svh]"
                     user={user}
                     onLogout={logout}
                     fileTree={<FileTree ref={fileTreeRef} />}
