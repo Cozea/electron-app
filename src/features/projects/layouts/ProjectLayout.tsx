@@ -11,7 +11,7 @@ import {
     SidebarInset,
     SidebarProvider,
 } from "@/components/ui/sidebar"
-import { StatusBar } from "@/components/StatusBar"
+import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { SearchCommand } from "@/components/shared/SearchCommand"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
@@ -24,6 +24,7 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
 import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
+import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 
 
 interface ProjectLayoutProps {
@@ -161,15 +162,25 @@ export function ProjectLayout({
     const isBackendStudioView = location.pathname.endsWith('/backend')
     const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
+    const isFilesView = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
     // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data)
     const canSync = project?._id && convexUser?._id && slug
+    const headerContent = useProjectHeaderStore((state) => state.header)
+    const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
+    const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
 
 
 
     // Main layout content
+    const breadcrumbs = (hideBreadcrumbs || isFilesView) ? [] : [
+        { label: "Projects", href: "/projects" },
+        ...(project?.name ? [{ label: project.name }] : []),
+    ]
+    const showHeader = breadcrumbs.length > 0 || Boolean(headerContent) || Boolean(breadcrumbAddon)
+
     const layoutContent = (
         <SidebarProvider
             className="flex flex-col h-screen"
@@ -178,7 +189,6 @@ export function ProjectLayout({
             <div className="flex-1 flex min-h-0 overflow-hidden">
                 <ProjectSidebar
                     color="currentColor"
-                    className="!top-0 !h-[100svh]"
                     user={user}
                     onLogout={logout}
                     fileTree={<FileTree ref={fileTreeRef} />}
@@ -189,18 +199,28 @@ export function ProjectLayout({
                 />
                 <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                     <div
-                        className={cn(
-                            // `min-w-0` prevents the main content from overflowing under the right panels
-                            // when it contains wide children (iframes, editors, etc.).
-                            "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
-                            shouldRemovePadding ? "p-0" : "p-4"
-                        )}
+                        className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
                         style={{
                             flex: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? '0 0 0' : '1 1 0',
                             opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
                         }}
                     >
-                        {children || <Outlet />}
+                        <UnifiedHeader
+                            breadcrumbs={breadcrumbs}
+                            header={headerContent ?? undefined}
+                            breadcrumbAddon={breadcrumbAddon ?? undefined}
+                        />
+                        <div
+                            className={cn(
+                                // `min-w-0` prevents the main content from overflowing under the right panels
+                                // when it contains wide children (iframes, editors, etc.).
+                                "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                shouldRemovePadding ? "p-0" : "p-4",
+                                showHeader && "pt-10"
+                            )}
+                        >
+                            {children || <Outlet />}
+                        </div>
                     </div>
                     <ChatPanel />
                     <AssistantPanel

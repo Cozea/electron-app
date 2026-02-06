@@ -352,12 +352,14 @@ export function ProjectSidebar({
                             className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag"
                         >
                             <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
-                                <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
-                                <div className="flex items-center gap-1">
+                                {activeTab !== 'Files' && (
+                                    <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
+                                )}
+                                <div className={cn("flex items-center gap-2", activeTab === 'Files' && "ml-auto")}>
                                     {activeTab === 'Files' && onCreateFile && (
                                         <button
                                             onClick={onCreateFile}
-                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
                                             title="New File"
                                         >
                                             <FilePlus className="h-3.5 w-3.5" />
@@ -366,7 +368,7 @@ export function ProjectSidebar({
                                     {activeTab === 'Files' && onCreateFolder && (
                                         <button
                                             onClick={onCreateFolder}
-                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
                                             title="New Folder"
                                         >
                                             <FolderPlus className="h-3.5 w-3.5" />
@@ -376,7 +378,7 @@ export function ProjectSidebar({
                                         <button
                                             onClick={onRefreshFiles}
                                             disabled={isRefreshing}
-                                            className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
                                             title="Refresh"
                                         >
                                             <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
@@ -384,7 +386,7 @@ export function ProjectSidebar({
                                     )}
                                     <button
                                         onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
-                                        className="h-6 w-6 rounded-md hover:bg-sidebar-accent flex items-center justify-center"
+                                        className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
                                     >
                                         <Plus className="h-4 w-4 rotate-45" />
                                     </button>
