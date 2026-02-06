@@ -1,4 +1,4 @@
-import { type ReactNode, Fragment } from "react"
+import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import {
@@ -7,17 +7,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { CommandSearch } from "@/components/CommandSearch"
-import { BdryDivider } from "@/components/ui/bdry"
-import { LayoutToggles } from "./LayoutToggles"
+import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -57,7 +47,7 @@ export function DashboardLayout({
           <AppSidebar user={user} onLogout={onLogout} />
           <SidebarInset>
             <div className="flex flex-1 flex-col overflow-hidden relative">
-              <DashboardHeader
+              <UnifiedHeader
                 breadcrumbs={_breadcrumbs}
                 header={header}
                 breadcrumbAddon={breadcrumbAddon}
@@ -85,61 +75,5 @@ export function DashboardLayout({
 
       </div>
     </SidebarProvider>
-  )
-}
-
-interface DashboardHeaderProps {
-  breadcrumbs: { label: string; href?: string }[]
-  header?: ReactNode
-  breadcrumbAddon?: ReactNode
-}
-
-function DashboardHeader({ breadcrumbs, header, breadcrumbAddon }: DashboardHeaderProps) {
-  if (breadcrumbs.length === 0 && !header && !breadcrumbAddon) return null
-
-  return (
-    <div className="absolute top-0 left-0 right-0 z-40 h-12 flex items-center px-4 bg-background titlebar-drag-region">
-      <div className="flex items-center w-full gap-3">
-        <div className="flex items-center min-w-0 titlebar-no-drag">
-          <Breadcrumb>
-            <BreadcrumbList>
-              {breadcrumbs.map((crumb, index) => (
-                <Fragment key={`${crumb.label}-${index}`}>
-                  <BreadcrumbItem>
-                    {crumb.href && index < breadcrumbs.length - 1 ? (
-                      <BreadcrumbLink href={crumb.href || "#"}>
-                        {crumb.label}
-                      </BreadcrumbLink>
-                    ) : (
-                      <BreadcrumbPage className="text-muted-foreground/80">
-                        {crumb.label}
-                      </BreadcrumbPage>
-                    )}
-                  </BreadcrumbItem>
-                  {index < breadcrumbs.length - 1 && <BreadcrumbSeparator />}
-                </Fragment>
-              ))}
-            </BreadcrumbList>
-          </Breadcrumb>
-          {breadcrumbAddon && (
-            <div className="ml-3 flex items-center gap-2">
-              {breadcrumbAddon}
-            </div>
-          )}
-        </div>
-        <div className="flex-1" />
-        <div className="flex items-center gap-1 titlebar-no-drag">
-          {header}
-          {(header || breadcrumbAddon) && (
-            <BdryDivider orientation="vertical" className="mx-1.5 h-4" variant="muted" />
-          )}
-          <div className="flex items-center gap-1">
-            <CommandSearch />
-            <div className="w-1" />
-            <LayoutToggles />
-          </div>
-        </div>
-      </div>
-    </div>
   )
 }
