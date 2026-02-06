@@ -8,10 +8,10 @@ export function ChatPanel() {
 
     return (
         <div className={cn(
-            "border-l bg-background flex flex-col transition-all duration-300 ease-in-out",
+            "bg-background flex flex-col transition-all duration-300 ease-in-out bdry-l",
             mode === 'fullscreen' ? "w-full absolute inset-0 z-50" : "w-[400px]"
         )}>
-            <div className="h-14 border-b flex items-center justify-between px-4">
+            <div className="h-14 bdry-b flex items-center justify-between px-4">
                 <span className="font-semibold">AI Chat</span>
             </div>
             <div className="flex-1 p-4">

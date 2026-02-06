@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ButtonGroup } from '@/components/ui/button-group'
+
 import {
   Check,
   Circle,
@@ -152,41 +152,42 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
             )}
 
             {isAIComplete && !isPulling && !isAIGenerating && (
-              <ButtonGroup>
+              <>
                 {onPull && (
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={onPull}
-                    className="h-8 gap-1.5 rounded-r-none border-r-0"
+                    className="h-8 gap-1.5 rounded-full"
                   >
-                    <Download className="h-3 w-3" />
+                    <Download className="h-3.5 w-3.5" />
                     Pull
                   </Button>
                 )}
                 {onOpenProject && (
                   <Button
+                    variant="secondary"
                     size="sm"
                     onClick={onOpenProject}
-                    className="h-8 gap-1.5 rounded-l-none"
+                    className="h-8 gap-1.5 rounded-full"
                   >
-                    <FolderOpen className="h-3 w-3" />
+                    <FolderOpen className="h-3.5 w-3.5" />
                     Open
                   </Button>
                 )}
-              </ButtonGroup>
+              </>
             )}
 
             {hasError && !isPulling && (
-              <ButtonGroup>
+              <>
                 {onRetry && (
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={onRetry}
-                    className="h-8 gap-1.5 rounded-r-none border-r-0"
+                    className="h-8 gap-1.5 rounded-full"
                   >
-                    <RotateCcw className="h-3 w-3" />
+                    <RotateCcw className="h-3.5 w-3.5" />
                     Retry
                   </Button>
                 )}
@@ -195,13 +196,13 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
                     variant="destructive"
                     size="sm"
                     onClick={onCancelProject}
-                    className="h-8 gap-1.5 rounded-l-none"
+                    className="h-8 gap-1.5 rounded-full"
                   >
-                    <Trash className="h-3 w-3" />
+                    <Trash className="h-3.5 w-3.5" />
                     Cancel
                   </Button>
                 )}
-              </ButtonGroup>
+              </>
             )}
 
             {!isAIGenerating && !isAIComplete && !hasError && !isPulling && onStartBuild && (

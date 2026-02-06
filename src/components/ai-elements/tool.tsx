@@ -243,7 +243,9 @@ export const ToolStatic = ({
     >
       <div className="flex w-full items-center gap-4 p-3">
         <div className="flex items-center gap-2">
-          <Icon className="size-4 text-muted-foreground" />
+          <span className="flex size-4 items-center justify-center shrink-0">
+            <Icon className="size-4 text-muted-foreground" />
+          </span>
           {renderHeaderContent()}
           {getStatusIcon(state)}
         </div>
@@ -350,7 +352,9 @@ export const ToolHeader = ({
       {...props}
     >
       <div className="flex items-center gap-2">
-        <Icon className="size-4 text-muted-foreground" />
+        <span className="flex size-4 items-center justify-center shrink-0">
+          <Icon className="size-4 text-muted-foreground" />
+        </span>
         {renderHeaderContent()}
         {getStatusIcon(state)}
       </div>

@@ -21,16 +21,43 @@ function isBinaryPath(filePath: string): boolean {
   return BINARY_EXTENSIONS.has(ext)
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const results = new Array<R>(items.length)
+  let index = 0
+
+  const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (true) {
+      const current = index++
+      if (current >= items.length) break
+      results[current] = await fn(items[current])
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}
+
 /**
  * Options for 3-way merge during sync planning.
  */
 export interface MergeOptions {
   /** Project ID for loading checkpoints */
   projectId: Id<"projects">
+  /** Optional preloaded checkpoint map for fast lookup */
+  checkpointMap?: Record<string, { content: string; hash: string; syncedAt: number }>
   /** Callback to read local file content */
   readLocalFile: (path: string) => Promise<string | null>
   /** Callback to fetch cloud file content by storage ID */
   fetchCloudFile: (storageId: string) => Promise<string | null>
+  /** Maximum file size (bytes) to attempt 3-way merge */
+  maxMergeBytes?: number
+  /** Max concurrent merge operations */
+  concurrency?: number
 }
 
 /**
@@ -344,6 +371,24 @@ export async function computeSyncPlanWithMerge(
 
   // Try to auto-merge conflicts where possible
   const remainingConflicts: SyncOperation[] = []
+  const fastPathDownloads: SyncOperation[] = []
+  const fastPathUploads: SyncOperation[] = []
+
+  const checkpointMap =
+    mergeOptions.checkpointMap ??
+    (await syncCheckpointStore.getCheckpointMap(mergeOptions.projectId))
+
+  const maxMergeBytes = mergeOptions.maxMergeBytes ?? 2 * 1024 * 1024
+  const defaultConcurrency = (() => {
+    if (mergeOptions.concurrency) return mergeOptions.concurrency
+    const cores =
+      typeof navigator !== "undefined" && navigator.hardwareConcurrency
+        ? navigator.hardwareConcurrency
+        : 4
+    return Math.min(8, Math.max(2, cores))
+  })()
+
+  const mergeCandidates: SyncOperation[] = []
 
   for (const conflict of plan.conflicts) {
     // Skip delete-vs-modify conflicts - can't merge those
@@ -359,19 +404,70 @@ export async function computeSyncPlanWithMerge(
       continue
     }
 
-    // Try 3-way merge
-    const mergeResult = await attemptThreeWayMerge(
-      conflict.path,
-      conflict.localEntry,
-      conflict.cloudEntry,
-      mergeOptions
-    )
-
-    if (mergeResult) {
-      plan.autoMerged.push(mergeResult)
-    } else {
+    // Skip very large files
+    if (
+      conflict.localEntry.size > maxMergeBytes ||
+      conflict.cloudEntry.size > maxMergeBytes
+    ) {
       remainingConflicts.push(conflict)
+      continue
     }
+
+    const checkpoint = checkpointMap?.[conflict.path]
+    if (checkpoint) {
+      if (conflict.localEntry.hash === checkpoint.hash && conflict.cloudEntry.hash !== checkpoint.hash) {
+        fastPathDownloads.push({
+          type: "download",
+          path: conflict.path,
+          localEntry: conflict.localEntry,
+          cloudEntry: conflict.cloudEntry,
+          reason: "Local matches checkpoint; cloud changed",
+        })
+        continue
+      }
+
+      if (conflict.cloudEntry.hash === checkpoint.hash && conflict.localEntry.hash !== checkpoint.hash) {
+        fastPathUploads.push({
+          type: "upload",
+          path: conflict.path,
+          localEntry: conflict.localEntry,
+          cloudEntry: conflict.cloudEntry,
+          reason: "Cloud matches checkpoint; local changed",
+        })
+        continue
+      }
+    }
+
+    mergeCandidates.push(conflict)
+  }
+
+  const mergeResults = await mapWithConcurrency(
+    mergeCandidates,
+    defaultConcurrency,
+    async (conflict) =>
+      attemptThreeWayMerge(
+        conflict.path,
+        conflict.localEntry!,
+        conflict.cloudEntry!,
+        mergeOptions,
+        checkpointMap?.[conflict.path]
+      )
+  )
+
+  mergeResults.forEach((result, index) => {
+    if (result) {
+      plan.autoMerged.push(result)
+    } else {
+      remainingConflicts.push(mergeCandidates[index])
+    }
+  })
+
+  if (fastPathDownloads.length > 0) {
+    plan.downloads.push(...fastPathDownloads)
+  }
+
+  if (fastPathUploads.length > 0) {
+    plan.uploads.push(...fastPathUploads)
   }
 
   // Replace conflicts with remaining (non-mergeable) conflicts
@@ -387,14 +483,14 @@ async function attemptThreeWayMerge(
   path: string,
   localFile: LocalFileEntry,
   cloudFile: CloudFileEntry,
-  options: MergeOptions
+  options: MergeOptions,
+  checkpointOverride?: { content: string; hash: string; syncedAt: number }
 ): Promise<SyncOperation | null> {
   try {
     // Get checkpoint (base content) for this file
-    const checkpoint = await syncCheckpointStore.getFileCheckpoint(
-      options.projectId,
-      path
-    )
+    const checkpoint =
+      checkpointOverride ??
+      (await syncCheckpointStore.getFileCheckpoint(options.projectId, path))
 
     if (!checkpoint) {
       console.log(`[SyncEngine] No checkpoint for ${path}, cannot 3-way merge`)

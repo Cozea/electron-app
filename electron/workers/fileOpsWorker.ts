@@ -8,11 +8,13 @@ let xxhasher: XXHashAPI | null = null
 const BATCH_SIZE = 50
 
 interface ManifestRequest {
-  type: 'getManifest'
+  type: 'getManifest' | 'getManifestIncremental'
   id: string
   payload: {
     projectPath: string
     excludePatterns?: string[]
+    previousEntries?: Record<string, ManifestEntry>
+    previousDirMtimes?: Record<string, number>
   }
 }
 
@@ -26,32 +28,78 @@ interface ManifestEntry {
 interface ManifestResult {
   manifest: ManifestEntry[]
   totalFiles: number
+  dirMtimes: Record<string, number>
 }
 
 async function generateManifest(
   projectPath: string,
-  excludePatterns?: string[]
+  excludePatterns?: string[],
+  previousEntries?: Record<string, ManifestEntry>,
+  previousDirMtimes?: Record<string, number>
 ): Promise<ManifestResult> {
   if (!xxhasher) throw new Error('xxhash not initialized in worker')
 
   const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
   const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])])
+  const previousByPath = previousEntries ? new Map(Object.entries(previousEntries)) : null
+  const previousDirs = previousDirMtimes ?? {}
+  const previousByDir = new Map<string, ManifestEntry[]>()
+  if (previousEntries) {
+    for (const entry of Object.values(previousEntries)) {
+      const dir = entry.path.includes('/') ? entry.path.split('/').slice(0, -1).join('/') : ''
+      const list = previousByDir.get(dir)
+      if (list) {
+        list.push(entry)
+      } else {
+        previousByDir.set(dir, [entry])
+      }
+    }
+  }
+  const dirMtimes: Record<string, number> = {}
 
   // Check if project path exists
   try {
     await access(projectPath)
   } catch {
-    return { manifest: [], totalFiles: 0 }
+    return { manifest: [], totalFiles: 0, dirMtimes }
   }
 
   // Phase 1: Collect all file paths asynchronously
   const filePaths: string[] = []
+  const manifest: ManifestEntry[] = []
 
   async function walkDir(dir: string, relativePath = '') {
     let entries
     try {
       entries = await readdir(dir, { withFileTypes: true })
     } catch {
+      return
+    }
+
+    let dirStats
+    try {
+      dirStats = await stat(dir)
+    } catch {
+      return
+    }
+
+    const dirKey = relativePath.replace(/\\/g, '/')
+    dirMtimes[dirKey] = dirStats.mtimeMs
+
+    if (previousEntries && previousDirs[dirKey] === dirStats.mtimeMs) {
+      const cachedEntries = previousByDir.get(dirKey)
+      if (cachedEntries) {
+        manifest.push(...cachedEntries)
+      }
+
+      for (const [cachedDir, mtime] of Object.entries(previousDirs)) {
+        if (cachedDir === dirKey || cachedDir.startsWith(`${dirKey}/`)) {
+          if (!(cachedDir in dirMtimes)) {
+            dirMtimes[cachedDir] = mtime
+          }
+        }
+      }
+
       return
     }
 
@@ -67,7 +115,8 @@ async function generateManifest(
       if (entry.isDirectory()) {
         await walkDir(fullPath, relPath)
       } else if (entry.isFile()) {
-        filePaths.push(relPath)
+        const normalized = relPath.replace(/\\/g, '/')
+        filePaths.push(normalized)
       }
     }
   }
@@ -75,7 +124,6 @@ async function generateManifest(
   await walkDir(projectPath)
 
   // Phase 2: Process files in batches with controlled parallelism
-  const manifest: ManifestEntry[] = []
   let processedCount = 0
 
   for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
@@ -84,13 +132,22 @@ async function generateManifest(
       batch.map(async (relPath) => {
         const fullPath = path.join(projectPath, relPath)
         try {
-          const [content, stats] = await Promise.all([
-            readFile(fullPath),
-            stat(fullPath)
-          ])
+          const stats = await stat(fullPath)
+          const previous = previousByPath?.get(relPath)
+
+          if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+            return {
+              path: relPath,
+              hash: previous.hash,
+              size: stats.size,
+              mtime: stats.mtimeMs,
+            }
+          }
+
+          const content = await readFile(fullPath)
           const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
           return {
-            path: relPath.replace(/\\/g, '/'), // Normalize to forward slashes
+            path: relPath,
             hash,
             size: stats.size,
             mtime: stats.mtimeMs,
@@ -116,17 +173,19 @@ async function generateManifest(
     })
   }
 
-  return { manifest, totalFiles: manifest.length }
+  return { manifest, totalFiles: manifest.length, dirMtimes }
 }
 
 // Handle messages from main thread
 parentPort?.on('message', async (msg: ManifestRequest) => {
-  if (msg.type === 'getManifest') {
+  if (msg.type === 'getManifest' || msg.type === 'getManifestIncremental') {
     const startTime = Date.now()
     try {
       const result = await generateManifest(
         msg.payload.projectPath,
-        msg.payload.excludePatterns
+        msg.payload.excludePatterns,
+        msg.payload.previousEntries,
+        msg.payload.previousDirMtimes
       )
       parentPort?.postMessage({
         type: 'result',

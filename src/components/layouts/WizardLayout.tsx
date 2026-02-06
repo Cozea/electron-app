@@ -62,8 +62,8 @@ export function WizardLayout({
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden mt-10">
         {/* Steps Rail */}
-        <aside className="w-64 border-r border-border flex flex-col bg-muted/30">
-          <div className="p-4 border-b border-border">
+        <aside className="w-64 bdry-r flex flex-col bg-muted/30">
+          <div className="p-4 bdry-b">
             <h2 className="font-semibold">Setup Wizard</h2>
             <p className="text-sm text-muted-foreground">
               Step {currentStep + 1} of {steps.length}
@@ -87,7 +87,7 @@ export function WizardLayout({
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Step Header */}
-          <header className="px-8 py-6 border-b border-border">
+          <header className="px-8 py-6 bdry-b">
             <h1 className="text-2xl font-semibold">{currentStepData?.title}</h1>
             {currentStepData?.description && (
               <p className="text-muted-foreground mt-1">
@@ -106,8 +106,8 @@ export function WizardLayout({
 
             {/* Helper Panel (optional) */}
             {helperPanel && (
-              <aside className="w-80 border-l border-border bg-muted/30">
-                <div className="p-4 border-b border-border">
+              <aside className="w-80 bdry-l bg-muted/30">
+                <div className="p-4 bdry-b">
                   <h3 className="font-medium text-sm">Help</h3>
                 </div>
                 <ScrollArea className="h-full">
@@ -122,7 +122,7 @@ export function WizardLayout({
       </div>
 
       {/* Footer */}
-      <footer className="h-16 border-t border-border flex items-center justify-between px-8 bg-background">
+      <footer className="h-16 bdry-t flex items-center justify-between px-8 bg-background">
         <div>
           {currentStep > 0 && (
             <Button

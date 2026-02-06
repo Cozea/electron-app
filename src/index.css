@@ -429,3 +429,189 @@ body {
   pointer-events: none;
   z-index: 10;
 }
+
+/* ============================================
+   BDry Design Utilities (Gradient Boundaries)
+   ============================================ */
+
+@layer utilities {
+  .bdry,
+  .bdry-t,
+  .bdry-b,
+  .bdry-l,
+  .bdry-r,
+  .bdry-divider-x,
+  .bdry-divider-y {
+    --bdry-base: color-mix(in oklab, var(--border) 70%, transparent);
+    --bdry-accent: color-mix(in oklab, var(--primary) 16%, transparent);
+  }
+
+  .bdry-sidebar {
+    --bdry-base: color-mix(in oklab, var(--sidebar-border) 70%, transparent);
+    --bdry-accent: color-mix(in oklab, var(--sidebar-primary) 20%, transparent);
+  }
+
+  .bdry-muted {
+    --bdry-base: color-mix(in oklab, var(--border) 55%, transparent);
+    --bdry-accent: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
+  }
+
+  .bdry {
+    position: relative;
+  }
+
+  .bdry::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--bdry-base), var(--bdry-accent) 45%, var(--bdry-base));
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .bdry-t,
+  .bdry-b,
+  .bdry-l,
+  .bdry-r {
+    position: relative;
+  }
+
+  .bdry-t::after,
+  .bdry-b::after,
+  .bdry-l::after,
+  .bdry-r::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .bdry-t::after {
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .bdry-b::after {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .bdry-l::after {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .bdry-r::after {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .bdry-divider-x {
+    background: linear-gradient(90deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .bdry-divider-y {
+    background: linear-gradient(180deg, transparent, var(--bdry-base) 35%, var(--bdry-accent) 60%, var(--bdry-base) 85%, transparent);
+  }
+
+  .edge-fade-y {
+    position: relative;
+    --edge-fade-color: var(--background);
+    --edge-fade-size: 24px;
+    --edge-fade-top-size: var(--edge-fade-size);
+    --edge-fade-bottom-size: var(--edge-fade-size);
+  }
+
+  .edge-fade-sidebar {
+    --edge-fade-color: var(--sidebar);
+  }
+
+  .edge-fade-subtle {
+    --edge-fade-strength: 60%;
+  }
+
+  .edge-fade-y::before,
+  .edge-fade-y::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .edge-fade-y::before {
+    top: 0;
+    height: var(--edge-fade-top-size);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--edge-fade-color) 85%, transparent),
+      transparent
+    );
+  }
+
+  .edge-fade-y::after {
+    bottom: 0;
+    height: var(--edge-fade-bottom-size);
+    background: linear-gradient(
+      to top,
+      color-mix(in oklab, var(--edge-fade-color) 85%, transparent),
+      transparent
+    );
+  }
+
+  .edge-fade-y.edge-fade-subtle::before {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--edge-fade-color) 60%, transparent),
+      transparent
+    );
+  }
+
+  .edge-fade-y.edge-fade-subtle::after {
+    background: linear-gradient(
+      to top,
+      color-mix(in oklab, var(--edge-fade-color) 60%, transparent),
+      transparent
+    );
+  }
+
+  .edge-fade-y.edge-fade-topless {
+    --edge-fade-top-size: 0px;
+  }
+
+  .edge-fade-y.edge-fade-bottomless {
+    --edge-fade-bottom-size: 0px;
+  }
+}
+
+/* Remove outline-only bdry visuals globally (panels keep their own borders). */
+.bdry::before,
+.bdry-t::after,
+.bdry-b::after,
+.bdry-l::after,
+.bdry-r::after {
+  content: none;
+}
+
+.bdry-divider-x,
+.bdry-divider-y {
+  background: transparent;
+}

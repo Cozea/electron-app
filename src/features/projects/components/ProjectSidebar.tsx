@@ -249,7 +249,7 @@ export function ProjectSidebar({
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="w-56 border-r border-border/50 shrink-0 z-20 h-full titlebar-no-drag"
+                    className="w-56 shrink-0 z-20 h-full titlebar-no-drag"
                     {...props}
                 >
                     <SidebarHeader className="mt-9">
@@ -349,7 +349,7 @@ export function ProjectSidebar({
                             side="left"
                             variant="sidebar"
                             collapsible="none"
-                            className="border-r-0 shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag"
+                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag"
                         >
                             <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
                                 <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
@@ -403,7 +403,7 @@ export function ProjectSidebar({
                         <div
                             onMouseDown={handleResizeStart}
                             className={cn(
-                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group border-r border-border/50",
+                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group bdry-r bdry-sidebar",
                                 "hover:bg-primary/20 active:bg-primary/30",
                                 isResizing && "bg-primary/30"
                             )}

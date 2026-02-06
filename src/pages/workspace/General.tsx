@@ -285,7 +285,7 @@ export function General() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">
+            <div className="flex items-center justify-between p-5 rounded-2xl bg-destructive/5">
               <div>
                 <h4 className="font-medium">Delete Workspace</h4>
                 <p className="text-sm text-muted-foreground">

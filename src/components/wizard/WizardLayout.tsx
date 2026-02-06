@@ -36,7 +36,7 @@ export function WizardLayout({
       fullHeight ? "h-[calc(100vh-56px)]" : "min-h-[calc(100vh-56px)]"
     )}>
       {!fullHeight && currentStep > 0 && (
-        <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b">
+        <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm bdry-b">
           <div className="w-full px-8 py-4 flex items-center justify-between">
             <div className="flex flex-col">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">

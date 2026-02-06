@@ -78,7 +78,7 @@ export function ProjectShellLayout({
       <TitleBar />
 
       {/* Top Bar */}
-      <header className="h-10 mt-10 flex items-center justify-between px-2 border-b border-border bg-background">
+      <header className="h-10 mt-10 flex items-center justify-between px-2 bg-background">
         {/* Left: Project & Branch */}
         <div className="flex items-center gap-2 pl-16">
           <Button variant="ghost" size="sm" className="gap-1 h-7 text-sm">
@@ -147,7 +147,7 @@ export function ProjectShellLayout({
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Activity Bar */}
-        <aside className="w-12 bg-background border-r border-border flex flex-col items-center py-2 gap-1">
+        <aside className="w-12 bg-background bdry-r flex flex-col items-center py-2 gap-1">
           <ActivityButton
             icon={Files}
             active={activeActivity === 'files'}
@@ -182,7 +182,7 @@ export function ProjectShellLayout({
             <>
               <ResizablePanel defaultSize="20" minSize="15" maxSize="40">
                 <div className="h-full flex flex-col bg-background">
-                  <div className="h-8 px-3 flex items-center justify-between border-b border-border">
+                  <div className="h-8 px-3 flex items-center justify-between bdry-b">
                     <span className="text-xs font-medium uppercase text-muted-foreground">
                       {activeActivity === 'files' && 'Explorer'}
                       {activeActivity === 'search' && 'Search'}
@@ -210,7 +210,7 @@ export function ProjectShellLayout({
               <ResizablePanel defaultSize={showBottomPanel ? '70' : '100'}>
                 <div className="h-full flex flex-col bg-background">
                   {/* Editor Tabs */}
-                  <div className="h-9 border-b border-border flex items-center px-1">
+                  <div className="h-9 bdry-b flex items-center px-1">
                     <div className="flex items-center gap-1 text-sm">
                       <div className="flex items-center gap-2 px-3 py-1 bg-accent rounded-t border-b-2 border-primary">
                         <span>Welcome</span>
@@ -239,9 +239,9 @@ export function ProjectShellLayout({
                 <>
                   <ResizableHandle />
                   <ResizablePanel defaultSize="30" minSize="15" maxSize="50">
-                    <div className="h-full flex flex-col bg-background border-t border-border">
+                    <div className="h-full flex flex-col bg-background bdry-t">
                       {/* Bottom Panel Tabs */}
-                      <div className="h-8 flex items-center justify-between px-2 border-b border-border">
+                      <div className="h-8 flex items-center justify-between px-2 bdry-b">
                         <Tabs value={bottomTab} onValueChange={(v) => setBottomTab(v as typeof bottomTab)}>
                           <TabsList className="h-6 bg-transparent p-0 gap-1">
                             <TabsTrigger value="terminal" className="h-6 px-2 text-xs data-[state=active]:bg-accent">
@@ -288,8 +288,8 @@ export function ProjectShellLayout({
             <>
               <ResizableHandle />
               <ResizablePanel defaultSize="25" minSize="20" maxSize="40">
-                <div className="h-full flex flex-col bg-background border-l border-border">
-                  <div className="h-8 px-3 flex items-center justify-between border-b border-border">
+                <div className="h-full flex flex-col bg-background bdry-l">
+                  <div className="h-8 px-3 flex items-center justify-between bdry-b">
                     <span className="text-xs font-medium uppercase text-muted-foreground">
                       AI Assistant
                     </span>
@@ -306,7 +306,7 @@ export function ProjectShellLayout({
                     )}
                   </ScrollArea>
                   {/* Chat Input */}
-                  <div className="p-2 border-t border-border">
+                  <div className="p-2 bdry-t">
                     <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
                       <input
                         type="text"
@@ -323,7 +323,7 @@ export function ProjectShellLayout({
       </div>
 
       {/* Status Bar */}
-      <footer className="h-6 flex items-center justify-between px-2 border-t border-border bg-background text-xs text-muted-foreground">
+      <footer className="h-6 flex items-center justify-between px-2 bdry-t bg-background text-xs text-muted-foreground">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
             <GitBranch className="h-3 w-3" />

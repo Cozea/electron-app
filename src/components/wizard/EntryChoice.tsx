@@ -42,6 +42,7 @@ import {
   loadModelSettings,
   saveModelSettings,
 } from '@/lib/modelSettingsStorage'
+import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
   Context,
   ContextTrigger,
@@ -172,6 +173,16 @@ export function EntryChoice({
   )
 
   const selectedModelData = defaultModels.find((m) => m.id === model)
+  const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
+  const activeProvider = selectedModelData?.chefSlug
+  const visibleChefs =
+    allowCrossProviderSwitching || !selectedModelData
+      ? ['Anthropic', 'OpenAI', 'Google']
+      : [selectedModelData.chef]
+  const visibleModels =
+    allowCrossProviderSwitching || !activeProvider
+      ? defaultModels
+      : defaultModels.filter((m) => m.chefSlug === activeProvider)
   const isOpusModel = model.includes('opus')
   const defaultModelSettings = useMemo(
     () => ({
@@ -325,9 +336,9 @@ export function EntryChoice({
                   <ModelSelectorInput placeholder="Search models..." />
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {['Anthropic', 'OpenAI', 'Google'].map((chef) => (
+                    {visibleChefs.map((chef) => (
                       <ModelSelectorGroup heading={chef} key={chef}>
-                        {defaultModels
+                        {visibleModels
                           .filter((m) => m.chef === chef)
                           .map((m) => (
                             <ModelSelectorItem

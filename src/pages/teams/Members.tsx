@@ -58,7 +58,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
-import { ButtonGroup } from '../../components/ui/button-group'
+
 import { IconFilter } from '@tabler/icons-react'
 
 type TableRowData = {
@@ -478,157 +478,155 @@ export function Members() {
           Delete ({selected.length})
         </Button>
       )}
-      <ButtonGroup className="rounded-full">
-          {/* Role Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-l-full border-r-0 focus:z-10">
-                <IconFilter className="h-3.5 w-3.5" />
-                {roleFilter === 'all' ? 'All Roles' : roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setRoleFilter('admin'); setCurrentPage(1) }}>Admin</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setRoleFilter('member'); setCurrentPage(1) }}>Member</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setRoleFilter('viewer'); setCurrentPage(1) }}>Viewer</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {/* Role Filter */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+            <IconFilter className="h-3.5 w-3.5" />
+            {roleFilter === 'all' ? 'All Roles' : roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setRoleFilter('admin'); setCurrentPage(1) }}>Admin</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setRoleFilter('member'); setCurrentPage(1) }}>Member</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setRoleFilter('viewer'); setCurrentPage(1) }}>Viewer</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-          {/* Sort By */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-none border-r-0 focus:z-10">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {/* Sort By */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Role'}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => { setSortField('date'); setCurrentPage(1) }}>Date Joined</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setSortField('name'); setCurrentPage(1) }}>Name</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setSortField('role'); setCurrentPage(1) }}>Role</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-          {/* Sort Direction */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 h-7 px-2 text-xs rounded-r-full rounded-l-none focus:z-10">
-                {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </ButtonGroup>
-        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
-              <UserPlus className="h-3.5 w-3.5" />
-              Invite
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Invite members</DialogTitle>
-              <DialogDescription>
-                Invited members will receive an invitation to join your workspace
-              </DialogDescription>
-            </DialogHeader>
+      {/* Sort Direction */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+            {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => { setSortDirection('asc'); setCurrentPage(1) }}>Ascending</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setSortDirection('desc'); setCurrentPage(1) }}>Descending</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+        <DialogTrigger asChild>
+          <Button className="gap-2 h-7 px-2 text-xs rounded-full" disabled={!canInvite}>
+            <UserPlus className="h-3.5 w-3.5" />
+            Invite
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Invite members</DialogTitle>
+            <DialogDescription>
+              Invited members will receive an invitation to join your workspace
+            </DialogDescription>
+          </DialogHeader>
 
-            {inviteError && (
-              <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                {inviteError}
-              </div>
-            )}
+          {inviteError && (
+            <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+              {inviteError}
+            </div>
+          )}
 
-            {/* Email input */}
+          {/* Email input */}
+          <div className="relative">
+            <Input
+              type="email"
+              placeholder="Enter email addresses..."
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              onKeyDown={handleAddEmail}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          {/* Members list with role dropdowns */}
+          {inviteMembers.length > 0 && (
             <div className="relative">
-              <Input
-                type="email"
-                placeholder="Enter email addresses..."
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                onKeyDown={handleAddEmail}
-                disabled={isSubmitting}
-              />
-            </div>
-
-            {/* Members list with role dropdowns */}
-            {inviteMembers.length > 0 && (
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background to-transparent z-10" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-background to-transparent z-10" />
-                <div className="max-h-64 overflow-y-auto py-2 space-y-1">
-                  {inviteMembers.map((member, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between py-2 px-1"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="text-sm">
-                            {member.email.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{member.email.split('@')[0]}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
-                              {member.role}
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'admin')}>
-                              admin
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'member')}>
-                              member
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleUpdateRole(i, 'viewer')}>
-                              viewer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFromInviteList(i)}
-                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                          disabled={isSubmitting}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background to-transparent z-10" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-background to-transparent z-10" />
+              <div className="max-h-64 overflow-y-auto py-2 space-y-1">
+                {inviteMembers.map((member, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between py-2 px-1"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="text-sm">
+                          {member.email.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{member.email.split('@')[0]}</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+                            {member.role}
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'admin')}>
+                            admin
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'member')}>
+                            member
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'viewer')}>
+                            viewer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFromInviteList(i)}
+                        className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-
-            {/* Footer with count and button */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
-              </span>
-              <Button
-                onClick={handleSendInvites}
-                disabled={inviteMembers.length === 0 || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Send className="h-4 w-4 mr-2" />
-                )}
-                Send invites
-              </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+
+          {/* Footer with count and button */}
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
+            </span>
+            <Button
+              onClick={handleSendInvites}
+              disabled={inviteMembers.length === 0 || isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Send invites
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 
@@ -703,9 +701,9 @@ export function Members() {
           </div>
         ) : (
           <>
-            <div className="overflow-hidden">
-              <Table>
-                <TableHeader>
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
                     <TableHead className="w-12">
                       <Checkbox
@@ -720,7 +718,7 @@ export function Members() {
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                   {paginatedRows.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
@@ -751,7 +749,7 @@ export function Members() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">
+                        <Badge className="border-0 bg-primary/10 text-primary">
                           {row.role.charAt(0).toUpperCase() + row.role.slice(1)}
                         </Badge>
                       </TableCell>
@@ -854,9 +852,9 @@ export function Members() {
               </div>
               <div className="flex items-center gap-1">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-8 w-8 rounded-full"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                 >
@@ -866,9 +864,9 @@ export function Members() {
                   typeof page === 'number' ? (
                     <Button
                       key={i}
-                      variant={currentPage === page ? 'default' : 'outline'}
+                      variant={currentPage === page ? 'default' : 'secondary'}
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-8 w-8 rounded-full"
                       onClick={() => setCurrentPage(page)}
                     >
                       {page}
@@ -878,9 +876,9 @@ export function Members() {
                   )
                 ))}
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-8 w-8 rounded-full"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || totalPages === 0}
                 >

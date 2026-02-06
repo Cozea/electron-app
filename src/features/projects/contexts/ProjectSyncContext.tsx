@@ -378,6 +378,8 @@ export function ProjectSyncProvider({
 
 	    const localHistory = loadLocalSyncHistory(projectId)
 
+	    const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
+
 	    // Compute sync plan with 3-way merge support
 	    const syncPlan = await computeSyncPlanWithMerge(
 	      localFiles,
@@ -386,6 +388,8 @@ export function ProjectSyncProvider({
 	      localHistory.cloudPathsAtLastSync,
 	      {
 	        projectId,
+	        checkpointMap,
+	        maxMergeBytes: 2 * 1024 * 1024,
 	        readLocalFile: async (path: string) => {
 	          const result = await window.electronAPI.project.readFile({
 	            projectPath: effectiveLocalPath,

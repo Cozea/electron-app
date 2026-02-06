@@ -78,7 +78,7 @@ export function SettingsLayout({
       <TitleBar />
 
       {/* Header */}
-      <header className="mt-10 h-14 border-b border-border flex items-center justify-between px-6">
+      <header className="mt-10 h-14 bdry-b flex items-center justify-between px-6">
         <div className="flex items-center gap-4 pl-14">
           <h1 className="font-semibold">Settings</h1>
           <Tabs value={scope} onValueChange={(v) => onScopeChange?.(v as 'org' | 'project')}>
@@ -100,7 +100,7 @@ export function SettingsLayout({
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-56 border-r border-border flex flex-col">
+        <aside className="w-56 bdry-r flex flex-col">
           <ScrollArea className="flex-1">
             <nav className="p-2 space-y-1">
               {sections.map((section) => (
@@ -125,7 +125,7 @@ export function SettingsLayout({
         {/* Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Content Header */}
-          <div className="px-8 py-6 border-b border-border">
+          <div className="px-8 py-6 bdry-b">
             <h2 className="text-xl font-semibold">{title}</h2>
             {description && (
               <p className="text-muted-foreground mt-1">{description}</p>
@@ -141,7 +141,7 @@ export function SettingsLayout({
 
           {/* Footer with Save */}
           {hasChanges && (
-            <footer className="px-8 py-4 border-t border-border flex items-center justify-end gap-3 bg-muted/50">
+            <footer className="px-8 py-4 bdry-t flex items-center justify-end gap-3 bg-muted/50">
               <Button variant="ghost" onClick={() => window.location.reload()}>
                 Discard
               </Button>
