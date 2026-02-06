@@ -218,7 +218,6 @@ export function ProjectLayout({
                     />
                 </SidebarInset>
             </div >
-            <StatusBar />
             <SearchCommand />
         </SidebarProvider >
     )

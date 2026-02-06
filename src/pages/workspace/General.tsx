@@ -9,6 +9,7 @@ import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
+import { Textarea } from '../../components/ui/textarea'
 import { Label } from '../../components/ui/label'
 import { Separator } from '../../components/ui/separator'
 import {
@@ -201,7 +202,7 @@ export function General() {
             <div className="space-y-2">
               <Label htmlFor="slug">Workspace URL</Label>
               <div className="flex items-stretch">
-                <span className="flex items-center text-sm text-muted-foreground bg-muted px-3 rounded-l-md border border-r-0">
+                <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
                   app.cozea.io/
                 </span>
                 <Input
@@ -217,9 +218,8 @@ export function General() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
-              <textarea
+              <Textarea
                 id="description"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 placeholder="A short description of your workspace"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}

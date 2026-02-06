@@ -552,7 +552,7 @@ export function Billing() {
                     return (
                       <div
                         key={plan.id}
-                        className={`relative rounded-2xl bg-card p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'shadow-md' : 'shadow-sm'
+                        className={`relative rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'shadow-md' : 'shadow-sm'
                           } ${showUpgradeOptions
                             ? 'opacity-100 translate-y-0'
                             : 'opacity-0 -translate-y-4'
