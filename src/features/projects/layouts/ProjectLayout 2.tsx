@@ -4,14 +4,14 @@ import { type ReactNode, useRef, useState, useCallback, useEffect } from "react"
 import { Outlet, useLocation, useParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
-import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
 import { FileTree, type FileTreeHandle } from "../components/FileTree"
+import { SiteHeader } from "@/components/layout/SiteHeader"
 import {
     SidebarInset,
     SidebarProvider,
 } from "@/components/ui/sidebar"
-import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
+import { StatusBar } from "@/components/StatusBar"
 import { SearchCommand } from "@/components/shared/SearchCommand"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
@@ -22,11 +22,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
-import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
-import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
-import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
-import { EditorTabs } from "@/features/editor/components/EditorTabs"
-
+import { Loader2 } from "lucide-react"
 
 interface ProjectLayoutProps {
     children?: ReactNode
@@ -43,56 +39,37 @@ export function ProjectLayout({
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
 
-    // Get Convex organization and user for sync (with caching)
-    const freshConvexOrg = useQuery(
+    // Get Convex organization and user for sync
+    const convexOrg = useQuery(
         api.organizations.getByWorkosId,
         currentOrganization?.organizationId
             ? { workosId: currentOrganization.organizationId }
             : "skip"
     )
-    const convexOrg = useCachedQuery(
-        `layout-org-${currentOrganization?.organizationId}`,
-        freshConvexOrg
-    )
 
-    const freshConvexUser = useQuery(
+    const convexUser = useQuery(
         api.users.getByWorkosId,
         user?.id ? { workosId: user.id } : "skip"
     )
-    const convexUser = useCachedQuery(
-        `layout-user-${user?.id}`,
-        freshConvexUser
-    )
 
-    // Get project data (with caching)
-    const freshProject = useQuery(
+    // Get project data
+    const project = useQuery(
         api.projects.getBySlug,
         convexOrg?._id && slug
             ? { organizationId: convexOrg._id, slug }
             : "skip"
     )
-    const project = useCachedQuery(
-        `layout-project-${slug}`,
-        freshProject
-    )
 
-    // Get per-user local path for this project (machine-specific) (with caching)
-    const freshMemberLocalPath = useQuery(
+    // Get per-user local path for this project (machine-specific)
+    const memberLocalPath = useQuery(
         api.projectMembers.getMemberLocalPath,
         project?._id && convexUser?._id
             ? { projectId: project._id, userId: convexUser._id }
             : "skip"
     )
-    const memberLocalPath = useCachedQuery(
-        `layout-localpath-${project?._id}-${convexUser?._id}`,
-        freshMemberLocalPath
-    )
 
     // Per-user local path only (no fallback to shared project.localPath)
     const effectiveLocalPath = memberLocalPath ?? null
-
-    useDiagnosticsBridge(effectiveLocalPath)
-    useDependenciesMonitor(effectiveLocalPath)
 
     // Ensure project-scoped runtime processes don't leak across navigation.
     // - Stops any dev server PTY (devServer API)
@@ -146,14 +123,6 @@ export function ProjectLayout({
         }
     }, [])
 
-    const handleCreateFile = useCallback(() => {
-        fileTreeRef.current?.startCreateFile()
-    }, [])
-
-    const handleCreateFolder = useCallback(() => {
-        fileTreeRef.current?.startCreateFolder()
-    }, [])
-
     // Check if we have open files (to remove padding for editor)
     const projectTabs = useFileTabsStore(state => slug ? state.projectTabs[slug] : null)
     const hasOpenFiles = (projectTabs?.openFiles?.length || 0) > 0
@@ -163,81 +132,75 @@ export function ProjectLayout({
     const isBackendStudioView = location.pathname.endsWith('/backend')
     const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
-    const isFilesView = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
     // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data)
     const canSync = project?._id && convexUser?._id && slug
-    const headerContent = useProjectHeaderStore((state) => state.header)
-    const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
-    const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
 
+    // Check if queries are still loading (undefined = loading in Convex)
+    const isLoadingData =
+        (currentOrganization?.organizationId && convexOrg === undefined) ||
+        (user?.id && convexUser === undefined) ||
+        (convexOrg?._id && slug && project === undefined)
 
+    // Loading content for the main area (not full-page)
+    const loadingContent = (
+        <div className="flex flex-col items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Loading project...</p>
+            </div>
+        </div>
+    )
 
     // Main layout content
-    const breadcrumbs = (hideBreadcrumbs || isFilesView) ? [] : [
-        { label: "Projects", href: "/projects" },
-        ...(project?.name ? [{ label: project.name }] : []),
-    ]
-    const headerSlot = isFilesView ? (
-        <div className="flex items-center gap-2 min-w-0">
-            {headerContent}
-            <EditorTabs />
-        </div>
-    ) : headerContent
-
-    const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
-
     const layoutContent = (
         <SidebarProvider
             className="flex flex-col h-screen"
         >
-            {/* Main content */}
-            <div className="flex-1 flex min-h-0 overflow-hidden">
+            <SiteHeader
+                breadcrumbs={[
+                    { label: "Projects", href: "/projects" },
+                    ...(project?.name ? [{ label: project.name }] : []),
+                ]}
+                presenceUsers={presenceUsers}
+            />
+            {/* Main content - mt-9 accounts for fixed h-9 header */}
+            <div className="flex-1 flex min-h-0 overflow-hidden mt-9">
                 <ProjectSidebar
                     color="currentColor"
+                    className="!top-9 !h-[calc(100svh-56px)]"
                     user={user}
                     onLogout={logout}
                     fileTree={<FileTree ref={fileTreeRef} />}
                     onRefreshFiles={handleRefreshFiles}
                     isRefreshing={isRefreshing}
-                    onCreateFile={handleCreateFile}
-                    onCreateFolder={handleCreateFolder}
                 />
                 <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                     <div
-                        className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
+                        className={cn(
+                            // `min-w-0` prevents the main content from overflowing under the right panels
+                            // when it contains wide children (iframes, editors, etc.).
+                            "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                            shouldRemovePadding ? "p-0" : "p-4"
+                        )}
                         style={{
                             flex: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? '0 0 0' : '1 1 0',
                             opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
                         }}
                     >
-                        <UnifiedHeader
-                            breadcrumbs={breadcrumbs}
-                            header={headerSlot ?? undefined}
-                            breadcrumbAddon={breadcrumbAddon ?? undefined}
-                        />
-                        <div
-                            className={cn(
-                                // `min-w-0` prevents the main content from overflowing under the right panels
-                                // when it contains wide children (iframes, editors, etc.).
-                                "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
-                                shouldRemovePadding ? "p-0" : "p-4",
-                                showHeader && "pt-10"
-                            )}
-                        >
-                            {children || <Outlet />}
-                        </div>
+                        {isLoadingData ? loadingContent : (children || <Outlet />)}
                     </div>
                     <ChatPanel />
                     <AssistantPanel
-                        projectPath={effectiveLocalPath ?? undefined}
-                        projectName={project?.name}
-                        projectSlug={slug}
+                      projectPath={effectiveLocalPath ?? undefined}
+                      projectName={project?.name}
+                      projectSlug={slug}
                     />
                 </SidebarInset>
             </div >
+            <StatusBar />
             <SearchCommand />
         </SidebarProvider >
     )
