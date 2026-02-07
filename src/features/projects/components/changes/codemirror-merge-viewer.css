@@ -1,0 +1,81 @@
+.changes-codemirror-merge {
+  height: 100%;
+  min-height: 0;
+}
+
+.changes-codemirror-merge .cm-mergeView,
+.changes-codemirror-merge .cm-mergeViewEditors,
+.changes-codemirror-merge .cm-mergeViewEditor {
+  height: 100%;
+  min-height: 0;
+}
+
+.changes-codemirror-merge .cm-editor {
+  height: 100%;
+  min-height: 100%;
+  background: transparent;
+}
+
+.changes-codemirror-merge .cm-scroller {
+  height: 100%;
+  overflow: auto;
+}
+
+.changes-codemirror-merge .cm-gutters {
+  background: color-mix(in oklab, var(--sidebar) 78%, transparent);
+  display: flex;
+}
+
+.changes-codemirror-merge .cm-collapsedLines {
+  color: var(--muted-foreground);
+}
+
+.changes-codemirror-merge .cm-deletedChunk {
+  background: color-mix(in oklab, #dc2626 14%, transparent);
+}
+
+.changes-codemirror-merge .cm-merge-b .cm-changedLine {
+  background: color-mix(in oklab, #16a34a 12%, transparent);
+}
+
+.changes-codemirror-merge .cm-changeGutter {
+  width: 4px;
+  padding: 0;
+  order: -1;
+}
+
+.changes-codemirror-merge .cm-lineNumbers {
+  order: 0;
+  padding-right: 10px;
+}
+
+.changes-codemirror-merge .cm-lineNumbers .cm-gutterElement {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-deletedLineGutter {
+  background: #ef4444;
+}
+
+.changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-changedLineGutter,
+.changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-inlineChangedLineGutter {
+  background: #22c55e;
+}
+
+.changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-deletedLineGutter {
+  background: color-mix(in oklab, #ef4444 18%, transparent);
+  color: #f87171;
+}
+
+.changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-changedLineGutter,
+.changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-inlineChangedLineGutter {
+  background: color-mix(in oklab, #22c55e 16%, transparent);
+  color: #4ade80;
+}
+
+.changes-codemirror-merge .cm-merge-b .cm-changedText,
+.changes-codemirror-merge .cm-deletedText {
+  background: transparent !important;
+  text-decoration: none !important;
+}

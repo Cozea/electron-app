@@ -1,25 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { markSyncFeedAsSeen } from '../components/ProjectSidebar'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
   Activity,
+  Asterisk,
   Bot,
-  PanelRightClose,
   MessageSquare,
+  Minus,
+  Plus,
   Smile,
 } from 'lucide-react'
-import {
-  DiffAddedIcon,
-  DiffModifiedIcon,
-  DiffRemovedIcon,
-} from '@primer/octicons-react'
 import { DiffPanel } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 
@@ -80,14 +78,27 @@ function groupActivityByDate<T extends { timestamp: number }>(items: T[]): { dat
 }
 
 function getChangeIcon(changeType: string) {
+  const baseClasses = 'h-3.5 w-3.5'
   switch (changeType) {
     case 'create':
-      return <DiffAddedIcon size={14} className="text-green-500" />
+      return (
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
+          <Plus className={`${baseClasses} text-green-500`} />
+        </span>
+      )
     case 'delete':
-      return <DiffRemovedIcon size={14} className="text-red-500" />
+      return (
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
+          <Minus className={`${baseClasses} text-red-500`} />
+        </span>
+      )
     case 'modify':
     default:
-      return <DiffModifiedIcon size={14} className="text-yellow-500" />
+      return (
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary">
+          <Asterisk className={`${baseClasses} text-amber-500`} />
+        </span>
+      )
   }
 }
 
@@ -230,6 +241,10 @@ export function ChangesPage() {
     api.activity.getCommentCountsForChanges,
     changeIds.length > 0 ? { changeIds } : 'skip'
   )
+  const selectedChange = useQuery(
+    api.activity.getChangeWithContent,
+    selectedChangeId ? { changeId: selectedChangeId } : 'skip'
+  )
 
   // Auto-select the most recent change when activity loads
   useEffect(() => {
@@ -245,148 +260,210 @@ export function ChangesPage() {
     }
   }, [slug])
 
+  const breadcrumbAddon = useMemo(
+    () => (
+      <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Activity className="h-4 w-4 text-muted-foreground" />
+        Changes
+      </span>
+    ),
+    []
+  )
+
+  const headerControls = useMemo(
+    () => (
+      <div className="flex items-center gap-2">
+        {selectedChangeId && selectedChange && (
+          <>
+            <div className="flex items-center gap-2 min-w-0 max-w-[420px]">
+              {getChangeIcon(selectedChange.changeType)}
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs min-w-0 max-w-[260px]">
+                {getFileIcon(selectedChange.filePath.split('/').pop() || selectedChange.filePath, {
+                  width: 14,
+                  height: 14,
+                })}
+                <span className="truncate">
+                  {selectedChange.filePath.split('/').pop() || selectedChange.filePath}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {selectedChange.userImage ? (
+                <img
+                  src={selectedChange.userImage}
+                  alt={selectedChange.userName}
+                  className="h-4 w-4 rounded-full object-cover"
+                  title={selectedChange.userName}
+                />
+              ) : (
+                <div
+                  className="h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-medium text-white"
+                  style={{ backgroundColor: selectedChange.userColor }}
+                  title={selectedChange.userName}
+                >
+                  {selectedChange.userName?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {formatRelativeTime(selectedChange.timestamp)}
+              </span>
+            </div>
+          </>
+        )}
+        {!selectedChangeId && (
+          <span className="text-xs text-muted-foreground">Select a change to view diff</span>
+        )}
+      </div>
+    ),
+    [selectedChange, selectedChangeId]
+  )
+
+  useProjectHeader(headerControls, breadcrumbAddon, true)
+
   return (
-    <div className="flex h-full bg-sidebar/60">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-sidebar/60">
       {/* Timeline Panel */}
-      <div className={`flex flex-col ${selectedChangeId ? 'w-1/2 border-r border-border' : 'w-full'} transition-all`}>
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 h-9 bg-sidebar/30 backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <h1 className="text-sm font-medium">Changes</h1>
-          </div>
-          {selectedChangeId && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <PanelRightClose className="h-3 w-3" />
-              Click item to view diff
-            </span>
-          )}
-        </div>
-
+      <div className={`flex min-h-0 overflow-hidden flex-col ${selectedChangeId ? 'w-1/2' : 'w-full'} transition-all`}>
         {/* Timeline Content */}
-        <ScrollArea className="flex-1">
-          <div className="p-4">
-            {!project?._id ? (
-              <div className="flex items-center justify-center h-40 text-muted-foreground">
-                <p className="text-sm">Loading project...</p>
-              </div>
-            ) : activity === undefined ? (
-              <div className="flex items-center justify-center h-40">
-                <div className="animate-pulse text-muted-foreground">Loading activity...</div>
-              </div>
-            ) : activity.length === 0 ? (
-              <Card className="p-12 text-center">
-                <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Changes Yet</h3>
-                <p className="text-sm text-muted-foreground">
-                  File changes will appear here in real-time as you and your team edit files.
-                </p>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {groupActivityByDate(activity).map((group) => (
-                  <div key={group.dateHeader}>
-                    {/* Date Header */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-xs font-semibold text-muted-foreground tracking-wider">
-                        {group.dateHeader}
-                      </span>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
+        <div className="relative flex-1 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              {!project?._id ? (
+                <div className="flex items-center justify-center h-40 text-muted-foreground">
+                  <p className="text-sm">Loading project...</p>
+                </div>
+              ) : activity === undefined ? (
+                <div className="flex items-center justify-center h-40">
+                  <div className="animate-pulse text-muted-foreground">Loading activity...</div>
+                </div>
+              ) : activity.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">No Changes Yet</h3>
+                  <p className="text-sm text-muted-foreground">
+                    File changes will appear here in real-time as you and your team edit files.
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-6">
+                  {groupActivityByDate(activity).map((group) => (
+                    <div key={group.dateHeader}>
+                      {/* Date Header */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-xs font-semibold text-muted-foreground tracking-wider">
+                          {group.dateHeader}
+                        </span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
 
-                    {/* Items for this date */}
-                    <div className="space-y-1">
-                      {group.items.map((item) => (
-                        <div key={item.id}>
-                          <div
-                            onClick={() => setSelectedChangeId(item.id as Id<"fileChanges">)}
-                            className={`
-                              flex items-start gap-3 py-2 px-2 rounded-lg cursor-pointer transition-colors
-                              ${selectedChangeId === item.id
-                                ? 'bg-primary/10 border border-primary/20'
-                                : 'hover:bg-muted/50'
-                              }
-                            `}
-                          >
-                            {/* Time Column */}
-                            <div className="w-20 shrink-0 pt-1 mr-2">
-                              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                                {formatTimeOnly(item.timestamp)}
-                              </span>
-                            </div>
-
-                            {/* Avatar */}
-                            <div className="shrink-0 pt-0.5">
-                              {item.userImage ? (
-                                <img
-                                  src={item.userImage}
-                                  alt={item.userName}
-                                  className="w-8 h-8 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                                  style={{ backgroundColor: item.userColor }}
-                                >
-                                  {item.isAgent ? (
-                                    <Bot className="h-4 w-4" />
-                                  ) : (
-                                    item.userName?.charAt(0).toUpperCase() || 'U'
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Content - single line */}
-                            <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
-                              <span className="font-medium text-sm truncate max-w-[120px]" title={item.userName}>
-                                {item.userName}
-                              </span>
-                              {getChangeIcon(item.changeType)}
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs font-mono shrink min-w-0 max-w-[180px]">
-                                {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
-                                <span className="truncate">{item.filePath.split('/').pop()}</span>
-                              </span>
-                              {item.isAgent && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0">
-                                  AI
-                                </Badge>
-                              )}
-                              {(item.additions !== undefined && item.additions > 0) && (
-                                <span className="text-xs text-green-500">+{item.additions}</span>
-                              )}
-                              {(item.deletions !== undefined && item.deletions > 0) && (
-                                <span className="text-xs text-red-500">-{item.deletions}</span>
-                              )}
-                              {commentCounts && commentCounts[item.id] > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-                                  <MessageSquare className="h-3 w-3" />
-                                  {commentCounts[item.id]}
+                      {/* Items for this date */}
+                      <div className="space-y-1">
+                        {group.items.map((item) => (
+                          <div key={item.id}>
+                            <div
+                              onClick={() => setSelectedChangeId(item.id as Id<"fileChanges">)}
+                              className={`
+                                flex items-start gap-3 py-2 px-3 rounded-full cursor-pointer transition-colors
+                                ${selectedChangeId === item.id
+                                  ? 'bg-primary/10'
+                                  : 'hover:bg-muted/50'
+                                }
+                              `}
+                            >
+                              {/* Time Column */}
+                              <div className="w-20 shrink-0 pt-1 mr-2">
+                                <span className="text-sm text-muted-foreground whitespace-nowrap">
+                                  {formatTimeOnly(item.timestamp)}
                                 </span>
-                              )}
+                              </div>
+
+                              {/* Avatar */}
+                              <div className="shrink-0 pt-0.5">
+                                {item.userImage ? (
+                                  <img
+                                    src={item.userImage}
+                                    alt={item.userName}
+                                    className="w-8 h-8 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
+                                    style={{ backgroundColor: item.userColor }}
+                                  >
+                                    {item.isAgent ? (
+                                      <Bot className="h-4 w-4" />
+                                    ) : (
+                                      item.userName?.charAt(0).toUpperCase() || 'U'
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Content - single line */}
+                              <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
+                                <span className="font-medium text-sm truncate max-w-[120px]" title={item.userName}>
+                                  {item.userName}
+                                </span>
+                                {getChangeIcon(item.changeType)}
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs shrink min-w-0 max-w-[180px]">
+                                  {getFileIcon(item.filePath.split('/').pop() || item.filePath, { width: 14, height: 14 })}
+                                  <span className="truncate">{item.filePath.split('/').pop()}</span>
+                                </span>
+                                {item.isAgent && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                    AI
+                                  </Badge>
+                                )}
+                                {(item.additions !== undefined && item.additions > 0) && (
+                                  <span className="text-xs text-green-500">+{item.additions}</span>
+                                )}
+                                {(item.deletions !== undefined && item.deletions > 0) && (
+                                  <span className="text-xs text-red-500">-{item.deletions}</span>
+                                )}
+                                {commentCounts && commentCounts[item.id] > 0 && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                                    <MessageSquare className="h-3 w-3" />
+                                    {commentCounts[item.id]}
+                                  </span>
+                                )}
+                              </div>
                             </div>
+                            {/* Comments under this change */}
+                            {commentCounts && commentCounts[item.id] > 0 && (
+                              <ChangeComments changeId={item.id as Id<"fileChanges">} />
+                            )}
                           </div>
-                          {/* Comments under this change */}
-                          {commentCounts && commentCounts[item.id] > 0 && (
-                            <ChangeComments changeId={item.id as Id<"fileChanges">} />
-                          )}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+                  ))}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-sidebar to-transparent z-10" />
+          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent z-10" />
+        </div>
       </div>
 
       {/* Diff Panel */}
       {selectedChangeId && (
-        <div className="w-1/2 bg-background">
+        <div className="w-1/2 min-h-0 overflow-hidden bg-background">
           <DiffPanel
             changeId={selectedChangeId}
             onClose={() => setSelectedChangeId(null)}
+            showHeader={false}
+          />
+        </div>
+      )}
+      {selectedChangeId && (
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 -translate-x-1/2">
+          <div
+            className="h-full w-px bg-border"
+            style={{
+              maskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
+            }}
           />
         </div>
       )}

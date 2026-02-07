@@ -31,7 +31,7 @@ export function UnifiedHeader({
     return (
       <div
         className={cn(
-          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 bg-background titlebar-drag-region",
+          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 bg-sidebar titlebar-drag-region",
           className
         )}
       >

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount, type OnChange, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { useEditorStore } from '@/stores/useEditorStore'
@@ -40,10 +40,12 @@ loader.config({ monaco })
 interface MonacoEditorProps {
     path: string
     onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void
+    minimapEnabled?: boolean
 }
 
-export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
+export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: MonacoEditorProps) {
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+    const [showBottomFade, setShowBottomFade] = useState(false)
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
     const { yjsDoc } = useYjsProject()
@@ -59,6 +61,12 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
         projectPath: model?.projectPath,
         filePath: path,
     })
+
+    useEffect(() => {
+        editorRef.current?.updateOptions({
+            minimap: { enabled: minimapEnabled },
+        })
+    }, [minimapEnabled])
 
     // Handle save for collaborative editor
     const handleSave = useCallback(() => {
@@ -79,11 +87,21 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
     const handleEditorMount: OnMount = useCallback(
         (editor, monacoInstance) => {
             editorRef.current = editor
+            const updateBottomFade = () => {
+                const scrollTop = editor.getScrollTop()
+                const viewportHeight = editor.getLayoutInfo().height
+                const scrollHeight = editor.getScrollHeight()
+                setShowBottomFade(scrollTop + viewportHeight < scrollHeight - 1)
+            }
 
             // Cmd+S to save
             editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
                 actions.saveFile(path)
             })
+
+            updateBottomFade()
+            editor.onDidScrollChange(updateBottomFade)
+            editor.onDidContentSizeChange(updateBottomFade)
 
             // Notify parent that editor is ready
             onEditorReady?.(editor)
@@ -109,13 +127,14 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
                 path={path}
                 onSave={handleSave}
                 onEditorReady={onEditorReady}
+                minimapEnabled={minimapEnabled}
             />
         )
     }
 
     // Fallback to regular editor when not in collaborative mode
     return (
-        <div className="h-full bg-sidebar">
+        <div className="relative h-full overflow-hidden bg-sidebar">
             <Editor
                 height="100%"
                 language={model.language}
@@ -127,10 +146,20 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
                 options={{
                     fontSize: 13,
                     fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-                    minimap: { enabled: true },
+                    minimap: { enabled: minimapEnabled },
                     automaticLayout: true,
                     tabSize: 2,
                     scrollBeyondLastLine: false,
+                    scrollbar: {
+                        vertical: 'auto',
+                        horizontal: 'auto',
+                        verticalHasArrows: false,
+                        horizontalHasArrows: false,
+                        verticalScrollbarSize: 8,
+                        horizontalScrollbarSize: 8,
+                        alwaysConsumeMouseWheel: false,
+                        useShadows: false,
+                    },
                     readOnly: false, // Could hook up to lock status
                 }}
                 loading={
@@ -139,6 +168,9 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
                     </div>
                 }
             />
+            {showBottomFade && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent" />
+            )}
         </div>
     )
 }

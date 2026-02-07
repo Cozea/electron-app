@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import Editor, { type OnMount, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { MonacoBinding } from 'y-monaco'
@@ -43,6 +43,7 @@ interface CollaborativeMonacoEditorProps {
   path: string
   onSave?: () => void
   onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor) => void
+  minimapEnabled?: boolean
 }
 
 /**
@@ -55,9 +56,11 @@ export function CollaborativeMonacoEditor({
   path,
   onSave,
   onEditorReady,
+  minimapEnabled = true,
 }: CollaborativeMonacoEditorProps) {
   const { yjsDoc, awareness } = useYjsProject()
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const [showBottomFade, setShowBottomFade] = useState(false)
   const bindingRef = useRef<MonacoBinding | null>(null)
   const cursorDisposablesRef = useRef<monaco.IDisposable[]>([])
   const theme = useMonacoTheme('sidebar')
@@ -78,6 +81,12 @@ export function CollaborativeMonacoEditor({
   const handleMount: OnMount = useCallback(
     (editor, monacoInstance) => {
       editorRef.current = editor
+      const updateBottomFade = () => {
+        const scrollTop = editor.getScrollTop()
+        const viewportHeight = editor.getLayoutInfo().height
+        const scrollHeight = editor.getScrollHeight()
+        setShowBottomFade(scrollTop + viewportHeight < scrollHeight - 1)
+      }
       const editorModel = editor.getModel()
 
       if (!editorModel || !yjsDoc) {
@@ -132,6 +141,12 @@ export function CollaborativeMonacoEditor({
         handleSave
       )
 
+      updateBottomFade()
+      cursorDisposablesRef.current.push(
+        editor.onDidScrollChange(updateBottomFade),
+        editor.onDidContentSizeChange(updateBottomFade)
+      )
+
       // Notify parent that editor is ready
       onEditorReady?.(editor)
 
@@ -171,6 +186,12 @@ export function CollaborativeMonacoEditor({
     filePath: path,
   })
 
+  useEffect(() => {
+    editorRef.current?.updateOptions({
+      minimap: { enabled: minimapEnabled },
+    })
+  }, [minimapEnabled])
+
   if (!model) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
@@ -182,7 +203,7 @@ export function CollaborativeMonacoEditor({
   const modelPath = monaco.Uri.file(path).toString()
 
   return (
-    <div className="h-full bg-sidebar">
+    <div className="relative h-full overflow-hidden bg-sidebar">
       <Editor
         height="100%"
         language={model.language}
@@ -195,10 +216,20 @@ export function CollaborativeMonacoEditor({
         options={{
           fontSize: 13,
           fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-          minimap: { enabled: true },
+          minimap: { enabled: minimapEnabled },
           automaticLayout: true,
           tabSize: 2,
           scrollBeyondLastLine: false,
+          scrollbar: {
+            vertical: 'auto',
+            horizontal: 'auto',
+            verticalHasArrows: false,
+            horizontalHasArrows: false,
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+            alwaysConsumeMouseWheel: false,
+            useShadows: false,
+          },
           readOnly: false,
         }}
         loading={
@@ -207,6 +238,9 @@ export function CollaborativeMonacoEditor({
           </div>
         }
       />
+      {showBottomFade && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent" />
+      )}
     </div>
   )
 }
