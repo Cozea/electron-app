@@ -51,6 +51,75 @@ body {
   min-height: 100vh;
 }
 
+/* Sidebar border with fade near top/bottom edges. */
+.sidebar-fade-border::before,
+.sidebar-fade-border::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  pointer-events: none;
+  opacity: 0.9;
+  z-index: 5;
+}
+
+.sidebar-fade-border::before {
+  left: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+}
+
+.sidebar-fade-border::after {
+  right: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+}
+
+/* Right-only fade border (hide left edge). */
+.sidebar-fade-border-right::before {
+  opacity: 0;
+}
+
+.sidebar-fade-border-right::after {
+  width: 1px;
+  opacity: 0.9;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+}
+
+/* Fallback visible right-edge border for secondary sidebars. */
+.sidebar-fade-border-right {
+  background-image: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+  background-size: 1px 100%;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

@@ -292,7 +292,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="bg-sidebar flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar"
+          className="bg-sidebar flex h-full w-full flex-col relative sidebar-fade-border group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar"
         >
           {children}
         </div>
