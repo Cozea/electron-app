@@ -407,7 +407,7 @@ export function ProjectSidebar({
                         <div
                             onMouseDown={handleResizeStart}
                             className={cn(
-                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group bdry-r bdry-sidebar",
+                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group",
                                 "hover:bg-primary/20 active:bg-primary/30",
                                 isResizing && "bg-primary/30"
                             )}
