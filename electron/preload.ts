@@ -348,6 +348,7 @@ export interface ElectronAPI {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
+    pathExists: (projectPath: string) => Promise<boolean>
     writeFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
@@ -578,6 +579,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),
     getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),
+    pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),
     writeFile: (options: { projectPath: string; filePath: string; content: string }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { projectPath: string; filePath: string }) =>

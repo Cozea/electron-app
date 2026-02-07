@@ -211,6 +211,32 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_token", ["token"]),
 
+  // Website + product access waitlist
+  waitlistSubmissions: defineTable({
+    email: v.string(),
+    normalizedEmail: v.string(),
+    name: v.optional(v.string()),
+    roleHint: v.union(
+      v.literal("nontechnical"),
+      v.literal("developer"),
+      v.literal("both")
+    ),
+    source: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    approvedAt: v.optional(v.number()),
+    rejectedAt: v.optional(v.number()),
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_status", ["status"])
+    .index("by_created_at", ["createdAt"]),
+
   // Connected integrations (GitHub, Vercel, Supabase, etc.)
   integrations: defineTable({
     organizationId: v.id("organizations"),

@@ -62,7 +62,6 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   const border = resolveThemeColor('--border', dark ? '#2a2a2a' : '#e4e4e7')
   const accent = resolveThemeColor('--accent', dark ? '#2a2a2a' : '#f4f4f5')
   const primary = resolveThemeColor('--primary', dark ? '#d4d4d8' : '#111111')
-  const sidebar = resolveThemeColor('--sidebar', dark ? '#1a1a1a' : '#fafafa')
 
   // Determine editor background based on variant
   let editorBackground = background
@@ -71,9 +70,10 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
     editorBackground = withAlpha(muted, 0.2)
     gutterBackground = withAlpha(muted, 0.2)
   } else if (variant === 'sidebar') {
-    // Use solid sidebar color for consistent rendering with CSS backgrounds
-    editorBackground = sidebar
-    gutterBackground = sidebar
+    // Use transparent editor surfaces; the parent container provides `.bg-sidebar`.
+    // This keeps Monaco exactly in sync with sidebar class rendering (including theme mixes).
+    editorBackground = '#00000000'
+    gutterBackground = '#00000000'
   }
 
   monaco.editor.defineTheme(themeName, {
@@ -84,6 +84,7 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
       'editor.background': editorBackground,
       'editor.foreground': foreground,
       'editorGutter.background': gutterBackground,
+      'minimap.background': editorBackground,
       'diffEditor.insertedTextBackground': withAlpha('#22c55e', 0.15),
       'diffEditor.removedTextBackground': withAlpha('#ef4444', 0.15),
       'diffEditor.insertedLineBackground': withAlpha('#22c55e', 0.1),

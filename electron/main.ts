@@ -60,7 +60,18 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'out/renderer')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-const PROTOCOL = 'cozea'
+const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
+const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
+const LEGACY_PROTOCOL = 'cozea'
+const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
+
+function matchesProtocolUrl(url: string, routePrefix: string): boolean {
+  return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))
+}
+
+function findProtocolArg(commandLine: string[]): string | undefined {
+  return commandLine.find((arg) => SUPPORTED_PROTOCOLS.some((scheme) => arg.startsWith(`${scheme}://`)))
+}
 
 // Default settings
 interface AppSettings {
@@ -309,11 +320,11 @@ if (process.defaultApp) {
 // Handle protocol on macOS
 app.on('open-url', async (event, url) => {
   event.preventDefault()
-  if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
+  if (matchesProtocolUrl(url, 'auth/callback')) {
     handleAuthCallback(url)
-  } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
+  } else if (matchesProtocolUrl(url, 'billing/')) {
     handleBillingCallback(url)
-  } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
+  } else if (matchesProtocolUrl(url, 'oauth/callback')) {
     // Handle integration OAuth callback
     try {
       await IntegrationService.getInstance().handleOAuthCallback(url)
@@ -361,13 +372,13 @@ if (!gotTheLock) {
     }
 
     // Handle protocol URL on Windows/Linux
-    const url = commandLine.find(arg => arg.startsWith(`${PROTOCOL}://`))
+    const url = findProtocolArg(commandLine)
     if (url) {
-      if (url.startsWith(`${PROTOCOL}://auth/callback`)) {
+      if (matchesProtocolUrl(url, 'auth/callback')) {
         handleAuthCallback(url)
-      } else if (url.startsWith(`${PROTOCOL}://billing/`)) {
+      } else if (matchesProtocolUrl(url, 'billing/')) {
         handleBillingCallback(url)
-      } else if (url.startsWith(`${PROTOCOL}://oauth/callback`)) {
+      } else if (matchesProtocolUrl(url, 'oauth/callback')) {
         // Handle integration OAuth callback
         IntegrationService.getInstance().handleOAuthCallback(url)
           .then((result) => {
@@ -1027,6 +1038,19 @@ ipcMain.handle(
     const settings = loadSettings()
     const projectPath = path.join(settings.projectsDirectory, slug)
     return fs.existsSync(projectPath)
+  }
+)
+
+// Check if any absolute project path exists (used for stale localPath recovery)
+ipcMain.handle(
+  'project:pathExists',
+  (_event, { projectPath }: { projectPath: string }): boolean => {
+    if (!projectPath || typeof projectPath !== 'string') return false
+    try {
+      return fs.existsSync(projectPath)
+    } catch {
+      return false
+    }
   }
 )
 

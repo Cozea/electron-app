@@ -29,10 +29,12 @@ export class AuthService {
     private sessionPath: string | null = null
     private authServerUrl: string
     private isProduction: boolean
+    private protocol: string
 
     private constructor() {
         this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
         this.isProduction = !process.env['VITE_DEV_SERVER_URL']
+        this.protocol = process.env.COZEA_PROTOCOL || (this.isProduction ? 'cozea' : 'cozea-dev')
     }
 
     static getInstance(): AuthService {
@@ -142,8 +144,10 @@ export class AuthService {
 
     registerIpcHandlers(): void {
         ipcMain.handle('auth:login', async () => {
-            const loginUrl = `${this.authServerUrl}/auth/login?client=desktop`
-            await shell.openExternal(loginUrl)
+            const loginUrl = new URL('/auth/login', this.authServerUrl)
+            loginUrl.searchParams.set('client', 'desktop')
+            loginUrl.searchParams.set('redirectUri', `${this.protocol}://auth/callback`)
+            await shell.openExternal(loginUrl.toString())
             return { success: true }
         })
 

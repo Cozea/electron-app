@@ -35,6 +35,7 @@ import type * as projects from "../projects.js";
 import type * as toolApprovals from "../toolApprovals.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
+import type * as waitlist from "../waitlist.js";
 import type * as yjs from "../yjs.js";
 import type * as yjsAwareness from "../yjsAwareness.js";
 
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   toolApprovals: typeof toolApprovals;
   tools: typeof tools;
   users: typeof users;
+  waitlist: typeof waitlist;
   yjs: typeof yjs;
   yjsAwareness: typeof yjsAwareness;
 }>;

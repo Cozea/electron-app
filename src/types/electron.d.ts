@@ -336,6 +336,7 @@ export interface ElectronAPI {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
+    pathExists: (projectPath: string) => Promise<boolean>
     writeFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>

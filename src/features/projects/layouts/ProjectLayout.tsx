@@ -2,7 +2,7 @@
 
 import { type ReactNode, useRef, useState, useCallback, useEffect } from "react"
 import { Outlet, useLocation, useParams } from "react-router-dom"
-import { useQuery } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
@@ -26,6 +26,36 @@ import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
 import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
+import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
+
+interface PathRecoveryChoice {
+    previousPath: string
+    targetPath: string
+    targetPathExists: boolean
+    projectsDirectory: string
+}
+
+interface StoredPathPreference {
+    acceptedExternalPath: string
+    projectsDirectory: string
+}
+
+function normalizePath(value: string): string {
+    return value.replace(/\\/g, "/").replace(/\/+$/, "")
+}
+
+function pathIsInsideDirectory(candidate: string, directory: string): boolean {
+    const normalizedCandidate = normalizePath(candidate)
+    const normalizedDirectory = normalizePath(directory)
+    return (
+        normalizedCandidate === normalizedDirectory ||
+        normalizedCandidate.startsWith(`${normalizedDirectory}/`)
+    )
+}
+
+function buildPathPreferenceKey(projectId: string, userId: string): string {
+    return `cozea:path-preference:${projectId}:${userId}`
+}
 
 
 interface ProjectLayoutProps {
@@ -83,13 +113,200 @@ export function ProjectLayout({
             ? { projectId: project._id, userId: convexUser._id }
             : "skip"
     )
-    const memberLocalPath = useCachedQuery(
-        `layout-localpath-${project?._id}-${convexUser?._id}`,
-        freshMemberLocalPath
-    )
+    const memberLocalPath = freshMemberLocalPath
+    const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
-    // Per-user local path only (no fallback to shared project.localPath)
-    const effectiveLocalPath = memberLocalPath ?? null
+    const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(null)
+    const [pathRecoveryChoice, setPathRecoveryChoice] = useState<PathRecoveryChoice | null>(null)
+    const [isResolvingPath, setIsResolvingPath] = useState(false)
+    const [pathResolutionError, setPathResolutionError] = useState<string | null>(null)
+
+    useEffect(() => {
+        setEffectiveLocalPath(null)
+        setPathRecoveryChoice(null)
+        setPathResolutionError(null)
+    }, [project?._id, convexUser?._id, slug])
+
+    const resolvePathPreference = useCallback(async () => {
+        if (!project?._id || !convexUser?._id || !slug) {
+            setEffectiveLocalPath(null)
+            setPathRecoveryChoice(null)
+            setPathResolutionError(null)
+            return
+        }
+
+        if (memberLocalPath === undefined) {
+            return
+        }
+
+        setIsResolvingPath(true)
+        setPathResolutionError(null)
+
+        try {
+            const storedPath = memberLocalPath ?? null
+            if (!storedPath) {
+                setPathRecoveryChoice(null)
+                setEffectiveLocalPath(null)
+                return
+            }
+
+            const settings = await window.electronAPI.settings.get()
+            const projectsDirectory = settings.projectsDirectory
+            const normalizedStoredPath = normalizePath(storedPath)
+            const normalizedProjectsDirectory = normalizePath(projectsDirectory)
+            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+
+            if (pathIsInsideDirectory(normalizedStoredPath, normalizedProjectsDirectory)) {
+                localStorage.removeItem(preferenceKey)
+                setPathRecoveryChoice(null)
+                setEffectiveLocalPath(storedPath)
+                return
+            }
+
+            const storedPreferenceRaw = localStorage.getItem(preferenceKey)
+            if (storedPreferenceRaw) {
+                try {
+                    const storedPreference = JSON.parse(storedPreferenceRaw) as StoredPathPreference
+                    if (
+                        normalizePath(storedPreference.acceptedExternalPath) === normalizedStoredPath &&
+                        normalizePath(storedPreference.projectsDirectory) === normalizedProjectsDirectory
+                    ) {
+                        setPathRecoveryChoice(null)
+                        setEffectiveLocalPath(storedPath)
+                        return
+                    }
+                } catch {
+                    localStorage.removeItem(preferenceKey)
+                }
+            }
+
+            const [previousPathExists, existingTargetPath] = await Promise.all([
+                window.electronAPI.project.pathExists(storedPath),
+                window.electronAPI.project.getLocalPath(slug),
+            ])
+
+            if (!previousPathExists) {
+                let nextPath = existingTargetPath
+                if (!nextPath) {
+                    const created = await window.electronAPI.project.createFolder({
+                        slug,
+                        initGit: true,
+                    })
+                    if (!created.success || !created.localPath) {
+                        throw new Error(created.error || "Failed to create project folder in current directory")
+                    }
+                    nextPath = created.localPath
+                }
+
+                await updateMemberLocalPath({
+                    projectId: project._id,
+                    userId: convexUser._id,
+                    localPath: nextPath,
+                })
+                localStorage.removeItem(preferenceKey)
+                setPathRecoveryChoice(null)
+                setEffectiveLocalPath(nextPath)
+                return
+            }
+
+            const targetPath =
+                existingTargetPath ??
+                `${projectsDirectory.replace(/[\\\/]+$/, "")}/${slug}`
+
+            setEffectiveLocalPath(null)
+            setPathRecoveryChoice({
+                previousPath: storedPath,
+                targetPath,
+                targetPathExists: Boolean(existingTargetPath),
+                projectsDirectory,
+            })
+        } catch (err) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : "Failed to resolve local project directory"
+            setPathResolutionError(message)
+            setPathRecoveryChoice(null)
+            setEffectiveLocalPath(memberLocalPath ?? null)
+        } finally {
+            setIsResolvingPath(false)
+        }
+    }, [convexUser?._id, memberLocalPath, project?._id, slug, updateMemberLocalPath])
+
+    useEffect(() => {
+        void resolvePathPreference()
+    }, [resolvePathPreference])
+
+    const handleUsePreviousDirectory = useCallback(() => {
+        if (!project?._id || !convexUser?._id || !pathRecoveryChoice) return
+        const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+        const payload: StoredPathPreference = {
+            acceptedExternalPath: pathRecoveryChoice.previousPath,
+            projectsDirectory: pathRecoveryChoice.projectsDirectory,
+        }
+        localStorage.setItem(preferenceKey, JSON.stringify(payload))
+        setPathRecoveryChoice(null)
+        setPathResolutionError(null)
+        setEffectiveLocalPath(pathRecoveryChoice.previousPath)
+    }, [convexUser?._id, pathRecoveryChoice, project?._id])
+
+    const handleUseCurrentDirectory = useCallback(async () => {
+        if (!project?._id || !convexUser?._id || !slug || !pathRecoveryChoice) return
+
+        setIsResolvingPath(true)
+        setPathResolutionError(null)
+
+        try {
+            let targetPath = await window.electronAPI.project.getLocalPath(slug)
+            if (!targetPath) {
+                const created = await window.electronAPI.project.createFolder({
+                    slug,
+                    initGit: true,
+                })
+                if (!created.success || !created.localPath) {
+                    throw new Error(created.error || "Failed to create project folder in current directory")
+                }
+                targetPath = created.localPath
+            }
+
+            await updateMemberLocalPath({
+                projectId: project._id,
+                userId: convexUser._id,
+                localPath: targetPath,
+            })
+
+            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+            localStorage.removeItem(preferenceKey)
+            setPathRecoveryChoice(null)
+            setEffectiveLocalPath(targetPath)
+        } catch (err) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : "Failed to switch project directory"
+            setPathResolutionError(message)
+        } finally {
+            setIsResolvingPath(false)
+        }
+    }, [convexUser?._id, pathRecoveryChoice, project?._id, slug, updateMemberLocalPath])
+
+    const previousEffectivePathRef = useRef<string | null>(null)
+    useEffect(() => {
+        if (!slug || !effectiveLocalPath) {
+            previousEffectivePathRef.current = effectiveLocalPath
+            return
+        }
+
+        const previousPath = previousEffectivePathRef.current
+        previousEffectivePathRef.current = effectiveLocalPath
+
+        if (previousPath && normalizePath(previousPath) === normalizePath(effectiveLocalPath)) {
+            return
+        }
+
+        const fileTabsStore = useFileTabsStore.getState()
+        fileTabsStore.actions.rebaseProjectPaths(slug, previousPath, effectiveLocalPath)
+    }, [effectiveLocalPath, slug])
 
     useDiagnosticsBridge(effectiveLocalPath)
     useDependenciesMonitor(effectiveLocalPath)
@@ -125,7 +342,7 @@ export function ProjectLayout({
     }, [effectiveLocalPath])
 
     // Real-time presence tracking
-    const { otherUsers: presenceUsers } = useProjectPresence({
+    useProjectPresence({
         projectId: project?._id,
         userId: convexUser?._id,
         userName: convexUser?.firstName || convexUser?.email || null,
@@ -167,13 +384,36 @@ export function ProjectLayout({
     // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
-    // Determine if we can enable sync (need project + user data)
-    const canSync = project?._id && convexUser?._id && slug
+    // Determine if we can enable sync (need project + user data + resolved path decision)
+    const hasSyncIdentities = Boolean(project?._id && convexUser?._id && slug) && memberLocalPath !== undefined
+    const canSync = hasSyncIdentities && !isResolvingPath
     const headerContent = useProjectHeaderStore((state) => state.header)
     const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
     const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
 
+    if (pathRecoveryChoice) {
+        return (
+            <ProjectPathRecoveryScreen
+                projectName={project?.name}
+                previousPath={pathRecoveryChoice.previousPath}
+                targetPath={pathRecoveryChoice.targetPath}
+                targetPathExists={pathRecoveryChoice.targetPathExists}
+                onUsePreviousPath={handleUsePreviousDirectory}
+                onUseTargetPath={handleUseCurrentDirectory}
+                onRetry={() => void resolvePathPreference()}
+                isBusy={isResolvingPath}
+                error={pathResolutionError}
+            />
+        )
+    }
 
+    if (isResolvingPath && hasSyncIdentities) {
+        return (
+            <div className="flex h-full min-h-screen items-center justify-center bg-background">
+                <div className="text-sm text-muted-foreground">Resolving project directory...</div>
+            </div>
+        )
+    }
 
     // Main layout content
     const breadcrumbs = (hideBreadcrumbs || isFilesView) ? [] : [
@@ -245,13 +485,13 @@ export function ProjectLayout({
     )
 
     // Wrap with sync provider if we have all the required data
-    if (canSync) {
+    if (canSync && project && convexUser && slug) {
         return (
             <ProjectSyncProvider
-                key={project._id}
+                key={`${project._id}:${effectiveLocalPath ?? "none"}`}
                 projectId={project._id}
                 userId={convexUser._id}
-                userName={convexUser.firstName || convexUser.email}
+                userName={convexUser.firstName || convexUser.email || "User"}
                 projectSlug={slug}
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}

@@ -182,29 +182,31 @@ export function CollaborativeMonacoEditor({
   const modelPath = monaco.Uri.file(path).toString()
 
   return (
-    <Editor
-      height="100%"
-      language={model.language}
-      path={modelPath}
-      // Don't set value prop - y-monaco manages content
-      defaultValue={model.currentContent}
-      theme={theme}
-      onMount={handleMount}
-      // Don't use onChange - y-monaco handles sync
-      options={{
-        fontSize: 13,
-        fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-        minimap: { enabled: true },
-        automaticLayout: true,
-        tabSize: 2,
-        scrollBeyondLastLine: false,
-        readOnly: false,
-      }}
-      loading={
-        <div className="h-full flex items-center justify-center text-muted-foreground">
-          Initializing collaborative editor...
-        </div>
-      }
-    />
+    <div className="h-full bg-sidebar">
+      <Editor
+        height="100%"
+        language={model.language}
+        path={modelPath}
+        // Don't set value prop - y-monaco manages content
+        defaultValue={model.currentContent}
+        theme={theme}
+        onMount={handleMount}
+        // Don't use onChange - y-monaco handles sync
+        options={{
+          fontSize: 13,
+          fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+          minimap: { enabled: true },
+          automaticLayout: true,
+          tabSize: 2,
+          scrollBeyondLastLine: false,
+          readOnly: false,
+        }}
+        loading={
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            Initializing collaborative editor...
+          </div>
+        }
+      />
+    </div>
   )
 }

@@ -91,13 +91,20 @@ export function FileViewer({ path }: FileViewerProps) {
         // Convert absolute path to relative path by removing the project folder prefix
         // path is absolute (e.g., /Users/foo/CrozCode Projects/my-project/src/App.tsx)
         // We need relative (e.g., src/App.tsx)
+        const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '')
+        const normalizedLocalPath = normalize(localPath)
+        const normalizedInputPath = normalize(path)
+        const isAbsolutePath =
+          normalizedInputPath.startsWith('/') || /^[A-Za-z]:\//.test(normalizedInputPath)
+
         let relativePath = path
-        if (path.startsWith(localPath)) {
-          relativePath = path.slice(localPath.length)
-          // Remove leading slash if present
-          if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
-            relativePath = relativePath.slice(1)
-          }
+        if (normalizedInputPath === normalizedLocalPath) {
+          relativePath = ''
+        } else if (normalizedInputPath.startsWith(`${normalizedLocalPath}/`)) {
+          relativePath = normalizedInputPath.slice(normalizedLocalPath.length + 1)
+        } else if (isAbsolutePath) {
+          setError('File path is outside the current project directory')
+          return
         }
 
         console.log('[FileViewer] Loading file:', { localPath, path, relativePath })

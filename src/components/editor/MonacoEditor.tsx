@@ -115,28 +115,30 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
 
     // Fallback to regular editor when not in collaborative mode
     return (
-        <Editor
-            height="100%"
-            language={model.language}
-            path={modelPath}
-            value={model.currentContent}
-            theme={theme}
-            onChange={handleChange}
-            onMount={handleEditorMount}
-            options={{
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-                minimap: { enabled: true },
-                automaticLayout: true,
-                tabSize: 2,
-                scrollBeyondLastLine: false,
-                readOnly: false, // Could hook up to lock status
-            }}
-            loading={
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                    Initializing editor...
-                </div>
-            }
-        />
+        <div className="h-full bg-sidebar">
+            <Editor
+                height="100%"
+                language={model.language}
+                path={modelPath}
+                value={model.currentContent}
+                theme={theme}
+                onChange={handleChange}
+                onMount={handleEditorMount}
+                options={{
+                    fontSize: 13,
+                    fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+                    minimap: { enabled: true },
+                    automaticLayout: true,
+                    tabSize: 2,
+                    scrollBeyondLastLine: false,
+                    readOnly: false, // Could hook up to lock status
+                }}
+                loading={
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                        Initializing editor...
+                    </div>
+                }
+            />
+        </div>
     )
 }
