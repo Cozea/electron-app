@@ -136,10 +136,15 @@ export function EditorTabs() {
 
     return (
         <>
-            <div className="relative flex items-center h-9 bg-muted/20">
+            <div className="relative flex items-center h-9 bg-transparent">
                 <div className="flex-1 flex items-center h-full overflow-x-auto scrollbar-hide">
-                    {openFiles.map(path => {
+                    {openFiles.map((path, index) => {
                         const isActive = path === activeFile || (activeFile != null && pathsReferToSameFile(path, activeFile))
+                        const nextPath = openFiles[index + 1]
+                        const isNextActive = nextPath
+                            ? (nextPath === activeFile || (activeFile != null && pathsReferToSameFile(nextPath, activeFile)))
+                            : false
+                        const showSeparator = !isActive && !isNextActive && index < openFiles.length - 1
                         const fileName = path.split('/').pop() || 'file'
                         const model = editorModels[path]
                         const isDirty = model?.isDirty ?? false
@@ -148,10 +153,16 @@ export function EditorTabs() {
                                 key={path}
                                 onClick={() => handleTabClick(path)}
                                 className={cn(
-                                    "flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs border-r border-border cursor-pointer select-none group",
-                                    isActive ? "bg-muted/30 text-foreground border-t-2 border-t-primary" : "bg-muted/40 text-muted-foreground hover:bg-background/50 border-b border-border"
+                                    "relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs cursor-pointer select-none group",
+                                    isActive ? "bg-secondary/80 text-secondary-foreground rounded-full h-7 my-1" : "bg-transparent text-muted-foreground hover:bg-transparent"
                                 )}
                             >
+                                {showSeparator && (
+                                    <span
+                                        className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 w-px bg-border/70"
+                                        aria-hidden
+                                    />
+                                )}
                                 {getFileIcon(fileName, { width: 14, height: 14 })}
                                 <span className="truncate flex-1">{fileName}</span>
                                 {isDirty && (
@@ -175,7 +186,7 @@ export function EditorTabs() {
                     })}
                 </div>
 
-                <div className="shrink-0 flex items-center h-full bg-muted/20 border-l border-border">
+                <div className="shrink-0 flex items-center h-full bg-transparent border-l border-border">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">

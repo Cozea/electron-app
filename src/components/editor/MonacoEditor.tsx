@@ -47,7 +47,7 @@ export function MonacoEditor({ path, onEditorReady }: MonacoEditorProps) {
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
     const { yjsDoc } = useYjsProject()
-    const theme = useMonacoTheme()
+    const theme = useMonacoTheme('sidebar')
 
     useDiagnosticsFileSync({
         projectPath: model?.projectPath,

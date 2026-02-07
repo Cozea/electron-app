@@ -60,7 +60,7 @@ export function CollaborativeMonacoEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const bindingRef = useRef<MonacoBinding | null>(null)
   const cursorDisposablesRef = useRef<monaco.IDisposable[]>([])
-  const theme = useMonacoTheme()
+  const theme = useMonacoTheme('sidebar')
 
   const model = useEditorStore((state) => state.models[path])
   const actions = useEditorStore((state) => state.actions)

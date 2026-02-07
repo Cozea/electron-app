@@ -252,11 +252,11 @@ export function ProjectSidebar({
                     className="w-56 shrink-0 z-20 h-full titlebar-no-drag"
                     {...props}
                 >
-                    <SidebarHeader className="mt-9">
+                    <SidebarHeader className="pt-9">
                         <ContextSwitcher />
                     </SidebarHeader>
 
-                    <SidebarContent className="group-data-[collapsible=icon]:mt-9">
+                    <SidebarContent className="flex-1 min-h-0">
                         {navGroups.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -325,7 +325,7 @@ export function ProjectSidebar({
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="pb-6 group-data-[collapsible=icon]:pb-8">
+                    <SidebarFooter className="mt-auto p-0 pb-0">
                         <NavUser user={user} onLogout={onLogout} />
                     </SidebarFooter>
                     <SidebarRail />

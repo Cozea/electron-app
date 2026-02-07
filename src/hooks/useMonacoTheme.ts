@@ -62,7 +62,7 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   const border = resolveThemeColor('--border', dark ? '#2a2a2a' : '#e4e4e7')
   const accent = resolveThemeColor('--accent', dark ? '#2a2a2a' : '#f4f4f5')
   const primary = resolveThemeColor('--primary', dark ? '#d4d4d8' : '#111111')
-  const sidebar = resolveThemeColor('--sidebar-background', dark ? '#1a1a1a' : '#fafafa')
+  const sidebar = resolveThemeColor('--sidebar', dark ? '#1a1a1a' : '#fafafa')
 
   // Determine editor background based on variant
   let editorBackground = background
@@ -139,4 +139,3 @@ export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): string 
 
   return themeName
 }
-
