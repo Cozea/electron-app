@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server"
+import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
@@ -74,6 +74,30 @@ export const submitForServer = mutation({
       id: existing._id,
       status: existing.status,
       isNew: false,
+    }
+  },
+})
+
+export const getStatusForServer = query({
+  args: {
+    serverSecret: v.string(),
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const normalizedEmail = args.email.trim().toLowerCase()
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error("Invalid email")
+    }
+
+    const existing = await ctx.db
+      .query("waitlistSubmissions")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+      .first()
+
+    return {
+      status: existing?.status ?? null,
     }
   },
 })

@@ -25,11 +25,12 @@ export interface Session {
 }
 
 export class AuthService {
-    private static instance: AuthService
-    private sessionPath: string | null = null
-    private authServerUrl: string
-    private isProduction: boolean
-    private protocol: string
+  private static instance: AuthService
+  private sessionPath: string | null = null
+  private authServerUrl: string
+  private isProduction: boolean
+  private protocol: string
+  private readonly waitlistMessage = "You're on the waitlist. We'll notify you when access is ready."
 
     private constructor() {
         this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
@@ -113,6 +114,18 @@ export class AuthService {
 
     async handleAuthCallback(url: string, win: BrowserWindow | null): Promise<void> {
         const urlObj = new URL(url)
+        const callbackError = urlObj.searchParams.get('error')
+
+        if (callbackError === 'waitlisted') {
+            win?.webContents.send('auth:error', this.waitlistMessage)
+            return
+        }
+
+        if (callbackError) {
+            win?.webContents.send('auth:error', 'Authentication failed')
+            return
+        }
+
         const token = urlObj.searchParams.get('token')
 
         if (!token) {
