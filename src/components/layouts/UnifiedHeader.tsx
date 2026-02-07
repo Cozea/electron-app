@@ -63,7 +63,7 @@ export function UnifiedHeader({
           )}
         </div>
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5 titlebar-no-drag">
+        <div className="flex items-center gap-0.5 titlebar-no-drag min-w-0">
           {header}
           {(header || breadcrumbAddon) && (
             <BdryDivider orientation="vertical" className="mx-1.5 h-4" variant="muted" />
