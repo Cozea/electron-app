@@ -244,19 +244,21 @@ export function ProjectSidebar({
     ]
 
     return (
-        <div className={cn("flex h-full titlebar-drag-region bg-sidebar", className)}>
+        <div className={cn("flex h-full titlebar-drag-region", className)}>
             {/* 1. Primary Icon Rail Sidebar */}
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="w-56 shrink-0 z-20 h-full titlebar-no-drag"
+                    className="w-56 shrink-0 z-20 h-screen titlebar-no-drag"
                     {...props}
                 >
-                    <SidebarHeader className="pt-9">
-                        <ContextSwitcher />
+                    <SidebarHeader className="mt-9 titlebar-drag-region">
+                        <div className="titlebar-no-drag">
+                            <ContextSwitcher />
+                        </div>
                     </SidebarHeader>
 
-                    <SidebarContent className="flex-1 min-h-0">
+                    <SidebarContent className="group-data-[collapsible=icon]:mt-9">
                         {navGroups.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -325,7 +327,7 @@ export function ProjectSidebar({
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="mt-auto p-0 pb-0">
+                    <SidebarFooter className="pb-6 group-data-[collapsible=icon]:pb-8">
                         <NavUser user={user} onLogout={onLogout} />
                     </SidebarFooter>
                     <SidebarRail />
@@ -349,13 +351,13 @@ export function ProjectSidebar({
                             side="left"
                             variant="sidebar"
                             collapsible="none"
-                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag"
+                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag relative sidebar-fade-border sidebar-fade-border-right"
                         >
-                            <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
+                            <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
                                 {activeTab !== 'Files' && (
                                     <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
                                 )}
-                                <div className={cn("flex items-center gap-2", activeTab === 'Files' && "ml-auto")}>
+                                <div className={cn("flex items-center gap-2 titlebar-no-drag", activeTab === 'Files' && "ml-auto")}>
                                     {activeTab === 'Files' && onCreateFile && (
                                         <button
                                             onClick={onCreateFile}

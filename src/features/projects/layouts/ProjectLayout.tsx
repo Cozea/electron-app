@@ -192,55 +192,55 @@ export function ProjectLayout({
     const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
 
     const layoutContent = (
-        <SidebarProvider
-            className="flex flex-col h-screen"
-        >
-            {/* Main content */}
-            <div className="flex-1 flex min-h-0 overflow-hidden">
-                <ProjectSidebar
-                    color="currentColor"
-                    user={user}
-                    onLogout={logout}
-                    fileTree={<FileTree ref={fileTreeRef} />}
-                    onRefreshFiles={handleRefreshFiles}
-                    isRefreshing={isRefreshing}
-                    onCreateFile={handleCreateFile}
-                    onCreateFolder={handleCreateFolder}
-                />
-                <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
-                    <div
-                        className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
-                        style={{
-                            flex: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? '0 0 0' : '1 1 0',
-                            opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
-                        }}
-                    >
-                        <UnifiedHeader
-                            breadcrumbs={breadcrumbs}
-                            header={headerSlot ?? undefined}
-                            breadcrumbAddon={breadcrumbAddon ?? undefined}
-                        />
-                        <div
-                            className={cn(
-                                // `min-w-0` prevents the main content from overflowing under the right panels
-                                // when it contains wide children (iframes, editors, etc.).
-                                "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
-                                shouldRemovePadding ? "p-0" : "p-4",
-                                showHeader && "pt-10"
-                            )}
-                        >
-                            {children || <Outlet />}
-                        </div>
-                    </div>
-                    <ChatPanel />
-                    <AssistantPanel
-                        projectPath={effectiveLocalPath ?? undefined}
-                        projectName={project?.name}
-                        projectSlug={slug}
+        <SidebarProvider>
+            <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+                {/* Main content */}
+                <div className="flex-1 flex min-h-0 overflow-hidden relative">
+                    <ProjectSidebar
+                        color="currentColor"
+                        user={user}
+                        onLogout={logout}
+                        fileTree={<FileTree ref={fileTreeRef} />}
+                        onRefreshFiles={handleRefreshFiles}
+                        isRefreshing={isRefreshing}
+                        onCreateFile={handleCreateFile}
+                        onCreateFolder={handleCreateFolder}
                     />
-                </SidebarInset>
-            </div >
-            <SearchCommand />
+                    <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
+                        <div
+                            className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
+                            style={{
+                                flex: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? '0 0 0' : '1 1 0',
+                                opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
+                            }}
+                        >
+                            <UnifiedHeader
+                                breadcrumbs={breadcrumbs}
+                                header={headerSlot ?? undefined}
+                                breadcrumbAddon={breadcrumbAddon ?? undefined}
+                            />
+                            <div
+                                className={cn(
+                                    // `min-w-0` prevents the main content from overflowing under the right panels
+                                    // when it contains wide children (iframes, editors, etc.).
+                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                    shouldRemovePadding ? "p-0" : "p-4",
+                                    showHeader && "pt-10"
+                                )}
+                            >
+                                {children || <Outlet />}
+                            </div>
+                        </div>
+                        <ChatPanel />
+                        <AssistantPanel
+                            projectPath={effectiveLocalPath ?? undefined}
+                            projectName={project?.name}
+                            projectSlug={slug}
+                        />
+                    </SidebarInset>
+                </div >
+                <SearchCommand />
+            </div>
         </SidebarProvider >
     )
 

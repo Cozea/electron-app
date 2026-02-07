@@ -113,7 +113,11 @@ class TsServerClient {
     this.process = spawn(process.execPath, [this.tsServerPath], {
       cwd: this.projectPath,
       stdio: 'pipe',
-      env: process.env,
+      env: {
+        ...process.env,
+        // Run the Electron binary in Node mode so it doesn't create a Dock icon on macOS.
+        ELECTRON_RUN_AS_NODE: '1',
+      },
     })
 
     this.process.stdout.on('data', (chunk) => {
