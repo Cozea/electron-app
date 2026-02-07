@@ -2,16 +2,19 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
+import { Loader2 } from "lucide-react"
 
 interface LoginFormProps extends React.ComponentProps<"div"> {
   onLogin: () => void
   isLoading: boolean
+  errorMessage?: string | null
 }
 
 export function LoginForm({
   className,
   onLogin,
   isLoading,
+  errorMessage,
   ...props
 }: LoginFormProps) {
   return (
@@ -27,9 +30,22 @@ export function LoginForm({
           disabled={isLoading}
           size="lg"
           className="w-full"
+          aria-busy={isLoading}
         >
-          {isLoading ? "Signing in..." : "Sign in"}
+          {isLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            "Sign in"
+          )}
         </Button>
+        {errorMessage ? (
+          <FieldDescription className="text-center text-sm text-destructive" role="alert">
+            {errorMessage}
+          </FieldDescription>
+        ) : null}
       </FieldGroup>
       <FieldDescription className="px-6 text-center">
         By clicking continue, you agree to our{" "}

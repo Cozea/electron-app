@@ -61,6 +61,7 @@ interface AuthContextType {
   currentOrganization: OrganizationMembership | null
   isAuthenticated: boolean
   isLoading: boolean
+  authError: string | null
   needsOnboarding: boolean
   login: () => Promise<void>
   logout: () => Promise<void>
@@ -82,8 +83,11 @@ const STORAGE_KEY_USER = 'auth_user'
 const STORAGE_KEY_TOKEN = 'auth_token'
 const STORAGE_KEY_ORGS = 'auth_orgs'
 const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
+const LOGIN_FLOW_TIMEOUT_MS = 90_000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Initialize state from localStorage for instant load
   const [user, setUser] = useState<User | null>(() => {
     try {
@@ -121,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(() => {
     return !localStorage.getItem(STORAGE_KEY_USER)
   })
+  const [authError, setAuthError] = useState<string | null>(null)
   const [convexLoading, setConvexLoading] = useState(false)
 
   // Query Convex for user's organizations (source of truth)
@@ -188,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSession = useCallback(async (session: Session | null) => {
     if (session) {
+      setAuthError(null)
       setUser(session.user)
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(session.user))
 
@@ -272,6 +278,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
   }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex])
 
+  const clearLoginTimeout = useCallback(() => {
+    if (loginTimeoutRef.current) {
+      clearTimeout(loginTimeoutRef.current)
+      loginTimeoutRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     // Load initial session with smart token refresh
     const loadSession = async () => {
@@ -318,29 +331,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth callbacks
     const cleanupSuccess = window.electronAPI.auth.onSuccess((session) => {
+      clearLoginTimeout()
       handleSession(session)
     })
 
     const cleanupError = window.electronAPI.auth.onError((error) => {
       console.error('Auth error:', error)
+      clearLoginTimeout()
+      setAuthError(typeof error === 'string' && error.length > 0 ? error : 'Authentication failed. Please try again.')
       setIsLoading(false)
     })
 
     // Cleanup listeners on unmount
     return () => {
       clearTimeout(timeoutId)
+      clearLoginTimeout()
       cleanupSuccess()
       cleanupError()
     }
-  }, [handleSession])
+  }, [clearLoginTimeout, handleSession])
 
   const login = useCallback(async () => {
+    setAuthError(null)
     setIsLoading(true)
-    await window.electronAPI.auth.login()
-    // Session will be set via onSuccess callback
-  }, [])
+    clearLoginTimeout()
+    loginTimeoutRef.current = setTimeout(() => {
+      console.warn('[Auth] Login flow timed out or was interrupted')
+      setAuthError('Login timed out. Please try again.')
+      setIsLoading(false)
+      loginTimeoutRef.current = null
+    }, LOGIN_FLOW_TIMEOUT_MS)
+
+    try {
+      await window.electronAPI.auth.login()
+      // Session will be set via onSuccess callback
+    } catch (error) {
+      clearLoginTimeout()
+      setAuthError('Unable to start login. Please try again.')
+      setIsLoading(false)
+      throw error
+    }
+  }, [clearLoginTimeout])
 
   const logout = useCallback(async () => {
+    clearLoginTimeout()
+    setAuthError(null)
     setIsLoading(true)
     await window.electronAPI.auth.logout()
     setUser(null)
@@ -356,7 +391,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY_TOKEN)
     localStorage.removeItem(STORAGE_KEY_ORGS)
     localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
-  }, [])
+  }, [clearLoginTimeout])
 
   // Refresh the access token using the refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
@@ -429,6 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         currentOrganization,
         isAuthenticated: !!user,
         isLoading: isLoading, // Only block on initial hydration, not background sync
+        authError,
         needsOnboarding,
         login,
         logout,
