@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
@@ -38,6 +39,17 @@ import { TooltipProvider } from './components/ui/tooltip'
 
 
 
+function FullscreenLoading() {
+  return (
+    <div className="flex min-h-svh items-center justify-center bg-background">
+      <div className="flex items-center gap-3 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span>Loading your workspace...</span>
+      </div>
+    </div>
+  )
+}
+
 function AppWithOrganization() {
   const { accessToken, organizations, refreshToken } = useAuth()
 
@@ -57,14 +69,12 @@ function AppWithOrganization() {
 function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
 
-  if (isLoading) {
-    if (isLoading) {
-      return null
-    }
-  }
-
   if (!isAuthenticated) {
     return <Login />
+  }
+
+  if (isLoading) {
+    return <FullscreenLoading />
   }
 
   if (needsOnboarding) {
