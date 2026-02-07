@@ -62,6 +62,7 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   const border = resolveThemeColor('--border', dark ? '#2a2a2a' : '#e4e4e7')
   const accent = resolveThemeColor('--accent', dark ? '#2a2a2a' : '#f4f4f5')
   const primary = resolveThemeColor('--primary', dark ? '#d4d4d8' : '#111111')
+  const sidebar = resolveThemeColor('--sidebar', dark ? '#1a1a1a' : '#fafafa')
 
   // Determine editor background based on variant
   let editorBackground = background
@@ -75,6 +76,9 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
     editorBackground = '#00000000'
     gutterBackground = '#00000000'
   }
+  const minimapBackground = variant === 'sidebar' ? sidebar : editorBackground
+  const stickyScrollBackground = variant === 'sidebar' ? sidebar : editorBackground
+  const overviewRulerBackground = variant === 'sidebar' ? sidebar : editorBackground
 
   monaco.editor.defineTheme(themeName, {
     base: dark ? 'vs-dark' : 'vs',
@@ -84,7 +88,22 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
       'editor.background': editorBackground,
       'editor.foreground': foreground,
       'editorGutter.background': gutterBackground,
-      'minimap.background': editorBackground,
+      'minimap.background': minimapBackground,
+      'minimapGutter.background': overviewRulerBackground,
+      'editorOverviewRuler.background': overviewRulerBackground,
+      'editorOverviewRuler.border': '#00000000',
+      'scrollbar.shadow': '#00000000',
+      'scrollbarSlider.background': withAlpha(border, dark ? 0.45 : 0.35),
+      'scrollbarSlider.hoverBackground': withAlpha(border, dark ? 0.65 : 0.55),
+      'scrollbarSlider.activeBackground': withAlpha(border, dark ? 0.8 : 0.7),
+      'minimapSlider.background': withAlpha(border, dark ? 0.45 : 0.35),
+      'minimapSlider.hoverBackground': withAlpha(border, dark ? 0.65 : 0.55),
+      'minimapSlider.activeBackground': withAlpha(border, dark ? 0.8 : 0.7),
+      'editorStickyScroll.background': stickyScrollBackground,
+      'editorStickyScrollGutter.background': stickyScrollBackground,
+      'editorStickyScrollHover.background': stickyScrollBackground,
+      'editorStickyScroll.border': withAlpha(border, dark ? 0.55 : 0.8),
+      'editorStickyScroll.shadow': withAlpha(border, dark ? 0.45 : 0.25),
       'diffEditor.insertedTextBackground': withAlpha('#22c55e', 0.15),
       'diffEditor.removedTextBackground': withAlpha('#ef4444', 0.15),
       'diffEditor.insertedLineBackground': withAlpha('#22c55e', 0.1),

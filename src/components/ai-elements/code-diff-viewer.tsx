@@ -5,6 +5,7 @@ import { DiffEditor, type DiffOnMount, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { useMonacoTheme, type MonacoThemeVariant } from '@/hooks/useMonacoTheme'
 import { cn } from '@/lib/utils'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 
 // Import Monaco workers for Vite
@@ -244,8 +245,8 @@ export function CodeDiffViewer({
             contextmenu: false,
           }}
           loading={
-            <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-              Loading diff...
+            <div className="flex h-full items-center justify-center">
+              <Shimmer className="text-sm text-muted-foreground">Loading diff preview...</Shimmer>
             </div>
           }
         />

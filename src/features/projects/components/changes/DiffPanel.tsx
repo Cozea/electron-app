@@ -1,22 +1,19 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { CodeDiffViewer } from '@/components/ai-elements/code-diff-viewer'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
-import { X, Bold, Italic, Underline, Link2, Smile } from 'lucide-react'
-import {
-  DiffAddedIcon,
-  DiffModifiedIcon,
-  DiffRemovedIcon,
-} from '@primer/octicons-react'
+import { X, Bold, Italic, Underline, Link2, Smile, Minus, Plus, Asterisk } from 'lucide-react'
+import { CodeMirrorMergeViewer } from './CodeMirrorMergeViewer'
 
 interface DiffPanelProps {
   changeId: Id<"fileChanges"> | null
   onClose: () => void
+  showHeader?: boolean
 }
 
 function formatRelativeTime(timestamp: number) {
@@ -34,14 +31,27 @@ function formatRelativeTime(timestamp: number) {
 }
 
 function getChangeIcon(changeType: string) {
+  const baseClasses = 'h-4 w-4'
   switch (changeType) {
     case 'create':
-      return <DiffAddedIcon size={16} className="text-green-500" />
+      return (
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
+          <Plus className={`${baseClasses} text-green-500`} />
+        </span>
+      )
     case 'delete':
-      return <DiffRemovedIcon size={16} className="text-red-500" />
+      return (
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
+          <Minus className={`${baseClasses} text-red-500`} />
+        </span>
+      )
     case 'modify':
     default:
-      return <DiffModifiedIcon size={16} className="text-yellow-500" />
+      return (
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
+          <Asterisk className={`${baseClasses} text-amber-500`} />
+        </span>
+      )
   }
 }
 
@@ -84,10 +94,21 @@ function getRelativePath(filePath: string): string {
   return parts.slice(startIndex).join('/') || filePath
 }
 
-export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
+export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelProps) {
   const { convexUserId } = useAuth()
   const [commentText, setCommentText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showTopFade, setShowTopFade] = useState(false)
+  const [showBottomFade, setShowBottomFade] = useState(true)
+  const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
+    setShowTopFade(!atTop)
+    setShowBottomFade(!atBottom)
+  }, [])
+
+  useEffect(() => {
+    setShowTopFade(false)
+    setShowBottomFade(true)
+  }, [changeId])
 
   const change = useQuery(
     api.activity.getChangeWithContent,
@@ -126,7 +147,7 @@ export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
   if (change === undefined) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading diff...</div>
+        <Shimmer className="text-sm text-muted-foreground">Loading diff preview...</Shimmer>
       </div>
     )
   }
@@ -144,48 +165,49 @@ export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header - GitHub style */}
-      <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
-        {/* File info - flexible */}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {getChangeIcon(change.changeType)}
-          {getFileIcon(fileName, { width: 16, height: 16 })}
-          <code className="text-sm font-mono truncate">{displayPath}</code>
-        </div>
+      {showHeader && (
+        <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
+          {/* File info - flexible */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {getChangeIcon(change.changeType)}
+            {getFileIcon(fileName, { width: 16, height: 16 })}
+            <code className="text-sm font-mono truncate">{displayPath}</code>
+          </div>
 
-        {/* Author & time */}
-        <div className="flex items-center gap-2 shrink-0">
-          {change.userImage ? (
-            <img
-              src={change.userImage}
-              alt={change.userName}
-              className="w-5 h-5 rounded-full object-cover"
-              title={change.userName}
-            />
-          ) : (
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
-              style={{ backgroundColor: change.userColor }}
-              title={change.userName}
-            >
-              {change.userName?.charAt(0).toUpperCase() || 'U'}
-            </div>
-          )}
-          <span className="text-xs text-muted-foreground">{formatRelativeTime(change.timestamp)}</span>
-        </div>
+          {/* Author & time */}
+          <div className="flex items-center gap-2 shrink-0">
+            {change.userImage ? (
+              <img
+                src={change.userImage}
+                alt={change.userName}
+                className="w-5 h-5 rounded-full object-cover"
+                title={change.userName}
+              />
+            ) : (
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
+                style={{ backgroundColor: change.userColor }}
+                title={change.userName}
+              >
+                {change.userName?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">{formatRelativeTime(change.timestamp)}</span>
+          </div>
 
-        {/* Close button */}
-        <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 shrink-0">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+          {/* Close button */}
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 shrink-0">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Diff Content */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
         {/* Top fade gradient */}
-        <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-sidebar to-transparent z-10 pointer-events-none" />
+        <div className={`absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showTopFade ? 'opacity-100' : 'opacity-0'}`} />
         {/* Bottom fade gradient */}
-        <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-sidebar to-transparent z-10 pointer-events-none" />
+        <div className={`absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showBottomFade ? 'opacity-100' : 'opacity-0'}`} />
         {change.oldContent === '' && change.newContent === '' ? (
           <div className="flex items-center justify-center h-full text-center text-muted-foreground py-8">
             <div>
@@ -194,14 +216,12 @@ export function DiffPanel({ changeId, onClose }: DiffPanelProps) {
             </div>
           </div>
         ) : (
-          <CodeDiffViewer
+          <CodeMirrorMergeViewer
             original={change.oldContent}
             modified={change.newContent}
             filePath={change.filePath}
-            showHeader={false}
-            fillContainer
-            themeVariant="sidebar"
-            className="h-full border-0 rounded-none"
+            onScrollStateChange={handleScrollStateChange}
+            className="h-full"
           />
         )}
       </div>

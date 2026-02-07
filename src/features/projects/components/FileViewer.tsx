@@ -31,6 +31,7 @@ export function FileViewer({ path }: FileViewerProps) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [editorReady, setEditorReady] = useState(false)
+  const [minimapEnabled, setMinimapEnabled] = useState(true)
 
   // Callback when editor is ready
   const handleEditorReady = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
@@ -194,9 +195,15 @@ export function FileViewer({ path }: FileViewerProps) {
         editorRef={editorRef}
         projectPath={projectPath}
         editorReady={editorReady}
+        minimapEnabled={minimapEnabled}
+        onToggleMinimap={() => setMinimapEnabled((prev) => !prev)}
       />
       <div className="flex-1 min-h-0">
-        <MonacoEditor path={path} onEditorReady={handleEditorReady} />
+        <MonacoEditor
+          path={path}
+          onEditorReady={handleEditorReady}
+          minimapEnabled={minimapEnabled}
+        />
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, useMemo } from 'react'
 import * as monaco from 'monaco-editor'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 
 interface EditorBreadcrumbProps {
@@ -8,6 +8,8 @@ interface EditorBreadcrumbProps {
   editorRef: React.RefObject<monaco.editor.IStandaloneCodeEditor | null>
   projectPath?: string | null
   editorReady?: boolean
+  minimapEnabled?: boolean
+  onToggleMinimap?: () => void
 }
 
 interface BreadcrumbSymbol {
@@ -91,7 +93,14 @@ function getSymbolKindLabel(kind: monaco.languages.SymbolKind): string {
   }
 }
 
-export function EditorBreadcrumb({ path, editorRef, projectPath, editorReady = false }: EditorBreadcrumbProps) {
+export function EditorBreadcrumb({
+  path,
+  editorRef,
+  projectPath,
+  editorReady = false,
+  minimapEnabled = true,
+  onToggleMinimap,
+}: EditorBreadcrumbProps) {
   const [symbols, setSymbols] = useState<BreadcrumbSymbol[]>([])
   const [currentSymbolPath, setCurrentSymbolPath] = useState<BreadcrumbSymbol[]>([])
 
@@ -204,41 +213,55 @@ export function EditorBreadcrumb({ path, editorRef, projectPath, editorReady = f
   }, [editorRef, editorReady, symbols])
 
   return (
-    <div className="flex items-center h-6 px-2 bg-muted/30 border-b border-border text-xs overflow-x-auto scrollbar-hide">
-      {/* File path segments */}
-      {pathSegments.map((segment, i) => {
-        const isLast = i === pathSegments.length - 1
-        return (
-          <Fragment key={i}>
-            {i > 0 && (
-              <ChevronRight className="h-3 w-3 mx-0.5 text-muted-foreground shrink-0" />
-            )}
-            <span
-              className={`shrink-0 flex items-center gap-1 ${
-                isLast ? 'text-foreground' : 'text-muted-foreground hover:text-foreground cursor-pointer'
-              }`}
-            >
-              {isLast && getFileIcon(fileName, { width: 14, height: 14 })}
-              {segment}
+    <div className="flex items-center h-6 bg-sidebar text-xs">
+      <div className="flex min-w-0 flex-1 items-center overflow-x-auto scrollbar-hide px-2">
+        {/* File path segments */}
+        {pathSegments.map((segment, i) => {
+          const isLast = i === pathSegments.length - 1
+          return (
+            <Fragment key={i}>
+              {i > 0 && (
+                <ChevronRight className="h-3 w-3 mx-0.5 text-muted-foreground shrink-0" />
+              )}
+              <span
+                className={`shrink-0 flex items-center gap-1 ${
+                  isLast ? 'text-foreground' : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                }`}
+              >
+                {isLast && getFileIcon(fileName, { width: 14, height: 14 })}
+                {segment}
+              </span>
+            </Fragment>
+          )
+        })}
+
+        {/* Symbol path */}
+        {currentSymbolPath.map((sym, i) => (
+          <Fragment key={`sym-${i}`}>
+            <ChevronRight className="h-3 w-3 mx-0.5 text-muted-foreground shrink-0" />
+            <span className="text-foreground shrink-0 flex items-center gap-1">
+              {getSymbolKindLabel(sym.kind) && (
+                <span className="text-muted-foreground text-[10px]">
+                  {getSymbolKindLabel(sym.kind)}
+                </span>
+              )}
+              {sym.name}
             </span>
           </Fragment>
-        )
-      })}
-
-      {/* Symbol path */}
-      {currentSymbolPath.map((sym, i) => (
-        <Fragment key={`sym-${i}`}>
-          <ChevronRight className="h-3 w-3 mx-0.5 text-muted-foreground shrink-0" />
-          <span className="text-foreground shrink-0 flex items-center gap-1">
-            {getSymbolKindLabel(sym.kind) && (
-              <span className="text-muted-foreground text-[10px]">
-                {getSymbolKindLabel(sym.kind)}
-              </span>
-            )}
-            {sym.name}
-          </span>
-        </Fragment>
-      ))}
+        ))}
+      </div>
+      {onToggleMinimap && (
+        <button
+          type="button"
+          onClick={onToggleMinimap}
+          className="mr-1 inline-flex h-5 items-center gap-1 rounded-sm px-1.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={minimapEnabled ? 'Hide minimap' : 'Show minimap'}
+          aria-label={minimapEnabled ? 'Hide minimap' : 'Show minimap'}
+        >
+          {minimapEnabled ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          Minimap
+        </button>
+      )}
     </div>
   )
 }
