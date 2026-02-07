@@ -1,10 +1,44 @@
-import { PanelLeft, PanelBottom, PanelRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { cn } from '@/lib/utils'
 import { useParams } from 'react-router-dom'
+import type { SVGProps } from 'react'
+
+interface PanelIconProps extends SVGProps<SVGSVGElement> {
+    active?: boolean
+}
+
+function PanelLeftIcon({ active = false, className, ...props }: PanelIconProps) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" {...props}>
+            {active && <rect x="4" y="6" width="5.5" height="12" rx="1.2" fill="currentColor" />}
+            <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+            <line x1="10" y1="6" x2="10" y2="18" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+    )
+}
+
+function PanelBottomIcon({ active = false, className, ...props }: PanelIconProps) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" {...props}>
+            {active && <rect x="4" y="13" width="16" height="5" rx="1.2" fill="currentColor" />}
+            <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+    )
+}
+
+function PanelRightIcon({ active = false, className, ...props }: PanelIconProps) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" {...props}>
+            {active && <rect x="14.5" y="6" width="5.5" height="12" rx="1.2" fill="currentColor" />}
+            <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+            <line x1="14" y1="6" x2="14" y2="18" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+    )
+}
 
 export function LayoutToggles() {
     const { toggleSidebar, state } = useSidebar()
@@ -21,29 +55,29 @@ export function LayoutToggles() {
             <Button
                 variant="ghost"
                 size="icon"
-                className={cn('h-7 w-7 text-muted-foreground', state === 'expanded' && 'bg-accent text-accent-foreground')}
+                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', state === 'expanded' && 'text-foreground')}
                 onClick={toggleSidebar}
             >
-                <PanelLeft className="h-4 w-4" />
+                <PanelLeftIcon active={state === 'expanded'} className="h-4 w-4" />
             </Button>
 
             <Button
                 variant="ghost"
                 size="icon"
                 disabled={!isProjectContext}
-                className={cn('h-7 w-7 text-muted-foreground', isTerminalOpen && 'bg-accent text-accent-foreground')}
+                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
                 onClick={toggleTerminal}
             >
-                <PanelBottom className="h-4 w-4" />
+                <PanelBottomIcon active={isTerminalOpen} className="h-4 w-4" />
             </Button>
 
             <Button
                 variant="ghost"
                 size="icon"
-                className={cn('h-7 w-7 text-muted-foreground', isAssistantOpen && 'bg-accent text-accent-foreground')}
+                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
                 onClick={toggleAssistant}
             >
-                <PanelRight className="h-4 w-4" />
+                <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
             </Button>
         </div>
     )

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { X, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -33,6 +33,28 @@ export function EditorTabs() {
 
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
     const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
+    const scrollerRef = useRef<HTMLDivElement | null>(null)
+    const [showLeftFade, setShowLeftFade] = useState(false)
+    const [showRightFade, setShowRightFade] = useState(false)
+
+    const updateScrollFades = useCallback(() => {
+        const el = scrollerRef.current
+        if (!el) {
+            setShowLeftFade(false)
+            setShowRightFade(false)
+            return
+        }
+
+        const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+        if (maxScrollLeft <= 1) {
+            setShowLeftFade(false)
+            setShowRightFade(false)
+            return
+        }
+
+        setShowLeftFade(el.scrollLeft > 2)
+        setShowRightFade(el.scrollLeft < maxScrollLeft - 2)
+    }, [])
 
     useEffect(() => {
         if (filePath && projectId) {
@@ -132,61 +154,94 @@ export function EditorTabs() {
         }
     }, [activeFile, openFiles.length, projectId, searchParams, setSearchParams])
 
+    useEffect(() => {
+        const el = scrollerRef.current
+        if (!el) return
+
+        updateScrollFades()
+
+        const onScroll = () => updateScrollFades()
+        el.addEventListener('scroll', onScroll, { passive: true })
+
+        const resizeObserver = new ResizeObserver(() => updateScrollFades())
+        resizeObserver.observe(el)
+
+        return () => {
+            el.removeEventListener('scroll', onScroll)
+            resizeObserver.disconnect()
+        }
+    }, [openFiles.length, updateScrollFades])
+
     if (openFiles.length === 0) return null
 
     return (
         <>
             <div className="relative flex items-center h-9 bg-transparent">
-                <div className="flex-1 flex items-center h-full overflow-x-auto scrollbar-hide">
-                    {openFiles.map((path, index) => {
-                        const isActive = path === activeFile || (activeFile != null && pathsReferToSameFile(path, activeFile))
-                        const nextPath = openFiles[index + 1]
-                        const isNextActive = nextPath
-                            ? (nextPath === activeFile || (activeFile != null && pathsReferToSameFile(nextPath, activeFile)))
-                            : false
-                        const showSeparator = !isActive && !isNextActive && index < openFiles.length - 1
-                        const fileName = path.split('/').pop() || 'file'
-                        const model = editorModels[path]
-                        const isDirty = model?.isDirty ?? false
-                        return (
-                            <div
-                                key={path}
-                                onClick={() => handleTabClick(path)}
-                                className={cn(
-                                    "relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs cursor-pointer select-none group",
-                                    isActive ? "bg-secondary/80 text-secondary-foreground rounded-full h-7 my-1" : "bg-transparent text-muted-foreground hover:bg-transparent"
-                                )}
-                            >
-                                {showSeparator && (
-                                    <span
-                                        className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 w-px bg-border/70"
-                                        aria-hidden
-                                    />
-                                )}
-                                {getFileIcon(fileName, { width: 14, height: 14 })}
-                                <span className="truncate flex-1">{fileName}</span>
-                                {isDirty && (
-                                    <span
-                                        className="w-2 h-2 rounded-full bg-amber-500 shrink-0"
-                                        title="Unsaved changes"
-                                    />
-                                )}
-                                <button
-                                    onClick={(e) => handleCloseTab(e, path)}
+                <div className="relative flex-1 min-w-0 h-full">
+                    <div ref={scrollerRef} className="flex items-center h-full overflow-x-auto scrollbar-hide">
+                        {openFiles.map((path, index) => {
+                            const isActive = path === activeFile || (activeFile != null && pathsReferToSameFile(path, activeFile))
+                            const nextPath = openFiles[index + 1]
+                            const isNextActive = nextPath
+                                ? (nextPath === activeFile || (activeFile != null && pathsReferToSameFile(nextPath, activeFile)))
+                                : false
+                            const showSeparator = !isActive && !isNextActive && index < openFiles.length - 1
+                            const fileName = path.split('/').pop() || 'file'
+                            const model = editorModels[path]
+                            const isDirty = model?.isDirty ?? false
+                            return (
+                                <div
+                                    key={path}
+                                    onClick={() => handleTabClick(path)}
                                     className={cn(
-                                        "rounded-sm p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all",
-                                        isActive && "opacity-100",
-                                        isDirty && "group-hover:opacity-100"
+                                        "relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs cursor-pointer select-none group",
+                                        isActive ? "bg-secondary/80 text-secondary-foreground rounded-full h-7 my-1" : "bg-transparent text-muted-foreground hover:bg-transparent"
                                     )}
                                 >
-                                    <X className="h-3 w-3" />
-                                </button>
-                            </div>
-                        )
-                    })}
+                                    {showSeparator && (
+                                        <span
+                                            className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 w-px bg-border/70"
+                                            aria-hidden
+                                        />
+                                    )}
+                                    {getFileIcon(fileName, { width: 14, height: 14 })}
+                                    <span className="truncate flex-1">{fileName}</span>
+                                    {isDirty && (
+                                        <span
+                                            className="w-2 h-2 rounded-full bg-amber-500 shrink-0"
+                                            title="Unsaved changes"
+                                        />
+                                    )}
+                                    <button
+                                        onClick={(e) => handleCloseTab(e, path)}
+                                        className={cn(
+                                            "rounded-sm p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all",
+                                            isActive && "opacity-100",
+                                            isDirty && "group-hover:opacity-100"
+                                        )}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <div
+                        className={cn(
+                            "pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background via-background/80 to-transparent transition-opacity duration-150",
+                            showLeftFade ? "opacity-100" : "opacity-0"
+                        )}
+                    />
+                    <div
+                        className={cn(
+                            "pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-background via-background/80 to-transparent transition-opacity duration-150",
+                            showRightFade ? "opacity-100" : "opacity-0"
+                        )}
+                    />
                 </div>
 
-                <div className="shrink-0 flex items-center h-full bg-transparent border-l border-border">
+                <div className="shrink-0 flex items-center h-full bg-transparent">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">

@@ -8,7 +8,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { BdryDivider } from "@/components/ui/bdry"
 import { CommandSearch } from "@/components/CommandSearch"
 import { LayoutToggles } from "@/components/layouts/LayoutToggles"
 
@@ -25,6 +24,31 @@ export function UnifiedHeader({
   breadcrumbAddon,
   className,
 }: UnifiedHeaderProps) {
+  const isTabsPrimaryLayout =
+    breadcrumbs.length === 0 && !breadcrumbAddon && Boolean(header)
+
+  if (isTabsPrimaryLayout) {
+    return (
+      <div
+        className={cn(
+          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 bg-background titlebar-drag-region",
+          className
+        )}
+      >
+        <div className="flex items-center w-full gap-0.5">
+          <div className="flex items-center min-w-0 flex-1 titlebar-no-drag">
+            {header}
+          </div>
+          <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
+          <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
+            <CommandSearch />
+            <LayoutToggles />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -66,7 +90,7 @@ export function UnifiedHeader({
         <div className="flex items-center gap-0.5 titlebar-no-drag min-w-0">
           {header}
           {(header || breadcrumbAddon) && (
-            <BdryDivider orientation="vertical" className="mx-1.5 h-4" variant="muted" />
+            <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />
           )}
           <div className="flex items-center gap-0.5">
             <CommandSearch />

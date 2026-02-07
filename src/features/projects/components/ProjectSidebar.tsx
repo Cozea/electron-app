@@ -165,6 +165,28 @@ export function ProjectSidebar({
     })
     const [isResizing, setIsResizing] = React.useState(false)
     const resizeStartRef = React.useRef<{ startX: number; startWidth: number } | null>(null)
+    const fileScrollRef = React.useRef<HTMLDivElement | null>(null)
+    const [showFileTopFade, setShowFileTopFade] = React.useState(false)
+    const [showFileBottomFade, setShowFileBottomFade] = React.useState(false)
+
+    const updateFileScrollFades = React.useCallback(() => {
+        const el = fileScrollRef.current
+        if (!el) {
+            setShowFileTopFade(false)
+            setShowFileBottomFade(false)
+            return
+        }
+
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+        if (maxScrollTop <= 1) {
+            setShowFileTopFade(false)
+            setShowFileBottomFade(false)
+            return
+        }
+
+        setShowFileTopFade(el.scrollTop > 2)
+        setShowFileBottomFade(el.scrollTop < maxScrollTop - 2)
+    }, [])
 
     // Start resize - capture initial position and width
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
@@ -211,6 +233,30 @@ export function ProjectSidebar({
             document.body.style.userSelect = ''
         }
     }, [isResizing, secondaryWidth])
+
+    React.useEffect(() => {
+        if (activeTab !== 'Files') {
+            setShowFileTopFade(false)
+            setShowFileBottomFade(false)
+            return
+        }
+
+        const el = fileScrollRef.current
+        if (!el) return
+
+        updateFileScrollFades()
+
+        const onScroll = () => updateFileScrollFades()
+        el.addEventListener('scroll', onScroll, { passive: true })
+
+        const resizeObserver = new ResizeObserver(() => updateFileScrollFades())
+        resizeObserver.observe(el)
+
+        return () => {
+            el.removeEventListener('scroll', onScroll)
+            resizeObserver.disconnect()
+        }
+    }, [activeTab, fileTree, updateFileScrollFades])
 
     const navGroups = [
         {
@@ -394,13 +440,34 @@ export function ProjectSidebar({
                                     </button>
                                 </div>
                             </SidebarHeader>
-                            <SidebarContent className="h-full overflow-y-auto overflow-x-hidden pt-2">
-                                {/* Content based on Active Tab */}
-                                {activeTab === 'Files' && (
-                                    fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>
+                            <SidebarContent className="h-full overflow-hidden pt-2">
+                                {activeTab === 'Files' ? (
+                                    <div className="relative h-full">
+                                        <div
+                                            ref={fileScrollRef}
+                                            className="h-full overflow-y-auto overflow-x-hidden"
+                                        >
+                                            {fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>}
+                                        </div>
+                                        <div
+                                            className={cn(
+                                                "pointer-events-none absolute left-0 right-0 top-0 h-5 bg-gradient-to-b from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                                showFileTopFade ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                        <div
+                                            className={cn(
+                                                "pointer-events-none absolute left-0 right-0 bottom-0 h-5 bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                                showFileBottomFade ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                    </div>
+                                ) : (
+                                    <>
+                                        {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
+                                        {activeTab === 'Settings' && <SettingsSectionsList />}
+                                    </>
                                 )}
-                                {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
-                                {activeTab === 'Settings' && <SettingsSectionsList />}
                             </SidebarContent>
                         </Sidebar>
                         {/* Resize Handle with border */}
