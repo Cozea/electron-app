@@ -183,7 +183,9 @@ export function ProjectLayout({
     const headerSlot = isFilesView ? (
         <div className="flex items-center gap-2 min-w-0">
             {headerContent}
-            <EditorTabs />
+            <div className="min-w-0 max-w-[55vw] overflow-x-auto scrollbar-hide">
+                <EditorTabs />
+            </div>
         </div>
     ) : headerContent
 
