@@ -14,6 +14,7 @@ import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 import { loadLocalSyncHistory, saveLocalSyncHistory } from "@/lib/sync/syncHistory"
 import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
+import { normalizeCloudEntries } from "@/lib/sync/pathNormalization"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
@@ -188,7 +189,15 @@ export function ProjectSyncProvider({
 
     if (result.success) {
       const now = Date.now()
-      const cloudPaths = new Set((cloudManifest ?? []).map((f) => f.path))
+      const cloudPaths = new Set(
+        normalizeCloudEntries(
+          (cloudManifest ?? []).map((file) => ({
+            path: file.path,
+            uploadedAt: file.uploadedAt,
+            version: file.version,
+          }))
+        ).map((entry) => entry.normalizedPath)
+      )
       for (const op of syncPlan.uploads) cloudPaths.add(op.path)
       for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
       // Include auto-merged files in cloud paths
@@ -215,7 +224,7 @@ export function ProjectSyncProvider({
               projectPath,
               filePath,
             })
-            if (readResult.success && readResult.content) {
+            if (readResult.success && readResult.content !== undefined) {
               // Compute hash
               const encoder = new TextEncoder()
               const data = encoder.encode(readResult.content)
@@ -423,7 +432,7 @@ export function ProjectSyncProvider({
 	          const now = Date.now()
 	          saveLocalSyncHistory(projectId, {
 	            lastSyncAt: now,
-	            cloudPathsAtLastSync: cloudFiles.map((f) => f.path),
+	            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
 	          })
 	          setLastSyncAt(now)
 	          setProgress({

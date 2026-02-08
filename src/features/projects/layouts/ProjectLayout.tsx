@@ -19,6 +19,7 @@ import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useFileTabsStore } from "@/stores/useFileTabsStore"
+import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
@@ -332,6 +333,18 @@ export function ProjectLayout({
                 targetPath = created.localPath
             }
 
+            if (
+                normalizePath(pathRecoveryChoice.previousPath) !== normalizePath(targetPath)
+            ) {
+                const copyResult = await window.electronAPI.project.copyDirectorySnapshot({
+                    sourcePath: pathRecoveryChoice.previousPath,
+                    targetPath,
+                })
+                if (!copyResult.success) {
+                    throw new Error(copyResult.error || "Failed to copy project files to the new directory")
+                }
+            }
+
             await updateMemberLocalPath({
                 projectId: project._id,
                 userId: convexUser._id,
@@ -401,6 +414,10 @@ export function ProjectLayout({
                 .catch(() => {
                     // ignore
                 })
+
+            // Clear any stale terminal tabs in renderer state so we don't
+            // keep dead terminal IDs after project path changes.
+            useTerminalStore.getState().actions.reset()
         }
     }, [effectiveLocalPath])
 

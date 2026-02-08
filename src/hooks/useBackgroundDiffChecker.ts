@@ -59,7 +59,7 @@ export function useBackgroundDiffChecker(
 
     try {
       // Check if local folder exists
-      const exists = await window.electronAPI.project.exists(slug)
+      const exists = await window.electronAPI.project.pathExists(localPath)
       if (!exists) {
         setDiffStatus(slug, {
           downloads: 0,
@@ -188,7 +188,7 @@ export function useProjectDiffCheck(
 
     try {
       // Check if local folder exists
-      const exists = await window.electronAPI.project.exists(projectSlug)
+      const exists = await window.electronAPI.project.pathExists(localPath)
       if (!exists) {
         setDiffStatus(projectSlug, {
           downloads: cloudManifest.length,

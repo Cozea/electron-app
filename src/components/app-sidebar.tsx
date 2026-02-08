@@ -56,7 +56,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
   return (
     <Sidebar
       collapsible="icon"
-      className={cn("titlebar-no-drag", className)}
+      className={cn("titlebar-no-drag sidebar-glass", className)}
       {...props}
     >
       <SidebarHeader className="mt-9 titlebar-drag-region">

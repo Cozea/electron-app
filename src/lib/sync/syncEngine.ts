@@ -1,6 +1,11 @@
 import type { LocalFileEntry, CloudFileEntry, SyncPlan, SyncOperation } from "./types"
 import { syncCheckpointStore } from "./SyncCheckpointStore"
 import { threeWayMerge } from "./ThreeWayMerge"
+import {
+  normalizeCloudEntries,
+  normalizeCloudPathSet,
+  normalizeRelativePath,
+} from "./pathNormalization"
 import type { Id } from "../../../convex/_generated/dataModel"
 
 /**
@@ -88,21 +93,31 @@ export function computeSyncPlan(
     noChange: 0,
   }
 
-  // Build maps by path
+  const normalizedCloudPathsAtLastSync = cloudPathsAtLastSync
+    ? normalizeCloudPathSet(cloudPathsAtLastSync)
+    : undefined
+
+  const normalizedLocal = local
+    .map((file) => ({ entry: file, normalizedPath: normalizeRelativePath(file.path) }))
+    .filter((item) => item.normalizedPath.length > 0)
+
+  const normalizedCloud = normalizeCloudEntries(cloud)
+
+  // Build maps by normalized path
   const localByPath = new Map<string, LocalFileEntry>()
-  for (const file of local) {
-    localByPath.set(file.path, file)
+  for (const file of normalizedLocal) {
+    localByPath.set(file.normalizedPath, file.entry)
   }
 
   const cloudByPath = new Map<string, CloudFileEntry>()
-  for (const file of cloud) {
-    cloudByPath.set(file.path, file)
+  for (const file of normalizedCloud) {
+    cloudByPath.set(file.normalizedPath, file.entry)
   }
 
-  // Get all unique paths
+  // Get all unique normalized paths
   const allPaths = new Set<string>([
-    ...local.map((f) => f.path),
-    ...cloud.map((f) => f.path),
+    ...normalizedLocal.map((f) => f.normalizedPath),
+    ...normalizedCloud.map((f) => f.normalizedPath),
   ])
 
   for (const path of allPaths) {
@@ -142,11 +157,11 @@ export function computeSyncPlan(
       }
     } else if (localFile && !cloudFile) {
       // Only exists locally
-      const operation = resolveLocalOnly(path, localFile, lastSyncTime, cloudPathsAtLastSync)
+      const operation = resolveLocalOnly(path, localFile, lastSyncTime, normalizedCloudPathsAtLastSync)
       addOperation(plan, operation)
     } else if (!localFile && cloudFile) {
       // Only exists in cloud
-      const operation = resolveCloudOnly(path, cloudFile, lastSyncTime, cloudPathsAtLastSync)
+      const operation = resolveCloudOnly(path, cloudFile, lastSyncTime, normalizedCloudPathsAtLastSync)
       addOperation(plan, operation)
     }
   }

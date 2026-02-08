@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { ArrowLeft, ArrowRight, Rocket, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
 
@@ -28,11 +29,6 @@ import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
 import { detectFramework } from '../utils/projectDetector'
-import { computeSyncPlan, hasSyncOperations } from '@/lib/sync/syncEngine'
-import { executeSyncPlan } from '@/lib/sync/syncExecutor'
-import type { SyncExecutorResult } from '@/lib/sync/syncExecutor'
-import { saveLocalSyncHistory } from '@/lib/sync/syncHistory'
-import type { CloudFileEntry, LocalFileEntry } from '@/lib/sync/types'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -130,10 +126,6 @@ export function NewProject() {
   // Convex mutation for creating project
   const createProject = useMutation(api.projects.create)
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
-  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
-  const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
-  const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
-  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const deleteProject = useMutation(api.projects.deleteProject)
 
@@ -384,102 +376,6 @@ export function NewProject() {
     goToStep(stepIndex)
   }
 
-  const runInitialLocalSync = async (
-    projectId: Id<"projects">,
-    projectPath: string
-  ): Promise<SyncExecutorResult> => {
-    if (!convexUserId) {
-      throw new Error('Missing user for sync')
-    }
-
-    setImportSyncState('checking')
-    setImportSyncMessage('Checking files...')
-
-    const [localResult, cloudManifest] = await Promise.all([
-      window.electronAPI.sync.getLocalManifest({ projectPath }),
-      convex.query(api.projectFiles.getManifestForProject, { projectId }),
-    ])
-
-    const localFiles: LocalFileEntry[] = localResult.manifest
-    const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-      _id: f._id,
-      path: f.path,
-      hash: f.hash,
-      size: f.size,
-      version: f.version,
-      storageId: f.storageId,
-      uploadedAt: f.uploadedAt,
-    }))
-
-    const plan = computeSyncPlan(localFiles, cloudFiles, undefined)
-
-    if (!hasSyncOperations(plan)) {
-      const now = Date.now()
-      saveLocalSyncHistory(projectId, {
-        lastSyncAt: now,
-        cloudPathsAtLastSync: cloudFiles.map((f) => f.path),
-      })
-      return {
-        success: true,
-        downloadedCount: 0,
-        uploadedCount: 0,
-        deletedCount: 0,
-        mergedCount: 0,
-      }
-    }
-
-    setImportSyncState('syncing')
-    setImportSyncMessage('Syncing files...')
-
-    await updateSyncStatus({
-      projectId,
-      userId: convexUserId,
-      status: 'syncing',
-    })
-
-    const result = await executeSyncPlan(plan, {
-      projectId,
-      userId: convexUserId,
-      projectPath,
-      onProgress: (progress) => {
-        if (progress.message) {
-          setImportSyncMessage(progress.message)
-        }
-      },
-      generateUploadUrl: () => generateUploadUrl({ projectId }),
-      saveFiles: (args) => saveFilesMutation(args),
-      markFilesDeleted: (args) => markFilesDeletedMutation(args),
-      getStorageUrl: async (storageId) => {
-        try {
-          return await convex.query(api.projectFiles.getFileUrl, { storageId })
-        } catch {
-          return null
-        }
-      },
-    })
-
-    await updateSyncStatus({
-      projectId,
-      userId: convexUserId,
-      status: result.success ? 'synced' : 'error',
-      errorMessage: result.error,
-    })
-
-    if (result.success) {
-      const now = Date.now()
-      const cloudPaths = new Set(cloudFiles.map((f) => f.path))
-      for (const op of plan.uploads) cloudPaths.add(op.path)
-      for (const op of plan.cloudDeletes) cloudPaths.delete(op.path)
-      for (const op of plan.autoMerged ?? []) cloudPaths.add(op.path)
-      saveLocalSyncHistory(projectId, {
-        lastSyncAt: now,
-        cloudPathsAtLastSync: cloudPaths,
-      })
-    }
-
-    return result
-  }
-
   // Handle repo import from ReviewStep button
   const handleImportProject = async () => {
     if (!organizationId || !convexUserId) {
@@ -622,26 +518,12 @@ export function NewProject() {
           userId: convexUserId,
           localPath: importPath,
         })
-      }
-
-      try {
-        const syncResult = await runInitialLocalSync(result.projectId, importPath)
-        if (!syncResult.success) {
-          await cleanupCreatedProject()
-          const syncMessage = syncResult.error ?? 'Initial sync failed'
-          setImportSyncState('error')
-          setImportSyncMessage(syncMessage)
-          setImportError(syncMessage)
-          return
-        }
-      } catch (syncError) {
-        await cleanupCreatedProject()
-        const syncMessage =
-          syncError instanceof Error ? syncError.message : 'Initial sync failed'
-        setImportSyncState('error')
-        setImportSyncMessage(syncMessage)
-        setImportError(syncMessage)
-        return
+      } else {
+        await updateMemberLocalPath({
+          projectId: result.projectId,
+          userId: convexUserId,
+          localPath: importPath,
+        })
       }
 
       if (result.slug) {
@@ -809,6 +691,42 @@ export function NewProject() {
   // Don't show navigation at all in conversation mode
   const showNavigation = state.step > 0 && !isConversationMode
 
+  const totalWizardSteps = Math.max(1, steps.length - 1)
+  const stepProgressValue = state.step > 0 ? Math.min(100, Math.round((state.step / totalWizardSteps) * 100)) : 0
+
+  const headerContent = useMemo(() => {
+    if (isConversationMode) {
+      return (
+        <div className="flex items-center">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            AI Planning
+          </span>
+        </div>
+      )
+    }
+
+    if (state.step <= 0) return null
+    return (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          Step {state.step}/{totalWizardSteps}
+        </span>
+        <span className="text-sm text-muted-foreground truncate max-w-[260px]">
+          {steps[state.step]?.title || 'Configure project'}
+        </span>
+      </div>
+    )
+  }, [isConversationMode, state.step, steps, totalWizardSteps])
+
+  const breadcrumbAddon = useMemo(() => {
+    if (isConversationMode || state.step <= 0) return null
+    return (
+      <div className="w-28">
+        <Progress value={stepProgressValue} className="h-1.5" />
+      </div>
+    )
+  }, [isConversationMode, state.step, stepProgressValue])
+
   // Navigation Footer
   const footerContent = showNavigation ? (
     <div className="flex items-center justify-between py-3 px-6 md:px-8 max-w-7xl mx-auto w-full">
@@ -845,7 +763,10 @@ export function NewProject() {
         { label: 'Projects', href: '/projects' },
         { label: 'New Project' },
       ]}
+      header={headerContent || undefined}
+      breadcrumbAddon={breadcrumbAddon || undefined}
       footer={footerContent}
+      contentMode="fixed"
     >
       <WizardLayout
         steps={steps}
@@ -854,6 +775,7 @@ export function NewProject() {
         canNavigateToStep={(step) => step < state.step}
         title={isConversationMode ? 'AI Project Planning' : state.path ? 'New Project' : 'Create a New Project'}
         fullHeight={isConversationMode}
+        showInternalStepHeader={false}
       >
         {/* Step Content */}
         <div className={isConversationMode ? "flex-1 flex flex-col min-h-0" : "min-h-[300px]"}>

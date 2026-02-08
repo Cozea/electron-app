@@ -25,7 +25,14 @@ let workerReady = false
 let workerReadyPromise: Promise<void> | null = null
 const pendingRequests = new Map<string, PendingRequest>()
 let requestId = 0
-const MANIFEST_WORKER_TIMEOUT_MS = 180000
+const MANIFEST_WORKER_TIMEOUT_MS = 45000
+
+function rejectPendingRequests(error: Error): void {
+  for (const [id, pending] of pendingRequests) {
+    pending.reject(error)
+    pendingRequests.delete(id)
+  }
+}
 
 function getWorkerPath(): string {
   // In development, the worker is in electron/workers
@@ -82,16 +89,14 @@ function ensureWorker(): Promise<void> {
         console.error('[FileOpsManager] Worker error:', error)
         workerReady = false
         workerReadyPromise = null
-
-        // Reject all pending requests
-        for (const [id, pending] of pendingRequests) {
-          pending.reject(error)
-          pendingRequests.delete(id)
-        }
+        rejectPendingRequests(error)
       })
 
       worker.on('exit', (code) => {
         console.log(`[FileOpsManager] Worker exited with code ${code}`)
+        if (pendingRequests.size > 0) {
+          rejectPendingRequests(new Error('Manifest worker exited before completing requests'))
+        }
         worker = null
         workerReady = false
         workerReadyPromise = null
@@ -134,6 +139,7 @@ export async function getManifestFromWorker(
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
+        terminateWorker(new Error('Worker request timed out'))
         reject(new Error('Worker request timed out'))
       }
     }, MANIFEST_WORKER_TIMEOUT_MS)
@@ -172,20 +178,23 @@ export async function getManifestFromWorkerIncremental(
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
+        terminateWorker(new Error('Worker request timed out'))
         reject(new Error('Worker request timed out'))
       }
     }, MANIFEST_WORKER_TIMEOUT_MS)
   })
 }
 
-export function terminateWorker(): void {
+export function terminateWorker(reason?: Error): void {
   if (worker) {
     console.log('[FileOpsManager] Terminating worker')
+    if (reason) {
+      rejectPendingRequests(reason)
+    }
     worker.terminate()
     worker = null
     workerReady = false
     workerReadyPromise = null
-    pendingRequests.clear()
   }
 }
 

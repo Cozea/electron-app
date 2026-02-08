@@ -214,6 +214,7 @@ export async function executeSyncPlan(
   let uploadedCount = 0
   let deletedCount = 0
   let mergedCount = 0
+  let writeFailureCount = 0
 
   const updateProgress = (message: string) => {
     onProgress({
@@ -279,7 +280,9 @@ export async function executeSyncPlan(
           files: filesToWrite,
         })
         if (result.successCount < filesToWrite.length) {
-          addLog(`⚠ Some files failed to write locally`)
+          const failed = filesToWrite.length - result.successCount
+          writeFailureCount += failed
+          addLog(`⚠ ${failed} downloaded file(s) failed to write locally`)
         }
       }
     }
@@ -358,10 +361,15 @@ export async function executeSyncPlan(
 
       // Write merged files locally
       if (mergedFilesToWrite.length > 0) {
-        await window.electronAPI.sync.writeFiles({
+        const result = await window.electronAPI.sync.writeFiles({
           projectPath,
           files: mergedFilesToWrite,
         })
+        if (result.successCount < mergedFilesToWrite.length) {
+          const failed = mergedFilesToWrite.length - result.successCount
+          writeFailureCount += failed
+          addLog(`⚠ ${failed} merged file(s) failed to write locally`)
+        }
       }
 
       // Save merged files to cloud
@@ -417,7 +425,7 @@ export async function executeSyncPlan(
               filePath: op.path,
             })
 
-            if (!readResult.success || !readResult.content) {
+            if (!readResult.success || readResult.content === undefined) {
               addLog(`⚠ Could not read: ${op.path}`)
               continue
             }
@@ -481,7 +489,9 @@ export async function executeSyncPlan(
       }
 
       if (result.results.some((r) => !r.success)) {
-        addLog(`⚠ Some local files could not be deleted`)
+        const failed = result.results.filter((r) => !r.success).length
+        writeFailureCount += failed
+        addLog(`⚠ ${failed} local file(s) could not be deleted`)
       }
     }
 
@@ -490,13 +500,33 @@ export async function executeSyncPlan(
       addLog(`Marking ${plan.cloudDeletes.length} cloud files as deleted...`)
       updateProgress("Cleaning up cloud files...")
 
-      const pathsToDelete = plan.cloudDeletes.map((op) => op.path)
+      const pathsToDelete = plan.cloudDeletes.map((op) => op.cloudEntry?.path || op.path)
       await markFilesDeleted({ projectId, filePaths: pathsToDelete })
 
       for (const op of plan.cloudDeletes) {
         addLog(`✕ Deleted from cloud: ${op.path}`)
         completed++
         deletedCount++
+      }
+    }
+
+    if (writeFailureCount > 0) {
+      const error = `Sync completed with ${writeFailureCount} local filesystem failure(s)`
+      addLog(`⚠ ${error}`)
+      onProgress({
+        status: "error",
+        message: error,
+        current: completed,
+        total: totalOps,
+        logs: [...logs],
+      })
+      return {
+        success: false,
+        error,
+        downloadedCount,
+        uploadedCount,
+        deletedCount,
+        mergedCount,
       }
     }
 

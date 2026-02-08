@@ -328,7 +328,7 @@ export function ProjectSidebar({
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="w-56 shrink-0 z-20 h-screen titlebar-no-drag"
+                    className="w-56 shrink-0 z-20 h-screen titlebar-no-drag sidebar-glass"
                     {...props}
                 >
                     <SidebarHeader className="mt-9 titlebar-drag-region">

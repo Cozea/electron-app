@@ -82,6 +82,12 @@ export interface CloneRepositoryResult {
   error?: string
 }
 
+export interface CopyDirectorySnapshotResult {
+  success: boolean
+  copiedTo?: string
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -368,6 +374,10 @@ export interface ElectronAPI {
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
     renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<RenameFileResult>
+    copyDirectorySnapshot: (options: {
+      sourcePath: string
+      targetPath: string
+    }) => Promise<CopyDirectorySnapshotResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
@@ -607,6 +617,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:deletePath', options),
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) =>
       ipcRenderer.invoke('project:copyPath', options),
+    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string }) =>
+      ipcRenderer.invoke('project:copyDirectorySnapshot', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
   },

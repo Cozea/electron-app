@@ -38,6 +38,13 @@ let xxhasher: XXHashAPI | null = null
 // Dev server process management
 // Maps projectPath to running PTY instance for proper terminal emulation
 const devServerProcesses = new Map<string, pty.IPty>()
+const localManifestRequests = new Map<
+  string,
+  Promise<{
+    manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
+    totalFiles: number
+  }>
+>()
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -984,6 +991,12 @@ interface CloneRepositoryResult {
   error?: string
 }
 
+interface CopyDirectorySnapshotResult {
+  success: boolean
+  copiedTo?: string
+  error?: string
+}
+
 function buildGitAuthorizationHeader(provider: string, accessToken?: string): string | null {
   if (!accessToken?.trim()) return null
 
@@ -1620,6 +1633,96 @@ ipcMain.handle(
   }
 )
 
+// Copy project source files from one absolute directory to another.
+// Used when a user chooses "use new directory" for an existing project path.
+ipcMain.handle(
+  'project:copyDirectorySnapshot',
+  async (
+    _event,
+    { sourcePath, targetPath }: { sourcePath: string; targetPath: string }
+  ): Promise<CopyDirectorySnapshotResult> => {
+    try {
+      if (!sourcePath || !targetPath) {
+        return { success: false, error: 'Source and target paths are required' }
+      }
+
+      const normalizedSource = path.resolve(sourcePath)
+      const normalizedTarget = path.resolve(targetPath)
+
+      if (!fs.existsSync(normalizedSource) || !fs.statSync(normalizedSource).isDirectory()) {
+        return { success: false, error: 'Source project directory does not exist' }
+      }
+
+      if (normalizedSource === normalizedTarget) {
+        return { success: true, copiedTo: normalizedTarget }
+      }
+
+      const sourceWithSep = `${normalizedSource}${path.sep}`
+      const targetWithSep = `${normalizedTarget}${path.sep}`
+      if (normalizedTarget.startsWith(sourceWithSep) || normalizedSource.startsWith(targetWithSep)) {
+        return { success: false, error: 'Source and target directories cannot be nested' }
+      }
+
+      if (!fs.existsSync(normalizedTarget)) {
+        fs.mkdirSync(normalizedTarget, { recursive: true })
+      }
+
+      const excludedDirectories = new Set([
+        'node_modules',
+        '.next',
+        '.nuxt',
+        '.output',
+        '.svelte-kit',
+        'dist',
+        'build',
+        'out',
+        'coverage',
+        '.turbo',
+        '.cache',
+        '.parcel-cache',
+        '.pnpm-store',
+        '.yarn',
+        '__pycache__',
+        'tmp',
+        'temp',
+        'logs',
+      ])
+      const excludedFileSuffixes = ['.log', '.tmp', '.temp', '.swp', '.swo', '.pid']
+
+      fs.cpSync(normalizedSource, normalizedTarget, {
+        recursive: true,
+        force: true,
+        errorOnExist: false,
+        filter: (src) => {
+          const relative = path.relative(normalizedSource, src)
+          if (!relative || relative === '') return true
+
+          const normalizedRelative = relative.replace(/\\/g, '/').toLowerCase()
+          const entryName = path.basename(src).toLowerCase()
+
+          if (excludedDirectories.has(entryName)) return false
+          if (excludedFileSuffixes.some((suffix) => normalizedRelative.endsWith(suffix))) return false
+          if (
+            normalizedRelative.endsWith('/prisma/dev.db') ||
+            normalizedRelative.endsWith('/prisma/dev.db-wal') ||
+            normalizedRelative.endsWith('/prisma/dev.db-shm')
+          ) {
+            return false
+          }
+          return true
+        },
+      })
+
+      return { success: true, copiedTo: normalizedTarget }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to copy project files',
+      }
+    }
+  }
+)
+
 // Watch/unwatch a project folder for external filesystem edits.
 ipcMain.handle(
   'project:watchStart',
@@ -1733,81 +1836,90 @@ ipcMain.handle(
     manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
     totalFiles: number
   }> => {
-    const cached = loadManifestCache(projectPath)
-    const dirtyPaths = consumeManifestDirtyPaths(projectPath)
+    const inFlight = localManifestRequests.get(projectPath)
+    if (inFlight) {
+      return inFlight
+    }
 
-    if (cached && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
-      if (!xxhasher) throw new Error('xxhash not initialized')
+    const manifestTask = (async (): Promise<{
+      manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
+      totalFiles: number
+    }> => {
+      const cached = loadManifestCache(projectPath)
+      const dirtyPaths = consumeManifestDirtyPaths(projectPath)
 
-      const updatedEntries = { ...cached.entries }
+      if (cached && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
+        if (!xxhasher) throw new Error('xxhash not initialized')
 
-      for (const relPath of dirtyPaths) {
-        const fullPath = path.join(projectPath, relPath)
-        if (!fs.existsSync(fullPath)) {
-          delete updatedEntries[relPath]
-          continue
-        }
+        const updatedEntries = { ...cached.entries }
 
-        try {
-          const stats = fs.statSync(fullPath)
-          if (!stats.isFile()) {
+        for (const relPath of dirtyPaths) {
+          const fullPath = path.join(projectPath, relPath)
+          if (!fs.existsSync(fullPath)) {
             delete updatedEntries[relPath]
             continue
           }
-          const content = fs.readFileSync(fullPath)
-          const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
-          updatedEntries[relPath] = {
-            path: relPath,
-            hash,
-            size: stats.size,
-            mtime: stats.mtimeMs,
+
+          try {
+            const stats = fs.statSync(fullPath)
+            if (!stats.isFile()) {
+              delete updatedEntries[relPath]
+              continue
+            }
+            const content = fs.readFileSync(fullPath)
+            const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+            updatedEntries[relPath] = {
+              path: relPath,
+              hash,
+              size: stats.size,
+              mtime: stats.mtimeMs,
+            }
+          } catch {
+            delete updatedEntries[relPath]
           }
-        } catch {
-          delete updatedEntries[relPath]
         }
+
+        saveManifestCache(projectPath, updatedEntries, cached.dirMtimes)
+        const manifest = Object.values(updatedEntries)
+        return { manifest, totalFiles: manifest.length }
       }
 
-      saveManifestCache(projectPath, updatedEntries, cached.dirMtimes)
-      const manifest = Object.values(updatedEntries)
-      return { manifest, totalFiles: manifest.length }
-    }
+      let workerResult:
+        | {
+            manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
+            totalFiles: number
+            dirMtimes: Record<string, number>
+          }
+        | null = null
 
-    let workerResult:
-      | {
-          manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
-          totalFiles: number
-          dirMtimes: Record<string, number>
-        }
-      | null = null
-
-    try {
-      workerResult = await getManifestFromWorkerIncremental(
-        projectPath,
-        excludePatterns,
-        cached?.entries,
-        cached?.dirMtimes
-      )
-    } catch (error) {
-      console.warn('[Sync] Worker incremental manifest failed:', error)
       try {
-        workerResult = await getManifestFromWorker(projectPath, excludePatterns)
-      } catch (err) {
-        console.warn('[Sync] Worker manifest failed, falling back to main thread:', err)
+        workerResult = await getManifestFromWorkerIncremental(
+          projectPath,
+          excludePatterns,
+          cached?.entries,
+          cached?.dirMtimes
+        )
+      } catch (error) {
+        console.warn('[Sync] Worker incremental manifest failed:', error)
+        try {
+          workerResult = await getManifestFromWorker(projectPath, excludePatterns)
+        } catch (err) {
+          console.warn('[Sync] Worker manifest failed, falling back to main thread:', err)
+        }
       }
-    }
 
-    if (workerResult) {
-      const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
-      for (const entry of workerResult.manifest) {
-        entries[entry.path] = entry
+      if (workerResult) {
+        const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
+        for (const entry of workerResult.manifest) {
+          entries[entry.path] = entry
+        }
+        saveManifestCache(projectPath, entries, workerResult.dirMtimes)
+        return { manifest: workerResult.manifest, totalFiles: workerResult.totalFiles }
       }
-      saveManifestCache(projectPath, entries, workerResult.dirMtimes)
-      return { manifest: workerResult.manifest, totalFiles: workerResult.totalFiles }
-    }
 
-    if (!xxhasher) throw new Error('xxhash not initialized')
+      if (!xxhasher) throw new Error('xxhash not initialized')
 
-    const defaultExcludes = [
+      const defaultExcludes = [
       'node_modules',
       '.git',
       '.next',
@@ -1831,8 +1943,8 @@ ipcMain.handle(
       'vendor',
       'target',
     ]
-    const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])].map((name) => name.toLowerCase()))
-    const skippedFileSuffixes = [
+      const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])].map((name) => name.toLowerCase()))
+      const skippedFileSuffixes = [
       '.log',
       '.tmp',
       '.temp',
@@ -1843,74 +1955,84 @@ ipcMain.handle(
       '/prisma/dev.db-wal',
       '/prisma/dev.db-shm',
     ]
-    const previousByPath = cached?.entries ? new Map(Object.entries(cached.entries)) : null
+      const previousByPath = cached?.entries ? new Map(Object.entries(cached.entries)) : null
 
-    const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
+      const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
 
-    function walkDir(dir: string, relativePath = '') {
-      if (!fs.existsSync(dir)) return
+      function walkDir(dir: string, relativePath = '') {
+        if (!fs.existsSync(dir)) return
 
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isSymbolicLink()) continue
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.isSymbolicLink()) continue
 
-        // Skip excluded directories/files
-        if (excludes.has(entry.name.toLowerCase())) continue
-        // Skip hidden files except .env.example
-        if (entry.name.startsWith('.') && entry.name !== '.env.example') continue
+          // Skip excluded directories/files
+          if (excludes.has(entry.name.toLowerCase())) continue
+          // Skip hidden files except .env.example
+          if (entry.name.startsWith('.') && entry.name !== '.env.example') continue
 
-        const relPath = path.join(relativePath, entry.name)
-        const fullPath = path.join(dir, entry.name)
+          const relPath = path.join(relativePath, entry.name)
+          const fullPath = path.join(dir, entry.name)
 
-        if (entry.isDirectory()) {
-          walkDir(fullPath, relPath)
-        } else if (entry.isFile()) {
-          try {
-            const stats = fs.statSync(fullPath)
-            const normalizedPath = relPath.replace(/\\/g, '/')
-            const normalizedPathLower = normalizedPath.toLowerCase()
-            if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
-              continue
-            }
-            const previous = previousByPath?.get(normalizedPath)
+          if (entry.isDirectory()) {
+            walkDir(fullPath, relPath)
+          } else if (entry.isFile()) {
+            try {
+              const stats = fs.statSync(fullPath)
+              const normalizedPath = relPath.replace(/\\/g, '/')
+              const normalizedPathLower = normalizedPath.toLowerCase()
+              if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
+                continue
+              }
+              const previous = previousByPath?.get(normalizedPath)
 
-            if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+              if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+                manifest.push({
+                  path: normalizedPath,
+                  hash: previous.hash,
+                  size: stats.size,
+                  mtime: stats.mtimeMs,
+                })
+                continue
+              }
+
+              const content = fs.readFileSync(fullPath)
+              const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+
               manifest.push({
                 path: normalizedPath,
-                hash: previous.hash,
+                hash,
                 size: stats.size,
                 mtime: stats.mtimeMs,
               })
-              continue
+            } catch (err) {
+              console.warn(`[Sync] Could not read file: ${fullPath}`, err)
             }
-
-            const content = fs.readFileSync(fullPath)
-            const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
-
-            manifest.push({
-              path: normalizedPath,
-              hash,
-              size: stats.size,
-              mtime: stats.mtimeMs,
-            })
-          } catch (err) {
-            console.warn(`[Sync] Could not read file: ${fullPath}`, err)
           }
         }
       }
-    }
 
-    if (fs.existsSync(projectPath)) {
-      walkDir(projectPath)
-    }
+      if (fs.existsSync(projectPath)) {
+        walkDir(projectPath)
+      }
 
-    console.log(`[Sync] Generated manifest with ${manifest.length} files for ${projectPath}`)
-    const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
-    for (const entry of manifest) {
-      entries[entry.path] = entry
+      console.log(`[Sync] Generated manifest with ${manifest.length} files for ${projectPath}`)
+      const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
+      for (const entry of manifest) {
+        entries[entry.path] = entry
+      }
+      saveManifestCache(projectPath, entries, cached?.dirMtimes)
+      return { manifest, totalFiles: manifest.length }
+    })()
+
+    localManifestRequests.set(projectPath, manifestTask)
+    try {
+      return await manifestTask
+    } finally {
+      if (localManifestRequests.get(projectPath) === manifestTask) {
+        localManifestRequests.delete(projectPath)
+      }
     }
-    saveManifestCache(projectPath, entries, cached?.dirMtimes)
-    return { manifest, totalFiles: manifest.length }
   }
 )
 

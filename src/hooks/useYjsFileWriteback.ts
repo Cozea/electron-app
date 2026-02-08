@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as Y from 'yjs'
 import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
+import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
 
 /**
  * useYjsFileWriteback - Writes remote Yjs changes back to local disk.
@@ -34,17 +35,24 @@ export function useYjsFileWriteback(
     const pendingDeletes = new Set<string>()
     let deleteDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
+    const normalizeFilePath = (filePath: string): string | null => {
+      const normalized = normalizeProjectFilePath(filePath)
+      return normalized.length > 0 ? normalized : null
+    }
+
     // Write a file to disk
     const writeFileToDisk = async (filePath: string, content: string) => {
+      const normalizedPath = normalizeFilePath(filePath)
+      if (!normalizedPath) return
       try {
         await window.electronAPI.project.writeFile({
           projectPath,
-          filePath,
+          filePath: normalizedPath,
           content,
         })
-        console.log(`[YjsWriteback] Wrote remote change: ${filePath}`)
+        console.log(`[YjsWriteback] Wrote remote change: ${normalizedPath}`)
       } catch (err) {
-        console.error(`[YjsWriteback] Failed to write ${filePath}:`, err)
+        console.error(`[YjsWriteback] Failed to write ${normalizedPath}:`, err)
       }
     }
 
@@ -84,7 +92,10 @@ export function useYjsFileWriteback(
     }
 
     const scheduleDelete = (filePath: string) => {
-      pendingDeletes.add(filePath)
+      const normalizedPath = normalizeFilePath(filePath)
+      if (!normalizedPath) return
+
+      pendingDeletes.add(normalizedPath)
       if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
       deleteDebounceTimer = setTimeout(() => {
         void flushDeletes()
@@ -108,11 +119,17 @@ export function useYjsFileWriteback(
         if (existingPaths.length > 0) return
         if (yjsDoc.files.size === 0) return
 
-        const filesToWrite = Array.from(yjsDoc.files.entries()).map(([path, yText]) => ({
-          path,
-          content: yText.toString(),
-          encoding: 'utf8' as const,
-        }))
+        const filesToWrite = Array.from(yjsDoc.files.entries())
+          .map(([path, yText]) => {
+            const normalizedPath = normalizeFilePath(path)
+            if (!normalizedPath) return null
+            return {
+              path: normalizedPath,
+              content: yText.toString(),
+              encoding: 'utf8' as const,
+            }
+          })
+          .filter((file): file is { path: string; content: string; encoding: 'utf8' } => file !== null)
 
         if (filesToWrite.length === 0) return
 
@@ -131,7 +148,10 @@ export function useYjsFileWriteback(
 
     // Observe a single file's Y.Text
     const observeFile = (filePath: string) => {
-      if (observedFiles.has(filePath)) return
+      const normalizedPath = normalizeFilePath(filePath)
+      if (!normalizedPath) return
+
+      if (observedFiles.has(normalizedPath)) return
 
       const yText = yjsDoc.files.get(filePath)
       if (!yText) return
@@ -141,48 +161,51 @@ export function useYjsFileWriteback(
         // 'remote' origin = came from another user via Convex
         if (transaction.origin === 'remote') {
           const content = yText.toString()
-          scheduleWrite(filePath, content)
+          scheduleWrite(normalizedPath, content)
         }
       }
 
       yText.observe(handler)
-      observedFiles.set(filePath, () => yText.unobserve(handler))
+      observedFiles.set(normalizedPath, () => yText.unobserve(handler))
     }
 
     // Observe the files map for new files being added
     const filesMapHandler = (event: Y.YMapEvent<Y.Text>, transaction: Y.Transaction) => {
-      for (const [filePath, change] of event.changes.keys.entries()) {
+      for (const [rawPath, change] of event.changes.keys.entries()) {
+        const normalizedPath = normalizeFilePath(rawPath)
+        if (!normalizedPath) continue
+
         if (change.action === 'delete') {
           // Stop observing deleted files
-          const unobserve = observedFiles.get(filePath)
+          const unobserve = observedFiles.get(normalizedPath)
           if (unobserve) {
             unobserve()
-            observedFiles.delete(filePath)
+            observedFiles.delete(normalizedPath)
           }
 
           // Cancel pending writes for deleted files
-          const pending = pendingWritesRef.current.get(filePath)
+          const pending = pendingWritesRef.current.get(normalizedPath)
           if (pending) {
             clearTimeout(pending)
-            pendingWritesRef.current.delete(filePath)
+            pendingWritesRef.current.delete(normalizedPath)
           }
 
           // Only delete from disk for remote changes
           if (transaction.origin === 'remote') {
-            scheduleDelete(filePath)
+            scheduleDelete(normalizedPath)
           }
 
           continue
         }
 
         // add / update
-        observeFile(filePath)
+        observeFile(rawPath)
 
         // If a file was created remotely, we may have missed the initial content change.
         if (transaction.origin === 'remote') {
-          const yText = yjsDoc.files.get(filePath)
+          const yText = yjsDoc.files.get(rawPath)
           if (yText) {
-            scheduleWrite(filePath, yText.toString())
+            scheduleWrite(normalizedPath, yText.toString())
           }
         }
       }
@@ -190,15 +213,19 @@ export function useYjsFileWriteback(
 
     // Handle renames from remote users
     const renameFileToDisk = async (from: string, to: string, _isDirectory: boolean) => {
+      const normalizedFrom = normalizeFilePath(from)
+      const normalizedTo = normalizeFilePath(to)
+      if (!normalizedFrom || !normalizedTo) return
+
       try {
         await window.electronAPI.project.renameFile({
           projectPath,
-          oldPath: from,
-          newPath: to,
+          oldPath: normalizedFrom,
+          newPath: normalizedTo,
         })
-        console.log(`[YjsWriteback] Renamed: ${from} -> ${to}`)
+        console.log(`[YjsWriteback] Renamed: ${normalizedFrom} -> ${normalizedTo}`)
       } catch (err) {
-        console.error(`[YjsWriteback] Failed to rename ${from} -> ${to}:`, err)
+        console.error(`[YjsWriteback] Failed to rename ${normalizedFrom} -> ${normalizedTo}:`, err)
       }
     }
 
