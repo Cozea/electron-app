@@ -1065,43 +1065,40 @@ export function VisualEditorSidebar({
       >
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as EditorTab)} className="flex-1 flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex items-center gap-2 h-9 px-2 border-b border-sidebar-border shrink-0">
-            <TabsList className="flex min-w-0 flex-1 h-9 bg-transparent rounded-none p-0">
+          <div className="flex items-center gap-2 h-9 px-2 shrink-0">
+            <TabsList className="flex min-w-0 flex-1 h-8 bg-transparent rounded-none p-0 gap-1">
               <TabsTrigger
                 value="styling"
+                aria-label="Design"
                 className={cn(
-                  'relative flex-1 min-w-0 h-9 rounded-none bg-transparent shadow-none text-[11px] font-medium truncate',
-                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-                  'data-[state=active]:bg-transparent data-[state=active]:text-sidebar-foreground data-[state=active]:shadow-none',
-                  "data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-3 data-[state=active]:after:right-3 data-[state=active]:after:h-px data-[state=active]:after:bg-sidebar-primary"
+                  'relative flex-1 min-w-0 h-6 px-2 bg-transparent shadow-none rounded-full',
+                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-transparent',
+                  'data-[state=active]:bg-secondary/80 data-[state=active]:text-secondary-foreground data-[state=active]:shadow-none'
                 )}
               >
-                <Paintbrush className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-                <span className="truncate">Design</span>
+                <Paintbrush className="h-3.5 w-3.5 shrink-0" />
               </TabsTrigger>
               <TabsTrigger
                 value="events"
+                aria-label="Effects"
                 className={cn(
-                  'relative flex-1 min-w-0 h-9 rounded-none bg-transparent shadow-none text-[11px] font-medium truncate',
-                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-                  'data-[state=active]:bg-transparent data-[state=active]:text-sidebar-foreground data-[state=active]:shadow-none',
-                  "data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-3 data-[state=active]:after:right-3 data-[state=active]:after:h-px data-[state=active]:after:bg-sidebar-primary"
+                  'relative flex-1 min-w-0 h-6 px-2 bg-transparent shadow-none rounded-full',
+                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-transparent',
+                  'data-[state=active]:bg-secondary/80 data-[state=active]:text-secondary-foreground data-[state=active]:shadow-none'
                 )}
               >
-                <Zap className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-                <span className="truncate">Effects</span>
+                <Zap className="h-3.5 w-3.5 shrink-0" />
               </TabsTrigger>
               <TabsTrigger
                 value="attributes"
+                aria-label="Inspect"
                 className={cn(
-                  'relative flex-1 min-w-0 h-9 rounded-none bg-transparent shadow-none text-[11px] font-medium truncate',
-                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-                  'data-[state=active]:bg-transparent data-[state=active]:text-sidebar-foreground data-[state=active]:shadow-none',
-                  "data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-3 data-[state=active]:after:right-3 data-[state=active]:after:h-px data-[state=active]:after:bg-sidebar-primary"
+                  'relative flex-1 min-w-0 h-6 px-2 bg-transparent shadow-none rounded-full',
+                  'text-muted-foreground hover:text-sidebar-foreground hover:bg-transparent',
+                  'data-[state=active]:bg-secondary/80 data-[state=active]:text-secondary-foreground data-[state=active]:shadow-none'
                 )}
               >
-                <Code className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-                <span className="truncate">Inspect</span>
+                <Code className="h-3.5 w-3.5 shrink-0" />
               </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-0.5 shrink-0">

@@ -1,9 +1,5 @@
 import { cn } from '@/lib/utils'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export type StyleState = 'default' | ':hover' | ':active' | ':focus'
 
@@ -21,40 +17,25 @@ const STATES: Array<{ value: StyleState; label: string }> = [
 ]
 
 export function StyleStateSelector({ value, onChange, className }: StyleStateSelectorProps) {
+  const selectedState = STATES.find((state) => state.value === value)
+
   return (
-    <div
-      className={cn(
-        'flex items-center gap-0.5 p-0.5 rounded-md border w-full',
-        'bg-sidebar-accent/60 border-sidebar-border/70',
-        className
-      )}
-    >
-      {STATES.map((state) => {
-        const isSelected = value === state.value
-        return (
-          <Tooltip key={state.value}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onChange(state.value)}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-1 min-w-0 px-2 h-7 text-[11px] font-medium rounded-sm transition-colors',
-                  'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  isSelected && 'bg-background shadow-sm text-foreground',
-                  !isSelected && 'text-sidebar-foreground/70'
-                )}
-              >
-                {state.label}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
-              {state.value === 'default'
-                ? 'Default element styles'
-                : `Styles when element is ${state.value.slice(1)}`}
-            </TooltipContent>
-          </Tooltip>
-        )
-      })}
-    </div>
+    <Select value={value} onValueChange={(next) => onChange(next as StyleState)}>
+      <SelectTrigger
+        className={cn(
+          'h-8 w-full bg-sidebar-accent/60 border-sidebar-border/70 text-[11px] font-medium text-sidebar-foreground focus:ring-sidebar-ring/40',
+          className
+        )}
+      >
+        <SelectValue>{selectedState?.label ?? 'Default'}</SelectValue>
+      </SelectTrigger>
+      <SelectContent className="min-w-[9rem]">
+        {STATES.map((state) => (
+          <SelectItem key={state.value} value={state.value} className="text-[11px]">
+            {state.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

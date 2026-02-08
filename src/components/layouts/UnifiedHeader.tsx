@@ -75,6 +75,11 @@ export function UnifiedHeader({
   const windowControlsInsetPadding = leftWindowControlsInset
     ? { paddingLeft: isFullScreen ? 8 : 74 }
     : undefined
+  const headerFrameStyle = {
+    ...windowControlsInsetPadding,
+    left: contentInsetLeft,
+    right: contentInsetRight,
+  }
   const visibleBreadcrumbs = useMemo(
     () =>
       breadcrumbs.slice(visibleBreadcrumbStartIndex).map((crumb, index) => ({
@@ -192,12 +197,9 @@ export function UnifiedHeader({
           "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 bg-sidebar titlebar-drag-region",
           className
         )}
-        style={windowControlsInsetPadding}
+        style={headerFrameStyle}
       >
-        <div
-          className="flex items-center w-full gap-0.5"
-          style={{ paddingLeft: contentInsetLeft, paddingRight: contentInsetRight }}
-        >
+        <div className="flex items-center w-full gap-0.5">
           <div className="flex items-center min-w-0 flex-1 titlebar-no-drag">
             {header}
           </div>
@@ -217,12 +219,9 @@ export function UnifiedHeader({
         "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-4 bg-background titlebar-drag-region",
         className
       )}
-      style={windowControlsInsetPadding}
+      style={headerFrameStyle}
     >
-      <div
-        className="flex items-center w-full gap-3"
-        style={{ paddingLeft: contentInsetLeft, paddingRight: contentInsetRight }}
-      >
+      <div className="flex items-center w-full gap-3">
         <div
           ref={breadcrumbContainerRef}
           className="flex min-w-0 flex-1 items-center gap-2 titlebar-no-drag"

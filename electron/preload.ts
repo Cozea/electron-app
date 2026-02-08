@@ -358,6 +358,7 @@ export interface ElectronAPI {
       repoUrl: string
       provider: string
       branch?: string
+      accessToken?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
@@ -590,7 +591,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),
-    cloneRepository: (options: { slug: string; repoUrl: string; provider: string; branch?: string }) =>
+    cloneRepository: (options: { slug: string; repoUrl: string; provider: string; branch?: string; accessToken?: string }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
     getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),

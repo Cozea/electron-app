@@ -947,6 +947,14 @@ interface CloneRepositoryResult {
   error?: string
 }
 
+function buildGitAuthorizationHeader(provider: string, accessToken?: string): string | null {
+  if (!accessToken?.trim()) return null
+
+  const username = provider === 'gitlab' ? 'oauth2' : 'x-access-token'
+  const encoded = Buffer.from(`${username}:${accessToken.trim()}`, 'utf8').toString('base64')
+  return `AUTHORIZATION: Basic ${encoded}`
+}
+
 function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
   if (!trimmed) return null
@@ -1122,11 +1130,13 @@ ipcMain.handle(
       repoUrl,
       provider,
       branch,
+      accessToken,
     }: {
       slug: string
       repoUrl: string
       provider: string
       branch?: string
+      accessToken?: string
     }
   ): Promise<CloneRepositoryResult> => {
     const settings = loadSettings()
@@ -1157,7 +1167,14 @@ ipcMain.handle(
         fs.rmSync(targetPath, { recursive: true, force: true })
       }
 
-      const cloneArgs = ['clone', '--single-branch', '--depth', '1']
+      const cloneArgs: string[] = []
+      const authHeader = buildGitAuthorizationHeader(provider, accessToken)
+
+      if (authHeader && /^https?:\/\//i.test(normalizedRepoUrl)) {
+        cloneArgs.push('-c', `http.extraheader=${authHeader}`)
+      }
+
+      cloneArgs.push('clone', '--single-branch', '--depth', '1')
       if (branch && branch.trim()) {
         cloneArgs.push('--branch', branch.trim())
       }
