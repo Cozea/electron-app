@@ -22,7 +22,7 @@ import {
   saveLocalSyncHistory,
 } from "@/lib/sync/syncHistory"
 import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
-import { normalizeCloudEntries } from "@/lib/sync/pathNormalization"
+import { normalizeCloudEntries, normalizeRelativePath } from "@/lib/sync/pathNormalization"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
@@ -30,6 +30,110 @@ import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
+import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
+
+const MANIFEST_LOG_SAMPLE_LIMIT = 12
+
+function shortHash(hash?: string): string {
+  if (!hash) return "missing"
+  return hash.slice(0, 12)
+}
+
+function formatTimestamp(value: number | undefined): string {
+  if (!value || Number.isNaN(value)) return "n/a"
+  return new Date(value).toISOString()
+}
+
+function buildManifestComparisonLogs(
+  localFiles: LocalFileEntry[],
+  cloudFiles: CloudFileEntry[]
+): string[] {
+  const normalizedLocal = localFiles
+    .map((file) => ({ entry: file, normalizedPath: normalizeRelativePath(file.path) }))
+    .filter((item) => item.normalizedPath.length > 0)
+  const normalizedCloud = normalizeCloudEntries(cloudFiles)
+
+  const localByPath = new Map<string, LocalFileEntry>()
+  for (const file of normalizedLocal) {
+    localByPath.set(file.normalizedPath, file.entry)
+  }
+
+  const cloudByPath = new Map<string, CloudFileEntry>()
+  for (const file of normalizedCloud) {
+    cloudByPath.set(file.normalizedPath, file.entry)
+  }
+
+  const allPaths = new Set<string>([
+    ...normalizedLocal.map((item) => item.normalizedPath),
+    ...normalizedCloud.map((item) => item.normalizedPath),
+  ])
+
+  const mismatches: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
+  const localOnly: Array<{ path: string; local: LocalFileEntry }> = []
+  const cloudOnly: Array<{ path: string; cloud: CloudFileEntry }> = []
+  const cloudMissingHash: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
+  let identicalCount = 0
+
+  for (const path of Array.from(allPaths).sort()) {
+    const local = localByPath.get(path)
+    const cloud = cloudByPath.get(path)
+
+    if (local && cloud) {
+      if (!cloud.hash) {
+        cloudMissingHash.push({ path, local, cloud })
+      } else if (local.hash === cloud.hash) {
+        identicalCount += 1
+      } else {
+        mismatches.push({ path, local, cloud })
+      }
+      continue
+    }
+
+    if (local && !cloud) {
+      localOnly.push({ path, local })
+      continue
+    }
+
+    if (!local && cloud) {
+      cloudOnly.push({ path, cloud })
+    }
+  }
+
+  const logs: string[] = [
+    `Manifest compare (normalized): local=${normalizedLocal.length}, cloud=${normalizedCloud.length}, union=${allPaths.size}`,
+    `Manifest summary: same=${identicalCount}, mismatch=${mismatches.length}, localOnly=${localOnly.length}, cloudOnly=${cloudOnly.length}, cloudHashMissing=${cloudMissingHash.length}`,
+  ]
+
+  const appendSample = <T,>(
+    title: string,
+    rows: T[],
+    formatter: (row: T) => string
+  ) => {
+    if (rows.length === 0) return
+    logs.push(`${title} (${rows.length}):`)
+    for (const row of rows.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
+      logs.push(`  ${formatter(row)}`)
+    }
+    if (rows.length > MANIFEST_LOG_SAMPLE_LIMIT) {
+      logs.push(`  ... +${rows.length - MANIFEST_LOG_SAMPLE_LIMIT} more`)
+    }
+  }
+
+  appendSample("Hash mismatches", mismatches, (row) => (
+    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
+  ))
+  appendSample("Local-only paths", localOnly, (row) => (
+    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)}`
+  ))
+  appendSample("Cloud-only paths", cloudOnly, (row) => (
+    `${row.path} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
+  ))
+  appendSample("Cloud paths missing hash", cloudMissingHash, (row) => (
+    `${row.path} local=${shortHash(row.local.hash)} cloud=missing`
+  ))
+
+  return logs
+}
 
 interface ProjectSyncContextValue {
   isSynced: boolean
@@ -383,64 +487,81 @@ export function ProjectSyncProvider({
           projectPath: effectiveLocalPath,
         })
 
+        // Convert manifests
+        const localFiles: LocalFileEntry[] = localResult.manifest
+        const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
+          _id: f._id,
+          path: f.path,
+          hash: f.hash,
+          size: f.size,
+          version: f.version,
+          storageId: f.storageId,
+          uploadedAt: f.uploadedAt,
+        }))
+        const manifestComparisonLogs = buildManifestComparisonLogs(localFiles, cloudFiles)
+
+        console.groupCollapsed(`[Sync][Manifest] ${projectSlug}`)
+        for (const line of manifestComparisonLogs) {
+          console.log(line)
+        }
+        console.groupEnd()
+
         setProgress((prev) => ({
           ...prev,
           status: "planning",
           message: "Comparing files...",
           logs: [
             ...prev.logs,
-            `Found ${localResult.totalFiles} local files`,
-            `Found ${cloudManifest.length} cloud files`,
+            ...manifestComparisonLogs,
           ],
         }))
 
-        // Convert manifests
-	    const localFiles: LocalFileEntry[] = localResult.manifest
-	    const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-	      _id: f._id,
-	      path: f.path,
-	      hash: f.hash,
-	      size: f.size,
-	      version: f.version,
-	      storageId: f.storageId,
-	      uploadedAt: f.uploadedAt,
-	    }))
+        const historyInspection = await inspectLocalSyncHistory(projectId)
+        const localHistory = await loadLocalSyncHistory(projectId)
 
-	    const historyInspection = await inspectLocalSyncHistory(projectId)
-	    const localHistory = await loadLocalSyncHistory(projectId)
+        const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
 
-	    const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
-
-	    // Compute sync plan with 3-way merge support
-	    const syncPlan = await computeSyncPlanWithMerge(
-	      localFiles,
-	      cloudFiles,
-	      localHistory.lastSyncAt ?? undefined,
-	      localHistory.cloudPathsAtLastSync,
-	      {
-	        projectId,
-	        checkpointMap,
-	        maxMergeBytes: 2 * 1024 * 1024,
-	        readLocalFile: async (path: string) => {
-	          const result = await window.electronAPI.project.readFile({
-	            projectPath: effectiveLocalPath,
-	            filePath: path,
-	          })
-	          return result.success ? result.content ?? null : null
-	        },
-	        fetchCloudFile: async (storageId: string) => {
-	          const file = filesWithUrls?.find((f) => f.storageId === storageId)
-	          if (!file?.url) return null
-	          try {
-	            const response = await fetch(file.url)
-	            return response.ok ? await response.text() : null
-	          } catch {
-	            return null
-	          }
-	        },
-	      }
-	    )
-	    setPlan(syncPlan)
+        // Compute sync plan with 3-way merge support
+        const syncPlan = await computeSyncPlanWithMerge(
+          localFiles,
+          cloudFiles,
+          localHistory.lastSyncAt ?? undefined,
+          localHistory.cloudPathsAtLastSync,
+          {
+            projectId,
+            checkpointMap,
+            maxMergeBytes: 2 * 1024 * 1024,
+            readLocalFile: async (path: string) => {
+              const result = await window.electronAPI.project.readFile({
+                projectPath: effectiveLocalPath,
+                filePath: path,
+              })
+              return result.success ? result.content ?? null : null
+            },
+            fetchCloudFile: async (storageId: string) => {
+              const file = filesWithUrls?.find((f) => f.storageId === storageId)
+              if (!file?.url) return null
+              try {
+                const response = await fetch(file.url)
+                return response.ok ? await response.text() : null
+              } catch {
+                return null
+              }
+            },
+          }
+        )
+        setPlan(syncPlan)
+        const planLogs: string[] = [
+          `Plan summary: ↓${syncPlan.downloads.length} ↑${syncPlan.uploads.length} ✕local ${syncPlan.localDeletes.length} ✕cloud ${syncPlan.cloudDeletes.length} ⚠${syncPlan.conflicts.length} ⊕${syncPlan.autoMerged.length} =${syncPlan.noChange}`,
+        ]
+        if (syncPlan.conflicts.length > 0) {
+          for (const conflict of syncPlan.conflicts.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
+            planLogs.push(`  ⚠ conflict ${conflict.path} (${conflict.reason})`)
+          }
+          if (syncPlan.conflicts.length > MANIFEST_LOG_SAMPLE_LIMIT) {
+            planLogs.push(`  ... +${syncPlan.conflicts.length - MANIFEST_LOG_SAMPLE_LIMIT} more conflicts`)
+          }
+        }
 
         const reconciliation = classifyProjectReconciliation(syncPlan, {
           pathExists: localPathExists,
@@ -450,6 +571,7 @@ export function ProjectSyncProvider({
           ...prev,
           logs: [
             ...prev.logs,
+            ...planLogs,
             `Reconciliation state: ${reconciliation.state}`,
             reconciliation.reason,
             ...(historyInspection.corrupted
@@ -465,18 +587,18 @@ export function ProjectSyncProvider({
           syncPlan.cloudDeletes.length +
           (syncPlan.autoMerged?.length ?? 0)
 
-	        if (totalChanges === 0) {
-	          // Already synced - no screen needed
-	          const now = Date.now()
-	          await saveLocalSyncHistory(projectId, {
-	            lastSyncAt: now,
-	            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
-	          })
-	          setLastSyncAt(now)
-	          setProgress({
-	            status: "complete",
-	            message: "Everything up to date!",
-	            current: 0,
+        if (totalChanges === 0) {
+          // Already synced - no screen needed
+          const now = Date.now()
+          await saveLocalSyncHistory(projectId, {
+            lastSyncAt: now,
+            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
+          })
+          setLastSyncAt(now)
+          setProgress({
+            status: "complete",
+            message: "Everything up to date!",
+            current: 0,
             total: 0,
             logs: [],
           })
@@ -613,6 +735,7 @@ export function ProjectSyncProvider({
         userId={userId}
         userName={userName}
       >
+        <DeleteConflictDialog />
         <AgentFileSyncBridge
           projectId={projectId}
           userId={userId}

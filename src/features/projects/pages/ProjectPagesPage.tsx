@@ -52,6 +52,26 @@ import {
     PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
+
+interface ProjectPresenceUser extends CompactPresenceUser {
+    id: string
+    userEmail: string
+    activeTab?: string
+    activeFile?: string
+    activeRoute?: string
+}
+
+function normalizeRoutePath(path?: string | null): string | null {
+    if (!path) return null
+    if (path === '/') return '/'
+    return path.replace(/\/+$/, '')
+}
+
+function normalizeFilePath(path?: string | null): string | null {
+    if (!path) return null
+    return path.replace(/\\/g, '/')
+}
 
 export function ProjectPagesPage() {
     const { slug } = useParams<{ slug: string }>()
@@ -168,6 +188,67 @@ export function ProjectPagesPage() {
     const project = useQuery(
         api.projects.getBySlug,
         convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
+    )
+
+    const projectPresenceUsers = useQuery(
+        api.projectPresence.getActiveUsers,
+        project?._id ? { projectId: project._id } : 'skip'
+    ) as ProjectPresenceUser[] | undefined
+
+    const { presenceByRoutePath, presenceByFilePath } = useMemo(() => {
+        const byRoutePath = new Map<string, ProjectPresenceUser[]>()
+        const byFilePath = new Map<string, ProjectPresenceUser[]>()
+
+        for (const user of projectPresenceUsers ?? []) {
+            if (user.activeTab !== 'pages') continue
+
+            const routeKey = normalizeRoutePath(user.activeRoute)
+            if (routeKey) {
+                const existing = byRoutePath.get(routeKey) ?? []
+                existing.push(user)
+                byRoutePath.set(routeKey, existing)
+            }
+
+            const fileKey = normalizeFilePath(user.activeFile)
+            if (fileKey) {
+                const existing = byFilePath.get(fileKey) ?? []
+                existing.push(user)
+                byFilePath.set(fileKey, existing)
+            }
+        }
+
+        const sortByRecent = (users: ProjectPresenceUser[]) =>
+            users.sort(
+                (a, b) =>
+                    (b.lastActivityAt ?? b.lastHeartbeat) -
+                    (a.lastActivityAt ?? a.lastHeartbeat)
+            )
+
+        for (const users of byRoutePath.values()) {
+            sortByRecent(users)
+        }
+
+        for (const users of byFilePath.values()) {
+            sortByRecent(users)
+        }
+
+        return {
+            presenceByRoutePath: byRoutePath,
+            presenceByFilePath: byFilePath,
+        }
+    }, [projectPresenceUsers])
+
+    const getRoutePresenceUsers = useCallback(
+        (routePath: string, routeFile: string) => {
+            const byRoute = presenceByRoutePath.get(normalizeRoutePath(routePath) ?? '')
+            if (byRoute && byRoute.length > 0) {
+                return byRoute
+            }
+
+            const byFile = presenceByFilePath.get(normalizeFilePath(routeFile) ?? '')
+            return byFile ?? []
+        },
+        [presenceByFilePath, presenceByRoutePath]
     )
 
     const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
@@ -334,6 +415,12 @@ export function ProjectPagesPage() {
             setCurrentPage(null)
         }
     }, [focusedRoute, serverPort, setCurrentPage])
+
+    useEffect(() => {
+        return () => {
+            setCurrentPage(null)
+        }
+    }, [setCurrentPage])
 
     // Listen for bridge messages from iframe
     useEffect(() => {
@@ -1196,7 +1283,7 @@ export function ProjectPagesPage() {
                             <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
                                 <div
                                     className={cn(
-                                        "relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
+                                        "group/focused-preview relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
                                         device === 'desktop' ? "w-full h-full" : "h-full",
                                         device === 'mobile' && "w-[375px]",
                                         device === 'tablet' && "w-[768px]"
@@ -1229,7 +1316,7 @@ export function ProjectPagesPage() {
                                     )}
 
                                     {/* Action buttons overlay */}
-                                    <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                                    <div className="pointer-events-none absolute bottom-4 right-4 flex translate-y-2 items-center gap-2 opacity-0 transition-all duration-200 ease-out group-hover/focused-preview:pointer-events-auto group-hover/focused-preview:translate-y-0 group-hover/focused-preview:opacity-100">
                                         <Button
                                             variant="secondary"
                                             size="sm"
@@ -1268,79 +1355,97 @@ export function ProjectPagesPage() {
                                         ref={thumbnailStripRef}
                                         className="app-scrollbar flex-1 flex gap-2 overflow-x-auto pb-0.5"
                                     >
-                                        {routes.map((route, index) => (
-                                            <div
-                                                key={route.path}
-                                                onClick={() => setFocusedPageIndex(index)}
-                                                role="button"
-                                                tabIndex={0}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === ' ') {
-                                                        e.preventDefault()
-                                                        setFocusedPageIndex(index)
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer",
-                                                    index === focusedPageIndex
-                                                        ? "opacity-100"
-                                                        : "opacity-50 hover:opacity-100"
-                                                )}
-                                            >
-                                                <div className={cn(
-                                                    "w-24 h-14 rounded border-2 overflow-hidden relative",
-                                                    index === focusedPageIndex
-                                                        ? "border-primary ring-1 ring-primary/20"
-                                                        : "border-border/40 hover:border-border"
-                                                )}>
-                                                    {serverStatus === 'running' && serverPort ? (
-                                                        <div className="w-full h-full bg-white relative">
-                                                            <iframe
-                                                                src={`http://localhost:${serverPort}${route.path}`}
-                                                                className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
-                                                                tabIndex={-1}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-full h-full bg-muted/50 flex items-center justify-center">
-                                                            <AppWindow className="h-3 w-3 text-muted-foreground/30" />
-                                                        </div>
+                                        {routes.map((route, index) => {
+                                            const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
+                                            return (
+                                                <div
+                                                    key={route.path}
+                                                    onClick={() => setFocusedPageIndex(index)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault()
+                                                            setFocusedPageIndex(index)
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer",
+                                                        index === focusedPageIndex
+                                                            ? "opacity-100"
+                                                            : "opacity-50 hover:opacity-100"
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.preventDefault()
-                                                            e.stopPropagation()
-                                                            togglePagesListOpen()
-                                                        }}
-                                                        className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                        aria-label="Toggle pages list"
-                                                    >
-                                                        <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.preventDefault()
-                                                            e.stopPropagation()
-                                                            handleOpenCode(route.file)
-                                                        }}
-                                                        className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                        aria-label="Open code file"
-                                                    >
-                                                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    </button>
+                                                >
+                                                    <div className={cn(
+                                                        "w-24 h-14 rounded border-2 overflow-hidden relative",
+                                                        index === focusedPageIndex
+                                                            ? "border-primary ring-1 ring-primary/20"
+                                                            : "border-border/40 hover:border-border"
+                                                    )}>
+                                                        {serverStatus === 'running' && serverPort ? (
+                                                            <div className="w-full h-full bg-white relative">
+                                                                <iframe
+                                                                    src={`http://localhost:${serverPort}${route.path}`}
+                                                                    className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
+                                                                    tabIndex={-1}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-full h-full bg-muted/50 flex items-center justify-center">
+                                                                <AppWindow className="h-3 w-3 text-muted-foreground/30" />
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault()
+                                                                e.stopPropagation()
+                                                                togglePagesListOpen()
+                                                            }}
+                                                            className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                            aria-label="Toggle pages list"
+                                                        >
+                                                            <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault()
+                                                                e.stopPropagation()
+                                                                handleOpenCode(route.file)
+                                                            }}
+                                                            className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
+                                                            aria-label="Open code file"
+                                                        >
+                                                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        </button>
+                                                        {routePresenceUsers.length > 0 && (
+                                                            <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border/60 bg-background/90 p-[1px] shadow-sm backdrop-blur-sm">
+                                                                <CompactPresenceIndicator
+                                                                    users={routePresenceUsers}
+                                                                    size="xs"
+                                                                    showOverflow={false}
+                                                                    className="gap-0"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="w-24">
+                                                        <span
+                                                            className={cn(
+                                                                "block min-w-0 text-[10px] truncate",
+                                                                index === focusedPageIndex
+                                                                    ? "text-foreground font-medium"
+                                                                    : "text-muted-foreground"
+                                                            )}
+                                                            title={route.name}
+                                                        >
+                                                            {route.name}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <span className={cn(
-                                                    "text-[10px] max-w-24 truncate",
-                                                    index === focusedPageIndex
-                                                        ? "text-foreground font-medium"
-                                                        : "text-muted-foreground"
-                                                )}>
-                                                    {route.name}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                     {focusedPageIndex !== null && (
                                         <div className="shrink-0 text-xs text-muted-foreground tabular-nums bg-muted/50 px-2.5 py-1 rounded-full">
@@ -1355,12 +1460,14 @@ export function ProjectPagesPage() {
                     /* Grid View */
                     <div className="app-scrollbar flex-1 overflow-y-auto p-6 bg-sidebar/60">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {routes.map((route, index) => (
-                                <div key={route.path} className="group relative">
-                                    <Card
-                                        className="group relative overflow-hidden border-border/40 bg-card/50 hover:bg-card hover:border-sidebar-primary/20 transition-all duration-300 shadow-sm hover:shadow-md h-[220px] flex flex-col cursor-pointer p-0 gap-0"
-                                        onClick={() => setFocusedPageIndex(index)}
-                                    >
+                            {routes.map((route, index) => {
+                                const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
+                                return (
+                                    <div key={route.path} className="group relative">
+                                        <Card
+                                            className="group relative overflow-hidden border-border/40 bg-card/50 hover:bg-card hover:border-sidebar-primary/20 transition-all duration-300 shadow-sm hover:shadow-md h-[220px] flex flex-col cursor-pointer p-0 gap-0"
+                                            onClick={() => setFocusedPageIndex(index)}
+                                        >
                                         {/* Preview Area */}
                                         <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
                                             {serverStatus === 'running' && serverPort ? (
@@ -1429,15 +1536,23 @@ export function ProjectPagesPage() {
                                                     {route.path}
                                                 </span>
                                             </div>
-                                            {route.description && (
-                                                <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    {route.description}
+                                            <div className="mt-1 flex items-center justify-between gap-2">
+                                                <p className="min-w-0 flex-1 text-[11px] text-muted-foreground line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {route.description ?? ''}
                                                 </p>
-                                            )}
+                                                {routePresenceUsers.length > 0 && (
+                                                    <CompactPresenceIndicator
+                                                        users={routePresenceUsers}
+                                                        size="sm"
+                                                        className="shrink-0"
+                                                    />
+                                                )}
+                                            </div>
                                         </div>
-                                    </Card>
-                                </div>
-                            ))}
+                                        </Card>
+                                    </div>
+                                )
+                            })}
                         </div>
                     </div>
                         )}

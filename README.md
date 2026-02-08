@@ -117,7 +117,10 @@ Convex:
 1) Bump `package.json` version.
 2) Prepare bundled Git runtimes:
    - `npm run prepare:bundled-git` (host target)
+   - `npm run prepare:bundled-git:check` (host target validation only)
    - `COZEA_GIT_BUNDLE_REQUIRE=all npm run prepare:bundled-git` (all macOS/Windows targets)
+   - `npm run prepare:bundled-git:all` (all macOS/Windows targets)
+   - `npm run prepare:bundled-git:check:all` (validate all macOS/Windows targets)
    - `COZEA_GIT_BUNDLE_TARGETS=win32-x64,win32-arm64 npm run prepare:bundled-git` (explicit subset)
    - Configure macOS archive URLs when cross-building non-native macOS bundles:
      - `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`
@@ -131,8 +134,9 @@ Convex:
 5) Users receive updates automatically (checks on launch and every 6 hours).
 
 ## Dev test for bundled Git runtime
-- `npm run dev:bundled-git` forces Electron main process to use the bundled-Git lookup path.
-- `npm run prepare:bundled-git:check` validates the required bundle for the current host before launching dev.
+- `npm run dev:bundled-git` runs a bundled-Git preflight check first, then starts dev with bundled-Git lookup forced.
+- `npm run prepare:bundled-git:check` validates the required bundle for the current host without launching the app.
+- If you see `ERR_CONNECTION_REFUSED` for `localhost`, start the app with `npm run dev` (or `npm run dev:bundled-git`) instead of launching Electron directly.
 
 ## CI Release Matrix
 - Use `.github/workflows/release-matrix.yml` to build/publish `darwin-arm64`, `darwin-x64`, `win32-x64`, and `win32-arm64`.

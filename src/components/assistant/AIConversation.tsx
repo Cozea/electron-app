@@ -56,6 +56,7 @@ import {
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
 import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachment'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
@@ -1354,6 +1355,19 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [addToolOutput, persistToolApproval])
 
   const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
+  const pingAiTyping = useCollaborationActivityStore(
+    (state) => state.actions.pingAiTyping
+  )
+  const setAgentWorking = useCollaborationActivityStore(
+    (state) => state.actions.setAgentWorking
+  )
+
+  useEffect(() => {
+    setAgentWorking(isLoading)
+    return () => {
+      setAgentWorking(false)
+    }
+  }, [isLoading, setAgentWorking])
 
   // Clear chat when triggered from panel
   useEffect(() => {
@@ -1581,7 +1595,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             <form onSubmit={handleSubmit}>
               <Textarea
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  if (e.target.value.length > 0) {
+                    pingAiTyping()
+                  }
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything"
                 className="w-full bg-transparent! p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-5 max-h-[25vh]"

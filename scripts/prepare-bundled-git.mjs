@@ -451,7 +451,12 @@ async function hydrateDarwinTargetFromSource(target) {
 async function validateBinaryPresence(target) {
   const binaryPath = getBinaryPath(target)
   if (!(await exists(binaryPath))) {
-    throw new Error(`Missing bundled Git binary for ${target.id}: ${binaryPath}`)
+    const archiveEnvKey = envKeyForTarget(target)
+    throw new Error(
+      `Missing bundled Git binary for ${target.id}: ${binaryPath}\n` +
+      `Set ${archiveEnvKey}=<archive-url-or-local-path> and run:\n` +
+      `  npm run prepare:bundled-git -- --target ${target.id}`
+    )
   }
 }
 

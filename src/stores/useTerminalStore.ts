@@ -7,11 +7,19 @@ const MIN_PANEL_HEIGHT = 150
 const MAX_PANEL_HEIGHT = 600
 const DEFAULT_PANEL_HEIGHT = 250
 
+export type TerminalKind = 'dev-server' | 'shell' | 'task'
+export type TerminalNameSource = 'auto' | 'manual'
+
 export interface TerminalInstance {
   id: string
   profileId: string
   profileName: string
   title: string
+  label?: string
+  kind?: TerminalKind
+  port?: number
+  command?: string
+  nameSource?: TerminalNameSource
   status: 'starting' | 'running' | 'exited' | 'error'
   exitCode?: number | null
   hasOutput: boolean
@@ -49,6 +57,10 @@ interface TerminalState {
     removeTerminal: (terminalId: string) => void
     updateTerminalStatus: (terminalId: string, status: TerminalInstance['status'], exitCode?: number | null) => void
     updateTerminalTitle: (terminalId: string, title: string) => void
+    updateTerminalDisplay: (
+      terminalId: string,
+      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind'>>
+    ) => void
     setTerminalHasOutput: (terminalId: string, hasOutput: boolean) => void
 
     // Group management
@@ -209,6 +221,23 @@ export const useTerminalStore = create<TerminalState>()(
               terminals: {
                 ...state.terminals,
                 [terminalId]: { ...terminal, title },
+              },
+            }
+          })
+        },
+
+        updateTerminalDisplay: (terminalId, display) => {
+          set((state) => {
+            const terminal = state.terminals[terminalId]
+            if (!terminal) return state
+
+            return {
+              terminals: {
+                ...state.terminals,
+                [terminalId]: {
+                  ...terminal,
+                  ...display,
+                },
               },
             }
           })

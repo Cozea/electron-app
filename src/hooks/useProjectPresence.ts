@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
 import { useLocation } from "react-router-dom"
+import { useCollaborationActivityStore } from "@/stores/useCollaborationActivityStore"
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000 // 30 seconds
 
@@ -12,6 +13,8 @@ interface UseProjectPresenceOptions {
   userName: string | null | undefined
   userEmail: string | null | undefined
   userAvatarUrl?: string | null
+  activeFile?: string | null
+  activeRoute?: string | null
 }
 
 export interface PresenceUser {
@@ -22,6 +25,11 @@ export interface PresenceUser {
   userAvatarUrl?: string
   activeTab?: string
   activeFile?: string
+  activeRoute?: string
+  isMonacoTyping?: boolean
+  isAiTyping?: boolean
+  isAgentWorking?: boolean
+  lastActivityAt?: number
   lastHeartbeat: number
 }
 
@@ -31,11 +39,40 @@ export function useProjectPresence({
   userName,
   userEmail,
   userAvatarUrl,
+  activeFile,
+  activeRoute,
 }: UseProjectPresenceOptions) {
   const location = useLocation()
   const heartbeat = useMutation(api.projectPresence.heartbeat)
   const leave = useMutation(api.projectPresence.leave)
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
+  const lastTransitionHeartbeatAtRef = useRef(0)
+  const {
+    isMonacoTyping,
+    isAiTyping,
+    isAgentWorking,
+    lastActivityAt,
+    actions: collaborationActions,
+  } = useCollaborationActivityStore((state) => state)
+  const activitySnapshotRef = useRef({
+    activeFile: activeFile ?? null,
+    activeRoute: activeRoute ?? null,
+    isMonacoTyping,
+    isAiTyping,
+    isAgentWorking,
+    lastActivityAt,
+  })
+
+  useEffect(() => {
+    activitySnapshotRef.current = {
+      activeFile: activeFile ?? null,
+      activeRoute: activeRoute ?? null,
+      isMonacoTyping,
+      isAiTyping,
+      isAgentWorking,
+      lastActivityAt,
+    }
+  }, [activeFile, activeRoute, isMonacoTyping, isAiTyping, isAgentWorking, lastActivityAt])
 
   // Determine active tab from current route
   const getActiveTab = useCallback(() => {
@@ -53,6 +90,7 @@ export function useProjectPresence({
     if (!projectId || !userId || !userName || !userEmail) return
 
     try {
+      const snapshot = activitySnapshotRef.current
       await heartbeat({
         projectId,
         userId,
@@ -60,11 +98,17 @@ export function useProjectPresence({
         userEmail,
         userAvatarUrl: userAvatarUrl ?? undefined,
         activeTab: getActiveTab(),
+        activeFile: snapshot.activeFile ?? undefined,
+        activeRoute: snapshot.activeRoute ?? undefined,
+        isMonacoTyping: snapshot.isMonacoTyping,
+        isAiTyping: snapshot.isAiTyping,
+        isAgentWorking: snapshot.isAgentWorking,
+        lastActivityAt: snapshot.lastActivityAt > 0 ? snapshot.lastActivityAt : undefined,
       })
     } catch (error) {
       console.warn("[Presence] Heartbeat failed:", error)
     }
-  }, [projectId, userId, userName, userEmail, userAvatarUrl, getActiveTab, heartbeat])
+  }, [getActiveTab, heartbeat, projectId, userAvatarUrl, userEmail, userId, userName])
 
   // Handle leaving
   const handleLeave = useCallback(async () => {
@@ -105,6 +149,26 @@ export function useProjectPresence({
     }
   }, [location.pathname, projectId, userId, sendHeartbeat])
 
+  // Send an immediate transition heartbeat for typing/agent-status changes.
+  useEffect(() => {
+    if (!projectId || !userId || !userName || !userEmail) return
+    const now = Date.now()
+    if (now - lastTransitionHeartbeatAtRef.current < 1000) return
+    lastTransitionHeartbeatAtRef.current = now
+    void sendHeartbeat()
+  }, [
+    activeFile,
+    activeRoute,
+    isAgentWorking,
+    isAiTyping,
+    isMonacoTyping,
+    projectId,
+    sendHeartbeat,
+    userEmail,
+    userId,
+    userName,
+  ])
+
   // Handle page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -130,6 +194,12 @@ export function useProjectPresence({
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [projectId, userId])
+
+  useEffect(() => {
+    return () => {
+      collaborationActions.reset()
+    }
+  }, [collaborationActions])
 
   // Query active users
   const activeUsers = useQuery(

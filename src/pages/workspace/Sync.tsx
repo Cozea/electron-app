@@ -294,7 +294,6 @@ export function Sync() {
             <div className="md:border-l md:border-border md:pl-4">
               <div className="pb-2">
                 <h2 className="text-base font-semibold">Free Up Space</h2>
-                <p className="text-sm text-muted-foreground">Clear cached and temporary data</p>
               </div>
               <div className="space-y-3">
                 <div className="text-sm">
@@ -305,9 +304,6 @@ export function Sync() {
                   value={totalUsed > 0 ? (clearableSize / totalUsed) * 100 : 0}
                   className="h-2"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Source code and git history cannot be cleared from here.
-                </p>
               </div>
             </div>
           </div>
@@ -360,19 +356,23 @@ export function Sync() {
                       {totalUsed > 0 ? ((category.size / totalUsed) * 100).toFixed(0) : 0}%
                     </TableCell>
                     <TableCell className="text-right">
-                    {category.canClear ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setClearingCategory(category)}
-                        aria-label={`Clear ${category.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                      <div className="flex justify-end">
+                        {category.canClear ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setClearingCategory(category)}
+                            aria-label={`Clear ${category.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <span className="inline-flex h-9 w-9 items-center justify-center text-xs text-muted-foreground">
+                            —
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

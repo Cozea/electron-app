@@ -106,6 +106,7 @@ export const getRecentActivity = query({
 
         return {
           id: change._id,
+          userId: change.userId,
           filePath: change.filePath,
           changeType: change.changeType,
           additions: change.additions,

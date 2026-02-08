@@ -7,6 +7,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useMonacoTheme } from '@/hooks/useMonacoTheme'
 import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
 import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
+import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
 
 // Import Monaco workers for Vite
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -60,26 +61,102 @@ export function CollaborativeMonacoEditor({
 }: CollaborativeMonacoEditorProps) {
   const { yjsDoc, awareness } = useYjsProject()
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const activePathRef = useRef(path)
+  const onSaveRef = useRef(onSave)
   const [showBottomFade, setShowBottomFade] = useState(false)
   const bindingRef = useRef<MonacoBinding | null>(null)
+  const yTextObserverCleanupRef = useRef<(() => void) | null>(null)
   const cursorDisposablesRef = useRef<monaco.IDisposable[]>([])
   const theme = useMonacoTheme('sidebar')
 
   const model = useEditorStore((state) => state.models[path])
   const actions = useEditorStore((state) => state.actions)
+  const pingMonacoTyping = useCollaborationActivityStore(
+    (state) => state.actions.pingMonacoTyping
+  )
 
-  // Handle save action
-  const handleSave = useCallback(() => {
-    if (onSave) {
-      onSave()
-    } else {
-      actions.saveFile(path)
+  useEffect(() => {
+    activePathRef.current = path
+  }, [path])
+
+  useEffect(() => {
+    onSaveRef.current = onSave
+  }, [onSave])
+
+  const teardownBinding = useCallback(() => {
+    bindingRef.current?.destroy()
+    bindingRef.current = null
+
+    if (yTextObserverCleanupRef.current) {
+      yTextObserverCleanupRef.current()
+      yTextObserverCleanupRef.current = null
     }
-  }, [onSave, actions, path])
+  }, [])
+
+  const bindCurrentModel = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor || !yjsDoc) {
+      return
+    }
+
+    const currentPath = activePathRef.current
+    const currentModel = useEditorStore.getState().models[currentPath]
+    if (!currentModel) {
+      return
+    }
+
+    const editorModel = editor.getModel()
+    if (!editorModel) {
+      return
+    }
+
+    const yText = yjsDoc.getFileText(currentPath)
+    if (!yText) {
+      console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', currentPath)
+      teardownBinding()
+      return
+    }
+
+    // Initialize Y.Text content if empty and we have content from EditorStore
+    if (yText.length === 0) {
+      yjsDoc.initializeFile(currentPath, currentModel.currentContent)
+    }
+
+    teardownBinding()
+
+    // Create y-monaco binding - this syncs Monaco <-> Y.Text automatically
+    bindingRef.current = new MonacoBinding(
+      yText,
+      editorModel,
+      new Set([editor]),
+      awareness ?? undefined
+    )
+
+    const handleYTextChange = () => {
+      const content = yText.toString()
+      const latestModel = useEditorStore.getState().models[currentPath]
+      // Only update if content actually changed to avoid loops
+      if (content !== latestModel?.currentContent) {
+        actions.updateContent(currentPath, content)
+      }
+    }
+
+    yText.observe(handleYTextChange)
+    yTextObserverCleanupRef.current = () => {
+      yText.unobserve(handleYTextChange)
+    }
+  }, [actions, awareness, teardownBinding, yjsDoc])
 
   // Handle editor mount - set up y-monaco binding
   const handleMount: OnMount = useCallback(
     (editor, monacoInstance) => {
+      // Defensive cleanup in case Monaco remounts this editor instance.
+      teardownBinding()
+      for (const disposable of cursorDisposablesRef.current) {
+        disposable.dispose()
+      }
+      cursorDisposablesRef.current = []
+
       editorRef.current = editor
       const updateBottomFade = () => {
         const scrollTop = editor.getScrollTop()
@@ -87,40 +164,13 @@ export function CollaborativeMonacoEditor({
         const scrollHeight = editor.getScrollHeight()
         setShowBottomFade(scrollTop + viewportHeight < scrollHeight - 1)
       }
-      const editorModel = editor.getModel()
-
-      if (!editorModel || !yjsDoc) {
-        console.warn('[CollaborativeEditor] Missing model or yjsDoc')
-        return
-      }
-
-      // Get or create the Y.Text for this file path
-      const yText = yjsDoc.getFileText(path)
-      if (!yText) {
-        console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', path)
-        return
-      }
-
-      // Initialize Y.Text content if empty and we have content from EditorStore
-      if (yText.length === 0 && model?.currentContent) {
-        yjsDoc.initializeFile(path, model.currentContent)
-      }
-
-      // Create y-monaco binding - this syncs Monaco <-> Y.Text automatically
-      bindingRef.current = new MonacoBinding(
-        yText,
-        editorModel,
-        new Set([editor]),
-        awareness ?? undefined
-      )
-
       // Publish "active file" + cursor position for collaborator UI.
       if (awareness) {
         const updateCursorState = () => {
           const position = editor.getPosition()
           if (!position) return
           awareness.setLocalStateField('cursor', {
-            filePath: path,
+            filePath: activePathRef.current,
             line: position.lineNumber,
             column: position.column,
           })
@@ -138,42 +188,88 @@ export function CollaborativeMonacoEditor({
       // Register Cmd+S save command
       editor.addCommand(
         monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
-        handleSave
+        () => {
+          if (onSaveRef.current) {
+            onSaveRef.current()
+            return
+          }
+          actions.saveFile(activePathRef.current)
+        }
       )
 
       updateBottomFade()
       cursorDisposablesRef.current.push(
         editor.onDidScrollChange(updateBottomFade),
-        editor.onDidContentSizeChange(updateBottomFade)
+        editor.onDidContentSizeChange(updateBottomFade),
+        editor.onKeyDown((event) => {
+          const key = event.browserEvent.key
+          if (
+            key.length === 1 ||
+            key === 'Backspace' ||
+            key === 'Delete' ||
+            key === 'Enter' ||
+            key === 'Tab'
+          ) {
+            pingMonacoTyping()
+          }
+        })
       )
 
       // Notify parent that editor is ready
       onEditorReady?.(editor)
 
-      // Update EditorStore when Y.Text changes (for dirty state tracking)
-      yText.observe(() => {
-        const content = yText.toString()
-        // Only update if content actually changed to avoid loops
-        if (content !== model?.currentContent) {
-          actions.updateContent(path, content)
-        }
-      })
+      bindCurrentModel()
     },
-    [path, yjsDoc, awareness, model, actions, handleSave, onEditorReady]
+    [actions, awareness, bindCurrentModel, onEditorReady, pingMonacoTyping, teardownBinding]
   )
 
-  // Cleanup binding on unmount or path change
+  // If the target file model is unavailable, ensure old bindings are fully torn down.
+  useEffect(() => {
+    if (model) return
+    teardownBinding()
+    for (const disposable of cursorDisposablesRef.current) {
+      disposable.dispose()
+    }
+    cursorDisposablesRef.current = []
+  }, [model, teardownBinding])
+
+  // Rebind Yjs model when editor path/model changes without remounting the Monaco instance.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      bindCurrentModel()
+
+      if (!awareness || !editorRef.current) {
+        return
+      }
+
+      const position = editorRef.current.getPosition()
+      if (!position) {
+        return
+      }
+
+      awareness.setLocalStateField('cursor', {
+        filePath: activePathRef.current,
+        line: position.lineNumber,
+        column: position.column,
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [path, awareness, bindCurrentModel])
+
+  // Cleanup editor bindings/listeners on unmount.
   useEffect(() => {
     return () => {
-      bindingRef.current?.destroy()
-      bindingRef.current = null
+      teardownBinding()
 
       for (const disposable of cursorDisposablesRef.current) {
         disposable.dispose()
       }
       cursorDisposablesRef.current = []
     }
-  }, [path])
+  }, [teardownBinding])
 
   useDiagnosticsFileSync({
     projectPath: model?.projectPath,
@@ -210,6 +306,7 @@ export function CollaborativeMonacoEditor({
         path={modelPath}
         // Don't set value prop - y-monaco manages content
         defaultValue={model.currentContent}
+        keepCurrentModel
         theme={theme}
         onMount={handleMount}
         // Don't use onChange - y-monaco handles sync

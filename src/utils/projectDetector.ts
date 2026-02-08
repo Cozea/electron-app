@@ -35,6 +35,24 @@ export interface FrameworkInfo {
   startCommand: string
 }
 
+function inferDevServerLabelFromCommand(command: string): string {
+  const normalized = command.trim().toLowerCase()
+  if (!normalized) return 'Dev Server'
+
+  if (normalized.includes('next')) return 'Next.js Dev'
+  if (normalized.includes('nuxt')) return 'Nuxt Dev'
+  if (normalized.includes('remix')) return 'Remix Dev'
+  if (normalized.includes('astro')) return 'Astro Dev'
+  if (normalized.includes('gatsby')) return 'Gatsby Dev'
+  if (normalized.includes('sveltekit') || normalized.includes('@sveltejs/kit')) return 'SvelteKit Dev'
+  if (normalized.includes('vite')) return 'Vite Dev'
+  if (normalized.includes('react-scripts')) return 'CRA Dev'
+  if (normalized.includes('ng serve') || normalized.includes('@angular/cli')) return 'Angular Dev'
+  if (normalized.includes('solid-start') || normalized.includes('@solidjs/start')) return 'SolidStart Dev'
+  if (normalized.includes('qwik')) return 'Qwik Dev'
+  return 'Dev Server'
+}
+
 // Framework detection rules and metadata
 const FRAMEWORK_CONFIGS: Record<Framework, Omit<FrameworkInfo, 'framework'>> = {
   nextjs: {
@@ -306,13 +324,21 @@ export async function getDevServerConfig(
   projectPath: string,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
-): Promise<{ command: string; port: number }> {
+): Promise<{ command: string; port: number; label: string }> {
   if (storedDevCommand && storedDevPort) {
-    return { command: storedDevCommand, port: storedDevPort }
+    return {
+      command: storedDevCommand,
+      port: storedDevPort,
+      label: inferDevServerLabelFromCommand(storedDevCommand),
+    }
   }
 
   const info = await detectFramework(projectPath)
-  return { command: info.devCommand, port: info.devPort }
+  return {
+    command: info.devCommand,
+    port: info.devPort,
+    label: info.displayName === 'Unknown' ? 'Dev Server' : `${info.displayName} Dev`,
+  }
 }
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'

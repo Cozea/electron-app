@@ -17,9 +17,27 @@ export const heartbeat = mutation({
     userAvatarUrl: v.optional(v.string()),
     activeTab: v.optional(v.string()),
     activeFile: v.optional(v.string()),
+    activeRoute: v.optional(v.string()),
+    lastActivityAt: v.optional(v.number()),
+    isMonacoTyping: v.optional(v.boolean()),
+    isAiTyping: v.optional(v.boolean()),
+    isAgentWorking: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, userName, userEmail, userAvatarUrl, activeTab, activeFile } = args
+    const {
+      projectId,
+      userId,
+      userName,
+      userEmail,
+      userAvatarUrl,
+      activeTab,
+      activeFile,
+      activeRoute,
+      lastActivityAt,
+      isMonacoTyping,
+      isAiTyping,
+      isAgentWorking,
+    } = args
 
     // Check if presence record already exists
     const existing = await ctx.db
@@ -36,8 +54,13 @@ export const heartbeat = mutation({
         userEmail,
         userAvatarUrl,
         lastHeartbeat: now,
+        lastActivityAt: lastActivityAt ?? now,
         activeTab,
         activeFile,
+        activeRoute,
+        isMonacoTyping: isMonacoTyping ?? false,
+        isAiTyping: isAiTyping ?? false,
+        isAgentWorking: isAgentWorking ?? false,
       })
     } else {
       // Create new presence record
@@ -48,8 +71,13 @@ export const heartbeat = mutation({
         userEmail,
         userAvatarUrl,
         lastHeartbeat: now,
+        lastActivityAt: lastActivityAt ?? now,
         activeTab,
         activeFile,
+        activeRoute,
+        isMonacoTyping: isMonacoTyping ?? false,
+        isAiTyping: isAiTyping ?? false,
+        isAgentWorking: isAgentWorking ?? false,
       })
     }
   },
@@ -94,8 +122,15 @@ export const getActiveUsers = query({
       .collect()
 
     // Filter to only active presences and return user info
-    return presences
+    const activePresences = presences
       .filter((p) => p.lastHeartbeat > cutoff)
+      .sort(
+        (a, b) =>
+          (b.lastActivityAt ?? b.lastHeartbeat) -
+          (a.lastActivityAt ?? a.lastHeartbeat)
+      )
+
+    return activePresences
       .map((p) => ({
         id: p._id,
         userId: p.userId,
@@ -104,6 +139,11 @@ export const getActiveUsers = query({
         userAvatarUrl: p.userAvatarUrl,
         activeTab: p.activeTab,
         activeFile: p.activeFile,
+        activeRoute: p.activeRoute,
+        isMonacoTyping: p.isMonacoTyping ?? false,
+        isAiTyping: p.isAiTyping ?? false,
+        isAgentWorking: p.isAgentWorking ?? false,
+        lastActivityAt: p.lastActivityAt ?? p.lastHeartbeat,
         lastHeartbeat: p.lastHeartbeat,
       }))
   },

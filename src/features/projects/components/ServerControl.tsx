@@ -35,6 +35,9 @@ const isProblemHeader = (line: string) =>
     /failed to compile/i.test(line) ||
     /error:\s/i.test(line)
 
+const formatTerminalTabTitle = (label: string, port: number | null | undefined) =>
+    port ? `${label} · localhost:${port}` : label
+
 interface ServerControlProps {
     projectPath?: string | null
     // Optional stored framework info from Convex (uses detection as fallback)
@@ -44,13 +47,14 @@ interface ServerControlProps {
 
 export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: ServerControlProps) {
     const { serverStatus, actions } = useProjectPagesStore()
-    const { addTerminal, removeTerminal, updateTerminalStatus, setPanelOpen } = useTerminalActions()
+    const { addTerminal, removeTerminal, updateTerminalDisplay, updateTerminalStatus, setPanelOpen } = useTerminalActions()
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
 
     // Track the dev server terminal ID
     const devServerTerminalIdRef = useRef<string | null>(null)
     const devServerProjectPathRef = useRef<string | null>(null)
+    const devServerLabelRef = useRef<string>('Dev Server')
 
     // Ref for timeout fallback when ready patterns don't match
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -147,6 +151,12 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 const detectedPort = extractPort(data)
                 if (detectedPort) {
                     actions.setServerPort(detectedPort)
+                    if (devServerTerminalIdRef.current) {
+                        updateTerminalDisplay(devServerTerminalIdRef.current, {
+                            port: detectedPort,
+                            title: formatTerminalTabTitle(devServerLabelRef.current, detectedPort),
+                        })
+                    }
                 }
 
                 // Try to detect when server is ready by looking for common patterns
@@ -200,7 +210,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             unsubExit()
             clearReadyTimeout()
         }
-    }, [actions, clearReadyTimeout, updateTerminalStatus, reportProblemsFromOutput])
+    }, [actions, clearReadyTimeout, updateTerminalDisplay, updateTerminalStatus, reportProblemsFromOutput])
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return
@@ -239,11 +249,17 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 devServerProjectPathRef.current = projectPath
 
                 // Add terminal to store with dev server title
+                devServerLabelRef.current = config.label
                 addTerminal({
                     id: result.terminalId,
                     profileId: 'dev-server',
-                    profileName: 'Dev Server',
-                    title: `Dev Server (${config.port})`,
+                    profileName: config.label,
+                    label: config.label,
+                    kind: 'dev-server',
+                    command,
+                    port: config.port,
+                    nameSource: 'auto',
+                    title: formatTerminalTabTitle(config.label, config.port),
                     status: 'starting',
                     hasOutput: false,
                 })
