@@ -115,8 +115,19 @@ Convex:
 
 ## Releasing the desktop app (GitHub Releases)
 1) Bump `package.json` version.
-2) Set release env vars:
+2) Prepare bundled Git runtimes:
+   - `npm run prepare:bundled-git` (host target)
+   - `COZEA_GIT_BUNDLE_REQUIRE=all npm run prepare:bundled-git` (all macOS/Windows targets)
+   - Configure macOS archive URLs when needed:
+     - `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`
+     - `COZEA_GIT_BUNDLE_URL_DARWIN_X64`
+   - Env values may be remote archive URLs or absolute local archive paths.
+3) Set release env vars:
    - `GH_TOKEN` (repo scope)
    - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` (mac notarization)
-3) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
-4) Users receive updates automatically (checks on launch and every 6 hours).
+4) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
+5) Users receive updates automatically (checks on launch and every 6 hours).
+
+## Dev test for bundled Git runtime
+- `npm run dev:bundled-git` forces Electron main process to use the bundled-Git lookup path.
+- `npm run prepare:bundled-git:check` validates the required bundle for the current host before launching dev.

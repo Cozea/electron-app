@@ -22,6 +22,20 @@ dist-electron
 build/v8-snapshot
 build/browser_v8_context_snapshot.bin
 build/snapshot_blob.bin
+build/git/**
+!build/git/README.md
+!build/git/darwin-arm64/
+!build/git/darwin-arm64/bin/
+!build/git/darwin-arm64/bin/.gitkeep
+!build/git/darwin-x64/
+!build/git/darwin-x64/bin/
+!build/git/darwin-x64/bin/.gitkeep
+!build/git/win32-arm64/
+!build/git/win32-arm64/cmd/
+!build/git/win32-arm64/cmd/.gitkeep
+!build/git/win32-x64/
+!build/git/win32-x64/cmd/
+!build/git/win32-x64/cmd/.gitkeep
 
 # Server (separate repo)
 server/
