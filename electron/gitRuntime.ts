@@ -276,6 +276,13 @@ function parseGitVersion(raw: string): string | undefined {
   return match?.[1]
 }
 
+function hasGitOption(helpText: string, optionName: string): boolean {
+  const escapedOption = optionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const directPattern = new RegExp(`--${escapedOption}\\b`)
+  const toggledPattern = new RegExp(`--\\[no-\\]${escapedOption}\\b`)
+  return directPattern.test(helpText) || toggledPattern.test(helpText)
+}
+
 function normalizeRepoRelativePath(input: string): string | null {
   const normalized = input
     .replace(/\\/g, "/")
@@ -561,9 +568,9 @@ export async function getGitRuntimeHealth(force = false): Promise<GitRuntimeHeal
   const mergeTreeText = `${mergeTreeHelp.stdout}\n${mergeTreeHelp.stderr}`
 
   const supportsMergeFile = mergeFileText.includes("merge-file")
-  const supportsZdiff3 = mergeFileText.includes("--zdiff3")
+  const supportsZdiff3 = hasGitOption(mergeFileText, "zdiff3")
   const supportsMergeTree = mergeTreeText.includes("merge-tree")
-  const supportsMergeTreeWriteTree = mergeTreeText.includes("--write-tree")
+  const supportsMergeTreeWriteTree = hasGitOption(mergeTreeText, "write-tree")
 
   const smoke = await runMergeSmokeTest()
 

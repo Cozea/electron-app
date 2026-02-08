@@ -118,10 +118,12 @@ Convex:
 2) Prepare bundled Git runtimes:
    - `npm run prepare:bundled-git` (host target)
    - `COZEA_GIT_BUNDLE_REQUIRE=all npm run prepare:bundled-git` (all macOS/Windows targets)
-   - Configure macOS archive URLs when needed:
+   - `COZEA_GIT_BUNDLE_TARGETS=win32-x64,win32-arm64 npm run prepare:bundled-git` (explicit subset)
+   - Configure macOS archive URLs when cross-building non-native macOS bundles:
      - `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`
      - `COZEA_GIT_BUNDLE_URL_DARWIN_X64`
    - Env values may be remote archive URLs or absolute local archive paths.
+   - On native macOS target, missing bundles auto-build from latest `git/git` source.
 3) Set release env vars:
    - `GH_TOKEN` (repo scope)
    - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` (mac notarization)
@@ -131,3 +133,16 @@ Convex:
 ## Dev test for bundled Git runtime
 - `npm run dev:bundled-git` forces Electron main process to use the bundled-Git lookup path.
 - `npm run prepare:bundled-git:check` validates the required bundle for the current host before launching dev.
+
+## CI Release Matrix
+- Use `.github/workflows/release-matrix.yml` to build/publish `darwin-arm64`, `darwin-x64`, `win32-x64`, and `win32-arm64`.
+- Trigger by tag push (`v*`) or manual workflow dispatch.
+- Required secrets for full publishing/signing:
+  - `GH_TOKEN`
+  - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
+  - `CSC_LINK`, `CSC_KEY_PASSWORD` (for mac signing certificate)
+
+### Pending Follow-Up (macOS distribution signing)
+- Current machine has `Developer ID Application: Crossand LLC (779Z7M75YU)` certificate present but not as a valid signing identity in `security find-identity -p codesigning` (private key missing).
+- Temporary CI `CSC_LINK` / `CSC_KEY_PASSWORD` were generated from available `Apple Development` identity to keep pipeline wiring testable.
+- Before production macOS release, replace `CSC_LINK` / `CSC_KEY_PASSWORD` with a `.p12` exported from a valid `Developer ID Application` identity that includes the private key.
