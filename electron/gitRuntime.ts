@@ -264,7 +264,7 @@ async function resetRepoWorktree(repoDir: string): Promise<void> {
     timeoutMs: 10_000,
   })
   if (!cleanResult.success) {
-    throw new Error(cleanResult.error ?? cleanResult.stderr.trim() || "Failed to clean git worktree")
+    throw new Error(cleanResult.error ?? (cleanResult.stderr.trim() || "Failed to clean git worktree"))
   }
 }
 
@@ -296,7 +296,9 @@ async function createSnapshotCommit(
     timeoutMs: 10_000,
   })
   if (!checkoutResult.success) {
-    throw new Error(checkoutResult.error ?? checkoutResult.stderr.trim() || "Failed to checkout snapshot branch")
+    throw new Error(
+      checkoutResult.error ?? (checkoutResult.stderr.trim() || "Failed to checkout snapshot branch")
+    )
   }
 
   await resetRepoWorktree(repoDir)
@@ -304,7 +306,7 @@ async function createSnapshotCommit(
 
   const addResult = await runGitCommand(["add", "-A"], { cwd: repoDir, timeoutMs: 10_000 })
   if (!addResult.success) {
-    throw new Error(addResult.error ?? addResult.stderr.trim() || "Failed to stage snapshot files")
+    throw new Error(addResult.error ?? (addResult.stderr.trim() || "Failed to stage snapshot files"))
   }
 
   const commitResult = await runGitCommand(
@@ -312,12 +314,14 @@ async function createSnapshotCommit(
     { cwd: repoDir, timeoutMs: 10_000 }
   )
   if (!commitResult.success) {
-    throw new Error(commitResult.error ?? commitResult.stderr.trim() || "Failed to create snapshot commit")
+    throw new Error(
+      commitResult.error ?? (commitResult.stderr.trim() || "Failed to create snapshot commit")
+    )
   }
 
   const revParse = await runGitCommand(["rev-parse", "HEAD"], { cwd: repoDir, timeoutMs: 10_000 })
   if (!revParse.success || !revParse.stdout.trim()) {
-    throw new Error(revParse.error ?? revParse.stderr.trim() || "Failed to resolve snapshot commit")
+    throw new Error(revParse.error ?? (revParse.stderr.trim() || "Failed to resolve snapshot commit"))
   }
 
   return revParse.stdout.trim()
@@ -651,6 +655,127 @@ export async function mergeTextWithGit(input: MergePreviewInput): Promise<MergeP
       fs.rmSync(tempDir, { recursive: true, force: true })
     } catch {
       // ignore
+    }
+  }
+}
+
+export async function mergeTreeWithGit(
+  input: MergeTreePreviewInput
+): Promise<MergeTreePreviewOutput> {
+  const health = await getGitRuntimeHealth()
+  if (!health.available || !health.supportsMergeTree || !health.supportsMergeTreeWriteTree) {
+    return {
+      success: false,
+      clean: false,
+      conflicts: [],
+      mergedFiles: [],
+      gitVersion: health.gitVersion ?? "unknown",
+      error: health.error ?? "Git merge-tree is unavailable",
+    }
+  }
+
+  const maxPreviewFiles = Math.max(1, Math.min(1_000, input.maxPreviewFiles ?? 256))
+  const maxPreviewBytes = Math.max(1_024, Math.min(20 * 1024 * 1024, input.maxPreviewBytes ?? 2 * 1024 * 1024))
+
+  const tempDir = path.join(os.tmpdir(), `cozea-git-merge-tree-${randomUUID()}`)
+  fs.mkdirSync(tempDir, { recursive: true })
+
+  try {
+    const init = await runGitCommand(["init"], { cwd: tempDir, timeoutMs: 10_000 })
+    if (!init.success) {
+      return {
+        success: false,
+        clean: false,
+        conflicts: [],
+        mergedFiles: [],
+        gitVersion: health.gitVersion ?? "unknown",
+        error: init.error ?? (init.stderr.trim() || "Failed to initialize merge-tree repository"),
+      }
+    }
+
+    const configEmail = await runGitCommand(["config", "user.email", "sync@cozea.local"], {
+      cwd: tempDir,
+      timeoutMs: 10_000,
+    })
+    const configName = await runGitCommand(["config", "user.name", "Cozea Sync"], {
+      cwd: tempDir,
+      timeoutMs: 10_000,
+    })
+    if (!configEmail.success || !configName.success) {
+      return {
+        success: false,
+        clean: false,
+        conflicts: [],
+        mergedFiles: [],
+        gitVersion: health.gitVersion ?? "unknown",
+        error: "Failed to configure temporary merge-tree repository",
+      }
+    }
+
+    const baseBranch = `base-${randomUUID()}`
+    const localBranch = `ours-${randomUUID()}`
+    const cloudBranch = `theirs-${randomUUID()}`
+
+    const baseCommit = await createSnapshotCommit(tempDir, baseBranch, input.baseFiles)
+    const localCommit = await createSnapshotCommit(tempDir, localBranch, input.localFiles, baseCommit)
+    const cloudCommit = await createSnapshotCommit(tempDir, cloudBranch, input.cloudFiles, baseCommit)
+
+    const merged = await runGitCommand(
+      [
+        "merge-tree",
+        "--write-tree",
+        "--messages",
+        "--merge-base",
+        baseCommit,
+        localCommit,
+        cloudCommit,
+      ],
+      { cwd: tempDir, timeoutMs: 20_000 }
+    )
+
+    const rawOutput = [merged.stdout, merged.stderr].filter(Boolean).join("\n").trim()
+    const firstLine = merged.stdout.split(/\r?\n/)[0]?.trim()
+    const treeOid = /^[0-9a-f]{40}$/i.test(firstLine) ? firstLine : undefined
+    const conflicts = parseMergeTreeConflicts(rawOutput)
+
+    if (merged.exitCode === null || !treeOid) {
+      return {
+        success: false,
+        clean: false,
+        conflicts,
+        mergedFiles: [],
+        gitVersion: health.gitVersion ?? "unknown",
+        rawOutput,
+        error: merged.error ?? (merged.stderr.trim() || "git merge-tree failed"),
+      }
+    }
+
+    const mergedFiles = await readMergedTreeFiles(tempDir, treeOid, maxPreviewFiles, maxPreviewBytes)
+    const clean = merged.exitCode === 0 && conflicts.length === 0
+
+    return {
+      success: true,
+      clean,
+      treeOid,
+      conflicts,
+      mergedFiles,
+      gitVersion: health.gitVersion ?? "unknown",
+      rawOutput,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      clean: false,
+      conflicts: [],
+      mergedFiles: [],
+      gitVersion: health.gitVersion ?? "unknown",
+      error: error instanceof Error ? error.message : "Git merge-tree failed",
+    }
+  } finally {
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // ignore temp cleanup errors
     }
   }
 }
