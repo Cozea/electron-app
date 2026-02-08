@@ -11,7 +11,6 @@ import {
   Cloud,
 } from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
-import { cn } from "@/lib/utils"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -24,6 +23,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -56,21 +56,25 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
   return (
     <Sidebar
       collapsible="icon"
-      className={cn("sidebar-outward-curve sidebar-fade-border-right", className)}
+      className={cn("titlebar-no-drag", className)}
       {...props}
     >
-      <SidebarHeader className="pt-9">
-        <ContextSwitcher />
+      <SidebarHeader className="mt-9 titlebar-drag-region">
+        <div className="titlebar-no-drag">
+          <ContextSwitcher />
+        </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="group-data-[collapsible=icon]:mt-9">
         <NavMain label="Platform" items={platformItems} />
         <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
         <NavMain label="Team" items={teamItems} />
         <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
         <NavMain label="Workspace" items={workspaceItems} />
       </SidebarContent>
-      <SidebarFooter className="pb-6">
-        <NavUser user={user} onLogout={onLogout} />
+      <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+        <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+          <NavUser user={user} onLogout={onLogout} />
+        </div>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

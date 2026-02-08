@@ -26,7 +26,6 @@ import {
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog'
 import {
-  Cloud,
   FileCode,
   History,
   Database,
@@ -233,21 +232,11 @@ export function Sync() {
     }
   }
 
-  const breadcrumbAddon = (
-    <Badge variant="secondary" className="gap-1 h-8 px-2 text-xs">
-      <Cloud className="h-3 w-3" />
-      Synced
-    </Badge>
-  )
-
-
-
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'Cloud Storage' }]}
-      breadcrumbAddon={breadcrumbAddon}
     >
       <div className="space-y-6">
         {/* Header Stats */}

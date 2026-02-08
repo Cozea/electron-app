@@ -198,7 +198,7 @@ export function ProjectSettingsPage() {
   return (
     <div className="h-full">
       <ScrollArea className="h-full">
-        <div className="w-full min-h-full px-4 py-6 xl:px-3" key={project._id}>
+        <div className="w-full min-h-full px-4 py-6 xl:px-3">
           <div className="flex min-h-[calc(100vh-5.5rem)] gap-0">
             <div className="w-full max-w-2xl space-y-8 pr-0 xl:pr-10">
               <div>

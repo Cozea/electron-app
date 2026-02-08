@@ -1114,7 +1114,7 @@ export function ProjectPagesPage() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background relative" key={project?._id || 'loading'}>
+        <div className="flex flex-col h-full bg-background relative">
 
             {/* Content */}
             <div className="flex-1 overflow-hidden flex flex-col">
@@ -1400,17 +1400,17 @@ export function ProjectPagesPage() {
                                         </div>
 
                                         {/* Footer Info */}
-                                        <div className="px-3 py-2 mt-auto">
+                                        <div className="mt-auto border-t border-white/10 bg-black/55 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/45">
                                             <div className="flex items-center justify-between gap-2">
-                                                <h3 className="font-medium text-sm text-foreground/90 truncate" title={route.path}>
+                                                <h3 className="truncate text-sm font-medium text-white/95" title={route.path}>
                                                     {route.name}
                                                 </h3>
-                                                <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 truncate max-w-[40%] text-right bg-muted/50 px-1.5 py-0.5 rounded">
+                                                <span className="max-w-[40%] shrink-0 truncate rounded bg-white/10 px-1.5 py-0.5 text-right font-mono text-[10px] text-white/65">
                                                     {route.path}
                                                 </span>
                                             </div>
                                             {route.description && (
-                                                <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <p className="mt-0.5 line-clamp-1 text-[11px] text-white/70 opacity-0 transition-opacity group-hover:opacity-100">
                                                     {route.description}
                                                 </p>
                                             )}

@@ -37,8 +37,10 @@ export function UnifiedHeader({
 }: UnifiedHeaderProps) {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [visibleBreadcrumbStartIndex, setVisibleBreadcrumbStartIndex] = useState(0)
+  const breadcrumbContainerRef = useRef<HTMLDivElement | null>(null)
   const breadcrumbViewportRef = useRef<HTMLDivElement | null>(null)
   const breadcrumbMeasureRef = useRef<HTMLDivElement | null>(null)
+  const breadcrumbAddonRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!leftWindowControlsInset) {
@@ -86,11 +88,17 @@ export function UnifiedHeader({
     }
 
     const viewport = breadcrumbViewportRef.current
+    const container = breadcrumbContainerRef.current
     const measure = breadcrumbMeasureRef.current
+    const addon = breadcrumbAddonRef.current
 
     if (!viewport || !measure) return
 
-    const availableWidth = viewport.clientWidth
+    const addonWidth = breadcrumbAddon ? (addon?.getBoundingClientRect().width ?? 0) + 8 : 0
+    const availableWidth = Math.max(
+      0,
+      (container?.clientWidth ?? viewport.clientWidth) - addonWidth
+    )
     if (availableWidth <= 0) return
 
     const crumbNodes = Array.from(
@@ -139,7 +147,7 @@ export function UnifiedHeader({
     }
 
     setVisibleBreadcrumbStartIndex(startIndex)
-  }, [breadcrumbs])
+  }, [breadcrumbAddon, breadcrumbs])
 
   useEffect(() => {
     if (!breadcrumbs.length) {
@@ -148,7 +156,8 @@ export function UnifiedHeader({
     }
 
     const viewport = breadcrumbViewportRef.current
-    if (!viewport) return
+    const container = breadcrumbContainerRef.current
+    if (!viewport || !container) return
 
     const frame = window.requestAnimationFrame(() => {
       recomputeVisibleBreadcrumbs()
@@ -157,13 +166,17 @@ export function UnifiedHeader({
     const observer = new ResizeObserver(() => {
       recomputeVisibleBreadcrumbs()
     })
+    observer.observe(container)
     observer.observe(viewport)
+    if (breadcrumbAddonRef.current) {
+      observer.observe(breadcrumbAddonRef.current)
+    }
 
     return () => {
       window.cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [breadcrumbs.length, recomputeVisibleBreadcrumbs])
+  }, [breadcrumbAddon, breadcrumbs.length, recomputeVisibleBreadcrumbs])
 
   const isTabsPrimaryLayout =
     breadcrumbs.length === 0 && !breadcrumbAddon && Boolean(header)
@@ -200,10 +213,13 @@ export function UnifiedHeader({
       style={windowControlsInsetPadding}
     >
       <div className="flex items-center w-full gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3 titlebar-no-drag">
+        <div
+          ref={breadcrumbContainerRef}
+          className="flex min-w-0 flex-1 items-center gap-2 titlebar-no-drag"
+        >
           {breadcrumbs.length > 0 && (
             <>
-              <div ref={breadcrumbViewportRef} className="min-w-0 flex-1 overflow-hidden">
+              <div ref={breadcrumbViewportRef} className="min-w-0 max-w-full overflow-hidden">
                 <Breadcrumb className="min-w-0">
                   <BreadcrumbList className="min-w-0 flex-nowrap overflow-hidden">
                     {hasCollapsedLeftBreadcrumbs && (
@@ -278,14 +294,14 @@ export function UnifiedHeader({
             </>
           )}
           {breadcrumbAddon && (
-            <div className="flex shrink-0 items-center gap-2">
+            <div ref={breadcrumbAddonRef} className="flex shrink-0 items-center gap-2">
               {breadcrumbAddon}
             </div>
           )}
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
           {header}
-          {(header || breadcrumbAddon) && (
+          {header && (
             <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />
           )}
           <div className="flex items-center gap-0.5">

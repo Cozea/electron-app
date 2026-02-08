@@ -28,6 +28,7 @@ import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
+import { Loader2 } from "lucide-react"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -509,14 +510,6 @@ export function ProjectLayout({
         )
     }
 
-    if (isResolvingPath && hasSyncIdentities) {
-        return (
-            <div className="flex h-full min-h-screen items-center justify-center bg-background">
-                <div className="text-sm text-muted-foreground">Resolving project directory...</div>
-            </div>
-        )
-    }
-
     const layoutContent = (
         <SidebarProvider>
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
@@ -569,6 +562,14 @@ export function ProjectLayout({
                         />
                     </SidebarInset>
                 </div >
+                {isResolvingPath && hasSyncIdentities && (
+                    <div className="pointer-events-none absolute left-0 right-0 top-12 z-20 flex justify-center px-4">
+                        <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Resolving project directory...
+                        </div>
+                    </div>
+                )}
                 <SearchCommand />
             </div>
         </SidebarProvider >
@@ -578,7 +579,7 @@ export function ProjectLayout({
     if (canSync && project && convexUser && slug) {
         return (
             <ProjectSyncProvider
-                key={`${project._id}:${effectiveLocalPath ?? "none"}`}
+                key={project._id}
                 projectId={project._id}
                 userId={convexUser._id}
                 userName={convexUser.firstName || convexUser.email || "User"}
