@@ -2,6 +2,7 @@ import { useRef, useCallback, useState } from 'react'
 import { Plus, History } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
@@ -13,34 +14,42 @@ import { CreditDisplay } from './CreditDisplay'
 interface AssistantPanelProps {
   className?: string
   projectPath?: string | null
+  projectId?: Id<"projects"> | null
   projectName?: string | null
   projectSlug?: string | null
 }
 
-export function AssistantPanel({ className, projectPath, projectName, projectSlug }: AssistantPanelProps) {
-  const {
-    mode,
-    requestClearChat,
-    panelWidth: storedWidth,
-    setPanelWidth,
-    resetPanelWidth,
-    chatTitle,
-    isHistoryOpen,
-    openHistory,
-    closeHistory,
-  } = useAssistantPanelStore()
+export function AssistantPanel({ className, projectPath, projectId, projectName, projectSlug }: AssistantPanelProps) {
+  const mode = useAssistantPanelStore((state) => state.mode)
+  const requestClearChat = useAssistantPanelStore((state) => state.requestClearChat)
+  const storedWidth = useAssistantPanelStore((state) => state.panelWidth)
+  const setPanelWidth = useAssistantPanelStore((state) => state.setPanelWidth)
+  const resetPanelWidth = useAssistantPanelStore((state) => state.resetPanelWidth)
+  const chatTitle = useAssistantPanelStore((state) => state.chatTitle)
+  const isHistoryOpen = useAssistantPanelStore((state) => state.isHistoryOpen)
+  const openHistory = useAssistantPanelStore((state) => state.openHistory)
+  const closeHistory = useAssistantPanelStore((state) => state.closeHistory)
 
   const { currentOrganization } = useAuth()
 
   // Get project ID for chat history
   const convexOrg = useQuery(
     api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+    projectId
+      ? 'skip'
+      : currentOrganization?.organizationId
+        ? { workosId: currentOrganization.organizationId }
+        : 'skip'
   )
   const project = useQuery(
     api.projects.getBySlug,
-    convexOrg?._id && projectSlug ? { organizationId: convexOrg._id, slug: projectSlug } : 'skip'
+    projectId
+      ? 'skip'
+      : convexOrg?._id && projectSlug
+        ? { organizationId: convexOrg._id, slug: projectSlug }
+        : 'skip'
   )
+  const resolvedProjectId = projectId ?? project?._id ?? null
 
   const [isDragging, setIsDragging] = useState(false)
   const dragStartX = useRef(0)
@@ -165,7 +174,7 @@ export function AssistantPanel({ className, projectPath, projectName, projectSlu
       <ChatHistory
         isOpen={isHistoryOpen}
         onClose={closeHistory}
-        projectId={project?._id ?? null}
+        projectId={resolvedProjectId}
       />
     </div>
   )

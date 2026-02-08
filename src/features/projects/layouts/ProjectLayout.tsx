@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode, useRef, useState, useCallback, useEffect } from "react"
+import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { Outlet, useLocation, useParams } from "react-router-dom"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
@@ -94,7 +94,7 @@ interface ProjectLayoutHeaderProps {
     isSecondarySidebarVisible: boolean
 }
 
-function ProjectLayoutHeader({
+const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     breadcrumbs,
     header,
     breadcrumbAddon,
@@ -111,7 +111,7 @@ function ProjectLayoutHeader({
             leftWindowControlsInset={areAllSidebarsCollapsed}
         />
     )
-}
+})
 
 
 interface ProjectLayoutProps {
@@ -408,15 +408,29 @@ export function ProjectLayout({
 
     // File tree ref for refresh functionality
     const fileTreeRef = useRef<FileTreeHandle>(null)
+    const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [isSecondarySidebarVisible, setIsSecondarySidebarVisible] = useState(true)
+
+    const fileTreeNode = useMemo(() => <FileTree ref={fileTreeRef} />, [])
 
     const handleRefreshFiles = useCallback(() => {
         if (fileTreeRef.current) {
             fileTreeRef.current.refresh()
             setIsRefreshing(true)
-            // Reset refreshing state after a short delay
-            setTimeout(() => setIsRefreshing(false), 500)
+            // Reset refreshing state after a short delay.
+            if (refreshTimeoutRef.current) {
+                clearTimeout(refreshTimeoutRef.current)
+            }
+            refreshTimeoutRef.current = setTimeout(() => setIsRefreshing(false), 500)
+        }
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            if (refreshTimeoutRef.current) {
+                clearTimeout(refreshTimeoutRef.current)
+            }
         }
     }, [])
 
@@ -448,6 +462,37 @@ export function ProjectLayout({
     const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
     const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
 
+    // Main layout content
+    const subpageLabel = useMemo(
+        () => getProjectSubpageLabel(location.pathname, slug),
+        [location.pathname, slug]
+    )
+    const breadcrumbs = useMemo(
+        () =>
+            (hideBreadcrumbs || isFilesView)
+                ? []
+                : [
+                    { label: "Projects", href: "/projects" },
+                    ...(project?.name ? [{ label: project.name, href: slug ? `/projects/${slug}` : undefined }] : []),
+                    ...(subpageLabel ? [{ label: subpageLabel }] : []),
+                ],
+        [hideBreadcrumbs, isFilesView, project?.name, slug, subpageLabel]
+    )
+    const headerSlot = useMemo(
+        () =>
+            isFilesView ? (
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {headerContent}
+                    <div className="min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+                        <EditorTabs />
+                    </div>
+                </div>
+            ) : headerContent,
+        [headerContent, isFilesView]
+    )
+    const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
+    const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
+
     if (pathRecoveryChoice) {
         return (
             <ProjectPathRecoveryScreen
@@ -472,24 +517,6 @@ export function ProjectLayout({
         )
     }
 
-    // Main layout content
-    const subpageLabel = getProjectSubpageLabel(location.pathname, slug)
-    const breadcrumbs = (hideBreadcrumbs || isFilesView) ? [] : [
-        { label: "Projects", href: "/projects" },
-        ...(project?.name ? [{ label: project.name, href: slug ? `/projects/${slug}` : undefined }] : []),
-        ...(subpageLabel ? [{ label: subpageLabel }] : []),
-    ]
-    const headerSlot = isFilesView ? (
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-            {headerContent}
-            <div className="min-w-0 flex-1 overflow-x-auto scrollbar-hide">
-                <EditorTabs />
-            </div>
-        </div>
-    ) : headerContent
-
-    const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
-
     const layoutContent = (
         <SidebarProvider>
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
@@ -499,19 +526,20 @@ export function ProjectLayout({
                         color="currentColor"
                         user={user}
                         onLogout={logout}
-                        fileTree={<FileTree ref={fileTreeRef} />}
+                        fileTree={fileTreeNode}
                         onRefreshFiles={handleRefreshFiles}
                         isRefreshing={isRefreshing}
                         onCreateFile={handleCreateFile}
                         onCreateFolder={handleCreateFolder}
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
+                        projectId={project?._id ?? null}
                     />
                     <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                         <div
                             className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
                             style={{
-                                flex: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? '0 0 0' : '1 1 0',
-                                opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
+                                flex: isAnyPanelFullscreen ? '0 0 0' : '1 1 0',
+                                opacity: isAnyPanelFullscreen ? 0 : 1,
                             }}
                         >
                             <ProjectLayoutHeader
@@ -535,6 +563,7 @@ export function ProjectLayout({
                         <ChatPanel />
                         <AssistantPanel
                             projectPath={effectiveLocalPath ?? undefined}
+                            projectId={project?._id ?? null}
                             projectName={project?.name}
                             projectSlug={slug}
                         />
