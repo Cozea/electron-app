@@ -109,6 +109,11 @@ const StudioFlowNode = ({ data, selected }: NodeProps<StudioNode>) => {
             {data.operation}
           </span>
         ) : null}
+        {data.kind === "convex" && data.isInternal ? (
+          <span className="ml-2 shrink-0 rounded-md bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            internal
+          </span>
+        ) : null}
       </NodeHeader>
 
       {data.details?.length ? (
@@ -369,8 +374,10 @@ export function ProjectBackendStudioPage() {
     })
   }, [flowInstance, shouldFitView])
 
-  const runScan = useCallback(async () => {
+  const runScan = useCallback(async (options?: { preserveManual?: boolean; preservePositions?: boolean }) => {
     if (!projectPath) return
+    const preserveManual = options?.preserveManual ?? true
+    const preservePositions = options?.preservePositions ?? true
     setIsScanning(true)
     setScanError(null)
 
@@ -379,8 +386,9 @@ export function ProjectBackendStudioPage() {
 
       setNodes((prev) => {
         const prevById = new Map(prev.map((n) => [n.id, n]))
-        const manualNodes = prev.filter((n) => n.id.startsWith("manual:"))
+        const manualNodes = preserveManual ? prev.filter((n) => n.id.startsWith("manual:")) : []
         const nextScannedNodes = graph.nodes.map((n) => {
+          if (!preservePositions) return n
           const existing = prevById.get(n.id)
           if (!existing) return n
           return {
@@ -392,11 +400,12 @@ export function ProjectBackendStudioPage() {
       })
 
       setEdges((prev) => {
-        const manualEdges = prev.filter(
-          (e) =>
-            e.id.startsWith("manual:") &&
-            (e.source.startsWith("manual:") || e.target.startsWith("manual:"))
-        )
+        const manualEdges = preserveManual
+          ? prev.filter(
+              (e) =>
+                (e.source.startsWith("manual:") || e.target.startsWith("manual:"))
+            )
+          : []
         return [...graph.edges, ...manualEdges]
       })
 
@@ -419,7 +428,7 @@ export function ProjectBackendStudioPage() {
       lastRoutesKeyRef.current = null
       setSelectedPageFile(null)
       setSelection({ nodeId: null })
-      void runScan()
+      void runScan({ preserveManual: false, preservePositions: false })
       return
     }
 
@@ -428,10 +437,9 @@ export function ProjectBackendStudioPage() {
       .sort()
       .join("|")
 
-    if (!routesKey) return
     if (lastRoutesKeyRef.current === routesKey) return
     lastRoutesKeyRef.current = routesKey
-    void runScan()
+    void runScan({ preserveManual: true, preservePositions: true })
   }, [pageRoutes, projectPath, runScan])
 
   const lastDetectedConvexUrlProjectPathRef = useRef<string | null>(null)
@@ -456,6 +464,10 @@ export function ProjectBackendStudioPage() {
 
   const handleRunSelected = useCallback(async () => {
     if (!selectedData || selectedData.kind !== "convex" || !selectedData.apiPath || !selectedData.operation) {
+      return
+    }
+    if (selectedData.isInternal) {
+      setRunnerOutput("Error: Internal Convex functions cannot be run from the client.")
       return
     }
 
@@ -573,7 +585,9 @@ export function ProjectBackendStudioPage() {
           size="sm"
           variant="secondary"
           className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-          onClick={runScan}
+          onClick={() => {
+            void runScan({ preserveManual: true, preservePositions: true })
+          }}
           disabled={!projectPath || isScanning}
         >
           {isScanning ? (
@@ -727,7 +741,7 @@ export function ProjectBackendStudioPage() {
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize="28" minSize="20" maxSize="45" className="min-w-0">
-            <div className="h-full border-l border-border bg-sidebar/30">
+            <div className="relative h-full bg-sidebar/30 sidebar-fade-border">
               <div className="h-9 px-3 flex items-center justify-between bg-background/60 backdrop-blur-sm">
                 <div className="text-sm font-medium">Inspector</div>
               </div>
@@ -795,6 +809,11 @@ export function ProjectBackendStudioPage() {
                               {selectedData.operation}
                             </span>
                           ) : null}
+                          {selectedData.isInternal ? (
+                            <span className="rounded-md bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              internal
+                            </span>
+                          ) : null}
                         </div>
 
                         <div className="text-[11px] text-muted-foreground mb-2">
@@ -823,7 +842,7 @@ export function ProjectBackendStudioPage() {
                             size="sm"
                             className="gap-2"
                             onClick={handleRunSelected}
-                            disabled={isRunning}
+                            disabled={isRunning || selectedData.isInternal}
                           >
                             {isRunning ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -833,6 +852,11 @@ export function ProjectBackendStudioPage() {
                             Run
                           </Button>
                         </div>
+                        {selectedData.isInternal ? (
+                          <div className="mt-2 text-[11px] text-muted-foreground">
+                            Internal Convex functions are server-only and cannot be invoked from this panel.
+                          </div>
+                        ) : null}
 
                         {runnerOutput ? (
                           <div className="mt-3">

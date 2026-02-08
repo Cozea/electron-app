@@ -43,7 +43,6 @@ import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
-import { SettingsSectionsList } from "./SettingsSectionsList"
 
 // Helper to get/set last seen timestamp for sync feed
 function getSyncFeedLastSeen(projectSlug: string): number {
@@ -113,18 +112,25 @@ export function ProjectSidebar({
     const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
 
+    const isFilesRoute = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
     const isPagesRoute = Boolean(slug && location.pathname === `/projects/${slug}/pages`)
+    const isSettingsRoute = Boolean(slug && location.pathname.startsWith(`/projects/${slug}/settings`))
 
     // Top-level active selection (e.g. "Files", "Tasks")
-    // Default to Files per user expectation
-    const [activeTab, setActiveTab] = React.useState<string | null>("Files")
+    const [activeTab, setActiveTab] = React.useState<string | null>(() => {
+        if (isFilesRoute) return "Files"
+        if (isPagesRoute) return "Pages"
+        if (isSettingsRoute) return "Settings"
+        return null
+    })
 
     // Keep rail selection in sync with route (e.g. when navigating to /pages)
     React.useEffect(() => {
         if (isPagesRoute) setActiveTab("Pages")
-        else if (slug && location.pathname === `/projects/${slug}/settings`) setActiveTab("Settings")
-        else if (slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`)) setActiveTab("Files")
-    }, [isPagesRoute, slug, location.pathname])
+        else if (isSettingsRoute) setActiveTab("Settings")
+        else if (isFilesRoute) setActiveTab("Files")
+        else setActiveTab(null)
+    }, [isFilesRoute, isPagesRoute, isSettingsRoute])
 
     // Track last seen timestamp for sync feed (triggers re-render when updated)
     const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
@@ -292,8 +298,7 @@ export function ProjectSidebar({
     ]
 
     const isSecondarySidebarVisible =
-        activeTab === "Files" ||
-        activeTab === "Settings" ||
+        (activeTab === "Files" && isFilesRoute) ||
         (isPagesRoute && pagesListOpen)
 
     React.useEffect(() => {
@@ -323,7 +328,7 @@ export function ProjectSidebar({
                                     <SidebarMenu>
                                         {group.items.map((item) => {
                                             // Determine interaction type
-                                            const hasSecondaryPanel = ['Files', 'Pages', 'Settings'].includes(item.title)
+                                            const hasSecondaryPanel = ['Files', 'Pages'].includes(item.title)
                                             const isActive = activeTab === item.title
                                             const isSyncFeed = item.title === 'Sync Feed'
                                             const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
@@ -474,7 +479,6 @@ export function ProjectSidebar({
                                 ) : (
                                     <>
                                         {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
-                                        {activeTab === 'Settings' && <SettingsSectionsList />}
                                     </>
                                 )}
                             </SidebarContent>

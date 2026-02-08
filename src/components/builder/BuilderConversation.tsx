@@ -113,6 +113,17 @@ interface ToolPart {
   approval?: { id?: string }
 }
 
+interface BuilderTerminalOutputState {
+  id: string
+  command: string
+  stdout: string
+  stderr: string
+  startedAt: number
+  endedAt: number | null
+  exitCode: number | null
+  timedOut: boolean
+}
+
 interface BuilderConversationProps {
   project: Project
   localPath: string
@@ -130,6 +141,18 @@ const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
+const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
+
+const truncateTerminalOutput = (output: string) => {
+  if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
+  const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
+  return `${TERMINAL_TRUNCATION_MESSAGE}${output.slice(-tailLength)}`
+}
+
+const appendTerminalOutput = (current: string, chunk: string) =>
+  truncateTerminalOutput(current + chunk)
 
 type ChatHookResult = ReturnType<typeof useChat>
 
@@ -162,6 +185,7 @@ export function BuilderConversation({
   // Track active terminal sessions for live terminal rendering
   const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
   const terminalListenerCleanupRef = useRef<Map<string, () => void>>(new Map())
+  const terminalOutputByIdRef = useRef<Map<string, BuilderTerminalOutputState>>(new Map())
 
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
@@ -169,11 +193,13 @@ export function BuilderConversation({
 
   useEffect(() => {
     const listenerCleanupMap = terminalListenerCleanupRef.current
+    const outputMap = terminalOutputByIdRef.current
     return () => {
       for (const cleanup of listenerCleanupMap.values()) {
         cleanup()
       }
       listenerCleanupMap.clear()
+      outputMap.clear()
     }
   }, [])
 
@@ -708,6 +734,55 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
+      if (toolName === 'get_terminal_output') {
+        const terminalId = toolInput && typeof toolInput.id === 'string' ? toolInput.id : ''
+        if (!terminalId) {
+          throw new Error('get_terminal_output requires id')
+        }
+
+        const session = terminalOutputByIdRef.current.get(terminalId)
+        if (session) {
+          void addToolOutput({
+            tool: toolName,
+            toolCallId,
+            output: JSON.stringify({
+              id: session.id,
+              command: session.command,
+              stdout: session.stdout,
+              stderr: session.stderr,
+              exitCode: session.exitCode,
+              running: session.endedAt === null,
+              startedAt: session.startedAt,
+              endedAt: session.endedAt,
+              timedOut: session.timedOut,
+            }),
+          })
+          return
+        }
+
+        const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
+          toolName,
+          input: toolInput ?? { id: terminalId },
+          toolCallId,
+        })
+
+        if (runtimeResult.success) {
+          void addToolOutput({
+            tool: toolName,
+            toolCallId,
+            output: runtimeResult.output,
+          })
+        } else {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: runtimeResult.error || 'Tool failed',
+          })
+        }
+        return
+      }
+
       if (toolName === 'run_in_terminal' && localPath) {
         const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
         if (!command) {
@@ -752,6 +827,16 @@ Now begin by defining your task list with build_tasks, then start working throug
           }
 
           terminalListenerCleanupRef.current.set(toolCallId, releaseListeners)
+          terminalOutputByIdRef.current.set(terminalId, {
+            id: terminalId,
+            command,
+            stdout: '',
+            stderr: '',
+            startedAt: Date.now(),
+            endedAt: null,
+            exitCode: null,
+            timedOut: false,
+          })
 
           // Track this terminal session for live UI rendering
           setTerminalSessions(prev => {
@@ -763,7 +848,11 @@ Now begin by defining your task list with build_tasks, then start working throug
           // Set up output listener
           const outputHandler = (event: { terminalId: string; data: string }) => {
             if (event.terminalId === terminalId) {
-              output += event.data
+              output = appendTerminalOutput(output, event.data)
+              const session = terminalOutputByIdRef.current.get(terminalId)
+              if (session) {
+                session.stdout = appendTerminalOutput(session.stdout, event.data)
+              }
             }
           }
 
@@ -772,6 +861,11 @@ Now begin by defining your task list with build_tasks, then start working throug
             const exitHandler = (event: { terminalId: string; exitCode: number | null }) => {
               if (event.terminalId === terminalId) {
                 completed = true
+                const session = terminalOutputByIdRef.current.get(terminalId)
+                if (session) {
+                  session.exitCode = event.exitCode ?? null
+                  session.endedAt = Date.now()
+                }
                 // Remove from active sessions when terminal exits
                 setTerminalSessions(prev => {
                   const next = new Map(prev)
@@ -785,10 +879,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             unsubExit = window.electronAPI.terminal.onExit(exitHandler)
           })
 
-          if (!isBackground) {
-            // Subscribe to output for foreground commands only
-            unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
-          }
+          unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
 
           // Send the command to the terminal
           setTimeout(() => {
@@ -827,6 +918,10 @@ Now begin by defining your task list with build_tasks, then start working throug
 
             // If timed out, kill the process
             if (!completed && timeout > 0) {
+              const session = terminalOutputByIdRef.current.get(terminalId)
+              if (session) {
+                session.timedOut = true
+              }
               try {
                 await window.electronAPI.terminal.kill({ terminalId })
               } catch {
@@ -838,7 +933,10 @@ Now begin by defining your task list with build_tasks, then start working throug
                 next.delete(toolCallId)
                 return next
               })
-              output += '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
+              output = appendTerminalOutput(
+                output,
+                '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
+              )
             }
 
             releaseListeners()
