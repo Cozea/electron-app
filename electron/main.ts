@@ -3,16 +3,16 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs' // Used by DevServer logic
-import { exec, spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
+import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { performance } from 'node:perf_hooks'
 import { cancelToolRuns, runTool } from './tools'
 import { autoUpdater } from 'electron-updater'
 import { BRIDGE_SCRIPT } from '../shared/previewBridgeScript'
-import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import * as pty from 'node-pty' // Still used for DevServer PTY
 import { resolvePathWithinDirectory } from './pathUtils'
-import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
+import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from './yjsNotify'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from './projectWatcher'
 import { createApplicationMenu } from './menu'
 import { getManifestFromWorker, getManifestFromWorkerIncremental } from './workers/fileOpsManager'
@@ -21,6 +21,7 @@ import {
   saveManifestCache,
   consumeManifestDirtyPaths,
 } from './services/manifestCache'
+import { getGitRuntimeHealth, mergeTextWithGit, runGitCommand as runGitRuntimeCommand } from './gitRuntime'
 
 // Services
 import { AuthService } from './services/AuthService'
@@ -31,9 +32,9 @@ import { PerformanceService, type PerfBatch } from './services/PerformanceServic
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
 
-// xxhash instance for file hashing
-// The hasher object contains h64Raw for direct hashing of Uint8Array
-let xxhasher: XXHashAPI | null = null
+function sha256Hex(content: Buffer | Uint8Array): string {
+  return createHash('sha256').update(content).digest('hex')
+}
 
 // Dev server process management
 // Maps projectPath to running PTY instance for proper terminal emulation
@@ -45,6 +46,296 @@ const localManifestRequests = new Map<
     totalFiles: number
   }>
 >()
+
+interface ReplicaStateRecord {
+  replicaHead: number
+  pendingOps: number
+  lastAckedAt: number | null
+  ackedOps: string[]
+  pathHeads: Record<string, string>
+  lastStateVector: number
+  lastPersistedAt: number | null
+}
+
+interface SyncOpRecord {
+  opId: string
+  idempotencyKey: string
+  projectId: string
+  actorId: string
+  actorType: 'user' | 'agent' | 'system'
+  source: 'monaco' | 'agent' | 'watcher' | 'remote'
+  kind: 'upsert' | 'delete' | 'rename' | 'chmod' | 'yjs_update'
+  path: string
+  baseHash?: string
+  newHash?: string
+  isBinary: boolean
+  size: number
+  timestamp: number
+}
+
+const replicaStateByProject = new Map<string, ReplicaStateRecord>()
+const queuedOpsByProject = new Map<string, SyncOpRecord[]>()
+const MAX_ACKED_KEYS = 4_000
+const MAX_PENDING_OPS_PER_PROJECT = 50_000
+
+function normalizeSyncPath(input: string): string {
+  return input
+    .replace(/\\/g, '/')
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/\/{2,}/g, '/')
+}
+
+function buildSyncOpKey(op: Pick<SyncOpRecord, 'opId' | 'idempotencyKey'>): string {
+  return `${op.opId}:${op.idempotencyKey}`
+}
+
+function createDefaultReplicaState(): ReplicaStateRecord {
+  return {
+    replicaHead: 0,
+    pendingOps: 0,
+    lastAckedAt: null,
+    ackedOps: [],
+    pathHeads: {},
+    lastStateVector: 0,
+    lastPersistedAt: null,
+  }
+}
+
+function getReplicaStateRecord(projectId: string): ReplicaStateRecord {
+  const existing = replicaStateByProject.get(projectId)
+  if (existing) return existing
+  const created = createDefaultReplicaState()
+  replicaStateByProject.set(projectId, created)
+  return created
+}
+
+function snapshotReplicaState(projectId: string, state?: ReplicaStateRecord): {
+  projectId: string
+  replicaHead: number
+  pendingOps: number
+  lastAckedAt: number | null
+  ackedOps: number
+  pathHeads: Record<string, string>
+  lastStateVector: number
+  lastPersistedAt: number | null
+} {
+  const replica = state ?? getReplicaStateRecord(projectId)
+  return {
+    projectId,
+    replicaHead: replica.replicaHead,
+    pendingOps: replica.pendingOps,
+    lastAckedAt: replica.lastAckedAt,
+    ackedOps: replica.ackedOps.length,
+    pathHeads: { ...replica.pathHeads },
+    lastStateVector: replica.lastStateVector,
+    lastPersistedAt: replica.lastPersistedAt,
+  }
+}
+
+function normalizeSyncOp(projectId: string, op: SyncOpRecord): SyncOpRecord | null {
+  const opId = typeof op.opId === 'string' && op.opId.trim() ? op.opId.trim() : null
+  const idempotencyKey =
+    typeof op.idempotencyKey === 'string' && op.idempotencyKey.trim()
+      ? op.idempotencyKey.trim()
+      : null
+  const actorId = typeof op.actorId === 'string' && op.actorId.trim() ? op.actorId.trim() : 'unknown'
+  const pathValue = typeof op.path === 'string' ? normalizeSyncPath(op.path) : ''
+  if (!opId || !idempotencyKey || !pathValue) return null
+
+  return {
+    opId,
+    idempotencyKey,
+    projectId,
+    actorId,
+    actorType: op.actorType,
+    source: op.source,
+    kind: op.kind,
+    path: pathValue,
+    baseHash: op.baseHash,
+    newHash: op.newHash,
+    isBinary: Boolean(op.isBinary),
+    size: Math.max(0, Number(op.size) || 0),
+    timestamp: Number.isFinite(op.timestamp) ? Number(op.timestamp) : Date.now(),
+  }
+}
+
+function applyPathHead(replica: ReplicaStateRecord, op: SyncOpRecord): void {
+  if (op.kind === 'delete') {
+    delete replica.pathHeads[op.path]
+    return
+  }
+
+  if (op.newHash && op.newHash.length === 64) {
+    replica.pathHeads[op.path] = op.newHash
+  }
+}
+
+function enqueueSyncOps(projectId: string, incomingOps: SyncOpRecord[]): {
+  accepted: number
+  rejected: number
+  replicaState: ReturnType<typeof snapshotReplicaState>
+} {
+  const normalizedProjectId = String(projectId)
+  const queue = queuedOpsByProject.get(normalizedProjectId) ?? []
+  const replica = getReplicaStateRecord(normalizedProjectId)
+  const seenKeys = new Set<string>([
+    ...queue.map((entry) => buildSyncOpKey(entry)),
+    ...replica.ackedOps,
+  ])
+
+  const sortedOps = [...incomingOps]
+    .map((op) => normalizeSyncOp(normalizedProjectId, op))
+    .filter((op): op is SyncOpRecord => op !== null)
+    .sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+      return a.opId.localeCompare(b.opId)
+    })
+
+  let accepted = 0
+  let rejected = 0
+
+  for (const op of sortedOps) {
+    const key = buildSyncOpKey(op)
+    if (seenKeys.has(key)) {
+      rejected++
+      continue
+    }
+    if (queue.length >= MAX_PENDING_OPS_PER_PROJECT) {
+      rejected++
+      continue
+    }
+
+    seenKeys.add(key)
+    queue.push(op)
+    applyPathHead(replica, op)
+    accepted++
+  }
+
+  queuedOpsByProject.set(normalizedProjectId, queue)
+  replica.replicaHead += accepted
+  replica.pendingOps = queue.length
+  replica.lastStateVector = replica.replicaHead
+  replica.lastPersistedAt = Date.now()
+  replicaStateByProject.set(normalizedProjectId, replica)
+  persistSyncState()
+
+  return {
+    accepted,
+    rejected,
+    replicaState: snapshotReplicaState(normalizedProjectId, replica),
+  }
+}
+
+function acknowledgeSyncOps(projectId: string, opIds: string[]): {
+  acked: number
+  replicaState: ReturnType<typeof snapshotReplicaState>
+} {
+  const normalizedProjectId = String(projectId)
+  const replica = getReplicaStateRecord(normalizedProjectId)
+  const queue = queuedOpsByProject.get(normalizedProjectId) ?? []
+  const ackSet = new Set(opIds.map((id) => String(id)))
+  const retained: SyncOpRecord[] = []
+  let acked = 0
+
+  for (const op of queue) {
+    const key = buildSyncOpKey(op)
+    if (ackSet.has(op.opId) || ackSet.has(key) || ackSet.has(op.idempotencyKey)) {
+      acked++
+      replica.ackedOps.push(key)
+      continue
+    }
+    retained.push(op)
+  }
+
+  if (replica.ackedOps.length > MAX_ACKED_KEYS) {
+    replica.ackedOps = replica.ackedOps.slice(replica.ackedOps.length - MAX_ACKED_KEYS)
+  }
+  replica.pendingOps = retained.length
+  replica.lastAckedAt = acked > 0 ? Date.now() : replica.lastAckedAt
+  replica.lastStateVector = replica.replicaHead - replica.pendingOps
+  replica.lastPersistedAt = Date.now()
+
+  queuedOpsByProject.set(normalizedProjectId, retained)
+  replicaStateByProject.set(normalizedProjectId, replica)
+  persistSyncState()
+
+  return {
+    acked,
+    replicaState: snapshotReplicaState(normalizedProjectId, replica),
+  }
+}
+
+function getSyncStatePath(): string {
+  return path.join(app.getPath('userData'), 'sync-replica-state.json')
+}
+
+function loadSyncState(): void {
+  try {
+    const statePath = getSyncStatePath()
+    if (!fs.existsSync(statePath)) return
+    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as {
+      replicas?: Record<string, ReplicaStateRecord>
+      queues?: Record<string, SyncOpRecord[]>
+    }
+
+    const replicas = parsed.replicas ?? {}
+    const queues = parsed.queues ?? {}
+    for (const [projectId, replica] of Object.entries(replicas)) {
+      const normalizedReplica: ReplicaStateRecord = {
+        replicaHead: Number(replica.replicaHead) || 0,
+        pendingOps: Number(replica.pendingOps) || 0,
+        lastAckedAt: typeof replica.lastAckedAt === 'number' ? replica.lastAckedAt : null,
+        ackedOps: Array.isArray(replica.ackedOps)
+          ? replica.ackedOps
+              .filter((entry) => typeof entry === 'string' && entry.length > 0)
+              .slice(-MAX_ACKED_KEYS)
+          : [],
+        pathHeads: replica.pathHeads && typeof replica.pathHeads === 'object'
+          ? Object.fromEntries(
+              Object.entries(replica.pathHeads).filter(
+                ([filePath, hash]) => typeof filePath === 'string' && typeof hash === 'string'
+              )
+            )
+          : {},
+        lastStateVector:
+          typeof replica.lastStateVector === 'number'
+            ? replica.lastStateVector
+            : Number(replica.replicaHead) || 0,
+        lastPersistedAt:
+          typeof replica.lastPersistedAt === 'number' ? replica.lastPersistedAt : null,
+      }
+      replicaStateByProject.set(projectId, normalizedReplica)
+    }
+    for (const [projectId, ops] of Object.entries(queues)) {
+      if (!Array.isArray(ops)) {
+        queuedOpsByProject.set(projectId, [])
+        continue
+      }
+      const normalizedOps = ops
+        .map((op) => normalizeSyncOp(projectId, op))
+        .filter((op): op is SyncOpRecord => op !== null)
+      queuedOpsByProject.set(projectId, normalizedOps)
+      const replica = getReplicaStateRecord(projectId)
+      replica.pendingOps = normalizedOps.length
+      replica.lastStateVector = replica.replicaHead - replica.pendingOps
+      replicaStateByProject.set(projectId, replica)
+    }
+  } catch (error) {
+    console.warn('[Sync] Failed to load sync replica state:', error)
+  }
+}
+
+function persistSyncState(): void {
+  try {
+    const statePath = getSyncStatePath()
+    const replicas = Object.fromEntries(replicaStateByProject.entries())
+    const queues = Object.fromEntries(queuedOpsByProject.entries())
+    fs.writeFileSync(statePath, JSON.stringify({ replicas, queues }, null, 2), 'utf-8')
+  } catch (error) {
+    console.warn('[Sync] Failed to persist sync replica state:', error)
+  }
+}
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -1050,46 +1341,18 @@ function runGitCommand(
   args: string[],
   cwd: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  return new Promise((resolve) => {
-    const child = spawn('git', args, {
-      cwd,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    let stderr = ''
-    let stdout = ''
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      stdout += chunk.toString()
-    })
-
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderr += chunk.toString()
-    })
-
-    child.on('error', (error) => {
-      resolve({
-        success: false,
-        error: error.message || 'Failed to execute git command',
-      })
-    })
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true })
-        return
-      }
-
-      const message =
-        stderr.trim() ||
-        stdout.trim() ||
-        `git exited with code ${code ?? 'unknown'}`
-      resolve({ success: false, error: message })
-    })
+  return runGitRuntimeCommand(args, { cwd }).then((result) => {
+    if (result.success) {
+      return { success: true }
+    }
+    return {
+      success: false,
+      error:
+        result.error ||
+        result.stderr.trim() ||
+        result.stdout.trim() ||
+        `git exited with code ${result.exitCode ?? 'unknown'}`,
+    }
   })
 }
 
@@ -1123,9 +1386,11 @@ ipcMain.handle(
 
       // Initialize git repository if requested
       if (initGit) {
-        const { execSync } = await import('child_process')
         try {
-          execSync('git init', { cwd: projectPath, stdio: 'pipe' })
+          const initResult = await runGitCommand(['init'], projectPath)
+          if (!initResult.success) {
+            throw new Error(initResult.error)
+          }
           console.log(`[Project] Initialized git repo: ${projectPath}`)
 
           // Create initial .gitignore
@@ -1165,8 +1430,11 @@ npm-debug.log*
           fs.writeFileSync(path.join(projectPath, '.gitignore'), gitignoreContent)
           console.log(`[Project] Created .gitignore`)
         } catch (gitErr) {
-          console.warn(`[Project] Git init failed (git may not be installed):`, gitErr)
-          // Don't fail the whole operation if git isn't available
+          console.warn(`[Project] Git init failed:`, gitErr)
+          return {
+            success: false,
+            error: gitErr instanceof Error ? gitErr.message : 'Git init failed',
+          }
         }
       }
 
@@ -1308,10 +1576,12 @@ ipcMain.handle(
       projectPath,
       filePath,
       content,
+      encoding = 'utf8',
     }: {
       projectPath: string
       filePath: string // relative path, e.g., "config/config.json"
       content: string
+      encoding?: 'utf8' | 'base64'
     }
   ): Promise<{
     success: boolean
@@ -1330,12 +1600,25 @@ ipcMain.handle(
 
       // Prevent the project watcher from treating this as an "external" change.
       markInternalFsChange(fullPath)
-      fs.writeFileSync(fullPath, content, 'utf-8')
+      if (encoding === 'base64') {
+        fs.writeFileSync(fullPath, Buffer.from(content, 'base64'))
+      } else {
+        fs.writeFileSync(fullPath, content, 'utf-8')
+      }
       const stats = fs.statSync(fullPath)
       console.log(`[Project] Wrote file: ${fullPath}`)
 
       // Notify Yjs of the file change for collaborative editing
-      notifyFileChanged(fullPath, content, { origin: 'agent' })
+      if (encoding !== 'base64') {
+        notifyFileChanged(fullPath, content, { origin: 'agent' })
+      }
+      notifyFileMetaChanged({
+        filePath: fullPath,
+        origin: 'agent',
+        isBinary: encoding === 'base64',
+        sizeBytes: stats.size,
+        content: encoding === 'base64' ? undefined : content,
+      })
 
       return {
         success: true,
@@ -1818,17 +2101,15 @@ ipcMain.handle(
 // Sync IPC Handlers (for file synchronization)
 // ============================================
 
-// Hash a single file using xxhash
+// Hash a single file using SHA-256
 ipcMain.handle(
   'sync:hashFile',
   async (
     _event,
     { filePath }: { filePath: string }
   ): Promise<{ hash: string; size: number }> => {
-    if (!xxhasher) throw new Error('xxhash not initialized')
-
     const content = fs.readFileSync(filePath)
-    const hash = xxhasher.h64Raw(content).toString(16).padStart(16, '0')
+    const hash = sha256Hex(content)
 
     return { hash, size: content.length }
   }
@@ -1861,10 +2142,11 @@ ipcMain.handle(
     }> => {
       const cached = loadManifestCache(projectPath)
       const dirtyPaths = consumeManifestDirtyPaths(projectPath)
+      const hasLegacyHashes = cached
+        ? Object.values(cached.entries).some((entry) => entry.hash.length !== 64)
+        : false
 
-      if (cached && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
-        if (!xxhasher) throw new Error('xxhash not initialized')
-
+      if (cached && !hasLegacyHashes && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
         const updatedEntries = { ...cached.entries }
 
         for (const relPath of dirtyPaths) {
@@ -1881,7 +2163,7 @@ ipcMain.handle(
               continue
             }
             const content = fs.readFileSync(fullPath)
-            const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+            const hash = sha256Hex(content)
             updatedEntries[relPath] = {
               path: relPath,
               hash,
@@ -1930,8 +2212,6 @@ ipcMain.handle(
         saveManifestCache(projectPath, entries, workerResult.dirMtimes)
         return { manifest: workerResult.manifest, totalFiles: workerResult.totalFiles }
       }
-
-      if (!xxhasher) throw new Error('xxhash not initialized')
 
       const defaultExcludes = [
       'node_modules',
@@ -2000,7 +2280,12 @@ ipcMain.handle(
               }
               const previous = previousByPath?.get(normalizedPath)
 
-              if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+              if (
+                previous &&
+                previous.hash.length === 64 &&
+                previous.mtime === stats.mtimeMs &&
+                previous.size === stats.size
+              ) {
                 manifest.push({
                   path: normalizedPath,
                   hash: previous.hash,
@@ -2011,7 +2296,7 @@ ipcMain.handle(
               }
 
               const content = fs.readFileSync(fullPath)
-              const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+              const hash = sha256Hex(content)
 
               manifest.push({
                 path: normalizedPath,
@@ -2058,15 +2343,27 @@ ipcMain.handle(
     {
       projectPath,
       files,
+      opMeta,
     }: {
       projectPath: string
       files: Array<{ path: string; content: string; encoding?: 'utf8' | 'base64' }>
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
     }
   ): Promise<{
     results: Array<{ path: string; success: boolean; error?: string }>
     successCount: number
   }> => {
     const results: Array<{ path: string; success: boolean; error?: string }> = []
+    const opsToEnqueue: SyncOpRecord[] = []
+    const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
+    const opActorId = opMeta?.actorId?.trim() ? opMeta.actorId.trim() : 'system'
+    const opActorType = opMeta?.actorType ?? 'system'
+    const opSource = opMeta?.source ?? 'remote'
 
     for (const file of files) {
       try {
@@ -2079,23 +2376,59 @@ ipcMain.handle(
 
         // Prevent the project watcher from treating this as an "external" change.
         markInternalFsChange(fullPath)
+        const bytes =
+          file.encoding === 'base64'
+            ? Buffer.from(file.content, 'base64')
+            : Buffer.from(file.content, 'utf-8')
         if (file.encoding === 'base64') {
-          fs.writeFileSync(fullPath, Buffer.from(file.content, 'base64'))
+          fs.writeFileSync(fullPath, bytes)
         } else {
           fs.writeFileSync(fullPath, file.content, 'utf-8')
         }
+        const stats = fs.statSync(fullPath)
         results.push({ path: file.path, success: true })
         console.log(`[Sync] Wrote file: ${file.path}`)
+
+        if (opProjectId) {
+          const normalizedPath = normalizeSyncPath(file.path)
+          const timestamp = Date.now()
+          const newHash = sha256Hex(bytes)
+          opsToEnqueue.push({
+            opId: randomUUID(),
+            idempotencyKey: `${opProjectId}:${opSource}:upsert:${normalizedPath}:${newHash}`,
+            projectId: opProjectId,
+            actorId: opActorId,
+            actorType: opActorType,
+            source: opSource,
+            kind: 'upsert',
+            path: normalizedPath,
+            newHash,
+            isBinary: file.encoding === 'base64',
+            size: stats.size,
+            timestamp,
+          })
+        }
 
         // Notify Yjs of the file change for collaborative editing
         if (file.encoding !== 'base64') {
           notifyFileChanged(fullPath, file.content, { origin: 'sync' })
         }
+        notifyFileMetaChanged({
+          filePath: fullPath,
+          origin: 'sync',
+          isBinary: file.encoding === 'base64',
+          sizeBytes: stats.size,
+          content: file.encoding === 'base64' ? undefined : file.content,
+        })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         results.push({ path: file.path, success: false, error: errorMsg })
         console.error(`[Sync] Failed to write file: ${file.path}`, err)
       }
+    }
+
+    if (opProjectId && opsToEnqueue.length > 0) {
+      enqueueSyncOps(opProjectId, opsToEnqueue)
     }
 
     return { results, successCount: results.filter((r) => r.success).length }
@@ -2110,14 +2443,26 @@ ipcMain.handle(
     {
       projectPath,
       paths,
+      opMeta,
     }: {
       projectPath: string
       paths: string[]
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
     }
   ): Promise<{
     results: Array<{ path: string; success: boolean }>
   }> => {
     const results: Array<{ path: string; success: boolean }> = []
+    const opsToEnqueue: SyncOpRecord[] = []
+    const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
+    const opActorId = opMeta?.actorId?.trim() ? opMeta.actorId.trim() : 'system'
+    const opActorType = opMeta?.actorType ?? 'system'
+    const opSource = opMeta?.source ?? 'remote'
 
     for (const relPath of paths) {
       try {
@@ -2130,6 +2475,24 @@ ipcMain.handle(
         }
         results.push({ path: relPath, success: true })
 
+        if (opProjectId) {
+          const normalizedPath = normalizeSyncPath(relPath)
+          const timestamp = Date.now()
+          opsToEnqueue.push({
+            opId: randomUUID(),
+            idempotencyKey: `${opProjectId}:${opSource}:delete:${normalizedPath}`,
+            projectId: opProjectId,
+            actorId: opActorId,
+            actorType: opActorType,
+            source: opSource,
+            kind: 'delete',
+            path: normalizedPath,
+            isBinary: false,
+            size: 0,
+            timestamp,
+          })
+        }
+
         // Notify Yjs so the in-memory doc stays in sync with disk.
         notifyFileDeleted(fullPath, { origin: 'sync' })
       } catch (err) {
@@ -2138,7 +2501,145 @@ ipcMain.handle(
       }
     }
 
+    if (opProjectId && opsToEnqueue.length > 0) {
+      enqueueSyncOps(opProjectId, opsToEnqueue)
+    }
+
     return { results }
+  }
+)
+
+// Git runtime diagnostics for sync/merge.
+ipcMain.handle(
+  'sync:getGitRuntimeHealth',
+  async (_event, { force = false }: { force?: boolean }) => {
+    return getGitRuntimeHealth(Boolean(force))
+  }
+)
+
+// Merge preview with Git's merge-file engine.
+ipcMain.handle(
+  'sync:mergePreview',
+  async (
+    _event,
+    input: {
+      baseContent: string
+      localContent: string
+      cloudContent: string
+      strategy?: 'zdiff3' | 'diff3'
+      labels?: {
+        local?: string
+        base?: string
+        cloud?: string
+      }
+    }
+  ) => {
+    return mergeTextWithGit(input)
+  }
+)
+
+function getConflictResolutionPath(): string {
+  return path.join(app.getPath('userData'), 'sync-conflict-resolutions.json')
+}
+
+ipcMain.handle(
+  'sync:resolveConflict',
+  async (
+    _event,
+    { fingerprint, resolvedContent }: { fingerprint: string; resolvedContent: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!fingerprint || typeof resolvedContent !== 'string') {
+      return { success: false, error: 'Invalid conflict resolution payload' }
+    }
+    try {
+      const filePath = getConflictResolutionPath()
+      const existing = fs.existsSync(filePath)
+        ? JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, {
+            resolvedContent: string
+            updatedAt: number
+          }>
+        : {}
+      existing[fingerprint] = {
+        resolvedContent,
+        updatedAt: Date.now(),
+      }
+      fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), 'utf-8')
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to persist conflict resolution',
+      }
+    }
+  }
+)
+
+ipcMain.handle(
+  'sync:enqueueOps',
+  async (
+    _event,
+    { projectId, ops }: { projectId: string; ops: SyncOpRecord[] }
+  ): Promise<{
+    accepted: number
+    rejected: number
+    replicaState: {
+      projectId: string
+      replicaHead: number
+      pendingOps: number
+      lastAckedAt: number | null
+      ackedOps: number
+      pathHeads: Record<string, string>
+      lastStateVector: number
+      lastPersistedAt: number | null
+    }
+  }> => {
+    return enqueueSyncOps(String(projectId), Array.isArray(ops) ? ops : [])
+  }
+)
+
+ipcMain.handle(
+  'sync:ackOps',
+  async (
+    _event,
+    { projectId, opIds }: { projectId: string; opIds: string[] }
+  ): Promise<{
+    acked: number
+    replicaState: {
+      projectId: string
+      replicaHead: number
+      pendingOps: number
+      lastAckedAt: number | null
+      ackedOps: number
+      pathHeads: Record<string, string>
+      lastStateVector: number
+      lastPersistedAt: number | null
+    }
+  }> => {
+    return acknowledgeSyncOps(String(projectId), Array.isArray(opIds) ? opIds : [])
+  }
+)
+
+ipcMain.handle(
+  'sync:getReplicaState',
+  async (
+    _event,
+    { projectId }: { projectId: string }
+  ): Promise<{
+    projectId: string
+    replicaHead: number
+    pendingOps: number
+    lastAckedAt: number | null
+    ackedOps: number
+    pathHeads: Record<string, string>
+    lastStateVector: number
+    lastPersistedAt: number | null
+  }> => {
+    const normalizedProjectId = String(projectId)
+    const replica = getReplicaStateRecord(normalizedProjectId)
+    replica.pendingOps = (queuedOpsByProject.get(normalizedProjectId) ?? []).length
+    replica.lastStateVector = replica.replicaHead - replica.pendingOps
+    replicaStateByProject.set(normalizedProjectId, replica)
+    return snapshotReplicaState(normalizedProjectId, replica)
   }
 )
 
@@ -2496,9 +2997,15 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   performanceService.recordMainMetric('app.when_ready', performance.now() - mainStart)
-  // Initialize xxhash for file sync
-  xxhasher = await xxhashInit()
-  console.log('[Sync] xxhash initialized')
+  loadSyncState()
+  const gitHealth = await getGitRuntimeHealth(true)
+  if (!gitHealth.preflightOk) {
+    console.error('[GitRuntime] Preflight failed:', gitHealth.error ?? 'Unknown error')
+  } else {
+    console.log(
+      `[GitRuntime] Ready (${gitHealth.source}): ${gitHealth.gitVersion} @ ${gitHealth.executablePath ?? 'unknown'}`
+    )
+  }
 
   registerAutoUpdater()
   createWindow()

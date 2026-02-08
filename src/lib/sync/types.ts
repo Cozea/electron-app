@@ -38,6 +38,20 @@ export interface MergeDetails {
   cloudChanges: number
   /** The merged content to write */
   mergedContent: string
+  /** Merge engine used */
+  engine?: "git-merge-file"
+  /** Base hash used for merge */
+  baseHash?: string
+  /** Local hash used for merge */
+  localHash?: string
+  /** Cloud hash used for merge */
+  cloudHash?: string
+  /** Whether merged output came from cache */
+  cacheHit?: boolean
+  /** Number of conflicting regions found by merge engine */
+  conflictCount?: number
+  /** Git runtime version used for merge */
+  gitVersion?: string
 }
 
 export interface SyncOperation {
@@ -48,6 +62,37 @@ export interface SyncOperation {
   reason: string
   /** Merge details for auto-merged files */
   mergeDetails?: MergeDetails
+}
+
+export type SyncOpSource = "monaco" | "agent" | "watcher" | "remote"
+export type SyncActorType = "user" | "agent" | "system"
+export type SyncOpKind = "upsert" | "delete" | "rename" | "chmod" | "yjs_update"
+
+export interface SyncOp {
+  opId: string
+  idempotencyKey: string
+  projectId: Id<"projects">
+  actorId: string
+  actorType: SyncActorType
+  source: SyncOpSource
+  kind: SyncOpKind
+  path: string
+  baseHash?: string
+  newHash?: string
+  isBinary: boolean
+  size: number
+  timestamp: number
+}
+
+export interface ReplicaState {
+  projectId: Id<"projects">
+  replicaHead: number
+  pendingOps: number
+  lastAckedAt: number | null
+  ackedOps: number
+  pathHeads: Record<string, string>
+  lastStateVector: number
+  lastPersistedAt: number | null
 }
 
 // Sync plan - computed from comparing local and cloud manifests

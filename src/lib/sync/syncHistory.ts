@@ -11,30 +11,43 @@ export interface LocalSyncHistory {
   cloudPathsAtLastSync: ReadonlySet<string>
 }
 
+export interface LocalSyncHistoryInspection extends LocalSyncHistory {
+  corrupted: boolean
+}
+
 const STORAGE_KEY_PREFIX = "cozea:syncHistory:v1"
 
 function getStorageKey(projectId: Id<"projects">): string {
   return `${STORAGE_KEY_PREFIX}:${projectId}`
 }
 
-export function loadLocalSyncHistory(projectId: Id<"projects">): LocalSyncHistory {
+export function inspectLocalSyncHistory(projectId: Id<"projects">): LocalSyncHistoryInspection {
   try {
     const raw = localStorage.getItem(getStorageKey(projectId))
     if (!raw) {
-      return { lastSyncAt: null, cloudPathsAtLastSync: new Set() }
+      return { lastSyncAt: null, cloudPathsAtLastSync: new Set(), corrupted: false }
     }
 
     const parsed: unknown = JSON.parse(raw)
     if (!isStoredSyncHistoryV1(parsed)) {
-      return { lastSyncAt: null, cloudPathsAtLastSync: new Set() }
+      return { lastSyncAt: null, cloudPathsAtLastSync: new Set(), corrupted: true }
     }
 
     return {
       lastSyncAt: parsed.lastSyncAt,
       cloudPathsAtLastSync: new Set(parsed.cloudPaths),
+      corrupted: false,
     }
   } catch {
-    return { lastSyncAt: null, cloudPathsAtLastSync: new Set() }
+    return { lastSyncAt: null, cloudPathsAtLastSync: new Set(), corrupted: true }
+  }
+}
+
+export function loadLocalSyncHistory(projectId: Id<"projects">): LocalSyncHistory {
+  const inspected = inspectLocalSyncHistory(projectId)
+  return {
+    lastSyncAt: inspected.lastSyncAt,
+    cloudPathsAtLastSync: inspected.cloudPathsAtLastSync,
   }
 }
 
@@ -62,4 +75,3 @@ function isStoredSyncHistoryV1(value: unknown): value is StoredSyncHistoryV1 {
 
   return true
 }
-

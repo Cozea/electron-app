@@ -1,6 +1,6 @@
 import type { LocalFileEntry, CloudFileEntry, SyncPlan, SyncOperation } from "./types"
 import { syncCheckpointStore } from "./SyncCheckpointStore"
-import { threeWayMerge } from "./ThreeWayMerge"
+import { gitMergeEngine } from "./GitMergeEngine"
 import {
   normalizeCloudEntries,
   normalizeCloudPathSet,
@@ -63,6 +63,25 @@ export interface MergeOptions {
   maxMergeBytes?: number
   /** Max concurrent merge operations */
   concurrency?: number
+}
+
+export type ProjectReconciliationState =
+  | "up_to_date"
+  | "local_ahead"
+  | "remote_ahead"
+  | "diverged"
+  | "path_missing"
+  | "journal_corrupt"
+
+export interface ProjectReconciliationClassification {
+  state: ProjectReconciliationState
+  reason: string
+  totalChanges: number
+}
+
+export interface ReconciliationClassifyOptions {
+  pathExists: boolean
+  journalCorrupt: boolean
 }
 
 /**
@@ -368,11 +387,80 @@ export function hasSyncOperations(plan: SyncPlan): boolean {
 }
 
 /**
- * Compute a sync plan with 3-way merge support.
- *
- * This enhanced version attempts to auto-merge files when both local
- * and cloud have been modified since the last sync, using Git-like
- * 3-way merge with the checkpoint as the common ancestor.
+ * Classify project reconciliation state for open/create handshake.
+ */
+export function classifyProjectReconciliation(
+  plan: SyncPlan,
+  options: ReconciliationClassifyOptions
+): ProjectReconciliationClassification {
+  const totalChanges =
+    plan.downloads.length +
+    plan.uploads.length +
+    plan.localDeletes.length +
+    plan.cloudDeletes.length +
+    (plan.autoMerged?.length ?? 0) +
+    plan.conflicts.length
+
+  if (!options.pathExists) {
+    return {
+      state: "path_missing",
+      reason: "Local project path is missing",
+      totalChanges,
+    }
+  }
+
+  if (options.journalCorrupt) {
+    return {
+      state: "journal_corrupt",
+      reason: "Local sync journal is corrupted and needs repair",
+      totalChanges,
+    }
+  }
+
+  if (plan.conflicts.length > 0) {
+    return {
+      state: "diverged",
+      reason: "Both local and cloud changed the same paths",
+      totalChanges,
+    }
+  }
+
+  const localAheadChanges = plan.uploads.length + plan.cloudDeletes.length
+  const remoteAheadChanges = plan.downloads.length + plan.localDeletes.length
+
+  if (totalChanges === 0) {
+    return {
+      state: "up_to_date",
+      reason: "Local and cloud replicas are already aligned",
+      totalChanges,
+    }
+  }
+
+  if (localAheadChanges > 0 && remoteAheadChanges === 0) {
+    return {
+      state: "local_ahead",
+      reason: "Local changes are ahead of cloud",
+      totalChanges,
+    }
+  }
+
+  if (remoteAheadChanges > 0 && localAheadChanges === 0) {
+    return {
+      state: "remote_ahead",
+      reason: "Cloud changes are ahead of local",
+      totalChanges,
+    }
+  }
+
+  return {
+    state: "diverged",
+    reason: "Local and cloud contain concurrent non-trivial changes",
+    totalChanges,
+  }
+}
+
+/**
+ * Compute a sync plan with Git-backed 3-way merge support.
  */
 export async function computeSyncPlanWithMerge(
   local: LocalFileEntry[],
@@ -429,7 +517,7 @@ export async function computeSyncPlanWithMerge(
     }
 
     const checkpoint = checkpointMap?.[conflict.path]
-    if (checkpoint) {
+    if (checkpoint && checkpoint.hash.length === 64) {
       if (conflict.localEntry.hash === checkpoint.hash && conflict.cloudEntry.hash !== checkpoint.hash) {
         fastPathDownloads.push({
           type: "download",
@@ -492,7 +580,7 @@ export async function computeSyncPlanWithMerge(
 }
 
 /**
- * Attempt 3-way merge for a conflicting file.
+ * Attempt 3-way merge for a conflicting file using the Git merge engine.
  */
 async function attemptThreeWayMerge(
   path: string,
@@ -528,8 +616,8 @@ async function attemptThreeWayMerge(
       return null
     }
 
-    // Attempt 3-way merge
-    const result = threeWayMerge.merge(checkpoint.content, localContent, cloudContent)
+    // Attempt 3-way merge via bundled/local Git runtime
+    const result = await gitMergeEngine.merge(checkpoint.content, localContent, cloudContent)
 
     if (result.success) {
       console.log(
@@ -546,6 +634,13 @@ async function attemptThreeWayMerge(
           localChanges: result.stats.localChanges,
           cloudChanges: result.stats.cloudChanges,
           mergedContent: result.merged,
+          engine: result.engine,
+          baseHash: result.baseHash,
+          localHash: result.localHash,
+          cloudHash: result.cloudHash,
+          cacheHit: result.cacheHit,
+          conflictCount: result.stats.conflictCount,
+          gitVersion: result.gitVersion,
         },
       }
     }

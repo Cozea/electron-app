@@ -2,7 +2,7 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import type { XXHashAPI } from 'xxhash-wasm'
+import { SyncCoordinator } from '../sync/SyncCoordinator'
 import { YjsOfflineQueue } from './OfflineQueue'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
@@ -18,6 +18,14 @@ interface PendingDelete {
   previousContent: string
   origin: ChangeOrigin
   previousLineCount: number
+}
+
+function resolveOpSource(origin: ChangeOrigin): 'monaco' | 'agent' {
+  return origin === 'agent' ? 'agent' : 'monaco'
+}
+
+function resolveActorType(origin: ChangeOrigin): 'user' | 'agent' {
+  return origin === 'agent' ? 'agent' : 'user'
 }
 
 /**
@@ -38,11 +46,12 @@ export class ProjectFilesPersistence {
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
-  private hasher: XXHashAPI
   private offlineQueue: YjsOfflineQueue
   private pendingChanges: Map<string, PendingChange> = new Map()
   private pendingDeletes: Map<string, PendingDelete> = new Map()
   private previousContents: Map<string, string> = new Map()
+  private previousHashes: Map<string, string> = new Map()
+  private syncCoordinator: SyncCoordinator
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
 
@@ -50,16 +59,20 @@ export class ProjectFilesPersistence {
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
     convex: ConvexReactClient,
-    hasher: XXHashAPI,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
     this.convex = convex
-    this.hasher = hasher
     this.userId = userId
     this.userName = userName
+    this.syncCoordinator = new SyncCoordinator({
+      projectId,
+      actorId: String(userId),
+      actorType: 'user',
+      source: 'monaco',
+    })
     this.offlineQueue = new YjsOfflineQueue(convex, projectId)
 
     // Initialize previous contents for existing files
@@ -141,6 +154,59 @@ export class ProjectFilesPersistence {
     return null
   }
 
+  private async ensurePreviousHash(path: string, previousContent: string): Promise<string | undefined> {
+    const cached = this.previousHashes.get(path)
+    if (cached) return cached
+    if (!previousContent) return undefined
+    const computed = await this.computeHash(previousContent)
+    this.previousHashes.set(path, computed)
+    return computed
+  }
+
+  private async enqueueDeleteOp(path: string, origin: ChangeOrigin, previousContent: string): Promise<void> {
+    try {
+      const baseHash = await this.ensurePreviousHash(path, previousContent)
+      await this.syncCoordinator.enqueueOp({
+        kind: 'delete',
+        source: resolveOpSource(origin),
+        actorType: resolveActorType(origin),
+        actorId: String(this.userId),
+        path,
+        baseHash,
+        isBinary: false,
+        size: 0,
+      })
+    } catch (error) {
+      console.warn(`[ProjectFilesPersistence] Failed to enqueue delete op for ${path}:`, error)
+    }
+  }
+
+  private async enqueueUpsertOp(
+    path: string,
+    origin: ChangeOrigin,
+    previousContent: string,
+    content: string,
+    checksum: string
+  ): Promise<void> {
+    try {
+      const baseHash = await this.ensurePreviousHash(path, previousContent)
+      const size = new TextEncoder().encode(content).byteLength
+      await this.syncCoordinator.enqueueOp({
+        kind: 'upsert',
+        source: resolveOpSource(origin),
+        actorType: resolveActorType(origin),
+        actorId: String(this.userId),
+        path,
+        baseHash,
+        newHash: checksum,
+        isBinary: false,
+        size,
+      })
+    } catch (error) {
+      console.warn(`[ProjectFilesPersistence] Failed to enqueue upsert op for ${path}:`, error)
+    }
+  }
+
   private schedulePersist() {
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = setTimeout(() => this.persistChanges(), this.debounceMs)
@@ -156,6 +222,10 @@ export class ProjectFilesPersistence {
     if (deletes.size > 0) {
       const paths = Array.from(deletes.keys())
       let deleteSuccess = false
+
+      for (const [path, info] of deletes) {
+        await this.enqueueDeleteOp(path, info.origin, info.previousContent)
+      }
 
       try {
         await this.convex.mutation(api.projectFiles.markFilesDeleted, {
@@ -208,6 +278,7 @@ export class ProjectFilesPersistence {
         }
 
         this.previousContents.delete(path)
+        this.previousHashes.delete(path)
       }
     }
 
@@ -218,6 +289,7 @@ export class ProjectFilesPersistence {
       const { content, previousContent, origin, previousLineCount } = change
       const checksum = await this.computeHash(content)
       const currentLineCount = this.countLines(content)
+      await this.enqueueUpsertOp(path, origin, previousContent, content, checksum)
 
       // Calculate additions and deletions
       const isNewFile = previousLineCount === 0
@@ -286,6 +358,7 @@ export class ProjectFilesPersistence {
 
         // Update previous content for next diff
         this.previousContents.set(path, content)
+        this.previousHashes.set(path, checksum)
       } catch (error) {
         console.error(`[ProjectFilesPersistence] Failed to save ${path}:`, error)
       }
@@ -295,7 +368,8 @@ export class ProjectFilesPersistence {
   private async computeHash(content: string): Promise<string> {
     const encoder = new TextEncoder()
     const bytes = encoder.encode(content)
-    return this.hasher.h64Raw(bytes).toString(16).padStart(16, '0')
+    const hash = await crypto.subtle.digest('SHA-256', bytes)
+    return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
   }
 
   destroy() {

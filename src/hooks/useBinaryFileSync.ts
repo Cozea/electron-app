@@ -58,21 +58,28 @@ export function useBinaryFileSync(
 
     const handleExternalFileChange = (data: {
       filePath: string
-      content: string
       origin?: string
+      isBinary: boolean
+      sizeBytes: number
     }) => {
+      if (!data.filePath.startsWith(projectPath)) return
+      const relativePath = data.filePath
+        .slice(projectPath.length)
+        .replace(/^[/\\]+/, '')
+        .replace(/\\/g, '/')
+
       // Only handle binary files
-      if (!isBinaryFile(data.filePath)) return
+      if (!data.isBinary && !isBinaryFile(relativePath)) return
 
       // Don't re-upload files we just downloaded
-      if (data.origin === 'remote') return
+      if (data.origin === 'remote' || data.origin === 'sync') return
 
-      console.log(`[BinaryFileSync] Local binary file changed: ${data.filePath}`)
-      binarySyncRef.current?.uploadBinaryFile(data.filePath)
+      console.log(`[BinaryFileSync] Local binary file changed: ${relativePath}`)
+      binarySyncRef.current?.uploadBinaryFile(relativePath)
     }
 
     // Subscribe to local file changes via Electron
-    const unsubscribe = window.electronAPI.yjs.onExternalFileChange(
+    const unsubscribe = window.electronAPI.yjs.onExternalFileMetaChange(
       handleExternalFileChange
     )
 

@@ -9,10 +9,18 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import { computeSyncPlanWithMerge, hasSyncOperations } from "@/lib/sync/syncEngine"
+import {
+  classifyProjectReconciliation,
+  computeSyncPlanWithMerge,
+  hasSyncOperations,
+} from "@/lib/sync/syncEngine"
 import { executeSyncPlan } from "@/lib/sync/syncExecutor"
 import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
-import { loadLocalSyncHistory, saveLocalSyncHistory } from "@/lib/sync/syncHistory"
+import {
+  inspectLocalSyncHistory,
+  loadLocalSyncHistory,
+  saveLocalSyncHistory,
+} from "@/lib/sync/syncHistory"
 import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
 import { normalizeCloudEntries } from "@/lib/sync/pathNormalization"
 import { SyncScreen } from "../components/SyncScreen"
@@ -59,9 +67,13 @@ interface ProjectSyncProviderProps {
 
 // Inner component that bridges agent file changes to Yjs and writes remote changes to disk
 function AgentFileSyncBridge({
+  projectId,
+  userId,
   projectPath,
   children,
 }: {
+  projectId: Id<"projects">
+  userId: Id<"users">
   projectPath: string | null
   children: ReactNode
 }) {
@@ -86,9 +98,9 @@ function AgentFileSyncBridge({
   }, [projectPath, yjsDoc])
 
   // Bridge local agent file writes to Yjs (local → Yjs → remote)
-  useAgentFileSync(yjsDoc, projectPath)
+  useAgentFileSync(yjsDoc, projectPath, projectId, userId)
   // Write remote Yjs changes back to local disk (remote → Yjs → local)
-  useYjsFileWriteback(yjsDoc, projectPath)
+  useYjsFileWriteback(yjsDoc, projectPath, projectId)
   return <>{children}</>
 }
 
@@ -357,6 +369,11 @@ export function ProjectSyncProvider({
           throw new Error("No local path available")
         }
 
+        const localPathExists = await window.electronAPI.project.pathExists(effectiveLocalPath)
+        if (!localPathExists) {
+          throw new Error("Local project directory no longer exists")
+        }
+
         // Get local manifest
         const localResult = await window.electronAPI.sync.getLocalManifest({
           projectPath: effectiveLocalPath,
@@ -385,6 +402,7 @@ export function ProjectSyncProvider({
 	      uploadedAt: f.uploadedAt,
 	    }))
 
+	    const historyInspection = inspectLocalSyncHistory(projectId)
 	    const localHistory = loadLocalSyncHistory(projectId)
 
 	    const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
@@ -419,6 +437,22 @@ export function ProjectSyncProvider({
 	      }
 	    )
 	    setPlan(syncPlan)
+
+        const reconciliation = classifyProjectReconciliation(syncPlan, {
+          pathExists: localPathExists,
+          journalCorrupt: historyInspection.corrupted,
+        })
+        setProgress((prev) => ({
+          ...prev,
+          logs: [
+            ...prev.logs,
+            `Reconciliation state: ${reconciliation.state}`,
+            reconciliation.reason,
+            ...(historyInspection.corrupted
+              ? ["Detected corrupted local sync history; continuing with safe reconciliation defaults"]
+              : []),
+          ],
+        }))
 
         const totalChanges =
           syncPlan.downloads.length +
@@ -575,7 +609,11 @@ export function ProjectSyncProvider({
         userId={userId}
         userName={userName}
       >
-        <AgentFileSyncBridge projectPath={currentLocalPath}>
+        <AgentFileSyncBridge
+          projectId={projectId}
+          userId={userId}
+          projectPath={currentLocalPath}
+        >
           {children}
         </AgentFileSyncBridge>
       </YjsProjectProvider>

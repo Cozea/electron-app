@@ -39,7 +39,7 @@ function useSyncStatus(
             setChecking(projectSlug, true)
 
             try {
-                const exists = await window.electronAPI.project.exists(projectSlug)
+                const exists = await window.electronAPI.project.pathExists(localPath)
 
                 if (!exists) {
                     setDiffStatus(projectSlug, {

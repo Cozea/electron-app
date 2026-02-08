@@ -1,4 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import type { Id } from '../../convex/_generated/dataModel'
+import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 /**
@@ -10,12 +12,86 @@ import type { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
  */
 export function useAgentFileSync(
   yjsDoc: YjsProjectDoc | null,
-  projectPath: string | null
+  projectPath: string | null,
+  projectId: Id<'projects'> | null,
+  userId: Id<'users'> | null
 ): void {
+  const coordinatorRef = useRef<SyncCoordinator | null>(null)
+
+  useEffect(() => {
+    if (!projectId) {
+      coordinatorRef.current = null
+      return
+    }
+
+    coordinatorRef.current = new SyncCoordinator({
+      projectId,
+      actorId: userId ? String(userId) : 'watcher',
+      actorType: 'user',
+      source: 'watcher',
+    })
+  }, [projectId, userId])
+
   useEffect(() => {
     if (!yjsDoc || !projectPath) return
 
     const cleanups: Array<() => void> = []
+
+    const mapOrigin = (origin?: string): {
+      source: 'agent' | 'watcher' | 'remote'
+      actorType: 'agent' | 'user' | 'system'
+      actorId: string
+    } => {
+      if (origin === 'agent') {
+        return { source: 'agent', actorType: 'agent', actorId: 'agent' }
+      }
+      if (origin === 'sync' || origin === 'remote') {
+        return { source: 'remote', actorType: 'system', actorId: 'remote' }
+      }
+      return {
+        source: 'watcher',
+        actorType: 'user',
+        actorId: userId ? String(userId) : 'watcher',
+      }
+    }
+
+    const enqueueUpsertOp = async (path: string, content: string, origin?: string) => {
+      const coordinator = coordinatorRef.current
+      if (!coordinator) return
+      const meta = mapOrigin(origin)
+      const bytes = new TextEncoder().encode(content)
+      const hash = await crypto.subtle.digest('SHA-256', bytes)
+      const newHash = Array.from(
+        new Uint8Array(hash),
+        (byte) => byte.toString(16).padStart(2, '0')
+      ).join('')
+
+      await coordinator.enqueueOp({
+        kind: 'upsert',
+        path,
+        source: meta.source,
+        actorType: meta.actorType,
+        actorId: meta.actorId,
+        newHash,
+        isBinary: false,
+        size: bytes.byteLength,
+      })
+    }
+
+    const enqueueDeleteOp = async (path: string, origin?: string) => {
+      const coordinator = coordinatorRef.current
+      if (!coordinator) return
+      const meta = mapOrigin(origin)
+      await coordinator.enqueueOp({
+        kind: 'delete',
+        path,
+        source: meta.source,
+        actorType: meta.actorType,
+        actorId: meta.actorId,
+        isBinary: false,
+        size: 0,
+      })
+    }
 
     // Subscribe to external file changes from Electron main process
     const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(
@@ -24,7 +100,9 @@ export function useAgentFileSync(
         if (!filePath.startsWith(projectPath)) return
 
         // Get relative path within project
-        const relativePath = filePath.slice(projectPath.length + 1)
+        const relativePath = filePath
+          .slice(projectPath.length)
+          .replace(/^[/\\]+/, '')
         // Normalize path separators
         const normalizedPath = relativePath.replace(/\\/g, '/')
 
@@ -32,6 +110,13 @@ export function useAgentFileSync(
 
         // Apply the change to Yjs document
         yjsDoc.applyExternalChange(normalizedPath, content, origin ?? 'agent')
+        // Only enqueue directly for remote/sync origins because local/agent/external
+        // writes are persisted (and enqueued) by ProjectFilesPersistence.
+        if (origin === 'sync' || origin === 'remote') {
+          void enqueueUpsertOp(normalizedPath, content, origin).catch((error) => {
+            console.warn(`[AgentSync] Failed to enqueue upsert op for ${normalizedPath}:`, error)
+          })
+        }
       }
     )
 
@@ -41,11 +126,18 @@ export function useAgentFileSync(
       ({ filePath, origin }) => {
         if (!filePath.startsWith(projectPath)) return
 
-        const relativePath = filePath.slice(projectPath.length + 1)
+        const relativePath = filePath
+          .slice(projectPath.length)
+          .replace(/^[/\\]+/, '')
         const normalizedPath = relativePath.replace(/\\/g, '/')
 
         console.log(`[AgentSync] External file delete: ${normalizedPath}`)
         yjsDoc.deletePath(normalizedPath, origin ?? 'agent')
+        if (origin === 'sync' || origin === 'remote') {
+          void enqueueDeleteOp(normalizedPath, origin).catch((error) => {
+            console.warn(`[AgentSync] Failed to enqueue delete op for ${normalizedPath}:`, error)
+          })
+        }
       }
     )
 
@@ -54,5 +146,5 @@ export function useAgentFileSync(
     return () => {
       for (const cleanup of cleanups) cleanup()
     }
-  }, [yjsDoc, projectPath])
+  }, [yjsDoc, projectPath, userId])
 }

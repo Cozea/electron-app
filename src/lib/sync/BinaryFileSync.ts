@@ -1,6 +1,7 @@
 import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { SyncCoordinator } from './SyncCoordinator'
 
 /**
  * Binary file extensions that should be synced via Convex storage
@@ -68,6 +69,13 @@ function getMimeType(filePath: string): string {
   return mimeTypes[ext] ?? 'application/octet-stream'
 }
 
+async function sha256FromBytes(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  const hash = await crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 /**
  * Queued binary file upload for offline retry.
  */
@@ -97,6 +105,7 @@ export class BinaryFileSync {
   private projectPath: string
   private convex: ConvexReactClient
   private userId: Id<'users'>
+  private syncCoordinator: SyncCoordinator
 
   constructor(
     projectId: Id<'projects'>,
@@ -108,6 +117,12 @@ export class BinaryFileSync {
     this.projectPath = projectPath
     this.convex = convex
     this.userId = userId
+    this.syncCoordinator = new SyncCoordinator({
+      projectId,
+      actorId: String(userId),
+      actorType: 'user',
+      source: 'watcher',
+    })
   }
 
   /**
@@ -134,6 +149,17 @@ export class BinaryFileSync {
         bytes[i] = byteString.charCodeAt(i)
       }
       const blob = new Blob([bytes], { type: getMimeType(relativePath) })
+      const checksum = await sha256FromBytes(bytes)
+      await this.syncCoordinator.enqueueOp({
+        kind: 'upsert',
+        path: relativePath,
+        source: 'watcher',
+        actorType: 'user',
+        actorId: String(this.userId),
+        newHash: checksum,
+        isBinary: true,
+        size: blob.size,
+      })
 
       // Get upload URL from Convex
       const uploadUrl = await this.convex.mutation(
@@ -163,7 +189,7 @@ export class BinaryFileSync {
         filePath: relativePath,
         fileType: blob.type,
         sizeBytes: blob.size,
-        checksum: '', // Binary files don't need content hash
+        checksum,
       })
 
       console.log(`[BinaryFileSync] Uploaded: ${relativePath}`)
@@ -205,16 +231,32 @@ export class BinaryFileSync {
         String.fromCharCode(...new Uint8Array(arrayBuffer))
       )
 
-      // Write to local disk via Electron
-      const result = await window.electronAPI.project.writeFile({
+      // Write binary content through sync writer (base64-safe path)
+      const writeResult = await window.electronAPI.sync.writeFiles({
         projectPath: this.projectPath,
-        filePath: relativePath,
-        content: base64,
+        files: [
+          {
+            path: relativePath,
+            content: base64,
+            encoding: 'base64',
+          },
+        ],
       })
 
-      if (!result.success) {
-        throw new Error(result.error ?? 'Write failed')
+      if (writeResult.successCount !== 1) {
+        const failed = writeResult.results.find((entry) => !entry.success)
+        throw new Error(failed?.error ?? 'Write failed')
       }
+
+      await this.syncCoordinator.enqueueOp({
+        kind: 'upsert',
+        path: relativePath,
+        source: 'remote',
+        actorType: 'system',
+        actorId: 'remote',
+        isBinary: true,
+        size: arrayBuffer.byteLength,
+      })
 
       console.log(`[BinaryFileSync] Downloaded: ${relativePath}`)
       return true

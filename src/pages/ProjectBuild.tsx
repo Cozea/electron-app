@@ -13,7 +13,6 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable'
-import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 import {
@@ -75,11 +74,12 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-// Compute xxhash of content (same algorithm as electron main process)
-async function computeHash(content: string, hasher: XXHashAPI): Promise<string> {
+// Compute SHA-256 checksum of text content.
+async function computeHash(content: string): Promise<string> {
   const encoder = new TextEncoder()
   const bytes = encoder.encode(content)
-  return hasher.h64Raw(bytes).toString(16).padStart(16, '0')
+  const hash = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 export function ProjectBuild() {
@@ -171,13 +171,6 @@ export function ProjectBuild() {
     projectPath: npmInstallComplete ? localPath : null,
     autoStart: npmInstallComplete && isAIGenerating,
   })
-
-  // xxhash for computing file checksums (same algorithm as electron main process)
-  // Using state instead of ref so we can block builds until hasher is ready
-  const [xxhasher, setXxhasher] = useState<XXHashAPI | null>(null)
-  useEffect(() => {
-    xxhashInit().then(setXxhasher)
-  }, [])
 
   useEffect(() => {
     if (memberLocalPath && memberLocalPath !== localPath) {
@@ -577,12 +570,7 @@ export function ProjectBuild() {
     if (!project || !convexUserId) return
 
     try {
-      // Compute checksum using same algorithm as electron main process
-      // Hasher should always be available since build waits for it
-      if (!xxhasher) {
-        addLog(`Warning: Hasher not ready for ${file.path}, checksum will be empty`)
-      }
-      const checksum = xxhasher ? await computeHash(file.content, xxhasher) : undefined
+      const checksum = await computeHash(file.content)
 
       // Determine correct MIME type based on file extension
       const mimeType = getMimeType(file.path)
@@ -615,7 +603,7 @@ export function ProjectBuild() {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       addLog(`Upload failed for ${file.path}: ${msg}`)
     }
-  }, [project, convexUserId, generateUploadUrl, saveFile, addLog, xxhasher])
+  }, [project, convexUserId, generateUploadUrl, saveFile, addLog])
 
   const handleFileCreated = useCallback((file: { path: string; content: string }) => {
     addLog(`Created: ${file.path}`)
@@ -759,15 +747,14 @@ export function ProjectBuild() {
 
   // Start build automatically when project loads (only if no cloud files to pull)
   useEffect(() => {
-    // Wait for hasher to be ready before starting build (needed for checksums)
-    if (project && !isPulling && !isAIGenerating && runStatus === 'idle' && xxhasher) {
+    if (project && !isPulling && !isAIGenerating && runStatus === 'idle') {
       // Only auto-start if there are no cloud files (otherwise auto-pull handles it)
       if (projectFiles !== undefined && projectFiles.length === 0) {
         // Always use AI build - the AI will handle file generation
         startAIBuild()
       }
     }
-  }, [project, projectFiles, isAIGenerating, runStatus, isPulling, xxhasher, startAIBuild])
+  }, [project, projectFiles, isAIGenerating, runStatus, isPulling, startAIBuild])
 
   const handleRetry = () => {
     setHasError(false)

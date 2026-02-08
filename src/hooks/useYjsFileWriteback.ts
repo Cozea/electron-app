@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as Y from 'yjs'
+import type { Id } from '../../convex/_generated/dataModel'
+import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
 import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
 import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
 
@@ -19,16 +21,23 @@ import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
  */
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
-  projectPath: string | null
+  projectPath: string | null,
+  projectId: Id<'projects'> | null
 ): void {
   const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const hasHydratedInitialFilesRef = useRef(false)
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
 
   useEffect(() => {
-    if (!yjsDoc || !projectPath) return
+    if (!yjsDoc || !projectPath || !projectId) return
 
     let cancelled = false
+    const syncCoordinator = new SyncCoordinator({
+      projectId,
+      actorId: 'remote',
+      actorType: 'system',
+      source: 'remote',
+    })
 
     // Track which files we're observing
     const observedFiles = new Map<string, () => void>()
@@ -40,16 +49,51 @@ export function useYjsFileWriteback(
       return normalized.length > 0 ? normalized : null
     }
 
+    const enqueueRemoteUpsert = async (filePath: string, content: string) => {
+      const bytes = new TextEncoder().encode(content)
+      const hash = await crypto.subtle.digest('SHA-256', bytes)
+      const newHash = Array.from(
+        new Uint8Array(hash),
+        (byte) => byte.toString(16).padStart(2, '0')
+      ).join('')
+      await syncCoordinator.enqueueOp({
+        kind: 'upsert',
+        path: filePath,
+        source: 'remote',
+        actorType: 'system',
+        actorId: 'remote',
+        newHash,
+        isBinary: false,
+        size: bytes.byteLength,
+      })
+    }
+
+    const enqueueRemoteDelete = async (filePath: string) => {
+      await syncCoordinator.enqueueOp({
+        kind: 'delete',
+        path: filePath,
+        source: 'remote',
+        actorType: 'system',
+        actorId: 'remote',
+        isBinary: false,
+        size: 0,
+      })
+    }
+
     // Write a file to disk
     const writeFileToDisk = async (filePath: string, content: string) => {
       const normalizedPath = normalizeFilePath(filePath)
       if (!normalizedPath) return
       try {
-        await window.electronAPI.project.writeFile({
+        const result = await window.electronAPI.project.writeFile({
           projectPath,
           filePath: normalizedPath,
           content,
         })
+        if (!result.success) {
+          throw new Error(result.error ?? 'Write failed')
+        }
+        await enqueueRemoteUpsert(normalizedPath, content)
         console.log(`[YjsWriteback] Wrote remote change: ${normalizedPath}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to write ${normalizedPath}:`, err)
@@ -81,10 +125,20 @@ export function useYjsFileWriteback(
       if (paths.length === 0) return
 
       try {
-        await window.electronAPI.sync.deleteFiles({
+        const result = await window.electronAPI.sync.deleteFiles({
           projectPath,
           paths,
         })
+        const deletedPaths = result.results
+          .filter((entry) => entry.success)
+          .map((entry) => entry.path)
+        await Promise.all(
+          deletedPaths.map((deletedPath) =>
+            enqueueRemoteDelete(deletedPath).catch((error) => {
+              console.warn(`[YjsWriteback] Failed to enqueue delete for ${deletedPath}:`, error)
+            })
+          )
+        )
         console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
       } catch (err) {
         console.error('[YjsWriteback] Failed to delete remote files:', err)
@@ -218,10 +272,23 @@ export function useYjsFileWriteback(
       if (!normalizedFrom || !normalizedTo) return
 
       try {
-        await window.electronAPI.project.renameFile({
+        const result = await window.electronAPI.project.renameFile({
           projectPath,
           oldPath: normalizedFrom,
           newPath: normalizedTo,
+        })
+        if (!result.success) {
+          throw new Error(result.error ?? 'Rename failed')
+        }
+        await syncCoordinator.enqueueOp({
+          kind: 'rename',
+          path: normalizedTo,
+          source: 'remote',
+          actorType: 'system',
+          actorId: 'remote',
+          isBinary: false,
+          size: 0,
+          idempotencyKey: `remote:rename:${normalizedFrom}:${normalizedTo}`,
         })
         console.log(`[YjsWriteback] Renamed: ${normalizedFrom} -> ${normalizedTo}`)
       } catch (err) {
@@ -287,5 +354,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [yjsDoc, projectPath])
+  }, [yjsDoc, projectPath, projectId])
 }
