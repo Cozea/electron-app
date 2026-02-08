@@ -118,6 +118,7 @@ interface ModelCapabilities {
   reasoningType?: 'effort' | 'token' | string
   supportsEffortParameter?: boolean
   supportsExtendedThinking?: boolean
+  reasoningRange?: unknown
 }
 
 interface ModelApiModel {
@@ -186,6 +187,17 @@ const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+function getMessageCreatedAt(message: UIMessage): number {
+  const candidate = (message as UIMessage & { createdAt?: Date | string | number }).createdAt
+  if (candidate instanceof Date) return candidate.getTime()
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate
+  if (typeof candidate === 'string') {
+    const parsed = Date.parse(candidate)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return Date.now()
+}
 
 type ChatHookResult = ReturnType<typeof useChat>
 
@@ -1045,7 +1057,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             id: msg.id,
             role: msg.role as 'user' | 'assistant' | 'system',
             content,
-            createdAt: msg.createdAt ? msg.createdAt.getTime() : Date.now(),
+            createdAt: getMessageCreatedAt(msg),
           }
         })
 
@@ -1387,11 +1399,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         }
 
         recordedApprovalIdsRef.current.add(approvalId)
+        const derivedToolName = part.type === 'dynamic-tool'
+          ? toolPart.toolName
+          : part.type.replace(/^tool-/, '')
+        if (!derivedToolName) {
+          continue
+        }
         pendingApprovals.push({
           approvalId,
-          toolName: part.type === 'dynamic-tool'
-            ? toolPart.toolName
-            : part.type.replace(/^tool-/, ''),
+          toolName: derivedToolName,
           toolInput: toolPart.input,
           messageId: message.id,
         })
@@ -1772,13 +1788,16 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             // Get supported levels from model capabilities
             const reasoningRange = selectedModelCapabilities?.reasoningRange
             const supportedLevels: string[] = Array.isArray(reasoningRange)
-              ? reasoningRange
+              ? reasoningRange.filter((level): level is string => typeof level === 'string')
               : ['low', 'medium', 'high'] // Default for effort-based models
+            const normalizedSupportedLevels = supportedLevels.length > 0
+              ? supportedLevels
+              : ['low', 'medium', 'high']
 
             // Ensure current selection is valid, otherwise use highest available
-            const effectiveLevel = supportedLevels.includes(thinkingEffort)
+            const effectiveLevel = normalizedSupportedLevels.includes(thinkingEffort)
               ? thinkingEffort
-              : supportedLevels[supportedLevels.length - 1] || 'high'
+              : normalizedSupportedLevels[normalizedSupportedLevels.length - 1] || 'high'
 
             const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
               minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
@@ -1806,7 +1825,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                 >
                   <DropdownMenuGroup className="space-y-1">
                     {/* Show levels in reverse order (high first) */}
-                    {[...supportedLevels].reverse().map((level) => {
+                    {[...normalizedSupportedLevels].reverse().map((level) => {
                       const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
                       return (
                         <DropdownMenuItem

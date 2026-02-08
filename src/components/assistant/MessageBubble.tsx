@@ -90,6 +90,49 @@ interface SourcePart {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+type ToolState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'approval-requested'
+  | 'approval-responded'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied'
+
+const TOOL_STATES: ToolState[] = [
+  'input-streaming',
+  'input-available',
+  'approval-requested',
+  'approval-responded',
+  'output-available',
+  'output-error',
+  'output-denied',
+]
+
+function getToolName(part: ToolPart): string | null {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' && part.toolName.length > 0 ? part.toolName : null
+  }
+  if (part.type.startsWith('tool-')) {
+    const derived = part.type.replace(/^tool-/, '')
+    return derived.length > 0 ? derived : null
+  }
+  return null
+}
+
+function getToolState(state: string | undefined): ToolState {
+  if (state && TOOL_STATES.includes(state as ToolState)) {
+    return state as ToolState
+  }
+  return 'input-streaming'
+}
+
+function getToolCallId(part: ToolPart, messageId: string, index: number): string {
+  return (typeof part.toolCallId === 'string' && part.toolCallId.length > 0)
+    ? part.toolCallId
+    : `${messageId}-tool-${index}`
+}
+
 export function MessageBubble({
   message,
   toolsByName,
@@ -173,18 +216,20 @@ export function MessageBubble({
 
           if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
             const toolPart = part as ToolPart
-            const toolName = part.type === 'dynamic-tool'
-              ? toolPart.toolName
-              : part.type.replace(/^tool-/, '')
+            const toolName = getToolName(toolPart)
+            if (!toolName) return null
+            const toolCallId = getToolCallId(toolPart, message.id, index)
+            const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
             const toolMeta = toolsByName.get(toolName)
             const requiresApproval = toolMeta?.executionEnvironment === 'local'
               ? (shouldRequireLocalApproval ? shouldRequireLocalApproval(toolMeta) : toolMeta.requiresApproval ?? false)
               : toolMeta?.requiresApproval ?? false
 
-            const toolState = toolPart.state || 'input-streaming'
+            const toolState = getToolState(toolPart.state)
 
             // Special handling for task-based tools (like Claude Code's TodoWrite)
             const isTaskTool = toolName === 'todo_list' || toolName === 'build_tasks'
+            const hasTaskInput = Array.isArray(toolInput?.tasks) || typeof toolInput?.tasks_json === 'string'
 
             // Skip rendering build_tasks entirely - it's shown in the controls pill
             if (toolName === 'build_tasks') {
@@ -210,7 +255,7 @@ export function MessageBubble({
                 <ToolStatic
                   key={`${message.id}-tool-${index}`}
                   toolName={toolName}
-                  input={toolPart.input as Record<string, unknown> | undefined}
+                  input={toolInput}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
@@ -221,26 +266,26 @@ export function MessageBubble({
               <Tool key={`${message.id}-tool-${index}`}>
                 <ToolHeader
                   toolName={toolName}
-                  input={toolPart.input as Record<string, unknown> | undefined}
+                  input={toolInput}
                   type={toolMeta?.toolType || 'function'}
                   state={toolState}
                 />
                 <ToolContent>
                   {/* For task tools, show TaskProgress from input while running/streaming */}
-                  {isTaskTool && toolPart.state !== 'output-available' && (toolPart.input?.tasks || toolPart.input?.tasks_json) && (
-                    <TaskProgress tasks={extractTasksFromInput(toolPart.input)} showSummary />
+                  {isTaskTool && toolState !== 'output-available' && hasTaskInput && (
+                    <TaskProgress tasks={extractTasksFromInput(toolInput)} showSummary />
                   )}
 
                   {/* For terminal tools, show live terminal if session is active, otherwise show command */}
-                  {isTerminalTool && toolPart.input?.command && (() => {
-                    const activeTerminalId = terminalSessions?.get(toolPart.toolCallId)
-                    if (activeTerminalId && projectPath && toolPart.state !== 'output-available') {
+                  {isTerminalTool && typeof toolInput?.command === 'string' && (() => {
+                    const activeTerminalId = terminalSessions?.get(toolCallId)
+                    if (activeTerminalId && projectPath && toolState !== 'output-available') {
                       // Show live interactive terminal
                       return (
                         <div className="px-4 py-2">
                           <BuilderTerminal
                             terminalId={activeTerminalId}
-                            command={toolPart.input.command as string}
+                            command={toolInput.command}
                             projectPath={projectPath}
                             isStreaming={true}
                           />
@@ -248,10 +293,10 @@ export function MessageBubble({
                       )
                     }
                     // Show command header only when no live terminal and not complete
-                    if (toolPart.state !== 'output-available') {
+                    if (toolState !== 'output-available') {
                       return (
                         <div className="px-4 py-2 text-sm text-muted-foreground font-mono">
-                          $ {toolPart.input.command}
+                          $ {toolInput.command}
                         </div>
                       )
                     }
@@ -259,39 +304,35 @@ export function MessageBubble({
                   })()}
 
                   {/* For file edit tools, show Monaco diff viewer */}
-                  {isEditTool && toolPart.input && (
+                  {isEditTool && toolInput && (
                     <ToolDiffOutput
                       toolName={toolName}
-                      input={toolPart.input as Record<string, unknown>}
+                      input={toolInput}
                       maxHeight={300}
                     />
                   )}
 
                   {/* For non-task/non-terminal/non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolPart.input && (
-                    <ToolInput input={formatToolPayload(toolPart.input)} />
+                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                    <ToolInput input={formatToolPayload(toolInput)} />
                   )}
 
                   {requiresApproval && onApproveTool && onDenyTool && (
                     <ConfirmationDialog
-                      state={
-                        (toolPart.state === 'input-available' || toolPart.state === 'approval-requested')
-                          ? 'pending'
-                          : toolPart.state === 'output-denied'
-                            ? 'rejected'
-                            : toolPart.state === 'output-available'
-                              ? 'approved'
-                              : 'pending' as ConfirmationState
-                      }
+                      state={(toolState === 'output-denied'
+                        ? 'rejected'
+                        : toolState === 'output-available'
+                          ? 'approved'
+                          : 'pending') as ConfirmationState}
                       toolName={toolMeta?.displayName || toolName}
-                      toolCallId={toolPart.toolCallId}
+                      toolCallId={toolCallId}
                       description="This tool requires your approval to execute."
-                      onApprove={() => onApproveTool(toolName, toolPart.toolCallId, toolPart.input, toolPart.approval?.id)}
-                      onReject={() => onDenyTool(toolName, toolPart.toolCallId, toolPart.approval?.id)}
+                      onApprove={() => onApproveTool(toolName, toolCallId, toolInput, toolPart.approval?.id)}
+                      onReject={() => onDenyTool(toolName, toolCallId, toolPart.approval?.id)}
                     />
                   )}
 
-                  {toolPart.state === 'output-available' && (
+                  {toolState === 'output-available' && (
                     <>
                       {isTaskTool
                         ? (() => {
@@ -303,7 +344,7 @@ export function MessageBubble({
                         })()
                         : isTerminalTool
                           ? <BuilderTerminalOutput
-                            command={toolPart.input?.command as string | undefined}
+                            command={typeof toolInput?.command === 'string' ? toolInput.command : undefined}
                             output={extractTerminalOutput(toolPart.output)}
                             className="border-t"
                           />
@@ -336,11 +377,15 @@ export function MessageBubble({
                     </>
                   )}
 
-                  {toolPart.state === 'output-error' && (
-                    <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
+                  {toolState === 'output-error' && (
+                    <ToolOutput
+                      output={null}
+                      errorText={typeof toolPart.errorText === 'string' ? toolPart.errorText : 'Tool execution failed'}
+                      toolName={toolName}
+                    />
                   )}
 
-                  {toolPart.state === 'output-denied' && (
+                  {toolState === 'output-denied' && (
                     <ToolOutput output={null} errorText="Tool execution denied" toolName={toolName} />
                   )}
                 </ToolContent>

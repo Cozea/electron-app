@@ -5,7 +5,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
+import { useTerminalStore } from '@/stores/useTerminalStore'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
@@ -45,7 +45,6 @@ import {
     LayoutGrid,
     ExternalLink,
     Sparkles,
-    Terminal,
     Camera,
     MousePointer2,
     CheckCircle2,
@@ -65,14 +64,13 @@ export function ProjectPagesPage() {
     // Store state
     const { routes, serverStatus, serverPort, actions } = useProjectPagesStore()
     const togglePagesListOpen = actions.togglePagesListOpen
-    const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
-    const { togglePanel } = useTerminalActions()
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
-    const { openWithScreenshot } = useAssistantPanelStore()
+    const openWithScreenshot = useAssistantPanelStore((state) => state.openWithScreenshot)
+    const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
 
     // Local state
@@ -101,7 +99,7 @@ export function ProjectPagesPage() {
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
-    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | 'terminal' | null>(null)
+    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -376,6 +374,7 @@ export function ProjectPagesPage() {
                     break
 
                 case 'bridge:element-selected':
+                    closeAssistantPanel()
                     setSelectedElement(payload as SelectedElementData)
                     break
                 case 'bridge:selection-cleared':
@@ -389,6 +388,7 @@ export function ProjectPagesPage() {
                     const data = payload as ElementContextMenuData
 
                     // Keep visual editor selection in sync
+                    closeAssistantPanel()
                     setSelectedElement(data as unknown as SelectedElementData)
 
                     // Inject inspected element context for AI
@@ -501,7 +501,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -773,14 +773,6 @@ export function ProjectPagesPage() {
         navigate(`/projects/${slug}?${params.toString()}`)
     }
 
-    const headerTitle = useMemo(() => "Pages", [])
-    const breadcrumbAddon = useMemo(
-        () => (focusedPageIndex !== null
-            ? null
-            : <span className="text-sm font-semibold text-foreground">{headerTitle}</span>
-        ),
-        [focusedPageIndex, headerTitle]
-    )
     const headerControls = useMemo(() => (
         <TooltipProvider delayDuration={300}>
             <div ref={headerRef} className="flex items-center gap-2">
@@ -1070,25 +1062,6 @@ export function ProjectPagesPage() {
                                 </Tooltip>
                             </>
                         )}
-                        <Tooltip open={toolbarTooltip === 'terminal'} onOpenChange={(open) => setToolbarTooltip(open ? 'terminal' : null)}>
-                            <TooltipTrigger asChild>
-                                <div
-                                    className="inline-flex"
-                                    onPointerEnter={() => setToolbarTooltip('terminal')}
-                                    onPointerLeave={() => setToolbarTooltip(null)}
-                                >
-                                    <Button
-                                        variant={isPanelOpen ? "secondary" : "ghost"}
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        onClick={togglePanel}
-                                    >
-                                        <Terminal className={cn("h-3.5 w-3.5", isPanelOpen ? "text-foreground" : "text-muted-foreground")} />
-                                    </Button>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Toggle Terminal</TooltipContent>
-                        </Tooltip>
                         <div className="h-4 w-px bg-border/60" />
                         <ServerControl
                             projectPath={projectPath}
@@ -1106,7 +1079,6 @@ export function ProjectPagesPage() {
         isCapturingScreenshot,
         isCapturingPreview,
         inspectorEnabled,
-        isPanelOpen,
         toolbarTooltip,
         serverStatus,
         bridgeReady,
@@ -1118,13 +1090,12 @@ export function ProjectPagesPage() {
         handleCaptureScreenshot,
         toggleInspector,
         handleUpdateProjectPreview,
-        togglePanel,
         setDevice,
         setZoom,
         setFocusedPageIndex,
     ])
 
-    useProjectHeader(headerControls, breadcrumbAddon, focusedPageIndex !== null)
+    useProjectHeader(headerControls, null, focusedPageIndex !== null)
 
     // Loading state - show shell immediately
     // Only show 404 if we are loaded (project === null) and explicitly not found

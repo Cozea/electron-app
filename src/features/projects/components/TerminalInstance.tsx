@@ -3,8 +3,10 @@ import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { SearchAddon } from "@xterm/addon-search"
+import { Sparkles } from "lucide-react"
 import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useTerminalActions } from "@/stores/useTerminalStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
@@ -20,17 +22,22 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
     const fitAddonRef = useRef<FitAddon | null>(null)
     const searchAddonRef = useRef<SearchAddon | null>(null)
     const hasInitializedRef = useRef(false)
+    const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [initRetry, setInitRetry] = useState(0)
+    const [selectedText, setSelectedText] = useState("")
     const { updateTerminalStatus, setTerminalHasOutput } = useTerminalActions()
     const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
 
+    const getTrimmedSelection = useCallback(() => {
+        const term = xtermRef.current
+        if (!term) return ""
+        return term.getSelection().trim()
+    }, [])
+
     // Handle right-click context menu
     const handleContextMenu = useCallback(async (e: React.MouseEvent) => {
-        const term = xtermRef.current
-        if (!term) return
-
-        const selectedText = term.getSelection()
-        if (!selectedText || selectedText.trim().length === 0) {
+        const trimmedSelection = getTrimmedSelection()
+        if (!trimmedSelection) {
             // No selection - let default context menu handle it
             return
         }
@@ -38,18 +45,27 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         e.preventDefault()
 
         const result = await window.electronAPI.contextMenu.showTerminalSelection({
-            selectedText: selectedText.trim(),
+            selectedText: trimmedSelection,
             x: e.clientX,
             y: e.clientY,
         })
 
         if (result.action === 'askAI') {
-            openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${selectedText.trim()}\n\`\`\``)
+            openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
         } else if (result.action === 'explainError') {
-            openWithPrompt(`Explain this error and suggest how to fix it:\n\n\`\`\`\n${selectedText.trim()}\n\`\`\``)
+            openWithPrompt(`Explain this error and suggest how to fix it:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
         }
         // Other actions (copy, search) are handled in main process
-    }, [openWithPrompt])
+    }, [getTrimmedSelection, openWithPrompt])
+
+    const handleAskAIFromSelection = useCallback(() => {
+        const trimmedSelection = getTrimmedSelection() || selectedText.trim()
+        if (!trimmedSelection) return
+
+        openWithPrompt(`Help me understand this terminal output:\n\n\`\`\`\n${trimmedSelection}\n\`\`\``)
+        xtermRef.current?.clearSelection()
+        setSelectedText("")
+    }, [getTrimmedSelection, openWithPrompt, selectedText])
 
     // Initialize xterm and connect to IPC
     useEffect(() => {
@@ -173,6 +189,10 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
             window.electronAPI.terminal.input({ terminalId, data })
         })
 
+        const unsubSelectionChange = term.onSelectionChange(() => {
+            setSelectedText(term.getSelection())
+        })
+
         // Handle focus - use textarea element since xterm doesn't have onFocus
         const textarea = container.querySelector('textarea')
         const handleFocusEvent = () => onFocus?.()
@@ -218,6 +238,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         return () => {
             unsubOutput()
             unsubExit()
+            unsubSelectionChange.dispose()
             if (textareaElement) {
                 textareaElement.removeEventListener('focus', handleFocusEvent)
             }
@@ -226,6 +247,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
             fitAddonRef.current = null
             searchAddonRef.current = null
             hasInitializedRef.current = false
+            setSelectedText("")
         }
     }, [terminalId, initRetry, onFocus, updateTerminalStatus, setTerminalHasOutput])
 
@@ -248,13 +270,20 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         if (!container) return
 
         const resizeObserver = new ResizeObserver(() => {
-            // Debounce resize calls
-            const timeoutId = setTimeout(handleResize, 50)
-            return () => clearTimeout(timeoutId)
+            if (resizeTimeoutRef.current) {
+                clearTimeout(resizeTimeoutRef.current)
+            }
+            resizeTimeoutRef.current = setTimeout(handleResize, 50)
         })
 
         resizeObserver.observe(container)
-        return () => resizeObserver.disconnect()
+        return () => {
+            resizeObserver.disconnect()
+            if (resizeTimeoutRef.current) {
+                clearTimeout(resizeTimeoutRef.current)
+                resizeTimeoutRef.current = null
+            }
+        }
     }, [handleResize])
 
     // Focus terminal
@@ -264,11 +293,31 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
 
     return (
         <div
-            ref={containerRef}
-            className={cn("w-full h-full bg-sidebar overflow-hidden pl-3 pt-1", className)}
-            onClick={focus}
+            className={cn("relative w-full h-full bg-sidebar overflow-hidden", className)}
             onContextMenu={handleContextMenu}
-        />
+        >
+            {selectedText.trim().length > 0 && (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={handleAskAIFromSelection}
+                            className="absolute right-3 top-2 z-20 inline-flex h-6 items-center gap-1.5 rounded-full bg-secondary/95 px-2.5 text-[11px] font-medium text-foreground shadow-sm transition-colors hover:bg-secondary"
+                        >
+                            <Sparkles className="h-3 w-3" />
+                            Ask AI
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Send selection to AI</TooltipContent>
+                </Tooltip>
+            )}
+            <div
+                ref={containerRef}
+                className="w-full h-full pl-3 pt-1"
+                onClick={focus}
+            />
+        </div>
     )
 }
 

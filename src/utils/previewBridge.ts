@@ -85,9 +85,16 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<boo
       return false
     }
 
-    // Check if already injected
-    if ((iframe.contentWindow as unknown as { __COZEA_BRIDGE_LOADED__?: boolean })?.__COZEA_BRIDGE_LOADED__) {
-      return true
+    // Force-refresh bridge instance so style/script updates apply immediately.
+    try {
+      const bridgeWindow = iframe.contentWindow as unknown as { __COZEA_BRIDGE_LOADED__?: boolean } | null
+      if (bridgeWindow) bridgeWindow.__COZEA_BRIDGE_LOADED__ = false
+      iframeDoc.getElementById('cozea-highlight')?.remove()
+      iframeDoc.getElementById('cozea-selected')?.remove()
+      iframeDoc.getElementById('cozea-highlight-label')?.remove()
+      iframeDoc.getElementById('cozea-selected-label')?.remove()
+    } catch {
+      // Ignore and continue with injection.
     }
 
     const script = iframeDoc.createElement('script')

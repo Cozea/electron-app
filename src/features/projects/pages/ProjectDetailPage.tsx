@@ -45,7 +45,7 @@ export function ProjectDetailPage() {
   const fileTabsStore = useFileTabsStore()
   const { activeFile } = projectId
     ? fileTabsStore.actions.getProjectTabs(projectId)
-    : { openFiles: [], activeFile: null }
+    : { activeFile: null }
 
   // Loading state - show shell immediately
   // Only show 404 if we are loaded (project === null) and explicitly not found

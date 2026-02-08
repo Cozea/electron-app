@@ -10,6 +10,7 @@ import { FileTree, type FileTreeHandle } from "../components/FileTree"
 import {
     SidebarInset,
     SidebarProvider,
+    useSidebar,
 } from "@/components/ui/sidebar"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { SearchCommand } from "@/components/shared/SearchCommand"
@@ -55,6 +56,61 @@ function pathIsInsideDirectory(candidate: string, directory: string): boolean {
 
 function buildPathPreferenceKey(projectId: string, userId: string): string {
     return `cozea:path-preference:${projectId}:${userId}`
+}
+
+function getProjectSubpageLabel(pathname: string, slug?: string): string | null {
+    if (!slug) return null
+    const basePath = `/projects/${slug}`
+    if (pathname === basePath || pathname === `${basePath}/`) return null
+
+    if (!pathname.startsWith(basePath)) return null
+    const rest = pathname.slice(basePath.length).replace(/^\/+/, "")
+    const segment = rest.split("/")[0] ?? ""
+
+    switch (segment) {
+        case "pages":
+            return "Pages"
+        case "backend":
+            return "Backend Studio"
+        case "dependencies":
+            return "Dependencies"
+        case "changes":
+            return "Changes"
+        case "settings":
+            return "Settings"
+        case "database":
+            return "Database"
+        case "tasks":
+            return "Tasks"
+        default:
+            return null
+    }
+}
+
+interface ProjectLayoutHeaderProps {
+    breadcrumbs: { label: string; href?: string }[]
+    header?: ReactNode
+    breadcrumbAddon?: ReactNode
+    isSecondarySidebarVisible: boolean
+}
+
+function ProjectLayoutHeader({
+    breadcrumbs,
+    header,
+    breadcrumbAddon,
+    isSecondarySidebarVisible,
+}: ProjectLayoutHeaderProps) {
+    const { state } = useSidebar()
+    const areAllSidebarsCollapsed = state === "collapsed" && !isSecondarySidebarVisible
+
+    return (
+        <UnifiedHeader
+            breadcrumbs={breadcrumbs}
+            header={header}
+            breadcrumbAddon={breadcrumbAddon}
+            leftWindowControlsInset={areAllSidebarsCollapsed}
+        />
+    )
 }
 
 
@@ -211,7 +267,7 @@ export function ProjectLayout({
 
             const targetPath =
                 existingTargetPath ??
-                `${projectsDirectory.replace(/[\\\/]+$/, "")}/${slug}`
+                `${projectsDirectory.replace(/[\\/]+$/, "")}/${slug}`
 
             setEffectiveLocalPath(null)
             setPathRecoveryChoice({
@@ -353,6 +409,7 @@ export function ProjectLayout({
     // File tree ref for refresh functionality
     const fileTreeRef = useRef<FileTreeHandle>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
+    const [isSecondarySidebarVisible, setIsSecondarySidebarVisible] = useState(true)
 
     const handleRefreshFiles = useCallback(() => {
         if (fileTreeRef.current) {
@@ -416,9 +473,11 @@ export function ProjectLayout({
     }
 
     // Main layout content
+    const subpageLabel = getProjectSubpageLabel(location.pathname, slug)
     const breadcrumbs = (hideBreadcrumbs || isFilesView) ? [] : [
         { label: "Projects", href: "/projects" },
-        ...(project?.name ? [{ label: project.name }] : []),
+        ...(project?.name ? [{ label: project.name, href: slug ? `/projects/${slug}` : undefined }] : []),
+        ...(subpageLabel ? [{ label: subpageLabel }] : []),
     ]
     const headerSlot = isFilesView ? (
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -445,6 +504,7 @@ export function ProjectLayout({
                         isRefreshing={isRefreshing}
                         onCreateFile={handleCreateFile}
                         onCreateFolder={handleCreateFolder}
+                        onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                     />
                     <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                         <div
@@ -454,10 +514,11 @@ export function ProjectLayout({
                                 opacity: chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen' ? 0 : 1,
                             }}
                         >
-                            <UnifiedHeader
+                            <ProjectLayoutHeader
                                 breadcrumbs={breadcrumbs}
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
+                                isSecondarySidebarVisible={isSecondarySidebarVisible}
                             />
                             <div
                                 className={cn(

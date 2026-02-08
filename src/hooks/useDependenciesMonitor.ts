@@ -15,6 +15,10 @@ function normalizeFileName(filePath: string): string {
   return filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
 }
 
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
 export function useDependenciesMonitor(projectPath: string | null) {
   const setSnapshot = useDependenciesStore((state) => state.actions.setSnapshot)
   const setError = useDependenciesStore((state) => state.actions.setError)
@@ -28,11 +32,16 @@ export function useDependenciesMonitor(projectPath: string | null) {
 
   const inspect = useCallback(async () => {
     if (!projectPath || !window.electronAPI?.dependencies) return
-    const result = await window.electronAPI.dependencies.inspect({ projectPath })
-    if (result.success && result.snapshot) {
-      setSnapshot(projectPath, result.snapshot)
-    } else if (result.error) {
-      setError(projectPath, result.error)
+    try {
+      const result = await window.electronAPI.dependencies.inspect({ projectPath })
+      if (result.success && result.snapshot) {
+        setSnapshot(projectPath, result.snapshot)
+      } else if (result.error) {
+        setError(projectPath, result.error)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to inspect dependencies'
+      setError(projectPath, message)
     }
   }, [projectPath, setSnapshot, setError])
 
@@ -43,7 +52,12 @@ export function useDependenciesMonitor(projectPath: string | null) {
 
   useEffect(() => {
     if (!projectPath || !window.electronAPI?.yjs) return
+    const normalizedProjectPath = normalizePath(projectPath)
     const unsubscribe = window.electronAPI.yjs.onExternalFileChange((payload) => {
+      const changedPath = normalizePath(payload.filePath)
+      if (!changedPath.startsWith(`${normalizedProjectPath}/`) && changedPath !== normalizedProjectPath) {
+        return
+      }
       const fileName = normalizeFileName(payload.filePath)
       if (!WATCH_FILES.has(fileName)) return
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -78,10 +92,12 @@ export function useDependenciesMonitor(projectPath: string | null) {
       upsertJob(projectPath, payload.job)
       if (payload.job.status === 'success') {
         void inspect()
+      } else if (payload.job.status === 'error' && payload.job.error) {
+        setError(projectPath, payload.job.error)
       }
     })
     return () => {
       unsubscribe?.()
     }
-  }, [projectPath, upsertJob, inspect])
+  }, [projectPath, upsertJob, inspect, setError])
 }

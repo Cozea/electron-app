@@ -93,6 +93,7 @@ import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -214,6 +215,43 @@ const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+type ToolState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'approval-requested'
+  | 'approval-responded'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied'
+
+const TOOL_STATES: ToolState[] = [
+  'input-streaming',
+  'input-available',
+  'approval-requested',
+  'approval-responded',
+  'output-available',
+  'output-error',
+  'output-denied',
+]
+
+function getToolName(part: ToolPart): string | null {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' && part.toolName.length > 0 ? part.toolName : null
+  }
+  if (part.type.startsWith('tool-')) {
+    const derived = part.type.replace(/^tool-/, '')
+    return derived.length > 0 ? derived : null
+  }
+  return null
+}
+
+function getToolState(state: string | undefined): ToolState {
+  if (state && TOOL_STATES.includes(state as ToolState)) {
+    return state as ToolState
+  }
+  return 'input-streaming'
+}
 
 // Tools allowed during planning phase (read-only + display_plan)
 const PLANNING_TOOLS = new Set([
@@ -568,9 +606,20 @@ export function WizardConversation({
     }
 
     try {
+      const normalizedInput = normalizeToolInput(toolCall.toolName, toolCall.input)
+      if (!isRecord(normalizedInput)) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          errorText: 'Tool input must be an object.',
+        })
+        return
+      }
+
       const result = await localRuntime.requestToolExecution(conversationId, {
         toolName: toolCall.toolName,
-        input: toolCall.input,
+        input: normalizedInput,
         toolCallId: toolCall.toolCallId,
       })
 
@@ -1165,13 +1214,16 @@ export function WizardConversation({
             // Get supported levels from model capabilities
             const reasoningRange = selectedModelCapabilities?.reasoningRange
             const supportedLevels: string[] = Array.isArray(reasoningRange)
-              ? reasoningRange
+              ? reasoningRange.filter((level): level is string => typeof level === 'string')
               : ['low', 'medium', 'high'] // Default for effort-based models
+            const normalizedSupportedLevels = supportedLevels.length > 0
+              ? supportedLevels
+              : ['low', 'medium', 'high']
 
             // Ensure current selection is valid, otherwise use highest available
-            const effectiveLevel = supportedLevels.includes(thinkingEffort)
+            const effectiveLevel = normalizedSupportedLevels.includes(thinkingEffort)
               ? thinkingEffort
-              : supportedLevels[supportedLevels.length - 1] || 'high'
+              : normalizedSupportedLevels[normalizedSupportedLevels.length - 1] || 'high'
 
             const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
               minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
@@ -1196,7 +1248,7 @@ export function WizardConversation({
                 <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
                   <DropdownMenuGroup className="space-y-1">
                     {/* Show levels in reverse order (high first) */}
-                    {[...supportedLevels].reverse().map((level) => {
+                    {[...normalizedSupportedLevels].reverse().map((level) => {
                       const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
                       return (
                         <DropdownMenuItem
@@ -1316,9 +1368,8 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
           // Tool calls
           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
             const toolPart = part as ToolPart
-            const toolName = part.type === 'dynamic-tool'
-              ? toolPart.toolName
-              : part.type.replace(/^tool-/, '')
+            const toolName = getToolName(toolPart)
+            if (!toolName) return null
             const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
 
             // Skip present_plans tool - it's rendered as PlanSelector below messages
@@ -1327,7 +1378,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
             }
 
             const toolMeta = toolsByName.get(toolName)
-            const toolState = toolPart.state || 'input-streaming'
+            const toolState = getToolState(toolPart.state)
             const isEditTool = isFileEditTool(toolName)
             // Special handling for web search tools (show only sources)
             const isWebSearchTool = toolName.toLowerCase().includes('search') ||

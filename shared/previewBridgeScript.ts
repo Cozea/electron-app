@@ -40,6 +40,8 @@ export const BRIDGE_SCRIPT = `
   let inspectorEnabled = false;
   let highlightOverlay = null;
   let selectedOverlay = null;
+  let highlightLabel = null;
+  let selectedLabel = null;
   let currentSelectedElement = null;
   let lastContextMenuTime = 0;
   let selectedTrackRaf = null;
@@ -54,13 +56,106 @@ export const BRIDGE_SCRIPT = `
       pointer-events: none;
       z-index: 999999;
       border: 2px solid \${color};
-      background: \${color}22;
+      background: transparent;
       transition: all 0.05s ease;
       display: none;
       box-sizing: border-box;
     \`;
     document.body.appendChild(overlay);
     return overlay;
+  }
+
+  // Create inspector label shown above the selector border
+  function createLabel(id, color) {
+    const label = document.createElement('div');
+    label.id = id;
+    label.style.cssText = \`
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000000;
+      border: 1px solid \${color};
+      background: \${color};
+      color: #ffffff;
+      border-radius: 6px;
+      padding: 4px 6px;
+      display: none;
+      box-sizing: border-box;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      max-width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    \`;
+
+    const title = document.createElement('div');
+    title.setAttribute('data-role', 'title');
+    title.style.cssText = 'font-size: 11px; line-height: 1.15; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+
+    const subtitle = document.createElement('div');
+    subtitle.setAttribute('data-role', 'subtitle');
+    subtitle.style.cssText = 'margin-top: 1px; font-size: 10px; line-height: 1.1; opacity: 0.88; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+
+    label.appendChild(title);
+    label.appendChild(subtitle);
+    document.body.appendChild(label);
+    return label;
+  }
+
+  function getLabelParts(el) {
+    const title = (el.tagName || 'element').toLowerCase();
+    let subtitle = '';
+
+    if (el.id && String(el.id).trim()) {
+      subtitle = '#' + String(el.id).trim();
+    } else if (typeof el.className === 'string' && el.className.trim()) {
+      const classes = el.className
+        .split(/\\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      if (classes.length) {
+        subtitle = '.' + classes.join('.');
+      }
+    }
+
+    return { title, subtitle };
+  }
+
+  function setLabelContent(label, el) {
+    if (!label || !el) return;
+    const titleNode = label.querySelector('[data-role="title"]');
+    const subtitleNode = label.querySelector('[data-role="subtitle"]');
+    if (!titleNode || !subtitleNode) return;
+
+    const { title, subtitle } = getLabelParts(el);
+    titleNode.textContent = title;
+    subtitleNode.textContent = subtitle;
+    subtitleNode.style.display = subtitle ? 'block' : 'none';
+  }
+
+  function positionLabel(label, rect) {
+    if (!label) return;
+    label.style.display = 'block';
+
+    const margin = 4;
+    const labelRect = label.getBoundingClientRect();
+    const left = Math.max(
+      margin,
+      Math.min(rect.x, window.innerWidth - labelRect.width - margin)
+    );
+    const top = Math.max(margin, rect.y - labelRect.height - 6);
+
+    label.style.left = left + 'px';
+    label.style.top = top + 'px';
+  }
+
+  function showIndicator(overlay, label, el, rect) {
+    positionOverlay(overlay, rect);
+    setLabelContent(label, el);
+    positionLabel(label, rect);
+  }
+
+  function hideIndicator(overlay, label) {
+    if (overlay) overlay.style.display = 'none';
+    if (label) label.style.display = 'none';
   }
 
   // Position overlay over element
@@ -77,7 +172,7 @@ export const BRIDGE_SCRIPT = `
     if (!currentSelectedElement || !selectedOverlay) return;
     const rect = currentSelectedElement.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) {
-      selectedOverlay.style.display = 'none';
+      hideIndicator(selectedOverlay, selectedLabel);
       return;
     }
     if (
@@ -88,6 +183,7 @@ export const BRIDGE_SCRIPT = `
       rect.height !== lastSelectedRect.height
     ) {
       positionOverlay(selectedOverlay, rect);
+      positionLabel(selectedLabel, rect);
       lastSelectedRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     }
   }
@@ -338,15 +434,22 @@ export const BRIDGE_SCRIPT = `
   function handleMouseMove(e) {
     if (!inspectorEnabled) return;
     if (currentSelectedElement) {
-      if (highlightOverlay) highlightOverlay.style.display = 'none';
+      hideIndicator(highlightOverlay, highlightLabel);
       return;
     }
 
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+    if (
+      !el ||
+      el === highlightOverlay ||
+      el === selectedOverlay ||
+      el === highlightLabel ||
+      el === selectedLabel ||
+      el === document.documentElement
+    ) return;
 
     const rect = el.getBoundingClientRect();
-    positionOverlay(highlightOverlay, rect);
+    showIndicator(highlightOverlay, highlightLabel, el, rect);
 
     postToParent({
       type: 'bridge:element-hover',
@@ -359,7 +462,7 @@ export const BRIDGE_SCRIPT = `
   }
 
   function hideHoverOverlay() {
-    if (highlightOverlay) highlightOverlay.style.display = 'none';
+    hideIndicator(highlightOverlay, highlightLabel);
   }
 
   // Handle click during inspection
@@ -381,8 +484,8 @@ export const BRIDGE_SCRIPT = `
     const rect = el.getBoundingClientRect();
 
     // Show selection overlay, hide hover
-    positionOverlay(selectedOverlay, rect);
-    if (highlightOverlay) highlightOverlay.style.display = 'none';
+    showIndicator(selectedOverlay, selectedLabel, el, rect);
+    hideIndicator(highlightOverlay, highlightLabel);
     startSelectionTracking();
 
     postToParent({
@@ -414,14 +517,21 @@ export const BRIDGE_SCRIPT = `
     e.stopPropagation();
 
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || el === highlightOverlay || el === selectedOverlay || el === document.documentElement) return;
+    if (
+      !el ||
+      el === highlightOverlay ||
+      el === selectedOverlay ||
+      el === highlightLabel ||
+      el === selectedLabel ||
+      el === document.documentElement
+    ) return;
 
     currentSelectedElement = el;
     const rect = el.getBoundingClientRect();
 
     // Show selection overlay, hide hover
-    positionOverlay(selectedOverlay, rect);
-    if (highlightOverlay) highlightOverlay.style.display = 'none';
+    showIndicator(selectedOverlay, selectedLabel, el, rect);
+    hideIndicator(highlightOverlay, highlightLabel);
     startSelectionTracking();
 
     postToParent({
@@ -458,8 +568,8 @@ export const BRIDGE_SCRIPT = `
       }
 
       // Hide overlays during capture
-      if (highlightOverlay) highlightOverlay.style.display = 'none';
-      if (selectedOverlay) selectedOverlay.style.display = 'none';
+      hideIndicator(highlightOverlay, highlightLabel);
+      hideIndicator(selectedOverlay, selectedLabel);
 
       const canvas = await window.html2canvas(document.body, {
         useCORS: true,
@@ -501,6 +611,7 @@ export const BRIDGE_SCRIPT = `
       // Update selection overlay position in case size changed
       const rect = currentSelectedElement.getBoundingClientRect();
       positionOverlay(selectedOverlay, rect);
+      positionLabel(selectedLabel, rect);
 
       postToParent({
         type: 'bridge:style-update-ack',
@@ -517,8 +628,8 @@ export const BRIDGE_SCRIPT = `
   // Clear selection
   function clearSelection() {
     currentSelectedElement = null;
-    if (selectedOverlay) selectedOverlay.style.display = 'none';
-    if (highlightOverlay) highlightOverlay.style.display = 'none';
+    hideIndicator(selectedOverlay, selectedLabel);
+    hideIndicator(highlightOverlay, highlightLabel);
     stopSelectionTracking();
   }
 
@@ -529,10 +640,10 @@ export const BRIDGE_SCRIPT = `
     switch (type) {
       case 'host:enable-inspector':
         inspectorEnabled = true;
-        if (!highlightOverlay) {
-          highlightOverlay = createOverlay('cozea-highlight', '#3b82f6');
-          selectedOverlay = createOverlay('cozea-selected', '#22c55e');
-        }
+        if (!highlightOverlay) highlightOverlay = createOverlay('cozea-highlight', '#3b82f6');
+        if (!selectedOverlay) selectedOverlay = createOverlay('cozea-selected', '#22c55e');
+        if (!highlightLabel) highlightLabel = createLabel('cozea-highlight-label', '#3b82f6');
+        if (!selectedLabel) selectedLabel = createLabel('cozea-selected-label', '#22c55e');
         document.body.style.cursor = 'crosshair';
         break;
 
@@ -560,6 +671,7 @@ export const BRIDGE_SCRIPT = `
           // Update selection overlay position in case size changed
           const rect = currentSelectedElement.getBoundingClientRect();
           positionOverlay(selectedOverlay, rect);
+          positionLabel(selectedLabel, rect);
         }
         break;
 

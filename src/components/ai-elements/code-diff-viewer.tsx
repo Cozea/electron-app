@@ -207,7 +207,6 @@ export function CodeDiffViewer({
           modified={modified}
           theme={themeName}
           onMount={handleMount}
-          keepCurrentModel
           options={{
             fontSize: 12,
             fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
