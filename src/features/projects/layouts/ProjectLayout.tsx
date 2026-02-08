@@ -96,6 +96,7 @@ interface ProjectLayoutHeaderProps {
     isSecondarySidebarVisible: boolean
     insetLeft?: number
     insetRight?: number
+    compactHeaderActions?: boolean
 }
 
 const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
@@ -105,6 +106,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     isSecondarySidebarVisible,
     insetLeft = 0,
     insetRight = 0,
+    compactHeaderActions = true,
 }: ProjectLayoutHeaderProps) {
     const { state } = useSidebar()
     const areAllSidebarsCollapsed = state === "collapsed" && !isSecondarySidebarVisible
@@ -117,6 +119,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             leftWindowControlsInset={areAllSidebarsCollapsed}
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
+            compactHeaderActions={compactHeaderActions}
         />
     )
 })
@@ -567,12 +570,13 @@ export function ProjectLayout({
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}
+                                compactHeaderActions={!isFilesView}
                             />
                             <div
                                 className={cn(
                                     // `min-w-0` prevents the main content from overflowing under the right panels
                                     // when it contains wide children (iframes, editors, etc.).
-                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                    "app-scrollbar flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}

@@ -6,6 +6,7 @@ import {
     AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 const settingsSections = [
     { id: 'general', label: 'General', icon: Settings },
@@ -35,31 +36,33 @@ export function SettingsSectionsList() {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto py-1 space-y-1">
-                {settingsSections.map((section) => {
-                    const isActive = currentSection === section.id
-                    return (
-                        <div
-                            key={section.id}
-                            onClick={() => handleSectionClick(section.id)}
-                            className={cn(
-                                "flex items-center gap-2 mx-2 px-2 h-8 text-left cursor-pointer rounded-md",
-                                "hover:bg-sidebar-accent transition-colors text-sm",
-                                isActive && "bg-sidebar-accent",
-                                section.danger && "text-red-500 hover:text-red-600"
-                            )}
-                        >
-                            <section.icon className={cn(
-                                "h-4 w-4 text-muted-foreground shrink-0",
-                                section.danger && "text-red-500"
-                            )} />
-                            <span className="truncate">
-                                {section.label}
-                            </span>
-                        </div>
-                    )
-                })}
-            </div>
+            <ScrollArea className="flex-1 py-1">
+                <div className="space-y-1">
+                    {settingsSections.map((section) => {
+                        const isActive = currentSection === section.id
+                        return (
+                            <div
+                                key={section.id}
+                                onClick={() => handleSectionClick(section.id)}
+                                className={cn(
+                                    "flex items-center gap-2 mx-2 px-2 h-8 text-left cursor-pointer rounded-md",
+                                    "hover:bg-sidebar-accent transition-colors text-sm",
+                                    isActive && "bg-sidebar-accent",
+                                    section.danger && "text-red-500 hover:text-red-600"
+                                )}
+                            >
+                                <section.icon className={cn(
+                                    "h-4 w-4 text-muted-foreground shrink-0",
+                                    section.danger && "text-red-500"
+                                )} />
+                                <span className="truncate">
+                                    {section.label}
+                                </span>
+                            </div>
+                        )
+                    })}
+                </div>
+            </ScrollArea>
         </div>
     )
 }

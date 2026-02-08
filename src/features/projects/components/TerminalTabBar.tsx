@@ -163,7 +163,7 @@ export function TerminalTabBar({
     return (
         <div className="flex items-center justify-between bg-sidebar w-full h-9">
             {/* Left: Terminal tabs + Problems tab */}
-            <div className="flex items-center h-full flex-1 min-w-0 overflow-x-auto gap-1 px-2">
+            <div className="app-scrollbar flex items-center h-full flex-1 min-w-0 overflow-x-auto gap-1 px-2">
                 {/* Terminal tabs */}
                 {groupTerminals.map((term) => {
                     const isActive = activeView === "terminal" && activeTerminal?.id === term.id

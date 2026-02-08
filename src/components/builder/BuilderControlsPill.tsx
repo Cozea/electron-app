@@ -216,7 +216,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
 
         {/* Expanded tasks list */}
         <CollapsibleContent>
-          <div className="border-t px-4 py-3 space-y-2 max-h-48 overflow-y-auto">
+          <div className="app-scrollbar border-t px-4 py-3 space-y-2 max-h-48 overflow-y-auto">
             {buildTasks.map((task, index) => (
               <div
                 key={`${task.content}-${index}`}

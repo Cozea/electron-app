@@ -148,7 +148,7 @@ export function DependenciesAddDialog({ open, onOpenChange, projectPath: _projec
           <div className="relative">
             <CommandList
               id="dependencies-add-command-list"
-              className="max-h-[420px] overflow-x-hidden overflow-y-auto"
+              className="app-scrollbar max-h-[420px] overflow-x-hidden overflow-y-auto"
               onScroll={(event) => updateFades(event.currentTarget)}
             >
             <div className="w-full min-w-0 space-y-2 p-2">

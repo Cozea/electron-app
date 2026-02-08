@@ -182,7 +182,7 @@ export function ProjectLayout({
                         className={cn(
                             // `min-w-0` prevents the main content from overflowing under the right panels
                             // when it contains wide children (iframes, editors, etc.).
-                            "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                            "app-scrollbar flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
                             shouldRemovePadding ? "p-0" : "p-4"
                         )}
                         style={{

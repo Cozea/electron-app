@@ -559,7 +559,7 @@ export function Members() {
             <div className="relative">
               <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background to-transparent z-10" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-background to-transparent z-10" />
-              <div className="max-h-64 overflow-y-auto py-2 space-y-1">
+              <div className="app-scrollbar max-h-64 overflow-y-auto py-2 space-y-1">
                 {inviteMembers.map((member, i) => (
                   <div
                     key={i}

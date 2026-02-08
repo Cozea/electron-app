@@ -1156,7 +1156,7 @@ export function ProjectPagesPage() {
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (
                     /* Empty State */
-                    <div className="flex-1 overflow-y-auto p-6">
+                    <div className="app-scrollbar flex-1 overflow-y-auto p-6">
                         <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                             <FileText className="h-10 w-10 mb-3 opacity-20" />
                             <p>No pages detected in this project.</p>
@@ -1266,7 +1266,7 @@ export function ProjectPagesPage() {
                                 <div className="flex items-center gap-3">
                                     <div
                                         ref={thumbnailStripRef}
-                                        className="flex-1 flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                                        className="app-scrollbar flex-1 flex gap-2 overflow-x-auto pb-0.5"
                                     >
                                         {routes.map((route, index) => (
                                             <div
@@ -1353,7 +1353,7 @@ export function ProjectPagesPage() {
                     </div>
                         ) : (
                     /* Grid View */
-                    <div className="flex-1 overflow-y-auto p-6 bg-sidebar/60">
+                    <div className="app-scrollbar flex-1 overflow-y-auto p-6 bg-sidebar/60">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {routes.map((route, index) => (
                                 <div key={route.path} className="group relative">

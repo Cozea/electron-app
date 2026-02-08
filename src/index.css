@@ -43,6 +43,12 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --app-scrollbar-size: 8px;
+  --app-scrollbar-radius: 9999px;
+  --app-scrollbar-track: transparent;
+  --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
+  --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
 }
 
 body {
@@ -66,14 +72,22 @@ body {
 
 /* Theme-aware translucent glass treatment for primary left sidebars. */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklab, var(--sidebar) 82%, transparent);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  /* Fallbacks first, then token-based mix when supported. */
+  background-color: rgb(255 255 255 / 0.62) !important;
+  background-color: color-mix(in srgb, var(--sidebar) 48%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  isolation: isolate;
+}
+
+.dark .sidebar-glass [data-slot="sidebar-inner"] {
+  background-color: rgb(10 10 10 / 0.58) !important;
+  background-color: color-mix(in srgb, var(--sidebar) 44%, transparent) !important;
 }
 
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar-glass [data-slot="sidebar-inner"] {
-    background-color: var(--sidebar);
+    background-color: var(--sidebar) !important;
   }
 }
 
@@ -166,6 +180,28 @@ body {
   background-position: left top;
   background-repeat: no-repeat;
 }
+
+/* Unified page-action sizing inside shared/universal header slots. */
+.shared-header-action-pills :where([data-slot="button"], button, [role="button"]) {
+  height: 1.5rem !important;
+  min-height: 1.5rem !important;
+  border-radius: 9999px !important;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+
+.shared-header-action-pills :where([data-slot="button"], button, [role="button"])[data-size="icon"],
+.shared-header-action-pills :where([data-slot="button"], button, [role="button"])[data-size="icon-sm"],
+.shared-header-action-pills :where([data-slot="button"], button, [role="button"])[data-size="icon-lg"],
+.shared-header-action-pills :where([data-slot="button"], button, [role="button"])[class~="w-7"] {
+  width: 1.5rem !important;
+  min-width: 1.5rem !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -424,28 +460,67 @@ body {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  .app-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+  }
+
+  .app-scrollbar::-webkit-scrollbar {
+    width: var(--app-scrollbar-size);
+    height: var(--app-scrollbar-size);
+  }
+
+  .app-scrollbar::-webkit-scrollbar-track {
+    background: var(--app-scrollbar-track);
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--app-scrollbar-thumb);
+    border-radius: var(--app-scrollbar-radius);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--app-scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb:active {
+    background: var(--app-scrollbar-thumb-active);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
 }
 
 @layer base {
   /* Custom Scrollbars */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: var(--app-scrollbar-size);
+    height: var(--app-scrollbar-size);
   }
 
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--app-scrollbar-track);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.556 0 0 / 0.2);
-    border-radius: 9999px;
+    background: var(--app-scrollbar-thumb);
+    border-radius: var(--app-scrollbar-radius);
     border: 2px solid transparent;
     background-clip: content-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.556 0 0 / 0.4);
+    background: var(--app-scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--app-scrollbar-thumb-active);
     border: 2px solid transparent;
     background-clip: content-box;
   }
@@ -474,27 +549,33 @@ body {
   /* xterm uses a native viewport scrollbar; make it match the app's modern style. */
   .xterm .xterm-viewport {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.556 0 0 / 0.35) transparent;
+    scrollbar-color: var(--app-scrollbar-thumb-hover) var(--app-scrollbar-track);
   }
 
   .xterm .xterm-viewport::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: calc(var(--app-scrollbar-size) - 1px);
+    height: calc(var(--app-scrollbar-size) - 1px);
   }
 
   .xterm .xterm-viewport::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--app-scrollbar-track);
   }
 
   .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-    background: oklch(0.556 0 0 / 0.28);
-    border-radius: 9999px;
+    background: var(--app-scrollbar-thumb);
+    border-radius: var(--app-scrollbar-radius);
     border: 2px solid transparent;
     background-clip: content-box;
   }
 
   .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.556 0 0 / 0.45);
+    background: var(--app-scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .xterm .xterm-viewport::-webkit-scrollbar-thumb:active {
+    background: var(--app-scrollbar-thumb-active);
     border: 2px solid transparent;
     background-clip: content-box;
   }
@@ -506,6 +587,25 @@ body {
   /* Hide native scrollbar in Radix ScrollArea to prevent double/persistent scrollbars */
   [data-radix-scroll-area-viewport]::-webkit-scrollbar {
     display: none;
+  }
+
+  .app-scroll-area [data-slot="scroll-area-thumb"] {
+    background: var(--app-scrollbar-thumb);
+    border-radius: var(--app-scrollbar-radius);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .app-scroll-area [data-slot="scroll-area-scrollbar"]:hover [data-slot="scroll-area-thumb"] {
+    background: var(--app-scrollbar-thumb-hover);
+  }
+
+  .app-scroll-area [data-slot="scroll-area-scrollbar"][data-state="visible"] [data-slot="scroll-area-thumb"] {
+    background: var(--app-scrollbar-thumb-hover);
+  }
+
+  .app-scroll-area [data-slot="scroll-area-scrollbar"] [data-slot="scroll-area-thumb"]:active {
+    background: var(--app-scrollbar-thumb-active);
   }
 }
 

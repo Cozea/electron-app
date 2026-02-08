@@ -416,7 +416,7 @@ export const WebPreviewConsole = memo(
           />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="max-h-32 overflow-auto bg-zinc-900 p-2 font-mono text-xs">
+          <div className="app-scrollbar max-h-32 overflow-auto bg-zinc-900 p-2 font-mono text-xs">
             {logs.map((log, index) => (
               <div
                 key={index}
