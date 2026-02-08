@@ -110,6 +110,7 @@ export function ProjectPagesPage() {
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
     const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
+    const shouldElevateInspectorSidebar = isFocusedPreview && visualEditorOpen
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
     const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
@@ -1127,7 +1128,12 @@ export function ProjectPagesPage() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background relative">
+        <div
+            className={cn(
+                "flex flex-col bg-background relative",
+                shouldElevateInspectorSidebar ? "h-[calc(100%+2.5rem)] -mt-10" : "h-full"
+            )}
+        >
 
             {/* Main Content + Inspector + Terminal */}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -1140,7 +1146,12 @@ export function ProjectPagesPage() {
                     />
                 )}
 
-                <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
+                <div
+                    className={cn(
+                        "flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden",
+                        shouldElevateInspectorSidebar && "pt-10"
+                    )}
+                >
                     {/* Content */}
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (

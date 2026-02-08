@@ -35,11 +35,48 @@ import type { SyncExecutorResult } from '@/lib/sync/syncExecutor'
 import { saveLocalSyncHistory } from '@/lib/sync/syncHistory'
 import type { CloudFileEntry, LocalFileEntry } from '@/lib/sync/types'
 
+type RepoIntegrationProvider = 'github' | 'gitlab'
+
 function getRepoDisplayName(repoUrl: string): string {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
   if (!trimmed) return 'Imported Project'
   const lastSegment = trimmed.split(/[/\\]/).pop() ?? 'Imported Project'
   return lastSegment.replace(/\.git$/i, '') || 'Imported Project'
+}
+
+function isRepoIntegrationProvider(provider: string): provider is RepoIntegrationProvider {
+  return provider === 'github' || provider === 'gitlab'
+}
+
+function readTokenValue(
+  credentials: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = credentials[key]
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function extractRepoAccessToken(
+  provider: RepoIntegrationProvider,
+  credentials: Record<string, unknown>
+): string | undefined {
+  if (provider === 'gitlab') {
+    return (
+      readTokenValue(credentials, 'personalAccessToken') ||
+      readTokenValue(credentials, 'accessToken') ||
+      readTokenValue(credentials, 'apiToken') ||
+      readTokenValue(credentials, 'token')
+    )
+  }
+
+  return (
+    readTokenValue(credentials, 'accessToken') ||
+    readTokenValue(credentials, 'personalAccessToken') ||
+    readTokenValue(credentials, 'apiToken') ||
+    readTokenValue(credentials, 'token')
+  )
 }
 
 export function NewProject() {
@@ -489,6 +526,44 @@ export function NewProject() {
       let importPath = repoSource.repoUrl
 
       if (repoSource.provider !== 'local') {
+        let accessToken: string | undefined
+
+        if (isRepoIntegrationProvider(repoSource.provider) && window.electronAPI?.integrations) {
+          try {
+            const [integrationCredentials, keyMetadata] = await Promise.all([
+              convex.query(api.integrations.getEncryptedCredentials, {
+                organizationId,
+                provider: repoSource.provider,
+              }),
+              convex.query(api.integrations.getKeyMetadata, { organizationId }),
+            ])
+
+            if (integrationCredentials?.encryptedCredentials && keyMetadata?.keyId) {
+              const decryptResult = await window.electronAPI.integrations.decrypt({
+                encrypted: integrationCredentials.encryptedCredentials,
+                keyId: keyMetadata.keyId,
+              })
+
+              if (decryptResult.success && decryptResult.credentials) {
+                accessToken = extractRepoAccessToken(
+                  repoSource.provider,
+                  decryptResult.credentials
+                )
+              } else {
+                console.warn(
+                  `[Import] Failed to decrypt ${repoSource.provider} credentials:`,
+                  decryptResult.error
+                )
+              }
+            }
+          } catch (credentialError) {
+            console.warn(
+              `[Import] Failed to resolve ${repoSource.provider} integration credentials:`,
+              credentialError
+            )
+          }
+        }
+
         if (!result.slug) {
           await cleanupCreatedProject()
           setImportSyncState('error')
@@ -503,11 +578,18 @@ export function NewProject() {
           repoUrl: repoSource.repoUrl,
           provider: repoSource.provider,
           branch: repoSource.branch,
+          accessToken,
         })
 
         if (!cloneResult.success || !cloneResult.localPath) {
           await cleanupCreatedProject()
-          const cloneMessage = cloneResult.error || 'Failed to clone repository'
+          let cloneMessage = cloneResult.error || 'Failed to clone repository'
+          if (
+            isRepoIntegrationProvider(repoSource.provider) &&
+            !accessToken
+          ) {
+            cloneMessage += ` If this repository is private, connect your ${repoSource.provider === 'github' ? 'GitHub' : 'GitLab'} integration and try again.`
+          }
           setImportSyncState('error')
           setImportSyncMessage(cloneMessage)
           setImportError(cloneMessage)

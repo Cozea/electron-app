@@ -346,6 +346,7 @@ export interface ElectronAPI {
       repoUrl: string
       provider: string
       branch?: string
+      accessToken?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
