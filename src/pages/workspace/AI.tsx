@@ -4,6 +4,7 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { BreadcrumbCountChip } from '../../components/layouts/BreadcrumbCountChip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -212,6 +213,26 @@ export function AI() {
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
   const totalCreditsUsed = aggregate?.totalCreditsUsed || 0
+  const totalProviders = (Object.keys(providerInfo) as Provider[]).length
+  const connectedProviders = (Object.keys(providerInfo) as Provider[]).filter(
+    (provider) => credentialsStatus?.[provider]?.connected
+  ).length
+
+  const breadcrumbAddon = totalCredits > 0 ? (
+    <BreadcrumbCountChip
+      current={usedCredits}
+      limit={totalCredits}
+      currentLabel={usedCredits.toLocaleString()}
+      limitLabel={totalCredits.toLocaleString()}
+      title={`${usedCredits.toLocaleString()} / ${totalCredits.toLocaleString()} credits used this cycle`}
+    />
+  ) : (
+    <BreadcrumbCountChip
+      current={connectedProviders}
+      limit={totalProviders}
+      title={`${connectedProviders} / ${totalProviders} AI providers connected`}
+    />
+  )
 
 
 
@@ -220,6 +241,7 @@ export function AI() {
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
+      breadcrumbAddon={breadcrumbAddon}
     >
       <div className="space-y-6">
         {/* Subscription Status Banner */}

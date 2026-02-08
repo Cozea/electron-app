@@ -16,6 +16,23 @@ interface DiffPanelProps {
   showHeader?: boolean
 }
 
+interface ChangeWithContent {
+  id: Id<"fileChanges">
+  filePath: string
+  changeType: "create" | "modify" | "delete" | "rename"
+  oldContent: string
+  newContent: string
+  additions?: number
+  deletions?: number
+  totalLines?: number
+  origin: "user" | "agent" | "remote" | "init"
+  userName: string
+  userColor: string
+  userImage?: string
+  isAgent: boolean
+  timestamp: number
+}
+
 function formatRelativeTime(timestamp: number) {
   const now = Date.now()
   const diff = now - timestamp
@@ -100,6 +117,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
+  const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
   const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowTopFade(!atTop)
     setShowBottomFade(!atBottom)
@@ -113,9 +131,27 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   const change = useQuery(
     api.activity.getChangeWithContent,
     changeId ? { changeId } : 'skip'
-  )
+  ) as ChangeWithContent | null | undefined
+  const displayedChange = change ?? cachedChange
+  const isSwitchingDiff = change === undefined && cachedChange !== null
 
   const addComment = useMutation(api.activity.addComment)
+
+  useEffect(() => {
+    if (!changeId) {
+      setCachedChange(null)
+      return
+    }
+
+    if (change) {
+      setCachedChange(change)
+      return
+    }
+
+    if (change === null) {
+      setCachedChange(null)
+    }
+  }, [change, changeId])
 
   const handleSubmitComment = async () => {
     if (!commentText.trim() || !changeId || !convexUserId) return
@@ -144,7 +180,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   if (!changeId) return null
 
-  if (change === undefined) {
+  if (!displayedChange && change === undefined) {
     return (
       <div className="h-full flex items-center justify-center">
         <Shimmer className="text-sm text-muted-foreground">Loading diff preview...</Shimmer>
@@ -152,7 +188,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     )
   }
 
-  if (!change) {
+  if (!displayedChange) {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-muted-foreground">Change not found</p>
@@ -160,39 +196,39 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     )
   }
 
-  const fileName = change.filePath.split('/').pop() || change.filePath
-  const displayPath = getRelativePath(change.filePath)
+  const fileName = displayedChange.filePath.split('/').pop() || displayedChange.filePath
+  const displayPath = getRelativePath(displayedChange.filePath)
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full bg-background">
       {showHeader && (
         <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
           {/* File info - flexible */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            {getChangeIcon(change.changeType)}
+            {getChangeIcon(displayedChange.changeType)}
             {getFileIcon(fileName, { width: 16, height: 16 })}
             <code className="text-sm font-mono truncate">{displayPath}</code>
           </div>
 
           {/* Author & time */}
           <div className="flex items-center gap-2 shrink-0">
-            {change.userImage ? (
+            {displayedChange.userImage ? (
               <img
-                src={change.userImage}
-                alt={change.userName}
+                src={displayedChange.userImage}
+                alt={displayedChange.userName}
                 className="w-5 h-5 rounded-full object-cover"
-                title={change.userName}
+                title={displayedChange.userName}
               />
             ) : (
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white"
-                style={{ backgroundColor: change.userColor }}
-                title={change.userName}
+                style={{ backgroundColor: displayedChange.userColor }}
+                title={displayedChange.userName}
               >
-                {change.userName?.charAt(0).toUpperCase() || 'U'}
+                {displayedChange.userName?.charAt(0).toUpperCase() || 'U'}
               </div>
             )}
-            <span className="text-xs text-muted-foreground">{formatRelativeTime(change.timestamp)}</span>
+            <span className="text-xs text-muted-foreground">{formatRelativeTime(displayedChange.timestamp)}</span>
           </div>
 
           {/* Close button */}
@@ -208,7 +244,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
         <div className={`absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showTopFade ? 'opacity-100' : 'opacity-0'}`} />
         {/* Bottom fade gradient */}
         <div className={`absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showBottomFade ? 'opacity-100' : 'opacity-0'}`} />
-        {change.oldContent === '' && change.newContent === '' ? (
+        {displayedChange.oldContent === '' && displayedChange.newContent === '' ? (
           <div className="flex items-center justify-center h-full text-center text-muted-foreground py-8">
             <div>
               <p>No content stored for this change.</p>
@@ -217,9 +253,9 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
           </div>
         ) : (
           <CodeMirrorMergeViewer
-            original={change.oldContent}
-            modified={change.newContent}
-            filePath={change.filePath}
+            original={displayedChange.oldContent}
+            modified={displayedChange.newContent}
+            filePath={displayedChange.filePath}
             onScrollStateChange={handleScrollStateChange}
             className="h-full"
           />
@@ -236,7 +272,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={handleKeyDown}
             className="min-h-[80px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isSwitchingDiff}
           />
 
           {/* Toolbar */}
@@ -268,7 +304,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
             {/* Send button */}
             <Button
               onClick={handleSubmitComment}
-              disabled={!commentText.trim() || isSubmitting || !convexUserId}
+              disabled={!commentText.trim() || isSubmitting || !convexUserId || isSwitchingDiff}
               size="sm"
               className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-4"
             >
@@ -277,6 +313,11 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
           </div>
         </div>
       </div>
+      {isSwitchingDiff && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
+          <Shimmer className="text-sm text-muted-foreground">Loading selected diff...</Shimmer>
+        </div>
+      )}
     </div>
   )
 }

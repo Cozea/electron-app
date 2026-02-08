@@ -54,6 +54,11 @@ interface ProjectSummary {
         backend?: string
         hosting?: string
     }
+    frameworkInfo?: {
+        framework: string
+        devCommand?: string
+        devPort?: number
+    }
 }
 
 interface ProjectCardProps {
@@ -73,6 +78,33 @@ function formatRelativeTime(timestamp: number): string {
     if (hours > 0) return `${hours}h`
     if (minutes > 0) return `${minutes}m`
     return 'now'
+}
+
+function formatFrameworkTag(framework?: string): string | null {
+    if (!framework) return null
+
+    const normalized = framework.toLowerCase()
+    switch (normalized) {
+        case 'nextjs':
+            return 'Next.js'
+        case 'vite-react':
+            return 'Vite + React'
+        case 'vite-vue':
+            return 'Vite + Vue'
+        case 'vite-svelte':
+            return 'Vite + Svelte'
+        case 'sveltekit':
+            return 'SvelteKit'
+        case 'solid-start':
+            return 'SolidStart'
+        case 'cra':
+            return 'Create React App'
+        default:
+            return framework
+                .split('-')
+                .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+                .join(' ')
+    }
 }
 
 
@@ -241,7 +273,8 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
             project.stack?.hosting ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" :
                 "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
 
-    const primaryTag = stackBadges[0] || "Project"
+    const frameworkTag = formatFrameworkTag(project.frameworkInfo?.framework)
+    const primaryTag = frameworkTag || stackBadges[0] || "Project"
 
     return (
         <div className="h-full">

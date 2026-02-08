@@ -26,6 +26,7 @@ interface SyncScreenProps {
   onContinue: () => void
   onRetry: () => void
   onSync?: (resolvedPlan: SyncPlan) => void
+  variant?: "fullscreen" | "panel"
 }
 
 export function SyncScreen({
@@ -34,10 +35,12 @@ export function SyncScreen({
   onContinue,
   onRetry,
   onSync,
+  variant = "fullscreen",
 }: SyncScreenProps) {
   const { status, message, current, total, logs } = progress
   const summary = plan ? getSyncPlanSummary(plan) : null
   const conflicts = useMemo(() => plan?.conflicts ?? [], [plan])
+  const isPanel = variant === "panel"
 
   const [conflictResolutions, setConflictResolutions] = useState<Record<string, string>>({})
 
@@ -118,8 +121,14 @@ export function SyncScreen({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-8">
-      <div className="max-w-md w-full space-y-6">
+    <div
+      className={cn(
+        isPanel
+          ? "w-full max-h-[min(76vh,720px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 p-4 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-background/90 sm:p-5"
+          : "flex min-h-screen flex-col items-center justify-center bg-background p-8"
+      )}
+    >
+      <div className={cn("space-y-6", isPanel ? "w-full" : "max-w-md w-full")}>
         {/* Status Icon */}
         <div className="flex justify-center">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
@@ -208,7 +217,12 @@ export function SyncScreen({
         {plan && conflicts.length > 0 && status === "planning" && (
           <div className="space-y-3">
             <div className="text-sm font-medium">Resolve conflicts</div>
-            <ScrollArea className="h-56 w-full rounded-md border bg-muted/20 p-3">
+            <ScrollArea
+              className={cn(
+                "w-full rounded-md border bg-muted/20 p-3",
+                isPanel ? "h-44" : "h-56"
+              )}
+            >
               <div className="space-y-3">
                 {conflicts.map((conflict, index) => {
                   const options: Array<{ value: string; label: string }> = []
@@ -267,7 +281,12 @@ export function SyncScreen({
 
         {/* Logs */}
         {logs.length > 0 && (
-          <ScrollArea className="h-40 w-full rounded-md border bg-muted/30 p-3">
+          <ScrollArea
+            className={cn(
+              "w-full rounded-md border bg-muted/30 p-3",
+              isPanel ? "h-28" : "h-40"
+            )}
+          >
             <div className="space-y-1 font-mono text-xs">
               {logs.map((log, i) => (
                 <div

@@ -9,9 +9,9 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { BreadcrumbCountChip } from '@/components/layouts/BreadcrumbCountChip'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -135,9 +135,11 @@ export function Integrations() {
   const breadcrumbAddon = (
     <>
       {INTEGRATIONS.length > 0 && (
-        <Badge variant="secondary" className="text-xs font-normal h-8 px-2">
-          {connectedIntegrations.length}/{INTEGRATIONS.length}
-        </Badge>
+        <BreadcrumbCountChip
+          current={connectedIntegrations.length}
+          limit={INTEGRATIONS.length}
+          title={`${connectedIntegrations.length} / ${INTEGRATIONS.length} integrations connected`}
+        />
       )}
     </>
   )

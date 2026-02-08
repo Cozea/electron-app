@@ -538,7 +538,7 @@ export function ProjectSyncProvider({
     await executeSync(currentLocalPath, resolvedPlan)
   }
 
-  // Show sync screen while syncing
+  // Conflicts/errors must be handled before entering the workspace.
   if (showSyncScreen && !isSynced) {
     return (
       <SyncScreen

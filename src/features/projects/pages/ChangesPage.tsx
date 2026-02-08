@@ -9,6 +9,7 @@ import { markSyncFeedAsSeen } from '../components/ProjectSidebar'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Activity,
   Asterisk,
@@ -20,6 +21,16 @@ import {
 } from 'lucide-react'
 import { DiffPanel } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+
+interface SelectedChangeSummary {
+  id: Id<"fileChanges">
+  filePath: string
+  changeType: string
+  userImage?: string
+  userName: string
+  userColor: string
+  timestamp: number
+}
 
 function formatTimeOnly(timestamp: number) {
   const date = new Date(timestamp)
@@ -114,6 +125,78 @@ function formatRelativeTime(timestamp: number) {
   if (hours < 24) return `${hours}h ago`
   if (days < 7) return `${days}d ago`
   return new Date(timestamp).toLocaleDateString()
+}
+
+function FeedLoadingRows() {
+  return (
+    <div className="space-y-6">
+      {Array.from({ length: 2 }).map((_, groupIndex) => (
+        <div key={groupIndex}>
+          <div className="flex items-center gap-3 mb-3">
+            <Shimmer className="text-sm">Loading feed</Shimmer>
+            <div className="flex-1 h-px bg-border/70" />
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((__, rowIndex) => (
+              <div
+                key={`${groupIndex}-${rowIndex}`}
+                className="flex items-start gap-3 py-2 px-3 rounded-full"
+              >
+                <div className="w-20 shrink-0 pt-1 mr-2">
+                  <Shimmer className="text-xs">00:00</Shimmer>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-muted/70 shrink-0" />
+                <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
+                  <Shimmer className="text-sm">Username</Shimmer>
+                  <Shimmer className="text-xs">+/-</Shimmer>
+                  <Shimmer className="text-sm">src/components/Example.tsx</Shimmer>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DiffPanelLoadingShell() {
+  return (
+    <div className="flex flex-col h-full bg-background">
+      <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
+        <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary" />
+        <Shimmer className="text-sm">src/components/Example.tsx</Shimmer>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="h-5 w-5 rounded-full bg-muted/70" />
+          <Shimmer className="text-xs">just now</Shimmer>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-hidden relative p-4 bg-sidebar/30">
+        <div className="space-y-2">
+          <Shimmer className="text-sm">Loading diff preview...</Shimmer>
+          <Shimmer className="text-sm">Preparing hunks...</Shimmer>
+          <Shimmer className="text-sm">Rendering comments...</Shimmer>
+        </div>
+      </div>
+
+      <div className="p-4 bg-sidebar">
+        <div className="rounded-xl bg-background overflow-hidden shadow-sm">
+          <div className="min-h-[80px] px-3 py-2">
+            <Shimmer className="text-sm">Add comment</Shimmer>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-1">
+              <div className="h-8 w-8 rounded-full bg-muted/60" />
+              <div className="h-8 w-8 rounded-full bg-muted/60" />
+              <div className="h-8 w-8 rounded-full bg-muted/60" />
+            </div>
+            <div className="h-8 w-16 rounded-full bg-muted/60" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Component to display comments for a change
@@ -244,7 +327,28 @@ export function ChangesPage() {
   const selectedChange = useQuery(
     api.activity.getChangeWithContent,
     selectedChangeId ? { changeId: selectedChangeId } : 'skip'
-  )
+  ) as SelectedChangeSummary | null | undefined
+  const isFeedLoading = !project?._id || activity === undefined
+  const showSplitPane = Boolean(selectedChangeId) || isFeedLoading
+  const [cachedSelectedChange, setCachedSelectedChange] = useState<SelectedChangeSummary | null>(null)
+  const displayedSelectedChange = selectedChange ?? cachedSelectedChange
+  const isSelectedChangeLoading = Boolean(selectedChangeId) && selectedChange === undefined
+
+  useEffect(() => {
+    if (!selectedChangeId) {
+      setCachedSelectedChange(null)
+      return
+    }
+
+    if (selectedChange) {
+      setCachedSelectedChange(selectedChange)
+      return
+    }
+
+    if (selectedChange === null) {
+      setCachedSelectedChange(null)
+    }
+  }, [selectedChange, selectedChangeId])
 
   // Auto-select the most recent change when activity loads
   useEffect(() => {
@@ -263,49 +367,55 @@ export function ChangesPage() {
   const headerControls = useMemo(
     () => (
       <div className="flex items-center gap-2">
-        {selectedChangeId && selectedChange && (
+        {selectedChangeId && displayedSelectedChange && (
           <>
             <div className="flex items-center gap-2 min-w-0 max-w-[420px]">
-              {getChangeIcon(selectedChange.changeType)}
+              {getChangeIcon(displayedSelectedChange.changeType)}
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-xs min-w-0 max-w-[260px]">
-                {getFileIcon(selectedChange.filePath.split('/').pop() || selectedChange.filePath, {
+                {getFileIcon(displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath, {
                   width: 14,
                   height: 14,
                 })}
                 <span className="truncate">
-                  {selectedChange.filePath.split('/').pop() || selectedChange.filePath}
+                  {displayedSelectedChange.filePath.split('/').pop() || displayedSelectedChange.filePath}
                 </span>
               </span>
+              {isSelectedChangeLoading && (
+                <Shimmer className="text-[11px] text-muted-foreground">Updating…</Shimmer>
+              )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {selectedChange.userImage ? (
+              {displayedSelectedChange.userImage ? (
                 <img
-                  src={selectedChange.userImage}
-                  alt={selectedChange.userName}
+                  src={displayedSelectedChange.userImage}
+                  alt={displayedSelectedChange.userName}
                   className="h-4 w-4 rounded-full object-cover"
-                  title={selectedChange.userName}
+                  title={displayedSelectedChange.userName}
                 />
               ) : (
                 <div
                   className="h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-medium text-white"
-                  style={{ backgroundColor: selectedChange.userColor }}
-                  title={selectedChange.userName}
+                  style={{ backgroundColor: displayedSelectedChange.userColor }}
+                  title={displayedSelectedChange.userName}
                 >
-                  {selectedChange.userName?.charAt(0).toUpperCase() || 'U'}
+                  {displayedSelectedChange.userName?.charAt(0).toUpperCase() || 'U'}
                 </div>
               )}
               <span className="text-xs text-muted-foreground">
-                {formatRelativeTime(selectedChange.timestamp)}
+                {formatRelativeTime(displayedSelectedChange.timestamp)}
               </span>
             </div>
           </>
+        )}
+        {selectedChangeId && !displayedSelectedChange && (
+          <Shimmer className="text-xs text-muted-foreground">Loading selected change…</Shimmer>
         )}
         {!selectedChangeId && (
           <span className="text-xs text-muted-foreground">Select a change to view diff</span>
         )}
       </div>
     ),
-    [selectedChange, selectedChangeId]
+    [displayedSelectedChange, isSelectedChangeLoading, selectedChangeId]
   )
 
   useProjectHeader(headerControls)
@@ -313,19 +423,15 @@ export function ChangesPage() {
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-sidebar/60">
       {/* Timeline Panel */}
-      <div className={`flex min-h-0 overflow-hidden flex-col ${selectedChangeId ? 'w-1/2' : 'w-full'} transition-all`}>
+      <div className={`flex min-h-0 min-w-0 overflow-hidden flex-col ${showSplitPane ? 'w-1/2' : 'w-full'} transition-all`}>
         {/* Timeline Content */}
         <div className="relative flex-1 min-h-0">
           <ScrollArea className="h-full">
             <div className="p-4">
               {!project?._id ? (
-                <div className="flex items-center justify-center h-40 text-muted-foreground">
-                  <p className="text-sm">Loading project...</p>
-                </div>
+                <FeedLoadingRows />
               ) : activity === undefined ? (
-                <div className="flex items-center justify-center h-40">
-                  <div className="animate-pulse text-muted-foreground">Loading activity...</div>
-                </div>
+                <FeedLoadingRows />
               ) : activity.length === 0 ? (
                 <Card className="p-12 text-center">
                   <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -437,16 +543,20 @@ export function ChangesPage() {
       </div>
 
       {/* Diff Panel */}
-      {selectedChangeId && (
-        <div className="w-1/2 min-h-0 overflow-hidden bg-background">
-          <DiffPanel
-            changeId={selectedChangeId}
-            onClose={() => setSelectedChangeId(null)}
-            showHeader={false}
-          />
+      {showSplitPane && (
+        <div className="w-1/2 min-h-0 min-w-0 overflow-hidden bg-background">
+          {selectedChangeId ? (
+            <DiffPanel
+              changeId={selectedChangeId}
+              onClose={() => setSelectedChangeId(null)}
+              showHeader={false}
+            />
+          ) : (
+            <DiffPanelLoadingShell />
+          )}
         </div>
       )}
-      {selectedChangeId && (
+      {showSplitPane && (
         <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 -translate-x-1/2">
           <div
             className="h-full w-px bg-border"

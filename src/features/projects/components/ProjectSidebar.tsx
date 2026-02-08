@@ -406,8 +406,10 @@ export function ProjectSidebar({
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="pb-6 group-data-[collapsible=icon]:pb-8">
-                        <NavUser user={user} onLogout={onLogout} />
+                    <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+                        <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                            <NavUser user={user} onLogout={onLogout} />
+                        </div>
                     </SidebarFooter>
                     <SidebarRail />
                 </Sidebar>
