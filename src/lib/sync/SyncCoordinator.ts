@@ -11,6 +11,7 @@ import type {
 export interface EnqueueOpsResult {
   accepted: number
   rejected: number
+  acceptedOpIds: string[]
   replicaState: ReplicaState
 }
 
@@ -19,6 +20,7 @@ export interface SyncCoordinatorOptions {
   actorId?: string
   actorType?: SyncActorType
   source?: SyncOpSource
+  autoAck?: boolean
 }
 
 export interface SyncOpInput {
@@ -58,12 +60,14 @@ export class SyncCoordinator {
   private actorId: string
   private actorType: SyncActorType
   private source: SyncOpSource
+  private autoAck: boolean
 
   constructor(options: SyncCoordinatorOptions) {
     this.projectId = options.projectId
     this.actorId = options.actorId ?? "unknown"
     this.actorType = options.actorType ?? "system"
     this.source = options.source ?? "monaco"
+    this.autoAck = options.autoAck ?? true
   }
 
   createOp(input: SyncOpInput): SyncOp {
@@ -109,11 +113,26 @@ export class SyncCoordinator {
       projectId: this.projectId,
       ops,
     })
+
+    let replicaState = result.replicaState
+    if (this.autoAck && result.acceptedOpIds.length > 0) {
+      try {
+        const ackResult = await window.electronAPI.sync.ackOps({
+          projectId: this.projectId,
+          opIds: result.acceptedOpIds,
+        })
+        replicaState = ackResult.replicaState
+      } catch (error) {
+        console.warn("[SyncCoordinator] Failed to ack sync ops:", error)
+      }
+    }
+
     return {
       accepted: result.accepted,
       rejected: result.rejected,
+      acceptedOpIds: result.acceptedOpIds,
       replicaState: {
-        ...result.replicaState,
+        ...replicaState,
         projectId: this.projectId,
       },
     }

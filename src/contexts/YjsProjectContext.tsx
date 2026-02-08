@@ -28,6 +28,17 @@ interface YjsProjectContextValue {
   resolveDeleteConflict: (filePath: string, keepLocal: boolean) => Promise<void>
 }
 
+interface InitialSyncResponse {
+  serverSnapshot: ArrayBuffer | null
+  snapshotVersion: number
+  snapshotCreatedAt: number
+  recentUpdates: Array<{ update: ArrayBuffer; clientId: string; timestamp: number }>
+  deltaUpdate?: ArrayBuffer
+  deltaByteLength?: number
+  serverStateVector?: ArrayBuffer
+  serverTimestamp?: number
+}
+
 const YjsProjectContext = createContext<YjsProjectContextValue>({
   yjsDoc: null,
   awareness: null,
@@ -103,14 +114,21 @@ export function YjsProjectProvider({
       indexedDBProviderRef.current = new YjsIndexedDBProvider(projectId, doc.doc)
       await indexedDBProviderRef.current.waitForSync()
 
-      // 2. Then fetch Convex snapshot and apply if newer
-      // The Y.Doc from IndexedDB may have local-only edits not yet synced
-      // We merge the Convex state to get any remote changes we missed
-      const snapshot = await convex.query(api.yjs.getLatestSnapshot, { projectId })
-      if (snapshot?.snapshot) {
-        // Apply Convex snapshot - Yjs will automatically merge with local state
-        // Since we're using proper CRDT, concurrent edits will be preserved
-        Y.applyUpdate(doc.doc, new Uint8Array(snapshot.snapshot), 'snapshot')
+      // 2. Perform state-vector-first handshake to get remote delta.
+      const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
+        projectId,
+        clientId: doc.doc.clientID.toString(),
+      })) as InitialSyncResponse
+
+      if (initialSync.deltaUpdate && initialSync.deltaUpdate.byteLength > 0) {
+        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.deltaUpdate), "state-vector")
+      } else if (initialSync.serverSnapshot) {
+        // Legacy fallback while all clients are migrated.
+        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.serverSnapshot), "snapshot")
+        for (const update of initialSync.recentUpdates) {
+          if (update.clientId === doc.doc.clientID.toString()) continue
+          Y.applyUpdate(doc.doc, new Uint8Array(update.update), "snapshot")
+        }
       }
 
       // Set local awareness state with user info
@@ -139,7 +157,7 @@ export function YjsProjectProvider({
       )
 
       setYjsDoc(doc)
-      const initialSince = snapshot?.createdAt ?? 0
+      const initialSince = initialSync.serverTimestamp ?? Date.now()
       lastAppliedTimestampRef.current = initialSince
       seenUpdateIdsAtLastTimestampRef.current = new Set()
       setLastSyncTime(initialSince)
