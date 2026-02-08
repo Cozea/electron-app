@@ -12,6 +12,8 @@
     "build": "electron-vite build",
     "prepare:bundled-git": "node scripts/prepare-bundled-git.mjs",
     "prepare:bundled-git:check": "node scripts/prepare-bundled-git.mjs --check",
+    "prepare:bundled-git:all": "node scripts/prepare-bundled-git.mjs --all",
+    "prepare:bundled-git:check:all": "node scripts/prepare-bundled-git.mjs --all --check",
     "predist": "npm run prepare:bundled-git",
     "dist": "electron-vite build && electron-builder",
     "release": "electron-builder --publish always",

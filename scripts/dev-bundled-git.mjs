@@ -11,18 +11,41 @@ const env = {
   COZEA_BUNDLED_GIT_ROOT: bundledGitRoot,
 }
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const child = spawn(npmCommand, ['run', 'dev'], {
-  cwd: rootDir,
-  env,
-  stdio: 'inherit',
-})
+function run(command, args, options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? rootDir,
+      env: options.env ?? env,
+      stdio: 'inherit',
+    })
 
-child.on('close', (code) => {
-  process.exit(code ?? 0)
-})
+    child.on('close', (code) => {
+      resolve({ ok: (code ?? 1) === 0, code: code ?? 1 })
+    })
 
-child.on('error', (error) => {
-  console.error(`[dev:bundled-git] Failed to start dev server: ${error instanceof Error ? error.message : String(error)}`)
-  process.exit(1)
-})
+    child.on('error', (error) => {
+      console.error(
+        `[dev:bundled-git] ${command} failed to start: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+      resolve({ ok: false, code: 1 })
+    })
+  })
+}
+
+async function main() {
+  const check = await run(process.execPath, [path.join(rootDir, 'scripts/prepare-bundled-git.mjs'), '--check'])
+  if (!check.ok) {
+    console.error(
+      '[dev:bundled-git] Bundled Git check failed. Run `npm run prepare:bundled-git` first (or provide COZEA_GIT_BUNDLE_URL_* for missing targets).'
+    )
+    process.exit(check.code)
+  }
+
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const dev = await run(npmCommand, ['run', 'dev'])
+  process.exit(dev.code)
+}
+
+void main()

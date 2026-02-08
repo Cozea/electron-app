@@ -22,6 +22,7 @@ import {
     useTerminalStore,
     useTerminalActions,
 } from "@/stores/useTerminalStore"
+import type { TerminalInstance } from "@/stores/useTerminalStore"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -57,6 +58,30 @@ interface TerminalTabBarProps {
     }
     onRefreshProblems: () => void
     onClearProblems: () => void
+}
+
+const LEGACY_PORT_SUFFIX_PATTERN = /^(.*?)\s*\((\d{2,5})\)\s*$/
+
+function getTerminalTabDisplay(term: TerminalInstance): { label: string; port?: number } {
+    if (term.label && typeof term.port === 'number') {
+        return { label: term.label, port: term.port }
+    }
+
+    const match = term.title.match(LEGACY_PORT_SUFFIX_PATTERN)
+    if (match) {
+        const parsedPort = Number(match[2])
+        if (Number.isFinite(parsedPort)) {
+            return {
+                label: term.label || match[1].trim() || term.title,
+                port: typeof term.port === 'number' ? term.port : parsedPort,
+            }
+        }
+    }
+
+    return {
+        label: term.label || term.title,
+        port: typeof term.port === 'number' ? term.port : undefined,
+    }
 }
 
 export function TerminalTabBar({
@@ -120,11 +145,15 @@ export function TerminalTabBar({
 
         if (result.success && result.terminalId) {
             const profile = profiles.find((p) => p.id === profileId) || profiles[0]
+            const label = profile?.name || 'Terminal'
             addTerminal({
                 id: result.terminalId,
                 profileId: profile?.id || 'default',
-                profileName: profile?.name || 'Terminal',
-                title: profile?.name || 'Terminal',
+                profileName: label,
+                label,
+                kind: 'shell',
+                nameSource: 'auto',
+                title: label,
                 status: 'starting',
                 hasOutput: false,
             })
@@ -167,6 +196,8 @@ export function TerminalTabBar({
                 {/* Terminal tabs */}
                 {groupTerminals.map((term) => {
                     const isActive = activeView === "terminal" && activeTerminal?.id === term.id
+                    const display = getTerminalTabDisplay(term)
+                    const portLabel = typeof display.port === 'number' ? `localhost:${display.port}` : null
                     return (
                         <button
                             key={term.id}
@@ -188,7 +219,12 @@ export function TerminalTabBar({
                                     term.status === 'error' && "fill-destructive text-destructive"
                                 )}
                             />
-                            <span className="truncate max-w-[120px]">{term.title}</span>
+                            <span className="truncate max-w-[140px]">{display.label}</span>
+                            {portLabel && (
+                                <span className="shrink-0 rounded-full bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                    {portLabel}
+                                </span>
+                            )}
                             {/* Close button for individual tab */}
                             <span
                                 role="button"

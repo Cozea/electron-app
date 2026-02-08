@@ -73,7 +73,7 @@ export function ProjectDetailPage() {
       {/* Editor Content */}
       <div className="flex-1 min-h-0 relative">
         {activeFile ? (
-          <FileViewer key={activeFile} path={activeFile} />
+          <FileViewer path={activeFile} />
         ) : (
           <Empty className="h-full py-0">
             <EmptyHeader>

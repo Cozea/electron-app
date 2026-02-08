@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { markSyncFeedAsSeen } from '../components/ProjectSidebar'
+import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Activity,
@@ -29,6 +30,22 @@ interface SelectedChangeSummary {
   userImage?: string
   userName: string
   userColor: string
+  timestamp: number
+}
+
+interface ActivityFeedItem {
+  id: Id<"fileChanges">
+  userId?: Id<"users">
+  filePath: string
+  changeType: string
+  additions?: number
+  deletions?: number
+  totalLines?: number
+  origin: string
+  userName: string
+  userColor: string
+  userImage?: string
+  isAgent?: boolean
   timestamp: number
 }
 
@@ -297,8 +314,10 @@ function ChangeComments({ changeId }: { changeId: Id<"fileChanges"> }) {
 
 export function ChangesPage() {
   const { slug } = useParams<{ slug: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { currentOrganization } = useAuth()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
+  const selectedUserId = searchParams.get('userId')
 
   // Get Convex organization
   const convexOrg = useQuery(
@@ -316,10 +335,21 @@ export function ChangesPage() {
   const activity = useQuery(
     api.activity.getRecentActivity,
     project?._id ? { projectId: project._id, limit: 100 } : 'skip'
-  )
+  ) as ActivityFeedItem[] | undefined
+
+  const filteredActivity = useMemo(() => {
+    if (!activity) return activity
+    if (!selectedUserId) return activity
+    return activity.filter((item) => item.userId === selectedUserId)
+  }, [activity, selectedUserId])
+
+  const selectedFilterUserName = useMemo(() => {
+    if (!selectedUserId || !activity) return null
+    return activity.find((item) => item.userId === selectedUserId)?.userName ?? null
+  }, [activity, selectedUserId])
 
   // Get comment counts for all changes
-  const changeIds = activity?.map(item => item.id as Id<"fileChanges">) || []
+  const changeIds = filteredActivity?.map(item => item.id as Id<"fileChanges">) || []
   const commentCounts = useQuery(
     api.activity.getCommentCountsForChanges,
     changeIds.length > 0 ? { changeIds } : 'skip'
@@ -352,10 +382,19 @@ export function ChangesPage() {
 
   // Auto-select the most recent change when activity loads
   useEffect(() => {
-    if (activity && activity.length > 0 && selectedChangeId === null) {
-      setSelectedChangeId(activity[0].id as Id<"fileChanges">)
+    if (!filteredActivity || filteredActivity.length === 0) {
+      setSelectedChangeId(null)
+      return
     }
-  }, [activity, selectedChangeId])
+
+    const selectedStillVisible = selectedChangeId
+      ? filteredActivity.some((item) => item.id === selectedChangeId)
+      : false
+
+    if (selectedChangeId === null || !selectedStillVisible) {
+      setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
+    }
+  }, [filteredActivity, selectedChangeId])
 
   // Mark sync feed as seen when page loads
   useEffect(() => {
@@ -430,19 +469,42 @@ export function ChangesPage() {
             <div className="p-4">
               {!project?._id ? (
                 <FeedLoadingRows />
-              ) : activity === undefined ? (
+              ) : filteredActivity === undefined ? (
                 <FeedLoadingRows />
-              ) : activity.length === 0 ? (
+              ) : filteredActivity.length === 0 ? (
                 <Card className="p-12 text-center">
                   <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <h3 className="text-lg font-medium mb-2">No Changes Yet</h3>
                   <p className="text-sm text-muted-foreground">
-                    File changes will appear here in real-time as you and your team edit files.
+                    {selectedUserId
+                      ? "No changes found for this user in the current feed window."
+                      : "File changes will appear here in real-time as you and your team edit files."}
                   </p>
                 </Card>
               ) : (
                 <div className="space-y-6">
-                  {groupActivityByDate(activity).map((group) => (
+                  {selectedUserId && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[11px]">
+                        {selectedFilterUserName
+                          ? `Filtered by ${selectedFilterUserName}`
+                          : "Filtered by selected user"}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => {
+                          const nextParams = new URLSearchParams(searchParams)
+                          nextParams.delete('userId')
+                          setSearchParams(nextParams, { replace: true })
+                        }}
+                      >
+                        Clear filter
+                      </Button>
+                    </div>
+                  )}
+                  {groupActivityByDate(filteredActivity).map((group) => (
                     <div key={group.dateHeader}>
                       {/* Date Header */}
                       <div className="flex items-center gap-3 mb-3">

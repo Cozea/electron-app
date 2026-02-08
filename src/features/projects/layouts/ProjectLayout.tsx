@@ -19,6 +19,7 @@ import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useFileTabsStore } from "@/stores/useFileTabsStore"
+import { usePageContextStore } from "@/stores/usePageContextStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
@@ -424,13 +425,29 @@ export function ProjectLayout({
         }
     }, [effectiveLocalPath])
 
+    const activeProjectFile = useFileTabsStore((state) =>
+        slug ? state.projectTabs[slug]?.activeFile ?? null : null
+    )
+    const currentPreviewPage = usePageContextStore((state) => state.currentPage)
+    const isPagesRoute = Boolean(
+        slug && location.pathname.startsWith(`/projects/${slug}/pages`)
+    )
+    const presenceActiveFile = isPagesRoute
+        ? currentPreviewPage?.filePath ?? null
+        : activeProjectFile
+    const presenceActiveRoute = isPagesRoute
+        ? currentPreviewPage?.route ?? null
+        : null
+
     // Real-time presence tracking
-    useProjectPresence({
+    const { activeUsers, otherUsers: presenceUsers } = useProjectPresence({
         projectId: project?._id,
         userId: convexUser?._id,
         userName: convexUser?.firstName || convexUser?.email || null,
         userEmail: convexUser?.email || null,
         userAvatarUrl: convexUser?.profileImageUrl,
+        activeFile: presenceActiveFile,
+        activeRoute: presenceActiveRoute,
     })
 
     // File tree ref for refresh functionality
@@ -554,6 +571,8 @@ export function ProjectLayout({
                         onCreateFolder={handleCreateFolder}
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
+                        presenceUsers={presenceUsers}
+                        presenceCount={Math.max(1, activeUsers.length)}
                     />
                     <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                         <div

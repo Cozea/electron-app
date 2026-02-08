@@ -1,4 +1,5 @@
 import { type ReactNode } from "react"
+import { useLocation } from "react-router-dom"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import {
@@ -54,8 +55,12 @@ function DashboardLayoutContent({
   user,
   onLogout,
 }: DashboardLayoutContentProps) {
+  const location = useLocation()
   const { state } = useSidebar()
-  const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(breadcrumbAddon)
+  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
+  const effectiveBreadcrumbAddon =
+    normalizedPath === "/workspace/ai" ? undefined : breadcrumbAddon
+  const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const areAllSidebarsCollapsed = state === "collapsed"
 
   return (
@@ -68,7 +73,7 @@ function DashboardLayoutContent({
             <UnifiedHeader
               breadcrumbs={breadcrumbs}
               header={header}
-              breadcrumbAddon={breadcrumbAddon}
+              breadcrumbAddon={effectiveBreadcrumbAddon}
               leftWindowControlsInset={areAllSidebarsCollapsed}
             />
             {contentMode === 'fixed' ? (

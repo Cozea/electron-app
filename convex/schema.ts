@@ -1216,8 +1216,13 @@ export default defineSchema({
 
     // Activity tracking
     lastHeartbeat: v.number(), // Updated every 30s by client
+    lastActivityAt: v.optional(v.number()), // Last meaningful user activity timestamp
     activeTab: v.optional(v.string()), // Which tab they're viewing (editor, pages, etc.)
     activeFile: v.optional(v.string()), // Which file they're editing (if any)
+    activeRoute: v.optional(v.string()), // Which preview route they're focused on (if on Pages)
+    isMonacoTyping: v.optional(v.boolean()),
+    isAiTyping: v.optional(v.boolean()),
+    isAgentWorking: v.optional(v.boolean()),
 
     // Cursor position (for future live cursors feature)
     cursor: v.optional(

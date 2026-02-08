@@ -936,7 +936,7 @@ export function VisualEditorSidebar({
     const delta = inspectorSide === 'left' ? e.clientX - dragStartX.current : dragStartX.current - e.clientX
     const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, dragStartWidth.current + delta))
     setPanelWidth(newWidth)
-  }, [isDragging, inspectorSide])
+  }, [isDragging, inspectorSide, setPanelWidth])
 
   const handlePointerUp = useCallback(() => {
     setIsDragging(false)
@@ -944,7 +944,7 @@ export function VisualEditorSidebar({
 
   const handleDoubleClick = useCallback(() => {
     setPanelWidth(DEFAULT_PANEL_WIDTH)
-  }, [])
+  }, [setPanelWidth])
 
   // Box shadow state for effects section
   const [boxShadows, setBoxShadows] = useState<string[]>([])

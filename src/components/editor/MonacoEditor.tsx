@@ -45,6 +45,7 @@ interface MonacoEditorProps {
 
 export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: MonacoEditorProps) {
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+    const pathRef = useRef(path)
     const [showBottomFade, setShowBottomFade] = useState(false)
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
@@ -61,6 +62,10 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
         projectPath: model?.projectPath,
         filePath: path,
     })
+
+    useEffect(() => {
+        pathRef.current = path
+    }, [path])
 
     useEffect(() => {
         editorRef.current?.updateOptions({
@@ -96,7 +101,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
 
             // Cmd+S to save
             editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
-                actions.saveFile(path)
+                actions.saveFile(pathRef.current)
             })
 
             updateBottomFade()
@@ -106,7 +111,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
             // Notify parent that editor is ready
             onEditorReady?.(editor)
         },
-        [path, actions, onEditorReady]
+        [actions, onEditorReady]
     )
 
 
@@ -140,6 +145,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
                 language={model.language}
                 path={modelPath}
                 value={model.currentContent}
+                keepCurrentModel
                 theme={theme}
                 onChange={handleChange}
                 onMount={handleEditorMount}

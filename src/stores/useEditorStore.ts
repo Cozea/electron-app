@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import * as monaco from 'monaco-editor'
 
 /**
  * EditorModel - Tracks file state following VSCode's TextFileEditorModel pattern
@@ -47,6 +48,39 @@ function getLanguageFromPath(path: string): string {
         // add others as needed
     }
     return languageMap[ext] || 'plaintext'
+}
+
+function normalizePathForModelMatch(path: string): string {
+    return path.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+function disposeMonacoModelForPath(path: string): void {
+    const normalizedPath = normalizePathForModelMatch(path)
+    const uriCandidates = new Set<string>([path])
+
+    try {
+        uriCandidates.add(monaco.Uri.file(path).toString())
+    } catch {
+        // Ignore invalid filesystem paths; fallback matching still applies.
+    }
+
+    try {
+        uriCandidates.add(monaco.Uri.parse(path).toString())
+    } catch {
+        // Ignore parse errors for non-URI strings.
+    }
+
+    const model = monaco.editor.getModels().find((candidate) => {
+        const modelUri = candidate.uri.toString()
+        if (uriCandidates.has(modelUri)) return true
+
+        const modelFsPath = candidate.uri.fsPath
+            ? normalizePathForModelMatch(candidate.uri.fsPath)
+            : ''
+        return modelFsPath !== '' && modelFsPath === normalizedPath
+    })
+
+    model?.dispose()
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -145,6 +179,7 @@ export const useEditorStore = create<EditorState>()(
 
             closeFile: (path) =>
                 set((state) => {
+                    disposeMonacoModelForPath(path)
                     delete state.models[path]
                 }),
 

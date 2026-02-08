@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 
 import {
     Sidebar,
@@ -41,21 +42,12 @@ import {
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
+import { ProjectSyncIndicator } from "./ProjectSyncIndicator"
+import type { PresenceUser } from "@/hooks/useProjectPresence"
+import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
-
-// Helper to get/set last seen timestamp for sync feed
-function getSyncFeedLastSeen(projectSlug: string): number {
-    const key = `sync-feed-last-seen-${projectSlug}`
-    const stored = localStorage.getItem(key)
-    return stored ? parseInt(stored, 10) : 0
-}
-
-export function markSyncFeedAsSeen(projectSlug: string): void {
-    const key = `sync-feed-last-seen-${projectSlug}`
-    localStorage.setItem(key, Date.now().toString())
-}
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -73,6 +65,8 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     onCreateFolder?: () => void
     onSecondaryVisibilityChange?: (isVisible: boolean) => void
     projectId?: Id<"projects"> | null
+    presenceUsers?: PresenceUser[]
+    presenceCount?: number
 }
 
 // Route mappings for all navigation items
@@ -136,6 +130,8 @@ export function ProjectSidebar({
     onCreateFolder,
     onSecondaryVisibilityChange,
     projectId: providedProjectId,
+    presenceUsers = [],
+    presenceCount,
     className,
     ...props
 }: ProjectSidebarProps) {
@@ -145,6 +141,14 @@ export function ProjectSidebar({
     const { currentOrganization, convexUserId } = useAuth()
     const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
+    const totalPresenceCount = Math.max(1, presenceCount ?? (presenceUsers.length + 1))
+    const handlePresenceUserClick = React.useCallback(
+        (user: PresenceUser) => {
+            if (!slug) return
+            navigate(`/projects/${slug}/changes?userId=${encodeURIComponent(user.userId)}`)
+        },
+        [navigate, slug]
+    )
 
     const isFilesRoute = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
     const isPagesRoute = Boolean(slug && location.pathname === `/projects/${slug}/pages`)
@@ -407,6 +411,31 @@ export function ProjectSidebar({
                     </SidebarContent>
 
                     <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+                        <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
+                            <ProjectSyncIndicator variant="sidebar" />
+                            <div className="mt-2 flex items-center justify-between rounded-lg bg-background/70 px-2.5 py-2">
+                                <p className="text-[11px] text-muted-foreground">
+                                    {totalPresenceCount} online
+                                </p>
+                                {presenceUsers.length > 0 && (
+                                    <PresenceAvatarGroup
+                                        users={presenceUsers}
+                                        maxVisible={3}
+                                        onUserClick={handlePresenceUserClick}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                        <div className="hidden pb-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-2">
+                            <ProjectSyncIndicator variant="compact" />
+                            <Badge
+                                variant="secondary"
+                                className="h-6 min-w-6 px-2 text-[10px] font-medium tabular-nums"
+                                title={`${totalPresenceCount} active in this project`}
+                            >
+                                {totalPresenceCount}
+                            </Badge>
+                        </div>
                         <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                             <NavUser user={user} onLogout={onLogout} />
                         </div>
