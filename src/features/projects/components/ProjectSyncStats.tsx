@@ -1,90 +1,8 @@
-import { useEffect } from 'react'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { useProjectDiffStore } from '@/stores/useProjectDiffStore'
-import { computeSyncPlan } from '@/lib/sync/syncEngine'
-import type { CloudFileEntry, LocalFileEntry } from '@/lib/sync/types'
+import { useProjectDiffStatus } from '@/hooks/useProjectDiffStatus'
 import { cn } from '@/lib/utils'
 
 import { ArrowDown, ArrowUp } from 'lucide-react'
-
-// Constants
-const MIN_CHECK_INTERVAL = 30 * 1000
-
-// Helper hook reusing the exact logic from ProjectDiffBadge
-function useSyncStatus(
-    projectId: Id<"projects">,
-    projectSlug: string,
-    localPath: string | null,
-    lastSyncAt?: number
-) {
-    const { diffs, setDiffStatus, setChecking } = useProjectDiffStore()
-    const diffStatus = diffs[projectSlug]
-    const isChecking = diffStatus?.isChecking
-    const lastChecked = diffStatus?.lastChecked ?? 0
-
-    // Get cloud manifest
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        { projectId }
-    )
-
-    useEffect(() => {
-        async function checkDiff() {
-            if (!localPath || cloudManifest === undefined) return
-            if (isChecking) return
-            if (Date.now() - lastChecked < MIN_CHECK_INTERVAL) return
-
-            setChecking(projectSlug, true)
-
-            try {
-                const exists = await window.electronAPI.project.pathExists(localPath)
-
-                if (!exists) {
-                    setDiffStatus(projectSlug, {
-                        downloads: cloudManifest.length,
-                        uploads: 0,
-                        conflicts: 0,
-                    })
-                    return
-                }
-
-                const localResult = await window.electronAPI.sync.getLocalManifest({
-                    projectPath: localPath,
-                })
-
-                const localFiles: LocalFileEntry[] = localResult.manifest
-                const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-                    _id: f._id,
-                    path: f.path,
-                    hash: f.hash,
-                    size: f.size,
-                    version: f.version,
-                    storageId: f.storageId,
-                    uploadedAt: f.uploadedAt,
-                }))
-
-                const plan = computeSyncPlan(localFiles, cloudFiles, lastSyncAt)
-
-                setDiffStatus(projectSlug, {
-                    downloads: plan.downloads.length,
-                    uploads: plan.uploads.length + plan.cloudDeletes.length,
-                    conflicts: plan.conflicts.length,
-                })
-            } catch (error) {
-                console.error(`[ProjectSyncStats] Error checking ${projectSlug}:`, error)
-                setDiffStatus(projectSlug, {
-                    error: error instanceof Error ? error.message : 'Unknown error',
-                })
-            }
-        }
-
-        checkDiff()
-    }, [cloudManifest, localPath, projectSlug, lastSyncAt, isChecking, lastChecked, setChecking, setDiffStatus])
-
-    return diffStatus
-}
 
 interface ProjectSyncStatsProps {
     projectId: Id<"projects">
@@ -101,7 +19,12 @@ export function ProjectSyncStats({
     lastSyncAt,
     className
 }: ProjectSyncStatsProps) {
-    const status = useSyncStatus(projectId, projectSlug, localPath, lastSyncAt)
+    const status = useProjectDiffStatus({
+        projectId,
+        projectSlug,
+        localPath,
+        lastSyncAt,
+    })
 
     if (!status || status.isChecking) return <div className={cn("w-20", className)} /> // Empty placeholder
 

@@ -241,6 +241,15 @@ export interface ReplicaState {
   lastPersistedAt: number | null
 }
 
+export interface SyncHistory {
+  projectId: string
+  lastSyncAt: number | null
+  cloudPaths: string[]
+  version: number
+  updatedAt: number
+  corrupted: boolean
+}
+
 export interface SyncDeleteFilesResult {
   results: Array<{ path: string; success: boolean }>
 }
@@ -524,10 +533,16 @@ export interface ElectronAPI {
     resolveConflict: (options: { fingerprint: string; resolvedContent: string }) =>
       Promise<{ success: boolean; error?: string }>
     enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
-      Promise<{ accepted: number; rejected: number; replicaState: ReplicaState }>
+      Promise<{ accepted: number; acceptedOpIds: string[]; rejected: number; replicaState: ReplicaState }>
     ackOps: (options: { projectId: string; opIds: string[] }) =>
       Promise<{ acked: number; replicaState: ReplicaState }>
     getReplicaState: (options: { projectId: string }) => Promise<ReplicaState>
+    getHistory: (options: { projectId: string }) => Promise<SyncHistory>
+    setHistory: (options: {
+      projectId: string
+      lastSyncAt: number
+      cloudPaths: string[]
+    }) => Promise<SyncHistory>
   }
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
@@ -830,6 +845,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sync:ackOps', options),
     getReplicaState: (options: { projectId: string }) =>
       ipcRenderer.invoke('sync:getReplicaState', options),
+    getHistory: (options: { projectId: string }) =>
+      ipcRenderer.invoke('sync:getHistory', options),
+    setHistory: (options: {
+      projectId: string
+      lastSyncAt: number
+      cloudPaths: string[]
+    }) => ipcRenderer.invoke('sync:setHistory', options),
   },
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {

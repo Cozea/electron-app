@@ -1,5 +1,56 @@
 import { mutation, query } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
+import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
+import * as Y from "yjs"
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+type YjsSyncCtx = QueryCtx | MutationCtx
+
+async function loadServerState(ctx: YjsSyncCtx, projectId: Id<"projects">) {
+  const serverDoc = new Y.Doc()
+  const latestSnapshot = await ctx.db
+    .query("yjsDocuments")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .order("desc")
+    .first()
+
+  let serverTimestamp = 0
+  if (latestSnapshot?.snapshot) {
+    Y.applyUpdate(serverDoc, new Uint8Array(latestSnapshot.snapshot), "snapshot")
+    serverTimestamp = Math.max(serverTimestamp, latestSnapshot.createdAt)
+  }
+
+  const updates = latestSnapshot
+    ? await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) =>
+          q.eq("projectId", projectId).gt("timestamp", latestSnapshot.createdAt)
+        )
+        .collect()
+    : await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+        .collect()
+
+  updates.sort((a, b) => a.timestamp - b.timestamp)
+  for (const update of updates) {
+    Y.applyUpdate(serverDoc, new Uint8Array(update.update), "server")
+    serverTimestamp = Math.max(serverTimestamp, update.timestamp)
+  }
+
+  return {
+    serverDoc,
+    latestSnapshot,
+    updatesSinceSnapshot: updates,
+    serverTimestamp,
+  }
+}
 
 /**
  * Broadcast a Yjs update to all clients subscribed to the project.
@@ -25,7 +76,7 @@ export const broadcastUpdate = mutation({
 
 /**
  * Get all Yjs updates since a given timestamp.
- * Used by clients to catch up with changes they missed.
+ * Used by clients to tail real-time updates.
  */
 export const getUpdatesSince = query({
   args: {
@@ -44,7 +95,7 @@ export const getUpdatesSince = query({
 
 /**
  * Get the latest document snapshot for initialization.
- * Used when a new client joins to get the full document state.
+ * Kept for compatibility with legacy clients.
  */
 export const getLatestSnapshot = query({
   args: { projectId: v.id("projects") },
@@ -103,15 +154,11 @@ export const cleanupOldUpdates = mutation({
 })
 
 /**
- * Sync with server using state vectors.
+ * Sync with server using a state-vector-first merge response.
  *
- * This mutation is used during reconnection to efficiently sync:
- * 1. Receives the client's update (changes made while offline)
- * 2. Returns the server's snapshot (for client to compute diff)
- *
- * The client will:
- * 1. Apply the server snapshot to get any remote changes
- * 2. The CRDT will automatically merge local and remote changes
+ * Compatibility notes:
+ * - Keeps legacy fields (`serverSnapshot`, `recentUpdates`) for older clients.
+ * - Adds `deltaUpdate` + `serverStateVector` for efficient sync.
  */
 export const syncWithServer = mutation({
   args: {
@@ -120,7 +167,6 @@ export const syncWithServer = mutation({
     clientId: v.string(),
   },
   handler: async (ctx, args) => {
-    // If client sent an update, store it
     if (args.clientUpdate) {
       await ctx.db.insert("yjsUpdates", {
         projectId: args.projectId,
@@ -131,32 +177,45 @@ export const syncWithServer = mutation({
       })
     }
 
-    // Return the latest server snapshot
-    const serverSnapshot = await ctx.db
-      .query("yjsDocuments")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
-      .first()
+    const {
+      serverDoc,
+      latestSnapshot,
+      updatesSinceSnapshot,
+      serverTimestamp,
+    } = await loadServerState(ctx, args.projectId)
 
-    // Also get any updates since the snapshot
-    const recentUpdates = serverSnapshot
-      ? await ctx.db
-          .query("yjsUpdates")
-          .withIndex("by_project_and_time", (q) =>
-            q.eq("projectId", args.projectId).gt("timestamp", serverSnapshot.createdAt)
-          )
-          .collect()
-      : []
+    let clientStateVector: Uint8Array | undefined
+    if (args.clientUpdate) {
+      try {
+        const clientDoc = new Y.Doc()
+        Y.applyUpdate(clientDoc, new Uint8Array(args.clientUpdate), "client")
+        clientStateVector = Y.encodeStateVector(clientDoc)
+      } catch {
+        clientStateVector = undefined
+      }
+    }
+
+    const deltaUpdate = clientStateVector
+      ? Y.encodeStateAsUpdate(serverDoc, clientStateVector)
+      : Y.encodeStateAsUpdate(serverDoc)
+
+    const serverStateVector = Y.encodeStateVector(serverDoc)
 
     return {
-      serverSnapshot: serverSnapshot?.snapshot ?? null,
-      snapshotVersion: serverSnapshot?.version ?? 0,
-      snapshotCreatedAt: serverSnapshot?.createdAt ?? 0,
-      recentUpdates: recentUpdates.map((u) => ({
-        update: u.update,
-        clientId: u.clientId,
-        timestamp: u.timestamp,
+      // Legacy fields for compatibility.
+      serverSnapshot: latestSnapshot?.snapshot ?? null,
+      snapshotVersion: latestSnapshot?.version ?? 0,
+      snapshotCreatedAt: latestSnapshot?.createdAt ?? 0,
+      recentUpdates: updatesSinceSnapshot.map((update) => ({
+        update: update.update,
+        clientId: update.clientId,
+        timestamp: update.timestamp,
       })),
+      // State-vector-first payload.
+      deltaUpdate: toArrayBuffer(deltaUpdate),
+      deltaByteLength: deltaUpdate.byteLength,
+      serverStateVector: toArrayBuffer(serverStateVector),
+      serverTimestamp,
     }
   },
 })

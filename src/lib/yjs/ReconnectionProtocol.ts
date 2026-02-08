@@ -34,6 +34,17 @@ export interface ReconnectionResult {
   error?: string
 }
 
+interface SyncWithServerResponse {
+  serverSnapshot: ArrayBuffer | null
+  snapshotVersion: number
+  snapshotCreatedAt: number
+  recentUpdates: Array<{ update: ArrayBuffer; clientId: string; timestamp: number }>
+  deltaUpdate?: ArrayBuffer
+  deltaByteLength?: number
+  serverStateVector?: ArrayBuffer
+  serverTimestamp?: number
+}
+
 /**
  * ReconnectionProtocol - Handles efficient sync after offline periods.
  *
@@ -81,28 +92,32 @@ export class ReconnectionProtocol {
       new Uint8Array(updateBuffer).set(localUpdate)
 
       // 3. Send to server and get server's state
-      const result = await this.convex.mutation(api.yjs.syncWithServer, {
+      const result = (await this.convex.mutation(api.yjs.syncWithServer, {
         projectId: this.projectId,
         clientUpdate: updateBuffer,
         clientId: this.clientId,
-      })
+      })) as SyncWithServerResponse
 
       let receivedUpdates = 0
 
-      // 4. Apply server snapshot if available
-      if (result.serverSnapshot) {
-        const serverBytes = new Uint8Array(result.serverSnapshot)
-        Y.applyUpdate(this.doc, serverBytes, 'sync')
-        receivedUpdates++
-      }
-
-      // 5. Apply any recent updates since the snapshot
-      for (const update of result.recentUpdates) {
-        // Skip our own updates
-        if (update.clientId !== this.clientId) {
-          const updateBytes = new Uint8Array(update.update)
-          Y.applyUpdate(this.doc, updateBytes, 'sync')
+      // 4. Prefer state-vector delta updates for efficient reconciliation.
+      if (result.deltaUpdate && result.deltaUpdate.byteLength > 0) {
+        Y.applyUpdate(this.doc, new Uint8Array(result.deltaUpdate), 'sync')
+        receivedUpdates = 1
+      } else {
+        // Legacy fallback for older server payloads.
+        if (result.serverSnapshot) {
+          const serverBytes = new Uint8Array(result.serverSnapshot)
+          Y.applyUpdate(this.doc, serverBytes, 'sync')
           receivedUpdates++
+        }
+
+        for (const update of result.recentUpdates) {
+          if (update.clientId !== this.clientId) {
+            const updateBytes = new Uint8Array(update.update)
+            Y.applyUpdate(this.doc, updateBytes, 'sync')
+            receivedUpdates++
+          }
         }
       }
 

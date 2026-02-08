@@ -65,7 +65,15 @@ export class YConvexProvider {
    */
   private handleLocalUpdate = async (update: Uint8Array, origin: unknown) => {
     // Don't re-broadcast updates we received from remote
-    if (origin === 'remote' || !this.connected) return
+    if (
+      origin === 'remote' ||
+      origin === 'sync' ||
+      origin === 'snapshot' ||
+      origin === 'state-vector' ||
+      !this.connected
+    ) {
+      return
+    }
 
     const originStr = typeof origin === 'string' ? origin : 'user'
 

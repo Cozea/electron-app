@@ -6,7 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react"
-import { useQuery, useMutation } from "convex/react"
+import { useQuery, useMutation, useConvex } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import {
@@ -27,6 +27,7 @@ import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
+import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 
@@ -78,6 +79,7 @@ function AgentFileSyncBridge({
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
+  const convex = useConvex()
 
   // Watch local filesystem for edits that bypass Electron IPC (terminal, external editor, etc.)
   useEffect(() => {
@@ -99,6 +101,8 @@ function AgentFileSyncBridge({
 
   // Bridge local agent file writes to Yjs (local → Yjs → remote)
   useAgentFileSync(yjsDoc, projectPath, projectId, userId)
+  // Sync binary files via shared file-op pipeline.
+  useBinaryFileSync(projectId, projectPath, userId, convex)
   // Write remote Yjs changes back to local disk (remote → Yjs → local)
   useYjsFileWriteback(yjsDoc, projectPath, projectId)
   return <>{children}</>
@@ -214,7 +218,7 @@ export function ProjectSyncProvider({
       for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
       // Include auto-merged files in cloud paths
       for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
-      saveLocalSyncHistory(projectId, {
+      await saveLocalSyncHistory(projectId, {
         lastSyncAt: now,
         cloudPathsAtLastSync: cloudPaths,
       })
@@ -402,8 +406,8 @@ export function ProjectSyncProvider({
 	      uploadedAt: f.uploadedAt,
 	    }))
 
-	    const historyInspection = inspectLocalSyncHistory(projectId)
-	    const localHistory = loadLocalSyncHistory(projectId)
+	    const historyInspection = await inspectLocalSyncHistory(projectId)
+	    const localHistory = await loadLocalSyncHistory(projectId)
 
 	    const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
 
@@ -464,7 +468,7 @@ export function ProjectSyncProvider({
 	        if (totalChanges === 0) {
 	          // Already synced - no screen needed
 	          const now = Date.now()
-	          saveLocalSyncHistory(projectId, {
+	          await saveLocalSyncHistory(projectId, {
 	            lastSyncAt: now,
 	            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
 	          })

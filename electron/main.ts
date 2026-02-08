@@ -103,6 +103,15 @@ interface ConflictResolutionPayload {
   hitCount: number
 }
 
+interface SyncHistoryPayload {
+  projectId: string
+  lastSyncAt: number | null
+  cloudPaths: string[]
+  version: number
+  updatedAt: number
+  corrupted: boolean
+}
+
 const replicaStateByProject = new Map<string, ReplicaStateRecord>()
 const queuedOpsByProject = new Map<string, SyncOpRecord[]>()
 const MAX_ACKED_KEYS = 4_000
@@ -203,6 +212,7 @@ function applyPathHead(replica: ReplicaStateRecord, op: SyncOpRecord): void {
 
 function enqueueSyncOps(projectId: string, incomingOps: SyncOpRecord[]): {
   accepted: number
+  acceptedOpIds: string[]
   rejected: number
   replicaState: ReturnType<typeof snapshotReplicaState>
 } {
@@ -223,6 +233,7 @@ function enqueueSyncOps(projectId: string, incomingOps: SyncOpRecord[]): {
     })
 
   let accepted = 0
+  const acceptedOpIds: string[] = []
   let rejected = 0
 
   for (const op of sortedOps) {
@@ -240,6 +251,7 @@ function enqueueSyncOps(projectId: string, incomingOps: SyncOpRecord[]): {
     queue.push(op)
     applyPathHead(replica, op)
     accepted++
+    acceptedOpIds.push(op.opId)
   }
 
   queuedOpsByProject.set(normalizedProjectId, queue)
@@ -252,6 +264,7 @@ function enqueueSyncOps(projectId: string, incomingOps: SyncOpRecord[]): {
 
   return {
     accepted,
+    acceptedOpIds,
     rejected,
     replicaState: snapshotReplicaState(normalizedProjectId, replica),
   }
@@ -302,6 +315,19 @@ function getSyncStatePath(): string {
 
 function getSyncStateDbPath(): string {
   return path.join(app.getPath('userData'), 'sync-replica-state.sqlite')
+}
+
+function normalizeSyncHistoryPaths(paths: string[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const pathValue of paths) {
+    const normalizedPath = normalizeSyncPath(String(pathValue))
+    if (!normalizedPath || seen.has(normalizedPath)) continue
+    seen.add(normalizedPath)
+    normalized.push(normalizedPath)
+  }
+  normalized.sort((a, b) => a.localeCompare(b))
+  return normalized
 }
 
 let syncReplicaDb: DatabaseSync | null = null
@@ -370,6 +396,13 @@ function getSyncReplicaDb(): DatabaseSync | null {
       );
       CREATE INDEX IF NOT EXISTS idx_conflict_resolution_last_used
       ON conflict_resolution_cache (last_used_at);
+      CREATE TABLE IF NOT EXISTS sync_history (
+        project_id TEXT PRIMARY KEY,
+        version INTEGER NOT NULL,
+        last_sync_at INTEGER,
+        cloud_paths_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `)
     syncReplicaDb = db
     return syncReplicaDb
@@ -712,6 +745,142 @@ function persistSyncState(): void {
 
   // Keep JSON mirror as a compatibility and recovery fallback.
   persistSyncStateToJson()
+}
+
+function getSyncHistory(projectId: string): SyncHistoryPayload {
+  const normalizedProjectId = String(projectId)
+  const db = getSyncReplicaDb()
+  if (!db) {
+    return {
+      projectId: normalizedProjectId,
+      lastSyncAt: null,
+      cloudPaths: [],
+      version: 1,
+      updatedAt: 0,
+      corrupted: false,
+    }
+  }
+
+  try {
+    const row = db.prepare(`
+      SELECT
+        project_id,
+        version,
+        last_sync_at,
+        cloud_paths_json,
+        updated_at
+      FROM sync_history
+      WHERE project_id = ?
+    `).get(normalizedProjectId) as
+      | {
+          project_id: string
+          version: number
+          last_sync_at: number | null
+          cloud_paths_json: string
+          updated_at: number
+        }
+      | undefined
+
+    if (!row) {
+      return {
+        projectId: normalizedProjectId,
+        lastSyncAt: null,
+        cloudPaths: [],
+        version: 1,
+        updatedAt: 0,
+        corrupted: false,
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(row.cloud_paths_json)
+      const cloudPaths = Array.isArray(parsed)
+        ? normalizeSyncHistoryPaths(
+            parsed.filter((entry): entry is string => typeof entry === 'string')
+          )
+        : []
+      return {
+        projectId: row.project_id,
+        version: Number(row.version) || 1,
+        lastSyncAt: typeof row.last_sync_at === 'number' ? row.last_sync_at : null,
+        cloudPaths,
+        updatedAt: Number(row.updated_at) || 0,
+        corrupted: false,
+      }
+    } catch {
+      return {
+        projectId: row.project_id,
+        version: Number(row.version) || 1,
+        lastSyncAt: typeof row.last_sync_at === 'number' ? row.last_sync_at : null,
+        cloudPaths: [],
+        updatedAt: Number(row.updated_at) || 0,
+        corrupted: true,
+      }
+    }
+  } catch (error) {
+    console.warn('[Sync] Failed to load sync history:', error)
+    return {
+      projectId: normalizedProjectId,
+      lastSyncAt: null,
+      cloudPaths: [],
+      version: 1,
+      updatedAt: 0,
+      corrupted: true,
+    }
+  }
+}
+
+function setSyncHistory(projectId: string, history: {
+  lastSyncAt: number
+  cloudPaths: string[]
+}): SyncHistoryPayload {
+  const normalizedProjectId = String(projectId)
+  const normalizedPaths = normalizeSyncHistoryPaths(history.cloudPaths)
+  const now = Date.now()
+  const payload: SyncHistoryPayload = {
+    projectId: normalizedProjectId,
+    lastSyncAt: Number(history.lastSyncAt) || now,
+    cloudPaths: normalizedPaths,
+    version: 1,
+    updatedAt: now,
+    corrupted: false,
+  }
+  const db = getSyncReplicaDb()
+  if (!db) {
+    return payload
+  }
+
+  try {
+    db.prepare(`
+      INSERT INTO sync_history (
+        project_id,
+        version,
+        last_sync_at,
+        cloud_paths_json,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET
+        version = excluded.version,
+        last_sync_at = excluded.last_sync_at,
+        cloud_paths_json = excluded.cloud_paths_json,
+        updated_at = excluded.updated_at
+    `).run(
+      payload.projectId,
+      payload.version,
+      payload.lastSyncAt,
+      JSON.stringify(payload.cloudPaths),
+      payload.updatedAt
+    )
+  } catch (error) {
+    console.warn('[Sync] Failed to persist sync history:', error)
+    return {
+      ...payload,
+      corrupted: true,
+    }
+  }
+
+  return payload
 }
 
 function mergeCacheGet(key: string): MergeCacheRecordPayload | null {
@@ -3255,6 +3424,7 @@ ipcMain.handle(
     { projectId, ops }: { projectId: string; ops: SyncOpRecord[] }
   ): Promise<{
     accepted: number
+    acceptedOpIds: string[]
     rejected: number
     replicaState: {
       projectId: string
@@ -3314,6 +3484,37 @@ ipcMain.handle(
     replica.lastStateVector = replica.replicaHead - replica.pendingOps
     replicaStateByProject.set(normalizedProjectId, replica)
     return snapshotReplicaState(normalizedProjectId, replica)
+  }
+)
+
+ipcMain.handle(
+  'sync:getHistory',
+  async (
+    _event,
+    { projectId }: { projectId: string }
+  ): Promise<SyncHistoryPayload> => {
+    return getSyncHistory(String(projectId))
+  }
+)
+
+ipcMain.handle(
+  'sync:setHistory',
+  async (
+    _event,
+    {
+      projectId,
+      lastSyncAt,
+      cloudPaths,
+    }: {
+      projectId: string
+      lastSyncAt: number
+      cloudPaths: string[]
+    }
+  ): Promise<SyncHistoryPayload> => {
+    return setSyncHistory(String(projectId), {
+      lastSyncAt: Number(lastSyncAt) || Date.now(),
+      cloudPaths: Array.isArray(cloudPaths) ? cloudPaths : [],
+    })
   }
 )
 
