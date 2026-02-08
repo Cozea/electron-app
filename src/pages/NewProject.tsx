@@ -35,6 +35,13 @@ import type { SyncExecutorResult } from '@/lib/sync/syncExecutor'
 import { saveLocalSyncHistory } from '@/lib/sync/syncHistory'
 import type { CloudFileEntry, LocalFileEntry } from '@/lib/sync/types'
 
+function getRepoDisplayName(repoUrl: string): string {
+  const trimmed = repoUrl.trim().replace(/\/+$/, '')
+  if (!trimmed) return 'Imported Project'
+  const lastSegment = trimmed.split(/[/\\]/).pop() ?? 'Imported Project'
+  return lastSegment.replace(/\.git$/i, '') || 'Imported Project'
+}
+
 export function NewProject() {
   const { user, logout, convexUserId, currentOrganization } = useAuth()
   const navigate = useNavigate()
@@ -68,6 +75,8 @@ export function NewProject() {
   const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
   const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+  const deleteProject = useMutation(api.projects.deleteProject)
 
   // Fetch organization members for the team step
   const orgMembersData = useQuery(
@@ -447,11 +456,25 @@ export function NewProject() {
       return
     }
 
-    const repoName = repoSource.repoUrl.split(/[/\\]/).pop() || 'Imported Project'
+    const repoName = getRepoDisplayName(repoSource.repoUrl)
     console.log('[Import] Starting import:', { repoName, repoSource })
     setImportSyncMessage('Creating project...')
 
     try {
+      let createdProjectId: Id<'projects'> | null = null
+      const cleanupCreatedProject = async () => {
+        if (!createdProjectId) return
+        try {
+          await deleteProject({
+            projectId: createdProjectId,
+            userId: convexUserId,
+            confirmName: repoName,
+          })
+        } catch (cleanupError) {
+          console.warn('[Import] Failed to cleanup partially created project:', cleanupError)
+        }
+      }
+
       console.log('[Import] Calling createProject mutation...')
       const result = await createProject({
         organizationId,
@@ -460,26 +483,63 @@ export function NewProject() {
         creationPath: 'repo',
         repoSource,
       })
+      createdProjectId = result.projectId
       console.log('[Import] Project created:', result)
 
-      if (repoSource.provider === 'local') {
-        try {
-          const syncResult = await runInitialLocalSync(result.projectId, repoSource.repoUrl)
-          if (!syncResult.success) {
-            const syncMessage = syncResult.error ?? 'Initial sync failed'
-            setImportSyncState('error')
-            setImportSyncMessage(syncMessage)
-            setImportError(syncMessage)
-            return
-          }
-        } catch (syncError) {
-          const syncMessage =
-            syncError instanceof Error ? syncError.message : 'Initial sync failed'
+      let importPath = repoSource.repoUrl
+
+      if (repoSource.provider !== 'local') {
+        if (!result.slug) {
+          await cleanupCreatedProject()
+          setImportSyncState('error')
+          setImportSyncMessage('Project created but no slug was returned.')
+          setImportError('Project created but no slug was returned.')
+          return
+        }
+
+        setImportSyncMessage('Cloning repository...')
+        const cloneResult = await window.electronAPI.project.cloneRepository({
+          slug: result.slug,
+          repoUrl: repoSource.repoUrl,
+          provider: repoSource.provider,
+          branch: repoSource.branch,
+        })
+
+        if (!cloneResult.success || !cloneResult.localPath) {
+          await cleanupCreatedProject()
+          const cloneMessage = cloneResult.error || 'Failed to clone repository'
+          setImportSyncState('error')
+          setImportSyncMessage(cloneMessage)
+          setImportError(cloneMessage)
+          return
+        }
+
+        importPath = cloneResult.localPath
+        await updateMemberLocalPath({
+          projectId: result.projectId,
+          userId: convexUserId,
+          localPath: importPath,
+        })
+      }
+
+      try {
+        const syncResult = await runInitialLocalSync(result.projectId, importPath)
+        if (!syncResult.success) {
+          await cleanupCreatedProject()
+          const syncMessage = syncResult.error ?? 'Initial sync failed'
           setImportSyncState('error')
           setImportSyncMessage(syncMessage)
           setImportError(syncMessage)
           return
         }
+      } catch (syncError) {
+        await cleanupCreatedProject()
+        const syncMessage =
+          syncError instanceof Error ? syncError.message : 'Initial sync failed'
+        setImportSyncState('error')
+        setImportSyncMessage(syncMessage)
+        setImportError(syncMessage)
+        return
       }
 
       if (result.slug) {

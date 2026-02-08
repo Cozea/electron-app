@@ -69,6 +69,8 @@ export function ProjectPagesPage() {
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
+    const visualEditorOpen = useVisualEditorStore((state) => state.isOpen)
+    const visualEditorWidth = useVisualEditorStore((state) => state.panelWidth)
     const openWithScreenshot = useAssistantPanelStore((state) => state.openWithScreenshot)
     const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
@@ -107,6 +109,9 @@ export function ProjectPagesPage() {
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
+    const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
+    const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
+    const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
 
     useEffect(() => {
@@ -1103,7 +1108,12 @@ export function ProjectPagesPage() {
         setFocusedPageIndex,
     ])
 
-    useProjectHeader(headerControls, null, focusedPageIndex !== null)
+    useProjectHeader(
+        headerControls,
+        null,
+        focusedPageIndex !== null,
+        { insetLeft: headerInsetLeft, insetRight: headerInsetRight }
+    )
 
     // Loading state - show shell immediately
     // Only show 404 if we are loaded (project === null) and explicitly not found
@@ -1115,8 +1125,6 @@ export function ProjectPagesPage() {
             </div>
         )
     }
-
-    const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
 
     return (
         <div className="flex flex-col h-full bg-background relative">

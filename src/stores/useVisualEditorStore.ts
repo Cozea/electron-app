@@ -98,6 +98,9 @@ interface VisualEditorState {
   // Whether the visual editor sidebar is open
   isOpen: boolean
 
+  // Current width of the visual editor panel
+  panelWidth: number
+
   // Which side of the window the inspector panel is on
   inspectorSide: InspectorSide
 
@@ -132,6 +135,7 @@ interface VisualEditorState {
   open: () => void
   close: () => void
   toggle: () => void
+  setPanelWidth: (width: number) => void
   setInspectorSide: (side: InspectorSide) => void
   toggleInspectorSide: () => void
 
@@ -168,6 +172,7 @@ interface VisualEditorState {
 
 const initialState = {
   isOpen: false,
+  panelWidth: 300,
   selectedElement: null,
   pendingChanges: {},
   pendingTextChange: null,
@@ -198,6 +203,10 @@ export const useVisualEditorStore = create<VisualEditorState>()(
 
     toggle: () => set((state) => {
       state.isOpen = !state.isOpen
+    }),
+
+    setPanelWidth: (panelWidth) => set((state) => {
+      state.panelWidth = panelWidth
     }),
 
     setInspectorSide: (inspectorSide) => set((state) => {
@@ -289,7 +298,7 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     {
       name: 'visual-editor-store',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ inspectorSide: state.inspectorSide }),
+      partialize: (state) => ({ inspectorSide: state.inspectorSide, panelWidth: state.panelWidth }),
     }
   )
 )
