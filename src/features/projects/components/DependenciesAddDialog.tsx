@@ -35,22 +35,35 @@ export function DependenciesAddDialog({ open, onOpenChange, projectPath: _projec
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestIdRef = useRef(0)
 
   const fetchRegistry = useCallback(async (value: string) => {
     if (!window.electronAPI?.dependencies) return
+    const requestId = ++searchRequestIdRef.current
     setRegistryLoading(true)
-    const result = await window.electronAPI.dependencies.searchRegistry({ query: value, size: 20 })
-    if (result.success && result.results) {
-      const packages = result.results.objects.map((obj) => ({
-        name: obj.package.name,
-        version: obj.package.version,
-        description: obj.package.description,
-      }))
-      setRegistryResults(packages)
-    } else {
+
+    try {
+      const result = await window.electronAPI.dependencies.searchRegistry({ query: value, size: 20 })
+      if (requestId !== searchRequestIdRef.current) return
+
+      if (result.success && result.results) {
+        const packages = result.results.objects.map((obj) => ({
+          name: obj.package.name,
+          version: obj.package.version,
+          description: obj.package.description,
+        }))
+        setRegistryResults(packages)
+      } else {
+        setRegistryResults([])
+      }
+    } catch {
+      if (requestId !== searchRequestIdRef.current) return
       setRegistryResults([])
+    } finally {
+      if (requestId === searchRequestIdRef.current) {
+        setRegistryLoading(false)
+      }
     }
-    setRegistryLoading(false)
   }, [])
 
   useEffect(() => {
@@ -58,7 +71,9 @@ export function DependenciesAddDialog({ open, onOpenChange, projectPath: _projec
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const value = query.trim()
     if (!value) {
+      searchRequestIdRef.current += 1
       setRegistryResults([])
+      setRegistryLoading(false)
       return
     }
     debounceRef.current = setTimeout(() => {
@@ -91,12 +106,14 @@ export function DependenciesAddDialog({ open, onOpenChange, projectPath: _projec
 
   useEffect(() => {
     if (!open) {
+      searchRequestIdRef.current += 1
       setQuery('')
       setRegistryResults([])
       setExpandedRows({})
       setVersionOverrides({})
       setShowTopFade(false)
       setShowBottomFade(false)
+      setRegistryLoading(false)
     }
   }, [open])
 

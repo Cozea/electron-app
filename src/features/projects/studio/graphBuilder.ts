@@ -23,6 +23,7 @@ export interface StudioGraphNodeData extends Record<string, unknown> {
   filePath?: string
   apiPath?: string
   operation?: StudioConvexOperation
+  isInternal?: boolean
   details?: string[]
 }
 
@@ -54,8 +55,8 @@ function modulePathFromConvexFile(filePath: string): string {
     .replace(/\//g, ".")
 }
 
-function extractConvexExports(content: string): Array<{ name: string; operation: StudioConvexOperation }> {
-  const results: Array<{ name: string; operation: StudioConvexOperation }> = []
+function extractConvexExports(content: string): Array<{ name: string; operation: StudioConvexOperation; isInternal: boolean }> {
+  const results: Array<{ name: string; operation: StudioConvexOperation; isInternal: boolean }> = []
 
   const re = /export\s+const\s+([A-Za-z0-9_]+)\s*=\s*(internalQuery|internalMutation|internalAction|query|mutation|action)\s*\(/g
   let match: RegExpExecArray | null
@@ -63,13 +64,14 @@ function extractConvexExports(content: string): Array<{ name: string; operation:
   while ((match = re.exec(content))) {
     const name = match[1]
     const rawOp = match[2]
+    const isInternal = rawOp.startsWith("internal")
     const operation: StudioConvexOperation =
       rawOp === "mutation" || rawOp === "internalMutation"
         ? "mutation"
         : rawOp === "action" || rawOp === "internalAction"
           ? "action"
           : "query"
-    results.push({ name, operation })
+    results.push({ name, operation, isInternal })
   }
 
   return results
@@ -113,7 +115,30 @@ function extractApiPaths(content: string): string[] {
 
 function isTextFile(path: string): boolean {
   const p = normalizePath(path)
-  return /\.(ts|tsx|js|jsx)$/.test(p)
+  return /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|astro|md|mdx)$/.test(p)
+}
+
+async function readProjectFiles(
+  projectPath: string,
+  filePaths: string[]
+): Promise<Map<string, string>> {
+  const contents = new Map<string, string>()
+  const readResults = await Promise.all(
+    filePaths.map(async (filePath) => {
+      const result = await window.electronAPI.project.readFile({
+        projectPath,
+        filePath,
+      })
+      return result.success && result.content ? { filePath, content: result.content } : null
+    })
+  )
+
+  for (const readResult of readResults) {
+    if (!readResult) continue
+    contents.set(readResult.filePath, readResult.content)
+  }
+
+  return contents
 }
 
 const BABEL_PARSE_OPTIONS: ParserOptions = {
@@ -512,20 +537,22 @@ export async function buildBackendStudioGraph({
     edges.push(edge)
   }
 
+  const [convexFileContents, uiFileContents] = await Promise.all([
+    readProjectFiles(projectPath, convexFiles.map((f) => f.path)),
+    readProjectFiles(projectPath, uiFiles.map((f) => f.path)),
+  ])
+
   // 1) Convex functions + DB access
   for (const file of convexFiles) {
-    const readResult = await window.electronAPI.project.readFile({
-      projectPath,
-      filePath: file.path,
-    })
-    if (!readResult.success || !readResult.content) continue
+    const fileContent = convexFileContents.get(file.path)
+    if (!fileContent) continue
 
     const modulePath = modulePathFromConvexFile(file.path)
-    const exportedFns = extractConvexExports(readResult.content)
+    const exportedFns = extractConvexExports(fileContent)
     if (exportedFns.length === 0) continue
 
-    const reads = extractDbReads(readResult.content)
-    const writes = extractDbWrites(readResult.content)
+    const reads = extractDbReads(fileContent)
+    const writes = extractDbWrites(fileContent)
 
     for (const fn of exportedFns) {
       const apiPath = `${modulePath}.${fn.name}`
@@ -547,6 +574,7 @@ export async function buildBackendStudioGraph({
           filePath: file.path,
           apiPath,
           operation: fn.operation,
+          isInternal: fn.isInternal,
           details: details.length ? details : undefined,
         },
       })
@@ -612,20 +640,17 @@ export async function buildBackendStudioGraph({
   // 2) UI callers → Convex
   for (const file of uiFiles) {
     const routeInfo = routesByFile.get(file.path) ?? null
-    const readResult = await window.electronAPI.project.readFile({
-      projectPath,
-      filePath: file.path,
-    })
-    if (!readResult.success || !readResult.content) continue
+    const fileContent = uiFileContents.get(file.path)
+    if (!fileContent) continue
 
-    const apiPaths = readResult.content.includes("api.") ? extractApiPaths(readResult.content) : []
+    const apiPaths = fileContent.includes("api.") ? extractApiPaths(fileContent) : []
 
     // Only keep edges to Convex functions we found (reduces noise)
     const convexTargets = apiPaths
       .map((p) => `convex:${p}`)
       .filter((id) => convexFunctionIds.has(id))
 
-    const external = extractExternalRefsFromSource(readResult.content)
+    const external = extractExternalRefsFromSource(fileContent)
     const hasExternalCalls =
       external.supabase.tables.size > 0 ||
       external.supabase.rpcs.size > 0 ||
@@ -679,7 +704,7 @@ export async function buildBackendStudioGraph({
       position: { x: 0, y: 0 },
       data: {
         kind: "ui",
-        label: routeInfo?.name ?? fileName.replace(/\.(tsx|ts|jsx|js)$/, ""),
+        label: routeInfo?.name ?? fileName.replace(/\.(tsx|ts|jsx|js|mjs|cjs|vue|svelte|astro|md|mdx)$/, ""),
         subtitle: routeInfo?.path ?? file.path,
         filePath: file.path,
         details,

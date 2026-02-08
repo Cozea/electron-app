@@ -265,8 +265,9 @@ export function ProjectPagesPage() {
                 setFocusedPageIndex(index)
             }
             // Clear the param after setting focus
-            searchParams.delete('focus')
-            setSearchParams(searchParams, { replace: true })
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('focus')
+            setSearchParams(nextParams, { replace: true })
         }
     }, [searchParams, routes.length, setSearchParams])
 
@@ -331,6 +332,10 @@ export function ProjectPagesPage() {
     // Listen for bridge messages from iframe
     useEffect(() => {
         const handleMessage = (event: MessageEvent<BridgeMessage>) => {
+            const activePreviewWindow = iframeRef.current?.contentWindow
+            if (activePreviewWindow && event.source !== activePreviewWindow) {
+                return
+            }
             const { type, payload } = event.data || {}
 
             switch (type) {

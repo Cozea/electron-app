@@ -1262,12 +1262,18 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
-    const result = await localRuntime.requestToolExecution(conversationId, {
-      toolName,
-      input: toolInput,
-      toolCallId,
-      projectPath: projectPath ?? undefined,
-    })
+    const toolFilePaths = getToolFilePaths(toolName, toolInput)
+    const run = () =>
+      localRuntime.requestToolExecution(conversationId, {
+        toolName,
+        input: toolInput,
+        toolCallId,
+        projectPath: projectPath ?? undefined,
+      })
+    const result =
+      toolFilePaths.length > 0 && WRITE_TOOLS.has(toolName)
+        ? await withFileLocks(toolFilePaths, run)
+        : await run()
 
     if (cancelledToolCallsRef.current.has(toolCallId)) {
       return
@@ -1287,7 +1293,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         errorText: result.error || 'Tool failed',
       })
     }
-  }, [addToolOutput, isToolAllowedInContext, localRuntime, conversationId, projectPath])
+  }, [
+    addToolOutput,
+    conversationId,
+    getToolFilePaths,
+    isToolAllowedInContext,
+    localRuntime,
+    projectPath,
+    withFileLocks,
+  ])
 
   const handleApprovedTool = useCallback(async (
     toolName: string,

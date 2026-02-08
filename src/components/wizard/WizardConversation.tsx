@@ -791,18 +791,6 @@ export function WizardConversation({
     for (const message of messages) {
       if (message.role !== 'assistant') continue
 
-      // Debug: Log all part types to understand the structure
-      console.log('[Wizard] Message parts:', message.parts.map((part) => {
-        const toolPart = part as ToolPart
-        return {
-          type: part.type,
-          toolName: toolPart.toolName,
-          state: toolPart.state,
-          hasOutput: Boolean(toolPart.output),
-          hasInput: Boolean(toolPart.input),
-        }
-      }))
-
       for (const part of message.parts) {
         // Check for present_plans tool with output - handle various formats from different providers
         const partType = part.type as string
@@ -814,18 +802,6 @@ export function WizardConversation({
           (partType === 'tool-result' && toolPart.toolName === 'present_plans')
 
         if (isPresntPlans) {
-          console.log('[Wizard] Found present_plans tool part:', {
-            type: part.type,
-            toolName: toolPart.toolName,
-            state: toolPart.state,
-            hasOutput: !!toolPart.output,
-            hasResult: !!toolPart.result,
-            hasInput: !!toolPart.input,
-            hasArgs: !!toolPart.args,
-            currentExtracted: extractedPlanCountRef.current,
-            rawPart: JSON.stringify(toolPart).substring(0, 500),
-          })
-
           // Get output from various possible fields (different providers use different formats)
           const rawOutput = toolPart.output ?? toolPart.result
           const rawInput = toolPart.input ?? toolPart.args
@@ -834,14 +810,11 @@ export function WizardConversation({
           if ((toolPart.state === 'output-available' || toolPart.state === 'result') && rawOutput) {
             try {
               const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
-              console.log('[Wizard] Parsed output plans:', output?.plans?.length || 0, 'plans')
               if (isRecord(output) && Array.isArray(output.plans)) {
                 const validPlans = validatePlans(output.plans)
-                console.log('[Wizard] Valid plans after validation:', validPlans.length)
                 if (validPlans.length > extractedPlanCountRef.current) {
                   extractedPlanCountRef.current = validPlans.length
                   setPlanOptions(validPlans)
-                  console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans')
                   if (validPlans.length >= 3) return
                 }
               }
@@ -852,22 +825,18 @@ export function WizardConversation({
           // Also check input/args if output not yet available (streaming or Gemini format)
           else if (isRecord(rawInput) && Array.isArray(rawInput.plans)) {
             const validPlans = validatePlans(rawInput.plans)
-            console.log('[Wizard] Input plans (streaming):', rawInput.plans.length, 'raw,', validPlans.length, 'valid')
             if (validPlans.length > extractedPlanCountRef.current) {
               extractedPlanCountRef.current = validPlans.length
               setPlanOptions(validPlans)
-              console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans (from input)')
               if (validPlans.length >= 3) return
             }
           }
           // Direct plans field check (some providers put it at top level)
           else if (Array.isArray(toolPart.plans)) {
             const validPlans = validatePlans(toolPart.plans)
-            console.log('[Wizard] Direct plans field:', toolPart.plans.length, 'raw,', validPlans.length, 'valid')
             if (validPlans.length > extractedPlanCountRef.current) {
               extractedPlanCountRef.current = validPlans.length
               setPlanOptions(validPlans)
-              console.log('[Wizard] Updated planOptions with', validPlans.length, 'plans (direct)')
               if (validPlans.length >= 3) return
             }
           }

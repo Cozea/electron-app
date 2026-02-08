@@ -3,20 +3,12 @@
 import { useNavigate, useParams, useLocation } from "react-router-dom"
 import {
     Settings,
-    Users,
-    GitBranch,
-    Bell,
-    Shield,
     AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const settingsSections = [
     { id: 'general', label: 'General', icon: Settings },
-    { id: 'access', label: 'Access', icon: Users },
-    { id: 'branches', label: 'Branches', icon: GitBranch },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'security', label: 'Security', icon: Shield },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
 ]
 
@@ -28,8 +20,11 @@ export function SettingsSectionsList() {
     // Extract current section from URL (e.g., /projects/my-project/settings/general)
     const pathParts = location.pathname.split('/')
     const settingsIndex = pathParts.indexOf('settings')
-    const currentSection = settingsIndex !== -1 && pathParts[settingsIndex + 1]
+    const currentSectionRaw = settingsIndex !== -1 && pathParts[settingsIndex + 1]
         ? pathParts[settingsIndex + 1]
+        : 'general'
+    const currentSection = settingsSections.some((section) => section.id === currentSectionRaw)
+        ? currentSectionRaw
         : 'general'
 
     const handleSectionClick = (sectionId: string) => {
