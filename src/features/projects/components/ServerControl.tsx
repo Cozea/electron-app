@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Play, Square, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions } from "@/stores/useTerminalStore"
 import {
@@ -43,7 +43,7 @@ interface ServerControlProps {
 }
 
 export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: ServerControlProps) {
-    const { serverStatus, serverPort, actions } = useProjectPagesStore()
+    const { serverStatus, actions } = useProjectPagesStore()
     const { addTerminal, removeTerminal, updateTerminalStatus, setPanelOpen } = useTerminalActions()
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
@@ -348,25 +348,11 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     <TooltipContent side="bottom">Start Dev Server</TooltipContent>
                 </Tooltip>
             ) : (
-                <div className="flex items-center gap-1">
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <span className="relative flex h-2.5 w-2.5 cursor-default">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                                </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                                <p>localhost:{serverPort}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-
+                <div className="flex items-center">
                     <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20"
+                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
                         onClick={handleStop}
                         title="Stop server"
                         disabled={isUpdating}

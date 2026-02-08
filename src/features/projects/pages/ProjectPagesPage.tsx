@@ -780,7 +780,10 @@ export function ProjectPagesPage() {
 
     const headerControls = useMemo(() => (
         <TooltipProvider delayDuration={300}>
-            <div ref={headerRef} className="flex items-center gap-2">
+            <div
+                ref={headerRef}
+                className={cn("flex items-center gap-2", focusedPageIndex !== null && "ml-auto")}
+            >
                 {focusedPageIndex !== null && (
                     <>
                         <Tooltip>
@@ -1113,12 +1116,26 @@ export function ProjectPagesPage() {
         )
     }
 
+    const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
+
     return (
         <div className="flex flex-col h-full bg-background relative">
 
-            {/* Content */}
-            <div className="flex-1 overflow-hidden flex flex-col">
-                {routes.length === 0 ? (
+            {/* Main Content + Inspector + Terminal */}
+            <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+                {isFocusedPreview && inspectorSide === 'left' && (
+                    <VisualEditorSidebar
+                        onPreviewStyle={handlePreviewStyle}
+                        onPreviewText={handlePreviewText}
+                        onApplyChanges={handleApplyChanges}
+                        onClose={handleCloseInspectorSidebar}
+                    />
+                )}
+
+                <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
+                    {/* Content */}
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                        {routes.length === 0 ? (
                     /* Empty State */
                     <div className="flex-1 overflow-y-auto p-6">
                         <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
@@ -1152,17 +1169,9 @@ export function ProjectPagesPage() {
                             </Button>
                         </div>
                     </div>
-                ) : focusedPageIndex !== null && focusedRoute ? (
+                        ) : isFocusedPreview && focusedRoute ? (
                     /* Focused/Slide View */
                     <div className="flex-1 flex overflow-hidden min-h-0 min-w-0 bg-sidebar/60">
-                        {inspectorSide === 'left' && (
-                            <VisualEditorSidebar
-                                onPreviewStyle={handlePreviewStyle}
-                                onPreviewText={handlePreviewText}
-                                onApplyChanges={handleApplyChanges}
-                                onClose={handleCloseInspectorSidebar}
-                            />
-                        )}
                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                             {/* Preview area */}
                             <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
@@ -1322,16 +1331,8 @@ export function ProjectPagesPage() {
                                 </div>
                             </div>
                         </div>
-                        {inspectorSide === 'right' && (
-                            <VisualEditorSidebar
-                                onPreviewStyle={handlePreviewStyle}
-                                onPreviewText={handlePreviewText}
-                                onApplyChanges={handleApplyChanges}
-                                onClose={handleCloseInspectorSidebar}
-                            />
-                        )}
                     </div>
-                ) : (
+                        ) : (
                     /* Grid View */
                     <div className="flex-1 overflow-y-auto p-6 bg-sidebar/60">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1400,17 +1401,17 @@ export function ProjectPagesPage() {
                                         </div>
 
                                         {/* Footer Info */}
-                                        <div className="mt-auto border-t border-white/10 bg-black/55 px-3 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/45">
+                                        <div className="px-3 py-2 mt-auto">
                                             <div className="flex items-center justify-between gap-2">
-                                                <h3 className="truncate text-sm font-medium text-white/95" title={route.path}>
+                                                <h3 className="font-medium text-sm text-foreground/90 truncate" title={route.path}>
                                                     {route.name}
                                                 </h3>
-                                                <span className="max-w-[40%] shrink-0 truncate rounded bg-white/10 px-1.5 py-0.5 text-right font-mono text-[10px] text-white/65">
+                                                <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 truncate max-w-[40%] text-right bg-muted/50 px-1.5 py-0.5 rounded">
                                                     {route.path}
                                                 </span>
                                             </div>
                                             {route.description && (
-                                                <p className="mt-0.5 line-clamp-1 text-[11px] text-white/70 opacity-0 transition-opacity group-hover:opacity-100">
+                                                <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {route.description}
                                                 </p>
                                             )}
@@ -1420,6 +1421,22 @@ export function ProjectPagesPage() {
                             ))}
                         </div>
                     </div>
+                        )}
+                    </div>
+
+                    {/* Terminal Panel */}
+                    {projectPath && (
+                        <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenCode} />
+                    )}
+                </div>
+
+                {isFocusedPreview && inspectorSide === 'right' && (
+                    <VisualEditorSidebar
+                        onPreviewStyle={handlePreviewStyle}
+                        onPreviewText={handlePreviewText}
+                        onApplyChanges={handleApplyChanges}
+                        onClose={handleCloseInspectorSidebar}
+                    />
                 )}
             </div>
 
@@ -1469,10 +1486,6 @@ export function ProjectPagesPage() {
                 </DropdownMenu>
             )}
 
-            {/* Terminal Panel */}
-            {projectPath && (
-                <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenCode} />
-            )}
         </div>
     )
 }

@@ -128,6 +128,10 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     setShowBottomFade(true)
   }, [changeId])
 
+  useEffect(() => {
+    setCommentText('')
+  }, [changeId])
+
   const change = useQuery(
     api.activity.getChangeWithContent,
     changeId ? { changeId } : 'skip'

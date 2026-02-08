@@ -120,6 +120,39 @@ body {
   background-position: right top;
   background-repeat: no-repeat;
 }
+
+/* Left-only fade border (hide right edge). */
+.sidebar-fade-border-left::after {
+  opacity: 0;
+}
+
+.sidebar-fade-border-left::before {
+  width: 1px;
+  opacity: 0.9;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+}
+
+/* Fallback visible left-edge border for secondary sidebars. */
+.sidebar-fade-border-left {
+  background-image: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
+    var(--sidebar-border) 50%,
+    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
+    transparent
+  );
+  background-size: 1px 100%;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

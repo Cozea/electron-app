@@ -1019,7 +1019,8 @@ export function VisualEditorSidebar({
   return (
     <div
       className={cn(
-        'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative',
+        'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative sidebar-fade-border',
+        inspectorSide === 'left' ? 'sidebar-fade-border-right' : 'sidebar-fade-border-left',
         className
       )}
       style={{
@@ -1071,13 +1072,6 @@ export function VisualEditorSidebar({
                   ? `${selectedElement.tagName.toLowerCase()}${selectedElement.id ? `#${selectedElement.id}` : ''}`
                   : 'Visual Editor'}
               </div>
-              {selectedElement && (
-                <div className="text-[10px] text-muted-foreground leading-none truncate">
-                  {selectedElement.className
-                    ? `.${selectedElement.className.split(' ').slice(0, 3).join(' .')}`
-                    : selectedElement.selector}
-                </div>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-0.5">
@@ -1470,7 +1464,7 @@ export function VisualEditorSidebar({
         </Tabs>
 
         {/* Footer */}
-        <div className="px-3 py-2 border-t border-sidebar-border space-y-2">
+        <div className="px-3 py-2 space-y-2">
           <div className="flex gap-2">
             <Button
               variant="outline"
