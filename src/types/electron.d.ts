@@ -56,6 +56,13 @@ export interface CreateProjectFolderResult {
   error?: string
 }
 
+export interface CloneRepositoryResult {
+  success: boolean
+  localPath?: string
+  normalizedRepoUrl?: string
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -334,6 +341,12 @@ export interface ElectronAPI {
   }
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>
+    cloneRepository: (options: {
+      slug: string
+      repoUrl: string
+      provider: string
+      branch?: string
+    }) => Promise<CloneRepositoryResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>

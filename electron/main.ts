@@ -3,7 +3,7 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs' // Used by DevServer logic
-import { exec } from 'node:child_process'
+import { exec, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { performance } from 'node:perf_hooks'
 import { cancelToolRuns, runTool } from './tools'
@@ -940,6 +940,87 @@ interface CreateProjectFolderResult {
   error?: string
 }
 
+interface CloneRepositoryResult {
+  success: boolean
+  localPath?: string
+  normalizedRepoUrl?: string
+  error?: string
+}
+
+function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
+  const trimmed = repoUrl.trim().replace(/\/+$/, '')
+  if (!trimmed) return null
+
+  // Allow SSH / git transport URLs as-is.
+  if (
+    trimmed.startsWith('git@') ||
+    trimmed.startsWith('ssh://') ||
+    trimmed.startsWith('git://')
+  ) {
+    return trimmed
+  }
+
+  // Allow fully-qualified HTTP(S) URLs as-is.
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
+  }
+
+  const shorthandMatch = trimmed.match(/^([\w.-]+)\/([\w.-]+)$/)
+  if (!shorthandMatch) return null
+
+  const owner = shorthandMatch[1]
+  const repo = shorthandMatch[2].replace(/\.git$/i, '')
+  const host = provider === 'gitlab' ? 'gitlab.com' : 'github.com'
+  return `https://${host}/${owner}/${repo}.git`
+}
+
+function runGitCommand(
+  args: string[],
+  cwd: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('git', args, {
+      cwd,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stderr = ''
+    let stdout = ''
+
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout += chunk.toString()
+    })
+
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', (error) => {
+      resolve({
+        success: false,
+        error: error.message || 'Failed to execute git command',
+      })
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true })
+        return
+      }
+
+      const message =
+        stderr.trim() ||
+        stdout.trim() ||
+        `git exited with code ${code ?? 'unknown'}`
+      resolve({ success: false, error: message })
+    })
+  })
+}
+
 ipcMain.handle(
   'project:createFolder',
   async (
@@ -1026,6 +1107,79 @@ npm-debug.log*
       return {
         success: false,
         error: err instanceof Error ? err.message : 'Failed to create project folder',
+      }
+    }
+  }
+)
+
+// Clone a repository into the project directory for repo imports.
+ipcMain.handle(
+  'project:cloneRepository',
+  async (
+    _event,
+    {
+      slug,
+      repoUrl,
+      provider,
+      branch,
+    }: {
+      slug: string
+      repoUrl: string
+      provider: string
+      branch?: string
+    }
+  ): Promise<CloneRepositoryResult> => {
+    const settings = loadSettings()
+    const projectsDir = settings.projectsDirectory
+    const targetPath = path.join(projectsDir, slug)
+    const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
+
+    if (!normalizedRepoUrl) {
+      return {
+        success: false,
+        error: 'Invalid repository URL. Use a full URL or owner/repo format.',
+      }
+    }
+
+    try {
+      if (!fs.existsSync(projectsDir)) {
+        fs.mkdirSync(projectsDir, { recursive: true })
+      }
+
+      if (fs.existsSync(targetPath)) {
+        const existingEntries = fs.readdirSync(targetPath, { withFileTypes: true })
+        if (existingEntries.length > 0) {
+          return {
+            success: false,
+            error: `Destination already exists and is not empty: ${targetPath}`,
+          }
+        }
+        fs.rmSync(targetPath, { recursive: true, force: true })
+      }
+
+      const cloneArgs = ['clone', '--single-branch', '--depth', '1']
+      if (branch && branch.trim()) {
+        cloneArgs.push('--branch', branch.trim())
+      }
+      cloneArgs.push(normalizedRepoUrl, targetPath)
+
+      const cloneResult = await runGitCommand(cloneArgs, projectsDir)
+      if (!cloneResult.success) {
+        return {
+          success: false,
+          error: cloneResult.error,
+        }
+      }
+
+      return {
+        success: true,
+        localPath: targetPath,
+        normalizedRepoUrl,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to clone repository',
       }
     }
   }

@@ -26,6 +26,8 @@ interface UnifiedHeaderProps {
   breadcrumbAddon?: ReactNode
   className?: string
   leftWindowControlsInset?: boolean
+  contentInsetLeft?: number
+  contentInsetRight?: number
 }
 
 export function UnifiedHeader({
@@ -34,6 +36,8 @@ export function UnifiedHeader({
   breadcrumbAddon,
   className,
   leftWindowControlsInset = false,
+  contentInsetLeft = 0,
+  contentInsetRight = 0,
 }: UnifiedHeaderProps) {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [visibleBreadcrumbStartIndex, setVisibleBreadcrumbStartIndex] = useState(0)
@@ -190,7 +194,10 @@ export function UnifiedHeader({
         )}
         style={windowControlsInsetPadding}
       >
-        <div className="flex items-center w-full gap-0.5">
+        <div
+          className="flex items-center w-full gap-0.5"
+          style={{ paddingLeft: contentInsetLeft, paddingRight: contentInsetRight }}
+        >
           <div className="flex items-center min-w-0 flex-1 titlebar-no-drag">
             {header}
           </div>
@@ -212,7 +219,10 @@ export function UnifiedHeader({
       )}
       style={windowControlsInsetPadding}
     >
-      <div className="flex items-center w-full gap-3">
+      <div
+        className="flex items-center w-full gap-3"
+        style={{ paddingLeft: contentInsetLeft, paddingRight: contentInsetRight }}
+      >
         <div
           ref={breadcrumbContainerRef}
           className="flex min-w-0 flex-1 items-center gap-2 titlebar-no-drag"

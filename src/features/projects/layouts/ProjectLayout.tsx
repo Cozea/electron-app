@@ -93,6 +93,8 @@ interface ProjectLayoutHeaderProps {
     header?: ReactNode
     breadcrumbAddon?: ReactNode
     isSecondarySidebarVisible: boolean
+    insetLeft?: number
+    insetRight?: number
 }
 
 const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
@@ -100,6 +102,8 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     header,
     breadcrumbAddon,
     isSecondarySidebarVisible,
+    insetLeft = 0,
+    insetRight = 0,
 }: ProjectLayoutHeaderProps) {
     const { state } = useSidebar()
     const areAllSidebarsCollapsed = state === "collapsed" && !isSecondarySidebarVisible
@@ -110,6 +114,8 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             header={header}
             breadcrumbAddon={breadcrumbAddon}
             leftWindowControlsInset={areAllSidebarsCollapsed}
+            contentInsetLeft={insetLeft}
+            contentInsetRight={insetRight}
         />
     )
 })
@@ -462,6 +468,8 @@ export function ProjectLayout({
     const headerContent = useProjectHeaderStore((state) => state.header)
     const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
     const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
+    const insetLeft = useProjectHeaderStore((state) => state.insetLeft)
+    const insetRight = useProjectHeaderStore((state) => state.insetRight)
 
     // Main layout content
     const subpageLabel = useMemo(
@@ -540,6 +548,8 @@ export function ProjectLayout({
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
+                                insetLeft={insetLeft}
+                                insetRight={insetRight}
                             />
                             <div
                                 className={cn(

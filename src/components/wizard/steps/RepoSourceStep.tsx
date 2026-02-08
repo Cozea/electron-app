@@ -235,7 +235,8 @@ export function RepoSourceStep({
       const parsed = new URL(url)
       return parsed.hostname.includes('gitlab') && parsed.pathname.split('/').filter(Boolean).length >= 2
     } catch {
-      return false
+      // Try matching owner/repo pattern for gitlab.com shorthand.
+      return /^[\w.-]+\/[\w.-]+$/.test(url)
     }
   }
 
