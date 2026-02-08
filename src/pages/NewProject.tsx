@@ -27,8 +27,7 @@ import { useWizardState, type CreationPath } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
-import { detectFramework, detectPackageManager } from '../utils/projectDetector'
-import { scanForRoutes } from '../utils/routeScanner'
+import { detectFramework } from '../utils/projectDetector'
 import { computeSyncPlan, hasSyncOperations } from '@/lib/sync/syncEngine'
 import { executeSyncPlan } from '@/lib/sync/syncExecutor'
 import type { SyncExecutorResult } from '@/lib/sync/syncExecutor'
@@ -42,6 +41,29 @@ function getRepoDisplayName(repoUrl: string): string {
   if (!trimmed) return 'Imported Project'
   const lastSegment = trimmed.split(/[/\\]/).pop() ?? 'Imported Project'
   return lastSegment.replace(/\.git$/i, '') || 'Imported Project'
+}
+
+function normalizePath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/')
+}
+
+function isComponentFile(pathValue: string): boolean {
+  const normalized = normalizePath(pathValue)
+  return (
+    normalized.includes('/components/') &&
+    /\.(tsx|jsx|vue|svelte)$/i.test(normalized)
+  )
+}
+
+function isPageFile(pathValue: string): boolean {
+  const normalized = normalizePath(pathValue)
+  return (
+    /\/app\/.*\/page\.(tsx|jsx|ts|js)$/i.test(normalized) ||
+    /\/pages\/.*\.(tsx|jsx|ts|js|vue|svelte|astro|md|mdx)$/i.test(normalized) ||
+    /\/src\/pages\/.*\.(tsx|jsx|ts|js|vue|svelte|astro|md|mdx)$/i.test(normalized) ||
+    /\/src\/routes\/.*\/\+page\.svelte$/i.test(normalized) ||
+    /\/app\/routes\/.*\.(tsx|jsx|ts|js)$/i.test(normalized)
+  )
 }
 
 function isRepoIntegrationProvider(provider: string): provider is RepoIntegrationProvider {
@@ -213,12 +235,6 @@ export function NewProject() {
           // Detect framework
           const frameworkInfo = await detectFramework(projectPath)
 
-          // Detect package manager
-          await detectPackageManager(projectPath)
-
-          // Scan for routes
-          const routeInfo = await scanForRoutes(projectPath)
-
           // Detect styling, database, testing from package.json
           let styling: string | undefined
           let database: string | undefined
@@ -261,12 +277,16 @@ export function NewProject() {
           }
 
           // Count components
+          let pageCount = 0
           let componentCount = 0
           try {
-            const manifest = await window.electronAPI.sync.getLocalManifest({ projectPath })
-            componentCount = manifest.manifest.filter(
-              (f) => f.path.includes('/components/') && (f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
-            ).length
+            const listResult = await window.electronAPI.project.listFiles({ projectPath })
+            if (listResult.success && listResult.files) {
+              for (const file of listResult.files) {
+                if (isComponentFile(file.path)) componentCount++
+                if (isPageFile(file.path)) pageCount++
+              }
+            }
           } catch {
             // Ignore count errors
           }
@@ -276,7 +296,7 @@ export function NewProject() {
             styling,
             database,
             testingFramework,
-            pageCount: routeInfo.routes.length,
+            pageCount,
             componentCount,
           }
         }

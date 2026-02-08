@@ -536,6 +536,60 @@ interface PreviewInjectBridgeResult {
   error?: string
 }
 
+function isExpectedPreviewConnectivityError(message: string): boolean {
+  return (
+    message.includes('ERR_CONNECTION_REFUSED') ||
+    message.includes('ERR_CONNECTION_RESET') ||
+    message.includes('ERR_NETWORK_CHANGED')
+  )
+}
+
+async function loadUrlForCapture(
+  targetWindow: BrowserWindow,
+  targetUrl: string,
+  timeoutMs: number
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      targetWindow.webContents.removeListener('did-finish-load', onFinishLoad)
+      targetWindow.webContents.removeListener('did-fail-load', onFailLoad)
+      callback()
+    }
+
+    const onFinishLoad = () => {
+      finish(resolve)
+    }
+
+    const onFailLoad = (
+      _event: Electron.Event,
+      errorCode: number,
+      errorDescription: string,
+      _validatedURL: string,
+      isMainFrame: boolean
+    ) => {
+      if (!isMainFrame) return
+      finish(() => reject(new Error(`Failed to load page: ${errorDescription} (${errorCode})`)))
+    }
+
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error('Page load timeout')))
+    }, timeoutMs)
+
+    targetWindow.webContents.on('did-finish-load', onFinishLoad)
+    targetWindow.webContents.on('did-fail-load', onFailLoad)
+
+    void targetWindow.loadURL(targetUrl).catch((error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error))
+      finish(() => reject(err))
+    })
+  })
+}
+
 function isAllowedPreviewUrl(url: URL): boolean {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
@@ -667,27 +721,8 @@ ipcMain.handle(
     })
 
     try {
-      // Set a timeout for loading
-      const loadTimeout = 30000 // 30 seconds
-      const loadPromise = new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error('Page load timeout'))
-        }, loadTimeout)
-
-        captureWindow.webContents.once('did-finish-load', () => {
-          clearTimeout(timer)
-          resolve()
-        })
-
-        captureWindow.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
-          clearTimeout(timer)
-          reject(new Error(`Failed to load page: ${errorDescription} (${errorCode})`))
-        })
-      })
-
-      // Load the URL
-      await captureWindow.loadURL(url)
-      await loadPromise
+      // Load the URL with explicit timeout + listener cleanup to avoid unhandled rejections
+      await loadUrlForCapture(captureWindow, url, 30000)
 
       // Wait a bit for any animations/rendering to complete
       await new Promise((resolve) => setTimeout(resolve, 500))
@@ -699,7 +734,9 @@ ipcMain.handle(
       return { success: true, base64 }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Screenshot capture failed'
-      console.error('[Preview] Screenshot capture failed:', err)
+      if (!isExpectedPreviewConnectivityError(message)) {
+        console.error('[Preview] Screenshot capture failed:', err)
+      }
       return { success: false, error: message }
     } finally {
       // Always clean up the window
@@ -1375,21 +1412,64 @@ ipcMain.handle(
   }> => {
     try {
       const files: { path: string; sizeBytes: number }[] = []
+      const skippedDirectories = new Set([
+        'node_modules',
+        '.git',
+        '.next',
+        '.nuxt',
+        '.output',
+        '.svelte-kit',
+        '.vercel',
+        'dist',
+        'build',
+        'out',
+        'coverage',
+        '.turbo',
+        '.cache',
+        '.parcel-cache',
+        '.pnpm-store',
+        '.yarn',
+        '__pycache__',
+        'tmp',
+        'temp',
+        'logs',
+        'vendor',
+        'target',
+      ])
+      const skippedFileSuffixes = [
+        '.log',
+        '.tmp',
+        '.temp',
+        '.swp',
+        '.swo',
+        '.pid',
+        '/prisma/dev.db',
+        '/prisma/dev.db-wal',
+        '/prisma/dev.db-shm',
+      ]
+      const maxFiles = 20000
 
       function walkDir(dir: string, relativePath = '') {
-        if (!fs.existsSync(dir)) return
+        if (!fs.existsSync(dir) || files.length >= maxFiles) return
 
         const entries = fs.readdirSync(dir, { withFileTypes: true })
         for (const entry of entries) {
+          if (files.length >= maxFiles) break
+          if (entry.isSymbolicLink()) continue
+
           const relPath = path.join(relativePath, entry.name)
           const fullPath = path.join(dir, entry.name)
+          const nameLower = entry.name.toLowerCase()
+          const normalizedPathLower = relPath.replace(/\\/g, '/').toLowerCase()
 
           if (entry.isDirectory()) {
-            // Skip .git and node_modules
-            if (entry.name !== '.git' && entry.name !== 'node_modules') {
+            if (!skippedDirectories.has(nameLower)) {
               walkDir(fullPath, relPath)
             }
           } else {
+            if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
+              continue
+            }
             const stats = fs.statSync(fullPath)
             files.push({ path: relPath, sizeBytes: stats.size })
           }
@@ -1727,8 +1807,42 @@ ipcMain.handle(
 
     if (!xxhasher) throw new Error('xxhash not initialized')
 
-    const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
-    const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])])
+    const defaultExcludes = [
+      'node_modules',
+      '.git',
+      '.next',
+      '.nuxt',
+      '.output',
+      '.svelte-kit',
+      '.vercel',
+      'dist',
+      'build',
+      'out',
+      'coverage',
+      '.turbo',
+      '.cache',
+      '.parcel-cache',
+      '.pnpm-store',
+      '.yarn',
+      '__pycache__',
+      'tmp',
+      'temp',
+      'logs',
+      'vendor',
+      'target',
+    ]
+    const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])].map((name) => name.toLowerCase()))
+    const skippedFileSuffixes = [
+      '.log',
+      '.tmp',
+      '.temp',
+      '.swp',
+      '.swo',
+      '.pid',
+      '/prisma/dev.db',
+      '/prisma/dev.db-wal',
+      '/prisma/dev.db-shm',
+    ]
     const previousByPath = cached?.entries ? new Map(Object.entries(cached.entries)) : null
 
     const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
@@ -1738,8 +1852,10 @@ ipcMain.handle(
 
       const entries = fs.readdirSync(dir, { withFileTypes: true })
       for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue
+
         // Skip excluded directories/files
-        if (excludes.has(entry.name)) continue
+        if (excludes.has(entry.name.toLowerCase())) continue
         // Skip hidden files except .env.example
         if (entry.name.startsWith('.') && entry.name !== '.env.example') continue
 
@@ -1752,6 +1868,10 @@ ipcMain.handle(
           try {
             const stats = fs.statSync(fullPath)
             const normalizedPath = relPath.replace(/\\/g, '/')
+            const normalizedPathLower = normalizedPath.toLowerCase()
+            if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
+              continue
+            }
             const previous = previousByPath?.get(normalizedPath)
 
             if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
