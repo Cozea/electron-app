@@ -12,11 +12,6 @@ import {
 export function TasksPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--sidebar)]">
-      {/* Fixed Header */}
-      <div className="flex-none flex items-center justify-between px-4 pt-4 pb-4 bg-[var(--sidebar)] z-20">
-        <h1 className="text-sm font-medium">Tasks</h1>
-      </div>
-
       {/* Content */}
       <div className="flex-1 flex items-center justify-center p-6">
         <Card className="max-w-md w-full p-12 border-0 bg-sidebar/50 shadow-none">

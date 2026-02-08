@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useMemo } from "react"
 import {
     Terminal,
+    Check,
     Plus,
     ChevronDown,
-    SplitSquareHorizontal,
     Trash2,
     Maximize2,
     Minimize2,
     X,
     Circle,
     AlertTriangle,
+    Info,
+    List,
+    ListTree,
+    RefreshCw,
     Search,
+    SlidersHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -21,9 +26,13 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import type { ViewMode } from "./ProblemsView"
 
 interface TerminalTabBarProps {
     activeView: "terminal" | "problems"
@@ -31,8 +40,23 @@ interface TerminalTabBarProps {
     problemCount?: number
     projectPath: string
     onClose?: () => void
-    problemsSearchQuery?: string
-    onProblemsSearchChange?: (query: string) => void
+    problemsSearchQuery: string
+    onProblemsSearchChange: (query: string) => void
+    problemsViewMode: ViewMode
+    onProblemsViewModeChange: (mode: ViewMode) => void
+    showProblemErrors: boolean
+    onShowProblemErrorsChange: (value: boolean) => void
+    showProblemWarnings: boolean
+    onShowProblemWarningsChange: (value: boolean) => void
+    showProblemInfos: boolean
+    onShowProblemInfosChange: (value: boolean) => void
+    problemSeverityCounts: {
+        error: number
+        warning: number
+        info: number
+    }
+    onRefreshProblems: () => void
+    onClearProblems: () => void
 }
 
 export function TerminalTabBar({
@@ -41,8 +65,19 @@ export function TerminalTabBar({
     problemCount = 0,
     projectPath,
     onClose,
-    problemsSearchQuery = "",
+    problemsSearchQuery,
     onProblemsSearchChange,
+    problemsViewMode,
+    onProblemsViewModeChange,
+    showProblemErrors,
+    onShowProblemErrorsChange,
+    showProblemWarnings,
+    onShowProblemWarningsChange,
+    showProblemInfos,
+    onShowProblemInfosChange,
+    problemSeverityCounts,
+    onRefreshProblems,
+    onClearProblems,
 }: TerminalTabBarProps) {
     // Use individual primitive selectors
     const terminals = useTerminalStore((s) => s.terminals)
@@ -54,7 +89,6 @@ export function TerminalTabBar({
         addTerminal,
         removeTerminal,
         setActiveTerminal,
-        splitTerminal,
         toggleMaximized,
         setPanelOpen,
         setProfiles,
@@ -107,14 +141,6 @@ export function TerminalTabBar({
         removeTerminal(activeTerminal.id)
     }, [activeTerminal, removeTerminal])
 
-    // Split the active terminal
-    const handleSplitTerminal = useCallback(() => {
-        if (!activeTerminal) return
-        splitTerminal(activeTerminal.id, 'horizontal')
-        // Create a new terminal in the same group
-        handleCreateTerminal()
-    }, [activeTerminal, splitTerminal, handleCreateTerminal])
-
     // Close the panel
     const handleClose = useCallback(() => {
         setPanelOpen(false)
@@ -146,10 +172,10 @@ export function TerminalTabBar({
                             key={term.id}
                             onClick={() => handleTerminalClick(term.id)}
                             className={cn(
-                                "group flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] transition-colors shrink-0",
+                                "group flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
                                 isActive
-                                    ? "bg-muted text-foreground"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                    ? "bg-secondary text-foreground"
+                                    : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
                             )}
                         >
                             {/* Status indicator */}
@@ -171,7 +197,7 @@ export function TerminalTabBar({
                                     window.electronAPI.terminal.kill({ terminalId: term.id })
                                     removeTerminal(term.id)
                                 }}
-                                className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
                             >
                                 <X className="h-3 w-3" />
                             </span>
@@ -183,10 +209,10 @@ export function TerminalTabBar({
                 <button
                     onClick={() => onViewChange("problems")}
                     className={cn(
-                        "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] transition-colors shrink-0",
+                        "flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
                         activeView === "problems"
-                            ? "bg-muted text-foreground"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            ? "bg-secondary text-foreground"
+                            : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
                     )}
                 >
                     <AlertTriangle className="h-3 w-3" />
@@ -199,21 +225,86 @@ export function TerminalTabBar({
                 </button>
             </div>
 
-            {/* Search Bar (only for problems view) */}
-            {activeView === "problems" && (
-                <div className="relative w-48 mr-2 hidden sm:block">
-                    <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
-                    <Input
-                        value={problemsSearchQuery}
-                        onChange={(event) => onProblemsSearchChange?.(event.target.value)}
-                        placeholder="Filter (text or file)"
-                        className="h-6 pl-7 text-[11px] bg-background/50 border-input/50 focus-visible:bg-background"
-                    />
-                </div>
-            )}
-
             {/* Right: Controls */}
-            <div className="flex items-center gap-0.5 pr-2 shrink-0">
+            <div className="flex items-center gap-1 pr-2 shrink-0">
+                {activeView === "problems" && (
+                    <>
+                        <div className="relative w-52 hidden sm:block">
+                            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={problemsSearchQuery}
+                                onChange={(event) => onProblemsSearchChange(event.target.value)}
+                                placeholder="Filter (text or file)"
+                                className="h-7 pl-7 pr-2 text-[11px] bg-background/50 border-input/50 focus-visible:bg-background"
+                            />
+                        </div>
+
+                        <button
+                            onClick={onRefreshProblems}
+                            className={buttonClass}
+                            title="Refresh diagnostics"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                        </button>
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button className={buttonClass} title="Problem controls">
+                                    <SlidersHorizontal className="h-4 w-4" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>Visibility</DropdownMenuLabel>
+                                <div className="flex items-center justify-between px-2 py-1.5 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                                        <span>Errors</span>
+                                        <span className="text-muted-foreground">({problemSeverityCounts.error})</span>
+                                    </div>
+                                    <Switch checked={showProblemErrors} onCheckedChange={onShowProblemErrorsChange} />
+                                </div>
+                                <div className="flex items-center justify-between px-2 py-1.5 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                                        <span>Warnings</span>
+                                        <span className="text-muted-foreground">({problemSeverityCounts.warning})</span>
+                                    </div>
+                                    <Switch checked={showProblemWarnings} onCheckedChange={onShowProblemWarningsChange} />
+                                </div>
+                                <div className="flex items-center justify-between px-2 py-1.5 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <Info className="h-3.5 w-3.5 text-blue-400" />
+                                        <span>Info</span>
+                                        <span className="text-muted-foreground">({problemSeverityCounts.info})</span>
+                                    </div>
+                                    <Switch checked={showProblemInfos} onCheckedChange={onShowProblemInfosChange} />
+                                </div>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>View</DropdownMenuLabel>
+                                <DropdownMenuItem onSelect={() => onProblemsViewModeChange("tree")}>
+                                    <ListTree className="h-4 w-4 mr-2" />
+                                    Tree
+                                    {problemsViewMode === "tree" && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => onProblemsViewModeChange("table")}>
+                                    <List className="h-4 w-4 mr-2" />
+                                    List
+                                    {problemsViewMode === "table" && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onSelect={onClearProblems}
+                                    className="text-destructive focus:text-destructive"
+                                >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Clear problems
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                    </>
+                )}
+
                 {/* New terminal dropdown */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -240,18 +331,6 @@ export function TerminalTabBar({
                         )}
                     </DropdownMenuContent>
                 </DropdownMenu>
-
-                {/* Split terminal (only when terminal view is active) */}
-                {activeView === "terminal" && (
-                    <button
-                        onClick={handleSplitTerminal}
-                        className={buttonClass}
-                        title="Split Terminal"
-                        disabled={!activeTerminal}
-                    >
-                        <SplitSquareHorizontal className="h-4 w-4" />
-                    </button>
-                )}
 
                 {/* Kill terminal (only when terminal view is active) */}
                 {activeView === "terminal" && (

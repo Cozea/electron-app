@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,15 +18,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import {
   Package,
   RefreshCw,
   Plus,
@@ -34,6 +26,8 @@ import {
   Trash2,
   MoreHorizontal,
   List,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -53,10 +47,12 @@ export function ProjectDependenciesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'outdated' | 'missing'>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const ITEMS_PER_PAGE = 20
+  const ITEMS_PER_PAGE = 10
 
   const snapshot = useDependenciesStore(selectDependenciesSnapshot(projectPath))
   const jobs = useDependenciesStore(selectDependencyJobs(projectPath))
+  const setSnapshot = useDependenciesStore((state) => state.actions.setSnapshot)
+  const setError = useDependenciesStore((state) => state.actions.setError)
   const dependencies = useMemo(() => snapshot?.items ?? [], [snapshot?.items])
   const error = snapshot?.error ?? null
   const runningJobs = jobs.filter((job) => job.status === 'running')
@@ -100,6 +96,27 @@ export function ProjectDependenciesPage() {
     setCurrentPage(1)
   }, [filter, statusFilter])
 
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  const inspectNow = useCallback(async () => {
+    if (!projectPath || !window.electronAPI?.dependencies) return
+    try {
+      const result = await window.electronAPI.dependencies.inspect({ projectPath })
+      if (result.success && result.snapshot) {
+        setSnapshot(projectPath, result.snapshot)
+      } else if (result.error) {
+        setError(projectPath, result.error)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to inspect dependencies'
+      setError(projectPath, message)
+    }
+  }, [projectPath, setError, setSnapshot])
+
   // Generate page numbers with ellipsis
   const getPageNumbers = () => {
     const pages: (number | 'ellipsis')[] = []
@@ -118,39 +135,104 @@ export function ProjectDependenciesPage() {
   }
 
   const handleRefresh = useCallback(() => {
-    if (!projectPath || !window.electronAPI?.dependencies) return
-    void window.electronAPI.dependencies.inspect({ projectPath })
-  }, [projectPath])
+    void inspectNow()
+  }, [inspectNow])
 
-  const handleAdd = useCallback((name: string, options: { dev?: boolean; version?: string }) => {
+  const handleAdd = useCallback(async (name: string, options: { dev?: boolean; version?: string }) => {
     if (!projectPath || !window.electronAPI?.dependencies) return
-    void window.electronAPI.dependencies.run({
+    const result = await window.electronAPI.dependencies.run({
       projectPath,
       action: 'add',
       packageName: name,
       version: options.version,
       dev: options.dev,
     })
-  }, [projectPath])
+    if (!result.success && result.error) {
+      setError(projectPath, result.error)
+    }
+  }, [projectPath, setError])
 
-  const handleUpdate = useCallback((name: string, updateMode: 'latest' | 'range') => {
+  const handleUpdate = useCallback(async (name: string, updateMode: 'latest' | 'range') => {
     if (!projectPath || !window.electronAPI?.dependencies) return
-    void window.electronAPI.dependencies.run({
+    const result = await window.electronAPI.dependencies.run({
       projectPath,
       action: 'update',
       packageName: name,
       updateMode,
     })
-  }, [projectPath])
+    if (!result.success && result.error) {
+      setError(projectPath, result.error)
+    }
+  }, [projectPath, setError])
 
-  const handleRemove = useCallback((name: string) => {
+  const handleRemove = useCallback(async (name: string) => {
     if (!projectPath || !window.electronAPI?.dependencies) return
-    void window.electronAPI.dependencies.run({
+    const result = await window.electronAPI.dependencies.run({
       projectPath,
       action: 'remove',
       packageName: name,
     })
-  }, [projectPath])
+    if (!result.success && result.error) {
+      setError(projectPath, result.error)
+    }
+  }, [projectPath, setError])
+
+  const headerControls = useMemo(
+    () => (
+      <div className="flex items-center gap-1.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs">
+              <Package className="h-3 w-3" />
+              {filter === 'all' ? `All (${dependencies.length})` : filter === 'dependencies' ? `Dependencies (${prodCount})` : `Dev (${devCount})`}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setFilter('all')}>All ({dependencies.length})</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFilter('dependencies')}>Dependencies ({prodCount})</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleRefresh}
+          className="h-7 rounded-full px-2"
+          disabled={!projectPath}
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs">
+              <List className="h-3 w-3" />
+              {statusFilter === 'all' ? 'All statuses' : statusFilter === 'outdated' ? 'Outdated' : 'Missing'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setStatusFilter('all')}>All statuses</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('outdated')}>Outdated</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter('missing')}>Missing</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs" onClick={() => setAddDialogOpen(true)} disabled={!projectPath}>
+          <Plus className="h-3.5 w-3.5" />
+          Add Package
+        </Button>
+      </div>
+    ),
+    [
+      dependencies.length,
+      devCount,
+      filter,
+      handleRefresh,
+      projectPath,
+      prodCount,
+      statusFilter,
+    ]
+  )
+
+  useProjectHeader(headerControls)
 
   if (project === undefined) {
     return (
@@ -162,52 +244,6 @@ export function ProjectDependenciesPage() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--sidebar)]">
-      {/* Fixed Header */}
-      <div className="flex-none flex items-center justify-between px-4 pt-4 pb-4 bg-[var(--sidebar)] z-20">
-        <h1 className="text-sm font-medium">Dependencies</h1>
-
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="sm" className="gap-2 rounded-full">
-                <Package className="h-3.5 w-3.5" />
-                {filter === 'all' ? `All (${dependencies.length})` : filter === 'dependencies' ? `Dependencies (${prodCount})` : `Dev (${devCount})`}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setFilter('all')}>All ({dependencies.length})</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilter('dependencies')}>Dependencies ({prodCount})</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefresh}
-            className="rounded-full px-2"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <List className="h-3.5 w-3.5" />
-                {statusFilter === 'all' ? 'All statuses' : statusFilter === 'outdated' ? 'Outdated' : 'Missing'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setStatusFilter('all')}>All statuses</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('outdated')}>Outdated</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('missing')}>Missing</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" className="gap-2" onClick={() => setAddDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Package
-          </Button>
-        </div>
-      </div>
-
       {/* Scrollable Content */}
       <div className="flex-1 overflow-auto min-h-0">
         <div className="px-6 pt-2 pb-4 space-y-2">
@@ -250,7 +286,7 @@ export function ProjectDependenciesPage() {
               <div className="relative w-full">
                 <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
                   <table className="w-full caption-bottom text-sm [&_th]:px-4 [&_td]:px-4">
-                    <TableHeader className="sticky top-0 z-10 bg-secondary/80 dark:bg-secondary/40 shadow-sm after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-12px] after:h-3 after:bg-gradient-to-b after:from-black/5 after:to-transparent after:pointer-events-none [&_tr]:border-b [&_tr]:border-border/60">
+                    <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="w-[280px]">Package</TableHead>
                         <TableHead>Declared</TableHead>
@@ -329,51 +365,52 @@ export function ProjectDependenciesPage() {
                   </table>
                 </div>
               </div>
+              {filteredDeps.length > ITEMS_PER_PAGE && (
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing <span className="font-medium">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredDeps.length)}</span> of <span className="font-medium">{filteredDeps.length}</span> entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    {getPageNumbers().map((page, i) => (
+                      typeof page === 'number' ? (
+                        <Button
+                          key={i}
+                          variant={currentPage === page ? 'default' : 'secondary'}
+                          size="icon"
+                          className="h-8 w-8 rounded-full"
+                          onClick={() => setCurrentPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      ) : (
+                        <span key={i} className="px-2 text-muted-foreground">...</span>
+                      )
+                    ))}
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
         )}
       </div>
-
-      {/* Fixed Footer Pagination */}
-      {filteredDeps.length > ITEMS_PER_PAGE && (
-        <div className="flex-none border-t border-border/50 bg-sidebar/50 backdrop-blur p-2">
-          <div className="flex justify-center">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                  />
-                </PaginationItem>
-                {getPageNumbers().map((page, i) =>
-                  page === 'ellipsis' ? (
-                    <PaginationItem key={`ellipsis-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        onClick={() => setCurrentPage(page as number)}
-                        isActive={currentPage === page}
-                        className="cursor-pointer"
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        </div>
-      )}
 
       {projectPath && (
         <DependenciesAddDialog

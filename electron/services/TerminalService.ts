@@ -78,8 +78,18 @@ export class TerminalService {
         return profiles[0] || { id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' }
     }
 
+    private removeProjectTerminal(projectPath: string, terminalId: string) {
+        const terms = this.projectTerminals.get(projectPath) || []
+        const remaining = terms.filter((id) => id !== terminalId)
+        if (remaining.length > 0) {
+            this.projectTerminals.set(projectPath, remaining)
+        } else {
+            this.projectTerminals.delete(projectPath)
+        }
+    }
+
     registerIpcHandlers(): void {
-        ipcMain.handle('terminal:create', async (_event, options: {
+        ipcMain.handle('terminal:create', async (event, options: {
             projectPath: string
             profileId?: string
             cwd?: string
@@ -118,41 +128,18 @@ export class TerminalService {
 
                 // Setup listeners
                 ptyProcess.onData((data) => {
-                    // Broadcast to all windows (or ideally just the relevant one)
-                    // Simple approach: send to all, renderer filters by ID if needed, 
-                    // but better is to use `_event.sender` if we want to reply, 
-                    // however `onData` is async. For now using broadcast via BrowserWindow.getAllWindows() 
-                    // or just assume main window. 
-                    // A more robust way is to lookup the WebContents that created the terminal.
-                    // For now, we will use a global event bus pattern later or just send to all.
-                    // Replicating original `main.ts` behavior:
-                    // The original code was using `win?.webContents.send`
-                    // We need a way to send back to renderer. 
-                    // We can accept a callback or emit an event.
-                    // For now, we'll use `ipcMain.emit` or require a WindowManager.
-                    // Let's assume we pass the sender to the service or broadcast.
-                    // Actually, in best practice service shouldn't directly depend on `win`.
-                    // We'll emit an event from the service and let main.ts handle the broadcasting?
-                    // Or just import BrowserWindow here.
-
-                    import('electron').then(({ BrowserWindow }) => {
-                        BrowserWindow.getAllWindows().forEach(win => {
-                            win.webContents.send('terminal:output', { terminalId, data })
-                        })
-                    })
+                    if (!event.sender.isDestroyed()) {
+                        event.sender.send('terminal:output', { terminalId, data })
+                    }
                 })
 
                 ptyProcess.onExit((res) => {
                     this.terminals.delete(terminalId)
-                    // cleanup project map
-                    const terms = this.projectTerminals.get(options.projectPath) || []
-                    this.projectTerminals.set(options.projectPath, terms.filter(t => t !== terminalId))
+                    this.removeProjectTerminal(options.projectPath, terminalId)
 
-                    import('electron').then(({ BrowserWindow }) => {
-                        BrowserWindow.getAllWindows().forEach(win => {
-                            win.webContents.send('terminal:exit', { terminalId, exitCode: res.exitCode })
-                        })
-                    })
+                    if (!event.sender.isDestroyed()) {
+                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode })
+                    }
                 })
 
                 return { success: true, terminalId }
@@ -180,8 +167,13 @@ export class TerminalService {
         ipcMain.handle('terminal:kill', async (_event, options: { terminalId: string }) => {
             const term = this.terminals.get(options.terminalId)
             if (term) {
-                term.ptyProcess.kill()
+                try {
+                    term.ptyProcess.kill()
+                } catch {
+                    // Ignore kill errors if process already exited
+                }
                 this.terminals.delete(options.terminalId)
+                this.removeProjectTerminal(term.projectPath, options.terminalId)
                 return { success: true }
             }
             return { success: false }

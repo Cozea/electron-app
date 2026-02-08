@@ -161,10 +161,21 @@ export function BuilderConversation({
   const completedRef = useRef(false)
   // Track active terminal sessions for live terminal rendering
   const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
+  const terminalListenerCleanupRef = useRef<Map<string, () => void>>(new Map())
 
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const listenerCleanupMap = terminalListenerCleanupRef.current
+    return () => {
+      for (const cleanup of listenerCleanupMap.values()) {
+        cleanup()
+      }
+      listenerCleanupMap.clear()
+    }
+  }, [])
 
   // Auto-continuation refs (defined early for use in error handling)
   const latestTasksRef = useRef<BuildTask[]>([])
@@ -533,22 +544,24 @@ Now begin by defining your task list with build_tasks, then start working throug
         if (!toolInput || typeof toolInput.filePath !== 'string' || typeof toolInput.content !== 'string') {
           throw new Error('create_file requires filePath and content')
         }
+        const filePath = toolInput.filePath
+        const content = toolInput.content
         await withFileLocks([toolInput.filePath], async () => {
           const result = await window.electronAPI.project.writeFile({
             projectPath: localPath,
-            filePath: toolInput.filePath,
-            content: toolInput.content,
+            filePath,
+            content,
           })
 
           if (!result.success) {
             throw new Error(result.error || 'Failed to create file')
           }
 
-          onFileCreated({ path: toolInput.filePath, content: toolInput.content })
+          onFileCreated({ path: filePath, content })
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, path: toolInput.filePath }),
+            output: JSON.stringify({ success: true, path: filePath }),
           })
         })
         return
@@ -601,26 +614,29 @@ Now begin by defining your task list with build_tasks, then start working throug
         ) {
           throw new Error('replace_string_in_file requires filePath, oldString, and newString')
         }
+        const filePath = toolInput.filePath
+        const oldString = toolInput.oldString
+        const newString = toolInput.newString
         await withFileLocks([toolInput.filePath], async () => {
           const result = await window.electronAPI.project.readFile({
             projectPath: localPath,
-            filePath: toolInput.filePath,
+            filePath,
           })
           if (!result.success || result.content === undefined) {
             throw new Error(result.error || 'File not found')
           }
           const content = result.content
-          const occurrences = content.split(toolInput.oldString).length - 1
+          const occurrences = content.split(oldString).length - 1
           if (occurrences === 0) {
             throw new Error('Old string not found in file')
           }
           if (occurrences > 1) {
             throw new Error('Old string must match exactly one occurrence')
           }
-          const updated = content.replace(toolInput.oldString, toolInput.newString)
+          const updated = content.replace(oldString, newString)
           const writeResult = await window.electronAPI.project.writeFile({
             projectPath: localPath,
-            filePath: toolInput.filePath,
+            filePath,
             content: updated,
           })
           if (!writeResult.success) {
@@ -629,13 +645,18 @@ Now begin by defining your task list with build_tasks, then start working throug
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ filePath: toolInput.filePath, replacements: 1 }),
+            output: JSON.stringify({ filePath, replacements: 1 }),
           })
         })
         return
       }
 
       if (toolName === 'multi_replace_string_in_file') {
+        interface ReplacementInput {
+          filePath: string
+          oldString: string
+          newString: string
+        }
         const replacements = Array.isArray(toolInput?.replacements)
           ? toolInput?.replacements.filter(isRecord).map((replacement) => ({
               filePath: replacement.filePath,
@@ -645,7 +666,7 @@ Now begin by defining your task list with build_tasks, then start working throug
               typeof replacement.filePath === 'string' &&
               typeof replacement.oldString === 'string' &&
               typeof replacement.newString === 'string'
-            )
+            ) as ReplacementInput[]
           : []
 
         const paths = replacements.map((r) => r.filePath)
@@ -712,6 +733,25 @@ Now begin by defining your task list with build_tasks, then start working throug
           let output = ''
           let exitCode: number | null = null
           let completed = false
+          let unsubOutput: (() => void) | null = null
+          let unsubExit: (() => void) | null = null
+          let listenersReleased = false
+
+          const releaseListeners = () => {
+            if (listenersReleased) return
+            listenersReleased = true
+            if (unsubOutput) {
+              unsubOutput()
+              unsubOutput = null
+            }
+            if (unsubExit) {
+              unsubExit()
+              unsubExit = null
+            }
+            terminalListenerCleanupRef.current.delete(toolCallId)
+          }
+
+          terminalListenerCleanupRef.current.set(toolCallId, releaseListeners)
 
           // Track this terminal session for live UI rendering
           setTerminalSessions(prev => {
@@ -738,14 +778,17 @@ Now begin by defining your task list with build_tasks, then start working throug
                   next.delete(toolCallId)
                   return next
                 })
+                releaseListeners()
                 resolve({ exitCode: event.exitCode })
               }
             }
-            window.electronAPI.terminal.onExit(exitHandler)
+            unsubExit = window.electronAPI.terminal.onExit(exitHandler)
           })
 
-          // Subscribe to output
-          const unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
+          if (!isBackground) {
+            // Subscribe to output for foreground commands only
+            unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
+          }
 
           // Send the command to the terminal
           setTimeout(() => {
@@ -767,7 +810,6 @@ Now begin by defining your task list with build_tasks, then start working throug
                 message: 'Background process started. Use get_terminal_output to check status.',
               }),
             })
-            // Keep terminal running - don't clean up (session stays in terminalSessions)
           } else {
             // For foreground processes, wait for completion or timeout
             const timeoutPromise = timeout > 0
@@ -782,9 +824,6 @@ Now begin by defining your task list with build_tasks, then start working throug
 
             const result = await Promise.race([exitPromise, timeoutPromise])
             exitCode = result.exitCode
-
-            // Clean up
-            unsubOutput()
 
             // If timed out, kill the process
             if (!completed && timeout > 0) {
@@ -802,6 +841,8 @@ Now begin by defining your task list with build_tasks, then start working throug
               output += '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
             }
 
+            releaseListeners()
+
             void addToolOutput({
               tool: toolName,
               toolCallId,
@@ -816,6 +857,7 @@ Now begin by defining your task list with build_tasks, then start working throug
           }
         } catch (err) {
           // Remove from active sessions on error
+          terminalListenerCleanupRef.current.get(toolCallId)?.()
           setTerminalSessions(prev => {
             const next = new Map(prev)
             next.delete(toolCallId)
@@ -831,9 +873,19 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
+      if (!toolInput) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolName,
+          toolCallId,
+          errorText: 'Tool input must be an object.',
+        })
+        return
+      }
+
       const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
         toolName,
-        input: normalizedInput,
+        input: toolInput,
         toolCallId,
       })
 
@@ -1055,7 +1107,7 @@ Now begin by defining your task list with build_tasks, then start working throug
           } catch {
             // ignore parse errors
           }
-        } else if (toolPart.output?.tasks) {
+        } else if (isRecord(toolPart.output) && Array.isArray(toolPart.output.tasks)) {
           latestTasks = toolPart.output.tasks as BuildTask[]
           break
         }

@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
 import { useQuery, useMutation, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
+import type { Id } from '../../convex/_generated/dataModel'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +25,7 @@ import { useAuth } from '@/contexts/AuthContext'
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
 interface ProjectListItem {
-  _id: string
+  _id: Id<'projects'>
   slug: string
   name?: string | null
   status?: string

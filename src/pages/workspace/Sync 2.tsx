@@ -167,7 +167,7 @@ export function Sync() {
   const storageCategories = useMemo<StorageCategory[]>(() => {
     if (!usageLimits?.storage.breakdown) {
       // Return empty categories while loading
-      return Object.entries(categoryConfig).map(([key, config]) => ({
+      return Object.entries(categoryConfig).map(([_key, config]) => ({
         ...config,
         size: 0,
       }))

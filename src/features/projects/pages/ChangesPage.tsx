@@ -260,16 +260,6 @@ export function ChangesPage() {
     }
   }, [slug])
 
-  const breadcrumbAddon = useMemo(
-    () => (
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Activity className="h-4 w-4 text-muted-foreground" />
-        Changes
-      </span>
-    ),
-    []
-  )
-
   const headerControls = useMemo(
     () => (
       <div className="flex items-center gap-2">
@@ -318,7 +308,7 @@ export function ChangesPage() {
     [selectedChange, selectedChangeId]
   )
 
-  useProjectHeader(headerControls, breadcrumbAddon, true)
+  useProjectHeader(headerControls)
 
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-sidebar/60">

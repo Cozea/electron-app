@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -55,6 +55,8 @@ interface RegistrySearchResult {
 }
 
 const REGISTRY_TTL_MS = 24 * 60 * 60 * 1000
+const MAX_REGISTRY_SEARCH_SIZE = 50
+const MIN_REGISTRY_SEARCH_SIZE = 1
 
 function sendToRenderers(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
@@ -76,6 +78,36 @@ function detectPackageManager(projectPath: string): PackageManager {
     }
   }
   return 'npm'
+}
+
+function isExistingDirectory(targetPath: string): boolean {
+  try {
+    return fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function clampSearchSize(size: number): number {
+  if (!Number.isFinite(size)) return 20
+  return Math.max(MIN_REGISTRY_SEARCH_SIZE, Math.min(MAX_REGISTRY_SEARCH_SIZE, Math.floor(size)))
+}
+
+function detectYarnMajor(projectPath: string): number | null {
+  try {
+    const result = spawnSync('yarn', ['--version'], {
+      cwd: projectPath,
+      env: process.env,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    if (result.status !== 0) return null
+    const raw = (result.stdout || '').trim()
+    const major = Number.parseInt(raw.split('.')[0] ?? '', 10)
+    return Number.isFinite(major) ? major : null
+  } catch {
+    return null
+  }
 }
 
 async function runCommand(
@@ -276,6 +308,10 @@ export class DependenciesService {
   }
 
   private async inspectProject(projectPath: string): Promise<{ success: boolean; snapshot?: DependencySnapshot; error?: string }> {
+    if (!isExistingDirectory(projectPath)) {
+      return { success: false, error: 'Project directory not found' }
+    }
+
     const pkgPath = path.join(projectPath, 'package.json')
     if (!fs.existsSync(pkgPath)) {
       return { success: false, error: 'package.json not found' }
@@ -382,15 +418,22 @@ export class DependenciesService {
   }
 
   private async fetchLatestVersions(names: string[]): Promise<Record<string, string | undefined>> {
+    const uniqueNames = Array.from(new Set(names.filter(Boolean)))
     const result: Record<string, string | undefined> = {}
-    for (const name of names) {
-      try {
-        const meta = await this.getPackageMeta(name)
-        result[name] = meta?.latest
-      } catch {
-        result[name] = undefined
+
+    const lookups = await Promise.allSettled(
+      uniqueNames.map(async (name) => ({
+        name,
+        meta: await this.getPackageMeta(name),
+      }))
+    )
+
+    for (const lookup of lookups) {
+      if (lookup.status === 'fulfilled') {
+        result[lookup.value.name] = lookup.value.meta?.latest
       }
     }
+
     return result
   }
 
@@ -419,13 +462,14 @@ export class DependenciesService {
     if (!normalized) {
       return { success: true, results: { objects: [], total: 0 } }
     }
-    const cacheKey = `search:${normalized}:${size}`
+    const requestedSize = clampSearchSize(size)
+    const cacheKey = `search:${normalized}:${requestedSize}`
     const cached = this.getCached<RegistrySearchResult>(cacheKey)
     if (cached) return { success: true, results: cached }
 
     try {
       const data = await fetchJson<RegistrySearchResult>(
-        `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(normalized)}&size=${size}`
+        `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(normalized)}&size=${requestedSize}`
       )
       this.setCached(cacheKey, data)
       return { success: true, results: data }
@@ -454,6 +498,14 @@ export class DependenciesService {
     dev?: boolean
     updateMode?: 'latest' | 'range'
   }) {
+    if (!isExistingDirectory(options.projectPath)) {
+      return { success: false, error: 'Project directory not found' }
+    }
+
+    if (!options.packageName?.trim()) {
+      return { success: false, error: 'Package name is required' }
+    }
+
     const pm = detectPackageManager(options.projectPath)
     const jobId = Math.random().toString(36).slice(2)
     const startedAt = Date.now()
@@ -555,7 +607,21 @@ export class DependenciesService {
         return { cmd: 'pnpm', args: mode === 'latest' ? ['up', options.packageName, '--latest'] : ['up', options.packageName] }
       }
       if (pm === 'yarn') {
-        return { cmd: 'yarn', args: mode === 'latest' ? ['up', options.packageName, '--latest'] : ['up', options.packageName] }
+        const yarnMajor = detectYarnMajor(options.projectPath)
+        if (yarnMajor !== null && yarnMajor < 2) {
+          return {
+            cmd: 'yarn',
+            args: mode === 'latest'
+              ? ['upgrade', options.packageName, '--latest']
+              : ['upgrade', options.packageName],
+          }
+        }
+        return {
+          cmd: 'yarn',
+          args: mode === 'latest'
+            ? ['up', options.packageName, '--latest']
+            : ['up', options.packageName],
+        }
       }
       if (pm === 'bun') {
         return { cmd: 'bun', args: ['update', options.packageName] }

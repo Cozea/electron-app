@@ -2,26 +2,28 @@ import { useMemo, useState, useCallback } from "react"
 import {
     AlertTriangle,
     Info,
-    List,
-    ListTree,
-    RefreshCw,
     ChevronDown,
     ChevronRight,
-    Trash2,
+    Sparkles,
     X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useProblemsStore, selectProjectProblems, type ProblemItem } from "@/stores/useProblemsStore"
-import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
 interface ProblemsViewProps {
     projectPath?: string | null
     onOpenFile?: (filePath: string, line?: number, column?: number) => void
     searchQuery?: string
+    viewMode: ViewMode
+    showErrors: boolean
+    showWarnings: boolean
+    showInfos: boolean
 }
 
-type ViewMode = "tree" | "table"
+export type ViewMode = "tree" | "table"
 
 const severityOrder: Record<ProblemItem["severity"], number> = {
     error: 0,
@@ -55,28 +57,22 @@ const formatLocation = (error: ProblemItem) => {
     return `${line ?? ""}${col ? `:${col}` : ""}`
 }
 
-export function ProblemsView({ projectPath, onOpenFile, searchQuery = "" }: ProblemsViewProps) {
+export function ProblemsView({
+    projectPath,
+    onOpenFile,
+    searchQuery = "",
+    viewMode,
+    showErrors,
+    showWarnings,
+    showInfos,
+}: ProblemsViewProps) {
     const errors = useProblemsStore(selectProjectProblems(projectPath))
-    const clearErrors = useProblemsStore((state) => state.actions.clearProblems)
     const dismissError = useProblemsStore((state) => state.actions.dismissProblem)
+    const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
 
-    const [viewMode, setViewMode] = useState<ViewMode>("tree")
-    const [showErrors, setShowErrors] = useState(true)
-    const [showWarnings, setShowWarnings] = useState(true)
-    const [showInfos, setShowInfos] = useState(true)
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
 
     const activeErrors = useMemo(() => errors.filter((error) => !error.dismissed), [errors])
-
-    const severityCounts = useMemo(() => {
-        return activeErrors.reduce(
-            (acc, error) => {
-                acc[error.severity] += 1
-                return acc
-            },
-            { error: 0, warning: 0, info: 0 }
-        )
-    }, [activeErrors])
 
     const filteredErrors = useMemo(() => {
         const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -165,84 +161,29 @@ export function ProblemsView({ projectPath, onOpenFile, searchQuery = "" }: Prob
         dismissError(projectPath, errorId)
     }, [dismissError, projectPath])
 
-    const handleRefresh = useCallback(() => {
-        if (!projectPath || !window.electronAPI?.diagnostics) return
-        void window.electronAPI.diagnostics.refresh({ projectPath })
-    }, [projectPath])
+    const handleAskAI = useCallback((error: ProblemItem) => {
+        const location = error.file
+            ? `${toRelativePath(error.file, projectPath)}${error.line ? `:${error.line}` : ""}${error.column ? `:${error.column}` : ""}`
+            : "unknown"
+
+        const prompt = [
+            "Help me diagnose and fix this problem.",
+            `Severity: ${error.severity}`,
+            `Source: ${error.source}`,
+            `Location: ${location}`,
+            `Message: ${error.message}`,
+            "",
+            "Please provide:",
+            "1. likely root cause",
+            "2. exact fix steps",
+            "3. a code patch suggestion",
+        ].join("\n")
+
+        openWithPrompt(prompt)
+    }, [openWithPrompt, projectPath])
 
     return (
         <div className="h-full flex flex-col bg-sidebar">
-            <div className="flex items-center gap-2 px-2 py-1">
-                <div className="flex-1" /> {/* Spacer for where search bar used to be */}
-
-                <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                        variant={showErrors ? "secondary" : "ghost"}
-                        size="sm"
-                        className="h-7 px-2 text-[11px]"
-                        onClick={() => setShowErrors((prev) => !prev)}
-                    >
-                        <AlertTriangle className="h-3 w-3 mr-1 text-destructive" />
-                        {severityCounts.error}
-                    </Button>
-                    <Button
-                        variant={showWarnings ? "secondary" : "ghost"}
-                        size="sm"
-                        className="h-7 px-2 text-[11px]"
-                        onClick={() => setShowWarnings((prev) => !prev)}
-                    >
-                        <AlertTriangle className="h-3 w-3 mr-1 text-yellow-500" />
-                        {severityCounts.warning}
-                    </Button>
-                    <Button
-                        variant={showInfos ? "secondary" : "ghost"}
-                        size="sm"
-                        className="h-7 px-2 text-[11px]"
-                        onClick={() => setShowInfos((prev) => !prev)}
-                    >
-                        <Info className="h-3 w-3 mr-1 text-blue-400" />
-                        {severityCounts.info}
-                    </Button>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={handleRefresh}
-                        title="Refresh diagnostics"
-                    >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant={viewMode === "tree" ? "secondary" : "ghost"}
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => setViewMode("tree")}
-                    >
-                        <ListTree className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant={viewMode === "table" ? "secondary" : "ghost"}
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => setViewMode("table")}
-                    >
-                        <List className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => projectPath && clearErrors(projectPath)}
-                        title="Clear problems"
-                    >
-                        <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                </div>
-            </div>
-
             <ScrollArea className="flex-1">
                 {filteredErrors.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -280,6 +221,7 @@ export function ProblemsView({ projectPath, onOpenFile, searchQuery = "" }: Prob
                                                     key={error.id}
                                                     error={error}
                                                     onOpenFile={handleOpenFile}
+                                                    onAskAI={handleAskAI}
                                                     onDismiss={handleDismiss}
                                                     projectPath={projectPath}
                                                 />
@@ -297,6 +239,7 @@ export function ProblemsView({ projectPath, onOpenFile, searchQuery = "" }: Prob
                                 key={error.id}
                                 error={error}
                                 onOpenFile={handleOpenFile}
+                                onAskAI={handleAskAI}
                                 onDismiss={handleDismiss}
                                 projectPath={projectPath}
                             />
@@ -311,11 +254,12 @@ export function ProblemsView({ projectPath, onOpenFile, searchQuery = "" }: Prob
 interface ProblemRowProps {
     error: ProblemItem
     onOpenFile: (error: ProblemItem) => void
+    onAskAI: (error: ProblemItem) => void
     onDismiss: (id: string) => void
     projectPath?: string | null
 }
 
-function ProblemRow({ error, onOpenFile, onDismiss, projectPath }: ProblemRowProps) {
+function ProblemRow({ error, onOpenFile, onAskAI, onDismiss, projectPath }: ProblemRowProps) {
     const Icon = getSeverityIcon(error.severity)
     const location = formatLocation(error)
     const fileLabel = error.file ? toRelativePath(error.file, projectPath) : null
@@ -354,17 +298,35 @@ function ProblemRow({ error, onOpenFile, onDismiss, projectPath }: ProblemRowPro
                     <span className="shrink-0 uppercase text-[10px]">{error.source}</span>
                 </div>
             </div>
-            <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                onClick={(event) => {
-                    event.stopPropagation()
-                    onDismiss(error.id)
-                }}
-                title="Dismiss"
-            >
-                <X className="h-3 w-3" />
-            </button>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                onAskAI(error)
+                            }}
+                            title="Ask AI"
+                        >
+                            <Sparkles className="h-3.5 w-3.5" />
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Ask AI</TooltipContent>
+                </Tooltip>
+                <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={(event) => {
+                        event.stopPropagation()
+                        onDismiss(error.id)
+                    }}
+                    title="Dismiss"
+                >
+                    <X className="h-3 w-3" />
+                </button>
+            </div>
         </div>
     )
 }

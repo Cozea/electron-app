@@ -1,14 +1,18 @@
-import { useCallback, useRef, useState, useMemo, useEffect } from "react"
+import { useCallback, useRef, useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import {
     useTerminalStore,
     useTerminalActions,
 } from "@/stores/useTerminalStore"
-import { useProblemsStore, selectUnreadCount } from "@/stores/useProblemsStore"
+import {
+    useProblemsStore,
+    selectProjectProblems,
+    selectUnreadCount,
+} from "@/stores/useProblemsStore"
 import { TerminalTabBar } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
-import { ProblemsView } from "./ProblemsView"
+import { ProblemsView, type ViewMode } from "./ProblemsView"
 
 // Panel height constraints
 const MIN_PANEL_HEIGHT = 150
@@ -29,8 +33,10 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     const groups = useTerminalStore((s) => s.groups)
     const activeGroupId = useTerminalStore((s) => s.activeGroupId)
     const unreadErrorCount = useProblemsStore(selectUnreadCount(projectPath))
+    const projectProblems = useProblemsStore(selectProjectProblems(projectPath))
     const markRead = useProblemsStore((state) => state.actions.markRead)
-    const { setPanelHeight, setPanelOpen, reset: resetTerminals } = useTerminalActions()
+    const clearProblems = useProblemsStore((state) => state.actions.clearProblems)
+    const { setPanelHeight, setPanelOpen } = useTerminalActions()
 
     // Compute derived values with useMemo
     const activeGroup = useMemo(() => {
@@ -42,28 +48,41 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
         return terminals[activeGroup.activeTerminalId] ?? null
     }, [activeGroup, terminals])
 
-    // Cleanup all terminals when leaving the project (component unmounts)
-    useEffect(() => {
-        // Capture terminals at unmount time
-        return () => {
-            const currentTerminals = useTerminalStore.getState().terminals
-            // Kill all terminal processes
-            Object.keys(currentTerminals).forEach((terminalId) => {
-                window.electronAPI.terminal.kill({ terminalId }).catch(() => {
-                    // Ignore errors - terminal may already be dead
-                })
-            })
-            // Reset the terminal store
-            resetTerminals()
-        }
-    }, [resetTerminals]) // Empty deps - only run on unmount
-
     const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
     const [isDragging, setIsDragging] = useState(false)
     const dragStartY = useRef(0)
     const dragStartHeight = useRef(0)
 
     const [problemsSearchQuery, setProblemsSearchQuery] = useState("")
+    const [problemsViewMode, setProblemsViewMode] = useState<ViewMode>("tree")
+    const [showProblemErrors, setShowProblemErrors] = useState(true)
+    const [showProblemWarnings, setShowProblemWarnings] = useState(true)
+    const [showProblemInfos, setShowProblemInfos] = useState(true)
+
+    const problemSeverityCounts = useMemo(
+        () =>
+            projectProblems.reduce(
+                (acc, problem) => {
+                    if (problem.dismissed) return acc
+                    if (problem.severity === "error") acc.error += 1
+                    if (problem.severity === "warning") acc.warning += 1
+                    if (problem.severity === "info") acc.info += 1
+                    return acc
+                },
+                { error: 0, warning: 0, info: 0 }
+            ),
+        [projectProblems]
+    )
+
+    const handleRefreshProblems = useCallback(() => {
+        if (!projectPath || !window.electronAPI?.diagnostics) return
+        void window.electronAPI.diagnostics.refresh({ projectPath })
+    }, [projectPath])
+
+    const handleClearProblems = useCallback(() => {
+        if (!projectPath) return
+        clearProblems(projectPath)
+    }, [clearProblems, projectPath])
 
     // Resize handlers
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -139,6 +158,17 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                 onClose={() => setPanelOpen(false)}
                 problemsSearchQuery={problemsSearchQuery}
                 onProblemsSearchChange={setProblemsSearchQuery}
+                problemsViewMode={problemsViewMode}
+                onProblemsViewModeChange={setProblemsViewMode}
+                showProblemErrors={showProblemErrors}
+                onShowProblemErrorsChange={setShowProblemErrors}
+                showProblemWarnings={showProblemWarnings}
+                onShowProblemWarningsChange={setShowProblemWarnings}
+                showProblemInfos={showProblemInfos}
+                onShowProblemInfosChange={setShowProblemInfos}
+                problemSeverityCounts={problemSeverityCounts}
+                onRefreshProblems={handleRefreshProblems}
+                onClearProblems={handleClearProblems}
             />
 
             {/* Panel Content */}
@@ -181,6 +211,10 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                         projectPath={projectPath}
                         onOpenFile={onOpenFile}
                         searchQuery={problemsSearchQuery}
+                        viewMode={problemsViewMode}
+                        showErrors={showProblemErrors}
+                        showWarnings={showProblemWarnings}
+                        showInfos={showProblemInfos}
                     />
                 )}
             </div>

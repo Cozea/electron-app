@@ -43,6 +43,13 @@ interface ProjectSummary {
     slug: string
     name: string
     status: string
+    description?: string | null
+    updatedAt?: number
+    lastSyncAt?: number
+    createdBy?: string
+    stats?: {
+        fileCount?: number
+    }
     stack?: {
         backend?: string
         hosting?: string
@@ -412,7 +419,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                 <div className="flex items-center gap-1">
                                     <Clock className="h-3 w-3" />
-                                    {formatRelativeTime(project.updatedAt)}
+                                    {project.updatedAt ? formatRelativeTime(project.updatedAt) : 'now'}
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <FileCode className="h-3 w-3" />

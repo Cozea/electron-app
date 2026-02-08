@@ -17,6 +17,7 @@ import {
 } from "@xyflow/react"
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
+import { useProjectHeader } from "@/hooks/useProjectHeader"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 import { buildBackendStudioGraph, type StudioGraphNodeData } from "../studio/graphBuilder"
 import { Canvas } from "@/components/ai/canvas"
@@ -35,7 +36,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { scanForRoutes, type ScannedRoute } from "@/utils/routeScanner"
 import { cn } from "@/lib/utils"
 import {
@@ -497,6 +497,119 @@ export function ProjectBackendStudioPage() {
     convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : "skip"
   )
 
+  const headerControls = useMemo(
+    () => (
+      <div className="flex items-center gap-1.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 max-w-[40vw] gap-1.5 rounded-full px-2.5 text-xs"
+              disabled={!projectPath || isLoadingRoutes}
+            >
+              {isLoadingRoutes ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileCode2 className="h-3.5 w-3.5" />
+              )}
+              <span className="truncate">
+                {selectedPage ? selectedPage.name : "All pages"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-80">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              Page focus
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                setSelectedPageFile(null)
+                setSelection({ nodeId: null })
+                setRunnerOutput("")
+                setShouldFitView(true)
+              }}
+            >
+              All pages
+              {!selectedPageFile && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {routesError ? (
+              <div className="px-2 py-2 text-xs text-destructive">
+                {routesError}
+              </div>
+            ) : pageRoutes.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                No pages detected yet.
+              </div>
+            ) : (
+              pageRoutes.map((route) => (
+                <DropdownMenuItem
+                  key={route.file}
+                  onClick={() => {
+                    setSelectedPageFile(route.file)
+                    setSelection({ nodeId: null })
+                    setRunnerOutput("")
+                    setShouldFitView(true)
+                  }}
+                  className="flex items-start gap-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm">{route.name}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">{route.path}</div>
+                  </div>
+                  {selectedPageFile && normalizePath(selectedPageFile) === normalizePath(route.file) ? (
+                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+          onClick={runScan}
+          disabled={!projectPath || isScanning}
+        >
+          {isScanning ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          Scan
+        </Button>
+
+        <Button
+          size="sm"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+          onClick={addManualNode}
+          aria-label="Add node"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add Node
+        </Button>
+      </div>
+    ),
+    [
+      addManualNode,
+      isLoadingRoutes,
+      isScanning,
+      pageRoutes,
+      projectPath,
+      routesError,
+      runScan,
+      selectedPage,
+      selectedPageFile,
+    ]
+  )
+
+  useProjectHeader(headerControls)
+
   const storedFrameworkInfo = useMemo(() => {
     const info = project?.frameworkInfo
     if (!info) return null
@@ -553,108 +666,6 @@ export function ProjectBackendStudioPage() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-9 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center min-w-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="gap-2 max-w-[40vw]"
-                disabled={!projectPath || isLoadingRoutes}
-              >
-                {isLoadingRoutes ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileCode2 className="h-4 w-4" />
-                )}
-                <span className="truncate">
-                  {selectedPage ? selectedPage.name : "All pages"}
-                </span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-80">
-              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                Page focus
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setSelectedPageFile(null)
-                  setSelection({ nodeId: null })
-                  setRunnerOutput("")
-                  setShouldFitView(true)
-                }}
-              >
-                All pages
-                {!selectedPageFile && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {routesError ? (
-                <div className="px-2 py-2 text-xs text-destructive">
-                  {routesError}
-                </div>
-              ) : pageRoutes.length === 0 ? (
-                <div className="px-2 py-2 text-xs text-muted-foreground">
-                  No pages detected yet.
-                </div>
-              ) : (
-                pageRoutes.map((route) => (
-                  <DropdownMenuItem
-                    key={route.file}
-                    onClick={() => {
-                      setSelectedPageFile(route.file)
-                      setSelection({ nodeId: null })
-                      setRunnerOutput("")
-                      setShouldFitView(true)
-                    }}
-                    className="flex items-start gap-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm">{route.name}</div>
-                      <div className="truncate text-[11px] text-muted-foreground">{route.path}</div>
-                    </div>
-                    {selectedPageFile && normalizePath(selectedPageFile) === normalizePath(route.file) ? (
-                      <CheckCircle2 className="h-3 w-3 text-green-500" />
-                    ) : null}
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="gap-2"
-            onClick={runScan}
-            disabled={!projectPath || isScanning}
-          >
-            {isScanning ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Scan
-          </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="sm" className="gap-2" onClick={addManualNode} aria-label="Add node">
-                <Plus className="h-4 w-4" />
-                <span className="hidden lg:inline">Add Node</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={8}>
-              Add node
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
-
       {/* Content */}
       <div className="flex-1 min-h-0">
         <ResizablePanelGroup orientation="horizontal" className="h-full">

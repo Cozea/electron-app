@@ -71,6 +71,7 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     isRefreshing?: boolean
     onCreateFile?: () => void
     onCreateFolder?: () => void
+    onSecondaryVisibilityChange?: (isVisible: boolean) => void
 }
 
 // Route mappings for all navigation items
@@ -101,6 +102,7 @@ export function ProjectSidebar({
     isRefreshing,
     onCreateFile,
     onCreateFolder,
+    onSecondaryVisibilityChange,
     className,
     ...props
 }: ProjectSidebarProps) {
@@ -289,6 +291,15 @@ export function ProjectSidebar({
         }
     ]
 
+    const isSecondarySidebarVisible =
+        activeTab === "Files" ||
+        activeTab === "Settings" ||
+        (isPagesRoute && pagesListOpen)
+
+    React.useEffect(() => {
+        onSecondaryVisibilityChange?.(isSecondarySidebarVisible)
+    }, [isSecondarySidebarVisible, onSecondaryVisibilityChange])
+
     return (
         <div className={cn("flex h-full titlebar-drag-region", className)}>
             {/* 1. Primary Icon Rail Sidebar */}
@@ -384,14 +395,14 @@ export function ProjectSidebar({
             <div
                 style={{
                     "--sidebar-width": `${secondaryWidth}px`,
-                    width: (activeTab === 'Files') || (activeTab === 'Settings') || (isPagesRoute && pagesListOpen) ? secondaryWidth : 0,
+                    width: isSecondarySidebarVisible ? secondaryWidth : 0,
                     minWidth: 0,
                     transition: 'width 200ms ease-in-out',
                     overflow: 'hidden',
                 } as React.CSSProperties}
                 className="h-full hidden md:flex relative shrink-0"
             >
-                {((activeTab === 'Files') || (activeTab === 'Settings') || (isPagesRoute && pagesListOpen)) && (
+                {isSecondarySidebarVisible && (
                     <>
                         <Sidebar
                             side="left"
@@ -400,10 +411,7 @@ export function ProjectSidebar({
                             className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag relative sidebar-fade-border sidebar-fade-border-right"
                         >
                             <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
-                                {activeTab !== 'Files' && (
-                                    <h3 className="text-sm font-medium">{isPagesRoute ? 'Pages' : activeTab}</h3>
-                                )}
-                                <div className={cn("flex items-center gap-2 titlebar-no-drag", activeTab === 'Files' && "ml-auto")}>
+                                <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
                                     {activeTab === 'Files' && onCreateFile && (
                                         <button
                                             onClick={onCreateFile}
@@ -435,6 +443,7 @@ export function ProjectSidebar({
                                     <button
                                         onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
                                         className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
+                                        aria-label="Close secondary sidebar"
                                     >
                                         <Plus className="h-4 w-4 rotate-45" />
                                     </button>

@@ -615,6 +615,16 @@ ipcMain.handle(
     }
 
     try {
+      // Force-refresh bridge instance so style/script updates apply immediately.
+      await frame.executeJavaScript(`
+        try {
+          window.__COZEA_BRIDGE_LOADED__ = false;
+          document.getElementById('cozea-highlight')?.remove();
+          document.getElementById('cozea-selected')?.remove();
+          document.getElementById('cozea-highlight-label')?.remove();
+          document.getElementById('cozea-selected-label')?.remove();
+        } catch {}
+      `)
       await frame.executeJavaScript(BRIDGE_SCRIPT)
       return { success: true }
     } catch (err) {

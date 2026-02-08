@@ -50,6 +50,8 @@ interface ProjectSummary {
     name: string
     status: string
     updatedAt: number
+    createdBy?: string
+    lastSyncAt?: number
     stack?: {
         backend?: string
         hosting?: string
