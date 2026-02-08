@@ -155,6 +155,57 @@ export interface SyncWriteFile {
   encoding?: 'utf8' | 'base64'
 }
 
+export interface GitRuntimeHealth {
+  available: boolean
+  executablePath?: string
+  source: 'bundled' | 'system' | 'missing'
+  gitVersion?: string
+  supportsMergeFile: boolean
+  supportsZdiff3: boolean
+  supportsMergeTree: boolean
+  supportsMergeTreeWriteTree: boolean
+  preflightCheckedAt: number
+  preflightOk: boolean
+  error?: string
+}
+
+export interface MergePreviewResult {
+  success: boolean
+  mergedContent: string
+  hasConflicts: boolean
+  conflictCount: number
+  strategyUsed: 'zdiff3' | 'diff3'
+  gitVersion: string
+  error?: string
+}
+
+export interface SyncOp {
+  opId: string
+  idempotencyKey: string
+  projectId: string
+  actorId: string
+  actorType: 'user' | 'agent' | 'system'
+  source: 'monaco' | 'agent' | 'watcher' | 'remote'
+  kind: 'upsert' | 'delete' | 'rename' | 'chmod' | 'yjs_update'
+  path: string
+  baseHash?: string
+  newHash?: string
+  isBinary: boolean
+  size: number
+  timestamp: number
+}
+
+export interface ReplicaState {
+  projectId: string
+  replicaHead: number
+  pendingOps: number
+  lastAckedAt: number | null
+  ackedOps: number
+  pathHeads: Record<string, string>
+  lastStateVector: number
+  lastPersistedAt: number | null
+}
+
 export interface SyncDeleteFilesResult {
   results: Array<{ path: string; success: boolean }>
 }
@@ -369,7 +420,7 @@ export interface ElectronAPI {
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
-    writeFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<WriteFileResult>
+    writeFile: (options: { projectPath: string; filePath: string; content: string; encoding?: 'utf8' | 'base64' }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
@@ -389,13 +440,53 @@ export interface ElectronAPI {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
     getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
       Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
-    writeFiles: (options: { projectPath: string; files: SyncWriteFile[] }) =>
+    writeFiles: (options: {
+      projectPath: string
+      files: SyncWriteFile[]
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
+    }) =>
       Promise<SyncWriteFilesResult>
-    deleteFiles: (options: { projectPath: string; paths: string[] }) =>
+    deleteFiles: (options: {
+      projectPath: string
+      paths: string[]
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
+    }) =>
       Promise<SyncDeleteFilesResult>
+    getGitRuntimeHealth: (options?: { force?: boolean }) => Promise<GitRuntimeHealth>
+    mergePreview: (options: {
+      baseContent: string
+      localContent: string
+      cloudContent: string
+      strategy?: 'zdiff3' | 'diff3'
+      labels?: { local?: string; base?: string; cloud?: string }
+    }) => Promise<MergePreviewResult>
+    resolveConflict: (options: { fingerprint: string; resolvedContent: string }) =>
+      Promise<{ success: boolean; error?: string }>
+    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
+      Promise<{ accepted: number; rejected: number; replicaState: ReplicaState }>
+    ackOps: (options: { projectId: string; opIds: string[] }) =>
+      Promise<{ acked: number; replicaState: ReplicaState }>
+    getReplicaState: (options: { projectId: string }) => Promise<ReplicaState>
   }
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
+    onExternalFileMetaChange: (callback: (data: {
+      filePath: string
+      origin?: string
+      isBinary: boolean
+      sizeBytes: number
+      content?: string
+    }) => void) => () => void
     onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
   }
   devServer: {
@@ -606,7 +697,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),
     pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),
-    writeFile: (options: { projectPath: string; filePath: string; content: string }) => ipcRenderer.invoke('project:writeFile', options),
+    writeFile: (options: { projectPath: string; filePath: string; content: string; encoding?: 'utf8' | 'base64' }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { projectPath: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
@@ -630,10 +721,45 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hashFile: (options: { filePath: string }) => ipcRenderer.invoke('sync:hashFile', options),
     getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
       ipcRenderer.invoke('sync:getLocalManifest', options),
-    writeFiles: (options: { projectPath: string; files: SyncWriteFile[] }) =>
+    writeFiles: (options: {
+      projectPath: string
+      files: SyncWriteFile[]
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
+    }) =>
       ipcRenderer.invoke('sync:writeFiles', options),
-    deleteFiles: (options: { projectPath: string; paths: string[] }) =>
+    deleteFiles: (options: {
+      projectPath: string
+      paths: string[]
+      opMeta?: {
+        projectId: string
+        actorId?: string
+        actorType?: 'user' | 'agent' | 'system'
+        source?: 'monaco' | 'agent' | 'watcher' | 'remote'
+      }
+    }) =>
       ipcRenderer.invoke('sync:deleteFiles', options),
+    getGitRuntimeHealth: (options?: { force?: boolean }) =>
+      ipcRenderer.invoke('sync:getGitRuntimeHealth', options ?? {}),
+    mergePreview: (options: {
+      baseContent: string
+      localContent: string
+      cloudContent: string
+      strategy?: 'zdiff3' | 'diff3'
+      labels?: { local?: string; base?: string; cloud?: string }
+    }) => ipcRenderer.invoke('sync:mergePreview', options),
+    resolveConflict: (options: { fingerprint: string; resolvedContent: string }) =>
+      ipcRenderer.invoke('sync:resolveConflict', options),
+    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
+      ipcRenderer.invoke('sync:enqueueOps', options),
+    ackOps: (options: { projectId: string; opIds: string[] }) =>
+      ipcRenderer.invoke('sync:ackOps', options),
+    getReplicaState: (options: { projectId: string }) =>
+      ipcRenderer.invoke('sync:getReplicaState', options),
   },
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {
@@ -643,6 +769,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) => callback(data)
       ipcRenderer.on('yjs:external-file-change', handler)
       return () => ipcRenderer.removeListener('yjs:external-file-change', handler)
+    },
+    onExternalFileMetaChange: (callback: (data: {
+      filePath: string
+      origin?: string
+      isBinary: boolean
+      sizeBytes: number
+      content?: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        filePath: string
+        origin?: string
+        isBinary: boolean
+        sizeBytes: number
+        content?: string
+      }) => callback(data)
+      ipcRenderer.on('yjs:external-file-meta-change', handler)
+      return () => ipcRenderer.removeListener('yjs:external-file-meta-change', handler)
     },
     onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { filePath: string; origin?: string }) =>

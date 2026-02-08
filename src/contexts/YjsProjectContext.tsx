@@ -8,7 +8,6 @@ import {
 } from 'react'
 import * as Y from 'yjs'
 import { useQuery, useConvex } from 'convex/react'
-import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
@@ -75,7 +74,6 @@ export function YjsProjectProvider({
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
-  const [hasher, setHasher] = useState<XXHashAPI | null>(null)
   const providerRef = useRef<YConvexProvider | null>(null)
   const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
   const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
@@ -83,11 +81,6 @@ export function YjsProjectProvider({
   const lastAppliedTimestampRef = useRef(0)
   const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
   const convex = useConvex()
-
-  // Initialize xxhash
-  useEffect(() => {
-    xxhashInit().then(setHasher)
-  }, [])
 
   // Subscribe to Yjs updates since lastSyncTime.
   // Note: Convex query is `timestamp > since`, so we overlap by 1ms and dedupe by update _id
@@ -102,8 +95,6 @@ export function YjsProjectProvider({
 
   // Initialize Y.Doc and provider on mount
   useEffect(() => {
-    if (!hasher) return
-
     const initDoc = async () => {
       const doc = new YjsProjectDoc(projectId)
 
@@ -143,7 +134,6 @@ export function YjsProjectProvider({
         doc.files,
         projectId,
         convex,
-        hasher,
         userId,
         userName
       )
@@ -163,7 +153,7 @@ export function YjsProjectProvider({
       persistenceRef.current?.destroy()
       indexedDBProviderRef.current?.destroy()
     }
-  }, [projectId, userId, userName, convex, hasher])
+  }, [projectId, userId, userName, convex])
 
   // Apply remote updates when they arrive from Convex
   useEffect(() => {

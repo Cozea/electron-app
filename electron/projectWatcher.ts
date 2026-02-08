@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { notifyFileChanged, notifyFileDeleted } from './yjsNotify'
+import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from './yjsNotify'
 import { markManifestDirtyPath } from './services/manifestCache'
 
 const INTERNAL_IGNORE_MS = 1500
@@ -129,11 +129,27 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
       return
     }
     if (!stats.isFile()) return
-    if (stats.size > MAX_TEXT_FILE_BYTES) return
-    if (isBinaryPath(relNormalized)) return
+
+    const isBinary = isBinaryPath(relNormalized)
+    if (isBinary || stats.size > MAX_TEXT_FILE_BYTES) {
+      notifyFileMetaChanged({
+        filePath: fullPath,
+        origin: 'external',
+        isBinary,
+        sizeBytes: stats.size,
+      })
+      return
+    }
 
     const content = fs.readFileSync(fullPath, 'utf-8')
     notifyFileChanged(fullPath, content, { origin: 'external' })
+    notifyFileMetaChanged({
+      filePath: fullPath,
+      origin: 'external',
+      isBinary: false,
+      sizeBytes: stats.size,
+      content,
+    })
   } catch {
     // Missing path: treat as deletion (rename/remove)
     notifyFileDeleted(fullPath, { origin: 'external' })

@@ -13,7 +13,7 @@ export default defineConfig({
         },
       },
       rollupOptions: {
-        external: ['electron', '@vscode/ripgrep', 'node-pty', 'xxhash-wasm', 'electron-updater'],
+        external: ['electron', '@vscode/ripgrep', 'node-pty', 'electron-updater'],
         output: {
           format: 'cjs',
           entryFileNames: '[name].js',

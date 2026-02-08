@@ -1,9 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 import { readdir, readFile, stat, access } from 'node:fs/promises'
 import path from 'node:path'
-import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
-
-let xxhasher: XXHashAPI | null = null
+import { createHash } from 'node:crypto'
 
 const BATCH_SIZE = 50
 const DEFAULT_EXCLUDED_DIRECTORIES = [
@@ -77,8 +75,6 @@ async function generateManifest(
   previousEntries?: Record<string, ManifestEntry>,
   previousDirMtimes?: Record<string, number>
 ): Promise<ManifestResult> {
-  if (!xxhasher) throw new Error('xxhash not initialized in worker')
-
   const excludes = new Set(
     [...DEFAULT_EXCLUDED_DIRECTORIES, ...(excludePatterns || [])].map((name) => name.toLowerCase())
   )
@@ -129,19 +125,17 @@ async function generateManifest(
 
     if (previousEntries && previousDirs[dirKey] === dirStats.mtimeMs) {
       const cachedEntries = previousByDir.get(dirKey)
-      if (cachedEntries) {
+      if (cachedEntries && cachedEntries.every((entry) => entry.hash.length === 64)) {
         manifest.push(...cachedEntries)
-      }
-
-      for (const [cachedDir, mtime] of Object.entries(previousDirs)) {
-        if (cachedDir === dirKey || cachedDir.startsWith(`${dirKey}/`)) {
-          if (!(cachedDir in dirMtimes)) {
-            dirMtimes[cachedDir] = mtime
+        for (const [cachedDir, mtime] of Object.entries(previousDirs)) {
+          if (cachedDir === dirKey || cachedDir.startsWith(`${dirKey}/`)) {
+            if (!(cachedDir in dirMtimes)) {
+              dirMtimes[cachedDir] = mtime
+            }
           }
         }
+        return
       }
-
-      return
     }
 
     for (const entry of entries) {
@@ -180,7 +174,12 @@ async function generateManifest(
           const stats = await stat(fullPath)
           const previous = previousByPath?.get(relPath)
 
-          if (previous && previous.mtime === stats.mtimeMs && previous.size === stats.size) {
+          if (
+            previous &&
+            previous.hash.length === 64 &&
+            previous.mtime === stats.mtimeMs &&
+            previous.size === stats.size
+          ) {
             return {
               path: relPath,
               hash: previous.hash,
@@ -190,7 +189,7 @@ async function generateManifest(
           }
 
           const content = await readFile(fullPath)
-          const hash = xxhasher!.h64Raw(content).toString(16).padStart(16, '0')
+          const hash = createHash('sha256').update(content).digest('hex')
           return {
             path: relPath,
             hash,
@@ -251,12 +250,5 @@ parentPort?.on('message', async (msg: ManifestRequest) => {
   }
 })
 
-// Initialize xxhash and signal ready
-xxhashInit().then((h) => {
-  xxhasher = h
-  parentPort?.postMessage({ type: 'ready' })
-  console.log('[FileOpsWorker] Worker initialized with xxhash')
-}).catch((error) => {
-  console.error('[FileOpsWorker] Failed to initialize xxhash:', error)
-  parentPort?.postMessage({ type: 'error', error: 'Failed to initialize xxhash' })
-})
+// Signal ready
+parentPort?.postMessage({ type: 'ready' })

@@ -278,6 +278,12 @@ export async function executeSyncPlan(
         const result = await window.electronAPI.sync.writeFiles({
           projectPath,
           files: filesToWrite,
+          opMeta: {
+            projectId: String(projectId),
+            actorId: "remote",
+            actorType: "system",
+            source: "remote",
+          },
         })
         if (result.successCount < filesToWrite.length) {
           const failed = filesToWrite.length - result.successCount
@@ -364,6 +370,12 @@ export async function executeSyncPlan(
         const result = await window.electronAPI.sync.writeFiles({
           projectPath,
           files: mergedFilesToWrite,
+          opMeta: {
+            projectId: String(projectId),
+            actorId: "merge-engine",
+            actorType: "system",
+            source: "remote",
+          },
         })
         if (result.successCount < mergedFilesToWrite.length) {
           const failed = mergedFilesToWrite.length - result.successCount
@@ -480,6 +492,12 @@ export async function executeSyncPlan(
       const result = await window.electronAPI.sync.deleteFiles({
         projectPath,
         paths: pathsToDelete,
+        opMeta: {
+          projectId: String(projectId),
+          actorId: "remote",
+          actorType: "system",
+          source: "remote",
+        },
       })
 
       for (const op of plan.localDeletes) {

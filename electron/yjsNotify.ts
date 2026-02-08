@@ -6,6 +6,14 @@ export interface ExternalFileChangePayload {
   origin?: string
 }
 
+export interface ExternalFileMetaChangePayload {
+  filePath: string
+  origin?: string
+  isBinary: boolean
+  sizeBytes: number
+  content?: string
+}
+
 export interface ExternalFileDeletePayload {
   filePath: string
   origin?: string
@@ -23,6 +31,14 @@ export function notifyFileChanged(
       origin: options?.origin,
     }
     window.webContents.send('yjs:external-file-change', payload)
+  })
+}
+
+export function notifyFileMetaChanged(
+  payload: ExternalFileMetaChangePayload
+): void {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('yjs:external-file-meta-change', payload)
   })
 }
 
