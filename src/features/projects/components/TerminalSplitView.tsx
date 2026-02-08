@@ -85,13 +85,13 @@ export function TerminalSplitView({ group }: TerminalSplitViewProps) {
 
     // If only one terminal, just render it directly
     if (terminalIds.length === 1) {
-        return <TerminalInstance terminalId={terminalIds[0]} className="h-full w-full" />
+        return <TerminalInstance terminalId={terminalIds[0]} className="h-full w-full" shouldAutoFocus />
     }
 
     // No split direction set - render active terminal only
     if (!splitDirection) {
         const terminalId = activeTerminalId || terminalIds[0]
-        return <TerminalInstance terminalId={terminalId} className="h-full w-full" />
+        return <TerminalInstance terminalId={terminalId} className="h-full w-full" shouldAutoFocus />
     }
 
     return (
@@ -143,6 +143,7 @@ export function TerminalSplitView({ group }: TerminalSplitViewProps) {
                                 terminalId={terminalId}
                                 className="h-full w-full"
                                 onFocus={() => setActiveTerminal(terminalId)}
+                                shouldAutoFocus={isActive}
                             />
                         </div>
                     </Fragment>

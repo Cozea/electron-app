@@ -6,6 +6,7 @@ import type { TerminalProfile } from '@/types/electron'
 const MIN_PANEL_HEIGHT = 150
 const MAX_PANEL_HEIGHT = 600
 const DEFAULT_PANEL_HEIGHT = 250
+const MAX_TERMINAL_OUTPUT_CHUNKS = 4000
 
 export type TerminalKind = 'dev-server' | 'shell' | 'task'
 export type TerminalNameSource = 'auto' | 'manual'
@@ -15,6 +16,7 @@ export interface TerminalInstance {
   profileId: string
   profileName: string
   title: string
+  projectPath?: string
   label?: string
   kind?: TerminalKind
   port?: number
@@ -35,6 +37,7 @@ export interface TerminalGroup {
 interface TerminalState {
   // All terminal instances
   terminals: Record<string, TerminalInstance>
+  outputBuffers: Record<string, string[]>
 
   // Groups (for split view)
   groups: Record<string, TerminalGroup>
@@ -59,9 +62,11 @@ interface TerminalState {
     updateTerminalTitle: (terminalId: string, title: string) => void
     updateTerminalDisplay: (
       terminalId: string,
-      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind'>>
+      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind' | 'projectPath'>>
     ) => void
     setTerminalHasOutput: (terminalId: string, hasOutput: boolean) => void
+    appendTerminalOutput: (terminalId: string, chunk: string) => void
+    clearTerminalOutput: (terminalId: string) => void
 
     // Group management
     createGroup: () => string
@@ -87,6 +92,7 @@ interface TerminalState {
 
 const initialState = {
   terminals: {},
+  outputBuffers: {},
   groups: {},
   activeGroupId: null,
   isMaximized: false,
@@ -134,6 +140,10 @@ export const useTerminalStore = create<TerminalState>()(
                 ...state.terminals,
                 [terminal.id]: terminal,
               },
+              outputBuffers: {
+                ...state.outputBuffers,
+                [terminal.id]: state.outputBuffers[terminal.id] ?? [],
+              },
               groups: {
                 ...state.groups,
                 [targetGroupId!]: newGroup,
@@ -150,6 +160,8 @@ export const useTerminalStore = create<TerminalState>()(
           set((state) => {
             const newTerminals = { ...state.terminals }
             delete newTerminals[terminalId]
+            const newOutputBuffers = { ...state.outputBuffers }
+            delete newOutputBuffers[terminalId]
 
             const newGroups = { ...state.groups }
             let newActiveGroupId = state.activeGroupId
@@ -186,6 +198,7 @@ export const useTerminalStore = create<TerminalState>()(
 
             return {
               terminals: newTerminals,
+              outputBuffers: newOutputBuffers,
               groups: newGroups,
               activeGroupId: newActiveGroupId,
               // Close panel if no terminals left
@@ -254,6 +267,33 @@ export const useTerminalStore = create<TerminalState>()(
                 [terminalId]: { ...terminal, hasOutput },
               },
             }
+          })
+        },
+
+        appendTerminalOutput: (terminalId, chunk) => {
+          if (!chunk) return
+          set((state) => {
+            const existing = state.outputBuffers[terminalId] ?? []
+            const next = [...existing, chunk]
+            const trimmed =
+              next.length > MAX_TERMINAL_OUTPUT_CHUNKS
+                ? next.slice(next.length - MAX_TERMINAL_OUTPUT_CHUNKS)
+                : next
+            return {
+              outputBuffers: {
+                ...state.outputBuffers,
+                [terminalId]: trimmed,
+              },
+            }
+          })
+        },
+
+        clearTerminalOutput: (terminalId) => {
+          set((state) => {
+            if (!state.outputBuffers[terminalId]) return state
+            const next = { ...state.outputBuffers }
+            delete next[terminalId]
+            return { outputBuffers: next }
           })
         },
 

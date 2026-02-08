@@ -1,5 +1,5 @@
+import { memo, type ComponentType } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { type LucideIcon } from "lucide-react"
 
 import {
   SidebarGroup,
@@ -10,18 +10,22 @@ import {
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 
-export function NavMain({
+export interface NavMainItem {
+  title: string
+  url: string
+  icon?: ComponentType<{ className?: string }>
+  alpha?: boolean
+}
+
+interface NavMainProps {
+  label: string
+  items: readonly NavMainItem[]
+}
+
+export const NavMain = memo(function NavMain({
   label,
   items,
-}: {
-  label: string
-  items: {
-    title: string
-    url: string
-    icon?: LucideIcon
-    alpha?: boolean
-  }[]
-}) {
+}: NavMainProps) {
   const location = useLocation()
   const currentPath = location.pathname
 
@@ -51,4 +55,6 @@ export function NavMain({
       </SidebarMenu>
     </SidebarGroup>
   )
-}
+})
+
+NavMain.displayName = "NavMain"

@@ -7,16 +7,17 @@ import { Sparkles } from "lucide-react"
 import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useTerminalActions } from "@/stores/useTerminalStore"
+import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
 interface TerminalInstanceProps {
     terminalId: string
     className?: string
     onFocus?: () => void
+    shouldAutoFocus?: boolean
 }
 
-export function TerminalInstance({ terminalId, className, onFocus }: TerminalInstanceProps) {
+export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFocus = true }: TerminalInstanceProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const xtermRef = useRef<Terminal | null>(null)
     const fitAddonRef = useRef<FitAddon | null>(null)
@@ -24,9 +25,11 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
     const hasInitializedRef = useRef(false)
     const hasInputErrorRef = useRef(false)
     const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const renderedOutputCountRef = useRef(0)
     const [initRetry, setInitRetry] = useState(0)
     const [selectedText, setSelectedText] = useState("")
-    const { updateTerminalStatus, setTerminalHasOutput } = useTerminalActions()
+    const outputChunks = useTerminalStore((state) => state.outputBuffers[terminalId] ?? [])
+    const { updateTerminalStatus, setTerminalHasOutput, appendTerminalOutput } = useTerminalActions()
     const openWithPrompt = useAssistantPanelStore((state) => state.openWithPrompt)
 
     const getTrimmedSelection = useCallback(() => {
@@ -213,7 +216,9 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
                 fitAddon.fit()
                 const { cols, rows } = term
                 window.electronAPI.terminal.resize({ terminalId, cols, rows })
-                term.focus()
+                if (shouldAutoFocus) {
+                    term.focus()
+                }
             } catch (e) {
                 console.error('[Terminal] Fit failed:', e)
             }
@@ -222,7 +227,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         // Listen for output from the PTY
         const unsubOutput = window.electronAPI.terminal.onOutput((event) => {
             if (event.terminalId === terminalId) {
-                term.write(event.data)
+                appendTerminalOutput(terminalId, event.data)
                 setTerminalHasOutput(terminalId, true)
             }
         })
@@ -231,8 +236,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
         const unsubExit = window.electronAPI.terminal.onExit((event) => {
             if (event.terminalId === terminalId) {
                 updateTerminalStatus(terminalId, 'exited', event.exitCode)
-                // Write exit message to terminal
-                term.write(`\r\n\x1b[90m[Process exited with code ${event.exitCode ?? 'unknown'}]\x1b[0m\r\n`)
+                appendTerminalOutput(terminalId, `\r\n\x1b[90m[Process exited with code ${event.exitCode ?? 'unknown'}]\x1b[0m\r\n`)
             }
         })
 
@@ -255,9 +259,36 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
             searchAddonRef.current = null
             hasInitializedRef.current = false
             hasInputErrorRef.current = false
+            renderedOutputCountRef.current = 0
             setSelectedText("")
         }
-    }, [terminalId, initRetry, onFocus, updateTerminalStatus, setTerminalHasOutput])
+    }, [appendTerminalOutput, terminalId, initRetry, onFocus, shouldAutoFocus, updateTerminalStatus, setTerminalHasOutput])
+
+    useEffect(() => {
+        if (!shouldAutoFocus) return
+        xtermRef.current?.focus()
+    }, [shouldAutoFocus])
+
+    useEffect(() => {
+        const term = xtermRef.current
+        if (!term) return
+
+        const renderedCount = renderedOutputCountRef.current
+        if (outputChunks.length < renderedCount) {
+            term.clear()
+            renderedOutputCountRef.current = 0
+        }
+
+        const nextStart = renderedOutputCountRef.current
+        if (outputChunks.length > nextStart) {
+            term.write(outputChunks.slice(nextStart).join(''))
+            renderedOutputCountRef.current = outputChunks.length
+        }
+
+        if (outputChunks.length > 0) {
+            setTerminalHasOutput(terminalId, true)
+        }
+    }, [outputChunks, setTerminalHasOutput, terminalId])
 
     // Handle resize when container size changes
     const handleResize = useCallback(() => {

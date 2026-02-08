@@ -14,6 +14,8 @@ const COLORS = [
   "#ec4899", // pink
 ]
 
+const ALLOWED_COMMENT_REACTIONS = new Set(["👍", "❤️", "🎉", "😄", "🚀"])
+
 function generateColor(userId: string): string {
   let hash = 0
   for (let i = 0; i < userId.length; i++) {
@@ -207,9 +209,10 @@ export const addComment = mutation({
     changeId: v.id("fileChanges"),
     userId: v.id("users"),
     content: v.string(),
+    parentCommentId: v.optional(v.id("changeComments")),
   },
   handler: async (ctx, args) => {
-    const { changeId, userId, content } = args
+    const { changeId, userId, content, parentCommentId } = args
 
     // Get the change to get the projectId
     const change = await ctx.db.get(changeId)
@@ -223,6 +226,16 @@ export const addComment = mutation({
       throw new Error("User not found")
     }
 
+    if (parentCommentId) {
+      const parentComment = await ctx.db.get(parentCommentId)
+      if (!parentComment || parentComment.status !== "active") {
+        throw new Error("Parent comment not found")
+      }
+      if (parentComment.changeId !== changeId) {
+        throw new Error("Parent comment must belong to the same change")
+      }
+    }
+
     const userName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email
     const userColor = generateColor(userId)
 
@@ -234,6 +247,7 @@ export const addComment = mutation({
       userName,
       userColor,
       userImage: user.profileImageUrl,
+      parentCommentId,
       status: "active",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -249,6 +263,7 @@ export const addComment = mutation({
 export const getCommentsForChange = query({
   args: {
     changeId: v.id("fileChanges"),
+    viewerUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const comments = await ctx.db
@@ -258,14 +273,106 @@ export const getCommentsForChange = query({
       .order("asc")
       .collect()
 
+    const reactions = await ctx.db
+      .query("changeCommentReactions")
+      .withIndex("by_change", (q) => q.eq("changeId", args.changeId))
+      .collect()
+
+    const activeCommentIds = new Set(comments.map((comment) => comment._id.toString()))
+    const reactionsByComment = new Map<
+      string,
+      Map<string, { count: number; reactedByViewer: boolean }>
+    >()
+
+    for (const reaction of reactions) {
+      const commentId = reaction.commentId.toString()
+      if (!activeCommentIds.has(commentId)) continue
+
+      const byEmoji =
+        reactionsByComment.get(commentId) ??
+        new Map<string, { count: number; reactedByViewer: boolean }>()
+
+      const reactionSummary = byEmoji.get(reaction.emoji) ?? {
+        count: 0,
+        reactedByViewer: false,
+      }
+
+      reactionSummary.count += 1
+      if (args.viewerUserId && reaction.userId === args.viewerUserId) {
+        reactionSummary.reactedByViewer = true
+      }
+
+      byEmoji.set(reaction.emoji, reactionSummary)
+      reactionsByComment.set(commentId, byEmoji)
+    }
+
     return comments.map((comment) => ({
       id: comment._id,
+      changeId: comment.changeId,
+      userId: comment.userId,
+      parentCommentId: comment.parentCommentId,
       content: comment.content,
       userName: comment.userName,
       userColor: comment.userColor,
       userImage: comment.userImage,
       createdAt: comment.createdAt,
+      reactions: Array.from(
+        reactionsByComment.get(comment._id.toString())?.entries() ?? []
+      )
+        .map(([emoji, summary]) => ({
+          emoji,
+          count: summary.count,
+          reactedByViewer: summary.reactedByViewer,
+        }))
+        .sort((a, b) => b.count - a.count),
     }))
+  },
+})
+
+/**
+ * Toggle an emoji reaction on a change comment.
+ */
+export const toggleCommentReaction = mutation({
+  args: {
+    commentId: v.id("changeComments"),
+    userId: v.id("users"),
+    emoji: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { commentId, userId, emoji } = args
+
+    if (!ALLOWED_COMMENT_REACTIONS.has(emoji)) {
+      throw new Error("Unsupported reaction emoji")
+    }
+
+    const comment = await ctx.db.get(commentId)
+    if (!comment || comment.status !== "active") {
+      throw new Error("Comment not found")
+    }
+
+    const existingReactions = await ctx.db
+      .query("changeCommentReactions")
+      .withIndex("by_comment_and_user", (q) =>
+        q.eq("commentId", commentId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("emoji"), emoji))
+      .collect()
+
+    if (existingReactions.length > 0) {
+      await Promise.all(existingReactions.map((reaction) => ctx.db.delete(reaction._id)))
+      return { reacted: false }
+    }
+
+    await ctx.db.insert("changeCommentReactions", {
+      commentId,
+      changeId: comment.changeId,
+      projectId: comment.projectId,
+      userId,
+      emoji,
+      createdAt: Date.now(),
+    })
+
+    return { reacted: true }
   },
 })
 
@@ -339,6 +446,12 @@ export const deleteComment = mutation({
     if (comment.userId !== args.userId) {
       throw new Error("Not authorized to delete this comment")
     }
+
+    const reactions = await ctx.db
+      .query("changeCommentReactions")
+      .withIndex("by_comment", (q) => q.eq("commentId", args.commentId))
+      .collect()
+    await Promise.all(reactions.map((reaction) => ctx.db.delete(reaction._id)))
 
     await ctx.db.patch(args.commentId, {
       status: "deleted",

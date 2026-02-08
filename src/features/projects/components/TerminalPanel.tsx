@@ -47,6 +47,10 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
         if (!activeGroup?.activeTerminalId) return null
         return terminals[activeGroup.activeTerminalId] ?? null
     }, [activeGroup, terminals])
+    const activeGroupTerminals = useMemo(() => {
+        if (!activeGroup) return []
+        return activeGroup.terminalIds.map((id) => terminals[id]).filter(Boolean)
+    }, [activeGroup, terminals])
 
     const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
     const [isDragging, setIsDragging] = useState(false)
@@ -191,12 +195,24 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                     ) : activeGroup && activeGroup.terminalIds.length > 1 && activeGroup.splitDirection ? (
                         // Split view
                         <TerminalSplitView group={activeGroup} />
-                    ) : activeTerminal ? (
-                        // Single terminal
-                        <TerminalInstance
-                            terminalId={activeTerminal.id}
-                            className="h-full"
-                        />
+                    ) : activeGroupTerminals.length > 0 ? (
+                        // Keep non-split terminals mounted so switching tabs preserves xterm state/output.
+                        <div className="relative h-full w-full">
+                            {activeGroupTerminals.map((terminal) => {
+                                const isActiveTerminal = terminal.id === activeTerminal?.id
+                                return (
+                                    <TerminalInstance
+                                        key={terminal.id}
+                                        terminalId={terminal.id}
+                                        className={cn(
+                                            "absolute inset-0 h-full w-full transition-opacity duration-150",
+                                            isActiveTerminal ? "opacity-100" : "opacity-0 pointer-events-none"
+                                        )}
+                                        shouldAutoFocus={isActiveTerminal}
+                                    />
+                                )
+                            })}
+                        </div>
                     ) : (
                         // Fallback empty state
                         <div className="flex items-center justify-center h-full bg-sidebar text-muted-foreground">

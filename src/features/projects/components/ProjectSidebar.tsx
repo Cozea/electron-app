@@ -219,6 +219,8 @@ export function ProjectSidebar({
         return saved ? parseInt(saved, 10) : DEFAULT_SECONDARY_WIDTH
     })
     const secondaryWidthRef = React.useRef(secondaryWidth)
+    const pendingWidthRef = React.useRef<number | null>(null)
+    const resizeRafRef = React.useRef<number | null>(null)
     const [isResizing, setIsResizing] = React.useState(false)
     const resizeStartRef = React.useRef<{ startX: number; startWidth: number } | null>(null)
     const fileScrollRef = React.useRef<HTMLDivElement | null>(null)
@@ -228,6 +230,15 @@ export function ProjectSidebar({
     React.useEffect(() => {
         secondaryWidthRef.current = secondaryWidth
     }, [secondaryWidth])
+
+    const flushPendingResizeWidth = React.useCallback(() => {
+        if (pendingWidthRef.current == null) return
+        const nextWidth = pendingWidthRef.current
+        pendingWidthRef.current = null
+        if (nextWidth === secondaryWidthRef.current) return
+        secondaryWidthRef.current = nextWidth
+        setSecondaryWidth(nextWidth)
+    }, [])
 
     const updateFileScrollFades = React.useCallback(() => {
         const el = fileScrollRef.current
@@ -251,16 +262,26 @@ export function ProjectSidebar({
     // Start resize - capture initial position and width
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault()
+        pendingWidthRef.current = null
         resizeStartRef.current = {
             startX: e.clientX,
-            startWidth: secondaryWidth
+            startWidth: secondaryWidthRef.current
         }
         setIsResizing(true)
-    }, [secondaryWidth])
+    }, [])
 
     // Handle resize drag
     React.useEffect(() => {
         if (!isResizing) return
+
+        const scheduleWidthUpdate = (width: number) => {
+            pendingWidthRef.current = width
+            if (resizeRafRef.current !== null) return
+            resizeRafRef.current = window.requestAnimationFrame(() => {
+                resizeRafRef.current = null
+                flushPendingResizeWidth()
+            })
+        }
 
         const handleMouseMove = (e: MouseEvent) => {
             if (!resizeStartRef.current) return
@@ -269,10 +290,15 @@ export function ProjectSidebar({
             const delta = e.clientX - resizeStartRef.current.startX
             const newWidth = resizeStartRef.current.startWidth + delta
             const clampedWidth = Math.max(MIN_SECONDARY_WIDTH, Math.min(MAX_SECONDARY_WIDTH, newWidth))
-            setSecondaryWidth(clampedWidth)
+            scheduleWidthUpdate(clampedWidth)
         }
 
         const handleMouseUp = () => {
+            if (resizeRafRef.current !== null) {
+                window.cancelAnimationFrame(resizeRafRef.current)
+                resizeRafRef.current = null
+            }
+            flushPendingResizeWidth()
             setIsResizing(false)
             resizeStartRef.current = null
             // Persist to localStorage
@@ -291,8 +317,20 @@ export function ProjectSidebar({
             document.removeEventListener('mouseup', handleMouseUp)
             document.body.style.cursor = ''
             document.body.style.userSelect = ''
+            if (resizeRafRef.current !== null) {
+                window.cancelAnimationFrame(resizeRafRef.current)
+                resizeRafRef.current = null
+            }
         }
-    }, [isResizing])
+    }, [flushPendingResizeWidth, isResizing])
+
+    React.useEffect(() => {
+        return () => {
+            if (resizeRafRef.current !== null) {
+                window.cancelAnimationFrame(resizeRafRef.current)
+            }
+        }
+    }, [])
 
     React.useEffect(() => {
         if (activeTab !== 'Files') {
