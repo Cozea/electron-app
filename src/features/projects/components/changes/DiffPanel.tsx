@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -9,6 +9,7 @@ import { Shimmer } from '@/components/ai-elements/shimmer'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { X, Bold, Italic, Underline, Link2, Smile, Minus, Plus, Asterisk } from 'lucide-react'
 import { CodeMirrorMergeViewer } from './CodeMirrorMergeViewer'
+import { CommentRichText } from '@/components/comments/CommentRichText'
 
 interface DiffPanelProps {
   changeId: Id<"fileChanges"> | null
@@ -114,14 +115,24 @@ function getRelativePath(filePath: string): string {
 export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelProps) {
   const { convexUserId } = useAuth()
   const [commentText, setCommentText] = useState('')
+  const deferredCommentText = useDeferredValue(commentText)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
   const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const composerPreviewRef = useRef<HTMLDivElement | null>(null)
   const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowTopFade(!atTop)
     setShowBottomFade(!atBottom)
+  }, [])
+
+  const syncComposerScroll = useCallback(() => {
+    const textarea = composerTextareaRef.current
+    const preview = composerPreviewRef.current
+    if (!textarea || !preview) return
+    preview.scrollTop = textarea.scrollTop
+    preview.scrollLeft = textarea.scrollLeft
   }, [])
 
   useEffect(() => {
@@ -185,7 +196,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   const applyWrapFormatting = useCallback(
     (prefix: string, suffix: string) => {
-      const textarea = textareaRef.current
+      const textarea = composerTextareaRef.current
       if (!textarea) return
 
       const start = textarea.selectionStart
@@ -216,7 +227,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   const insertTextAtCursor = useCallback(
     (text: string) => {
-      const textarea = textareaRef.current
+      const textarea = composerTextareaRef.current
       if (!textarea) return
 
       const start = textarea.selectionStart
@@ -234,7 +245,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   )
 
   const handleLinkInsert = useCallback(() => {
-    const textarea = textareaRef.current
+    const textarea = composerTextareaRef.current
     if (!textarea) return
 
     const start = textarea.selectionStart
@@ -254,6 +265,10 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       textarea.setSelectionRange(cursor, cursor)
     })
   }, [commentText])
+
+  useEffect(() => {
+    syncComposerScroll()
+  }, [commentText, syncComposerScroll])
 
   if (!changeId) return null
 
@@ -343,15 +358,31 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       <div className="p-4 bg-sidebar">
         <div className="rounded-xl border border-primary/30 bg-background overflow-hidden shadow-sm">
           {/* Text Input */}
-          <Textarea
-            ref={textareaRef}
-            placeholder="Add comment"
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="min-h-[80px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
-            disabled={isSubmitting || isSwitchingDiff}
-          />
+          <div className="relative min-h-[80px]">
+            <div
+              ref={composerPreviewRef}
+              className="pointer-events-none absolute inset-0 overflow-auto px-3 py-2"
+            >
+              {deferredCommentText.length > 0 ? (
+                <CommentRichText
+                  content={deferredCommentText}
+                  className="text-sm text-foreground min-h-[64px]"
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">Add comment</span>
+              )}
+            </div>
+            <Textarea
+              ref={composerTextareaRef}
+              placeholder="Add comment"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onScroll={syncComposerScroll}
+              className="min-h-[80px] resize-none border-0 bg-transparent text-transparent caret-foreground selection:bg-primary/20 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none placeholder:text-transparent"
+              disabled={isSubmitting || isSwitchingDiff}
+            />
+          </div>
 
           {/* Toolbar */}
           <div className="flex items-center justify-between px-3 py-2">

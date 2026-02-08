@@ -42,6 +42,7 @@ interface ProjectSummary {
     _id: Id<'projects'>
     slug: string
     name: string
+    template?: string | null
     status: string
     description?: string | null
     updatedAt?: number
@@ -219,7 +220,13 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
 
             // Small delay to show the ready state
             setTimeout(() => {
-                navigate(`/projects/${project.slug}`)
+                navigate(`/projects/${project.slug}`, {
+                    state: {
+                        projectSlug: project.slug,
+                        projectName: project.name,
+                        projectTemplate: project.template ?? undefined,
+                    },
+                })
             }, 200)
 
         } catch (error) {
@@ -391,12 +398,18 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={(e) => {
-                                        e.stopPropagation()
-                                        navigate(`/projects/${project.slug}`)
-                                    }}>
-                                        Open Project
-                                    </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigate(`/projects/${project.slug}`, {
+                                        state: {
+                                            projectSlug: project.slug,
+                                            projectName: project.name,
+                                            projectTemplate: project.template ?? undefined,
+                                        },
+                                    })
+                                }}>
+                                    Open Project
+                                </DropdownMenuItem>
                                     <DropdownMenuItem onClick={(e) => {
                                         e.stopPropagation()
                                         navigate(`/projects/${project.slug}/settings`)
