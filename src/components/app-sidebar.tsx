@@ -11,6 +11,7 @@ import {
   Cloud,
 } from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
+import { cn } from "@/lib/utils"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -34,7 +35,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLogout?: () => void
 }
 
-export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
+export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
   const platformItems = [
     { title: "Projects", url: "/projects", icon: IconFolderCode },
   ]
@@ -55,7 +56,7 @@ export function AppSidebar({ user, onLogout, ...props }: AppSidebarProps) {
   return (
     <Sidebar
       collapsible="icon"
-      className="sidebar-outward-curve"
+      className={cn("sidebar-outward-curve sidebar-fade-border-right", className)}
       {...props}
     >
       <SidebarHeader className="pt-9">

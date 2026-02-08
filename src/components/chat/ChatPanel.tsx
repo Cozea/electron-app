@@ -2,7 +2,8 @@ import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { cn } from "@/lib/utils"
 
 export function ChatPanel() {
-    const { isOpen, mode } = useChatPanelStore()
+    const isOpen = useChatPanelStore((state) => state.isOpen)
+    const mode = useChatPanelStore((state) => state.mode)
 
     if (!isOpen) return null
 

@@ -4,6 +4,7 @@ import * as React from "react"
 import { useNavigate, useParams, useLocation } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import {
     ListTodo,
@@ -71,6 +72,7 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     onCreateFile?: () => void
     onCreateFolder?: () => void
     onSecondaryVisibilityChange?: (isVisible: boolean) => void
+    projectId?: Id<"projects"> | null
 }
 
 // Route mappings for all navigation items
@@ -93,6 +95,37 @@ const DEFAULT_SECONDARY_WIDTH = 224 // 14rem = 224px
 const MIN_SECONDARY_WIDTH = 180
 const MAX_SECONDARY_WIDTH = 400
 
+const NAV_GROUPS = [
+    {
+        title: "Project",
+        items: [
+            { title: "Tasks", icon: ListTodo }
+        ]
+    },
+    {
+        title: "Platform",
+        items: [
+            { title: "Pages", icon: AppWindow },
+            { title: "Files", icon: Files },
+            { title: "Sync Feed", icon: Rss }
+        ]
+    },
+    {
+        title: "Development",
+        items: [
+            { title: "Dependencies", icon: Box },
+            { title: "Database", icon: Database, alpha: true },
+            { title: "Backend Studio", icon: Server, alpha: true }
+        ]
+    },
+    {
+        title: "Settings",
+        items: [
+            { title: "Settings", icon: Settings }
+        ]
+    }
+] as const
+
 export function ProjectSidebar({
     user,
     onLogout,
@@ -102,6 +135,7 @@ export function ProjectSidebar({
     onCreateFile,
     onCreateFolder,
     onSecondaryVisibilityChange,
+    projectId: providedProjectId,
     className,
     ...props
 }: ProjectSidebarProps) {
@@ -144,23 +178,32 @@ export function ProjectSidebar({
         }
     }, [slug])
 
-    // Get Convex organization for project lookup
+    // Resolve project ID once (avoid duplicate org/project queries when parent already has it).
     const convexOrg = useQuery(
         api.organizations.getByWorkosId,
-        currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+        providedProjectId
+            ? 'skip'
+            : currentOrganization?.organizationId
+                ? { workosId: currentOrganization.organizationId }
+                : 'skip'
     )
 
     // Get project by slug
     const project = useQuery(
         api.projects.getBySlug,
-        convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
+        providedProjectId
+            ? 'skip'
+            : convexOrg?._id && slug
+                ? { organizationId: convexOrg._id, slug }
+                : 'skip'
     )
+    const resolvedProjectId = providedProjectId ?? project?._id ?? null
 
     // Get unread sync feed count
     const unreadCount = useQuery(
         api.activity.getUnreadChangesCount,
-        project?._id && convexUserId ? {
-            projectId: project._id,
+        resolvedProjectId && convexUserId ? {
+            projectId: resolvedProjectId,
             userId: convexUserId,
             lastSeenTimestamp,
         } : 'skip'
@@ -171,11 +214,16 @@ export function ProjectSidebar({
         const saved = localStorage.getItem('project-sidebar-secondary-width')
         return saved ? parseInt(saved, 10) : DEFAULT_SECONDARY_WIDTH
     })
+    const secondaryWidthRef = React.useRef(secondaryWidth)
     const [isResizing, setIsResizing] = React.useState(false)
     const resizeStartRef = React.useRef<{ startX: number; startWidth: number } | null>(null)
     const fileScrollRef = React.useRef<HTMLDivElement | null>(null)
     const [showFileTopFade, setShowFileTopFade] = React.useState(false)
     const [showFileBottomFade, setShowFileBottomFade] = React.useState(false)
+
+    React.useEffect(() => {
+        secondaryWidthRef.current = secondaryWidth
+    }, [secondaryWidth])
 
     const updateFileScrollFades = React.useCallback(() => {
         const el = fileScrollRef.current
@@ -224,7 +272,7 @@ export function ProjectSidebar({
             setIsResizing(false)
             resizeStartRef.current = null
             // Persist to localStorage
-            localStorage.setItem('project-sidebar-secondary-width', secondaryWidth.toString())
+            localStorage.setItem('project-sidebar-secondary-width', secondaryWidthRef.current.toString())
         }
 
         document.addEventListener('mousemove', handleMouseMove)
@@ -240,7 +288,7 @@ export function ProjectSidebar({
             document.body.style.cursor = ''
             document.body.style.userSelect = ''
         }
-    }, [isResizing, secondaryWidth])
+    }, [isResizing])
 
     React.useEffect(() => {
         if (activeTab !== 'Files') {
@@ -264,38 +312,7 @@ export function ProjectSidebar({
             el.removeEventListener('scroll', onScroll)
             resizeObserver.disconnect()
         }
-    }, [activeTab, fileTree, updateFileScrollFades])
-
-    const navGroups = [
-        {
-            title: "Project",
-            items: [
-                { title: "Tasks", icon: ListTodo }
-            ]
-        },
-        {
-            title: "Platform",
-            items: [
-                { title: "Pages", icon: AppWindow },
-                { title: "Files", icon: Files },
-                { title: "Sync Feed", icon: Rss }
-            ]
-        },
-        {
-            title: "Development",
-            items: [
-                { title: "Dependencies", icon: Box },
-                { title: "Database", icon: Database, alpha: true },
-                { title: "Backend Studio", icon: Server, alpha: true }
-            ]
-        },
-        {
-            title: "Settings",
-            items: [
-                { title: "Settings", icon: Settings }
-            ]
-        }
-    ]
+    }, [activeTab, updateFileScrollFades])
 
     const isSecondarySidebarVisible =
         (activeTab === "Files" && isFilesRoute) ||
@@ -321,7 +338,7 @@ export function ProjectSidebar({
                     </SidebarHeader>
 
                     <SidebarContent className="group-data-[collapsible=icon]:mt-9">
-                        {navGroups.map((group) => (
+                        {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                                 <SidebarGroupContent>
