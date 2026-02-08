@@ -28,6 +28,7 @@ interface UnifiedHeaderProps {
   leftWindowControlsInset?: boolean
   contentInsetLeft?: number
   contentInsetRight?: number
+  compactHeaderActions?: boolean
 }
 
 export function UnifiedHeader({
@@ -38,6 +39,7 @@ export function UnifiedHeader({
   leftWindowControlsInset = false,
   contentInsetLeft = 0,
   contentInsetRight = 0,
+  compactHeaderActions = true,
 }: UnifiedHeaderProps) {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [visibleBreadcrumbStartIndex, setVisibleBreadcrumbStartIndex] = useState(0)
@@ -201,7 +203,13 @@ export function UnifiedHeader({
       >
         <div className="flex items-center w-full gap-0.5">
           <div className="flex items-center min-w-0 flex-1 titlebar-no-drag">
-            {header}
+            {compactHeaderActions ? (
+              <div className="shared-header-action-pills flex min-w-0 items-center">
+                {header}
+              </div>
+            ) : (
+              header
+            )}
           </div>
           <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
@@ -309,7 +317,13 @@ export function UnifiedHeader({
           )}
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          {header}
+          {compactHeaderActions ? (
+            <div className="shared-header-action-pills flex min-w-0 items-center">
+              {header}
+            </div>
+          ) : (
+            header
+          )}
           {header && (
             <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />
           )}

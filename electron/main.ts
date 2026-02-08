@@ -408,6 +408,10 @@ if (!gotTheLock) {
 }
 
 function createWindow() {
+  const isMac = process.platform === 'darwin'
+  const isWindows = process.platform === 'win32'
+  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
+
   // Load window state
   const mainWindowState = windowStateKeeper({
     defaultWidth: 1200,
@@ -425,10 +429,14 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    // Dynamic background color to prevent white flash - set to transparent for vibrancy
-    backgroundColor: undefined,
-    vibrancy: 'sidebar', // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
-    visualEffectState: 'active', // keep vibrancy active even when window is backgrounded
+    // Native material effects:
+    // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
+    // - Windows 11: system backdrop material.
+    transparent: isMac,
+    backgroundColor: isMac ? '#00000000' : themedOpaqueBackground,
+    vibrancy: isMac ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
+    visualEffectState: isMac ? 'active' : undefined,
+    backgroundMaterial: isWindows ? 'mica' : undefined,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 10 },
   })
@@ -452,8 +460,14 @@ function createWindow() {
 
   // Update background color on system theme change
   nativeTheme.on('updated', () => {
-    const bgColor = nativeTheme.shouldUseDarkColors ? '#000000' : '#ffffff'
-    win?.setBackgroundColor(bgColor)
+    if (!win) return
+    if (process.platform === 'darwin') {
+      // Keep transparent on macOS so vibrancy remains visible.
+      win.setBackgroundColor('#00000000')
+      return
+    }
+    const bgColor = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
+    win.setBackgroundColor(bgColor)
   })
 
   if (VITE_DEV_SERVER_URL) {

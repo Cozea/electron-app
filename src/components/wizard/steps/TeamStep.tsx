@@ -221,7 +221,7 @@ export function TeamStep({
                 </Select>
               </div>
             </div>
-            <div className="rounded-xl divide-y bg-card overflow-hidden max-h-48 overflow-y-auto">
+            <div className="app-scrollbar rounded-xl divide-y bg-card overflow-hidden max-h-48 overflow-y-auto">
               {availableOrgMembers.map((orgMember) => {
                 const name = `${orgMember.firstName || ''} ${orgMember.lastName || ''}`.trim()
                 const displayName = name || orgMember.email.split('@')[0]

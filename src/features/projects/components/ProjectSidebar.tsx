@@ -478,7 +478,7 @@ export function ProjectSidebar({
                                     <div className="relative h-full">
                                         <div
                                             ref={fileScrollRef}
-                                            className="h-full overflow-y-auto overflow-x-hidden"
+                                            className="app-scrollbar h-full overflow-y-auto overflow-x-hidden"
                                         >
                                             {fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>}
                                         </div>

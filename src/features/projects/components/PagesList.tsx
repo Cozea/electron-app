@@ -8,6 +8,7 @@ import { getFileIcon } from "@/lib/fileExplorer/fileIcons"
 import { FileText, Loader2, RefreshCw, ExternalLink, AppWindow } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
@@ -97,7 +98,7 @@ export function PagesList() {
 
 
             {/* Routes list */}
-            <div className="flex-1 overflow-y-auto">
+            <ScrollArea className="flex-1">
                 {isLoading ? (
                     <div className="flex items-center justify-center p-4">
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -154,7 +155,7 @@ export function PagesList() {
                         })}
                     </div>
                 )}
-            </div>
+            </ScrollArea>
 
             {/* Footer with route count */}
             {routes.length > 0 && (

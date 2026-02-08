@@ -746,7 +746,7 @@ export function ProjectBackendStudioPage() {
                 <div className="text-sm font-medium">Inspector</div>
               </div>
 
-              <div className="h-[calc(100%-2.25rem)] overflow-auto p-4">
+              <div className="app-scrollbar h-[calc(100%-2.25rem)] overflow-auto p-4">
                 {!selectedData ? (
                   <Card className="p-4 bg-background/70">
                     <div className="text-sm font-medium mb-1">Select a node</div>
@@ -863,7 +863,7 @@ export function ProjectBackendStudioPage() {
                             <div className="text-[11px] text-muted-foreground mb-2">
                               Output
                             </div>
-                            <pre className="max-h-64 overflow-auto rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                            <pre className="app-scrollbar max-h-64 overflow-auto rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
                               {runnerOutput}
                             </pre>
                           </div>

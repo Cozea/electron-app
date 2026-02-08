@@ -343,7 +343,7 @@ export function RepoSourceStep({
                   Change folder
                 </button>
               </div>
-              <div className="rounded-lg border border-border bg-muted/20 max-h-64 overflow-y-auto">
+              <div className="app-scrollbar rounded-lg border border-border bg-muted/20 max-h-64 overflow-y-auto">
                 {isLoadingTree ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

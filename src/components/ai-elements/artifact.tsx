@@ -219,7 +219,7 @@ export type ArtifactContentProps = HTMLAttributes<HTMLDivElement>;
 export const ArtifactContent = memo(
   ({ className, children, ...props }: ArtifactContentProps) => (
     <div
-      className={cn("flex-1 overflow-auto", className)}
+      className={cn("app-scrollbar flex-1 overflow-auto", className)}
       {...props}
     >
       {children}

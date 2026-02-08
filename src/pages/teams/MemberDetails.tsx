@@ -51,7 +51,7 @@ function ContributionGraph({ data }: { data: number[][] }) {
   const monthLabels = getMonthLabels()
 
   return (
-    <div className="overflow-x-auto">
+    <div className="app-scrollbar overflow-x-auto">
       <div className="inline-block min-w-full">
         {/* Month labels */}
         <div className="flex mb-1 ml-8">
