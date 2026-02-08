@@ -57,7 +57,7 @@ export function ProjectDiffBadge({
 
       try {
         // Check if local folder exists
-        const exists = await window.electronAPI.project.exists(projectSlug)
+        const exists = await window.electronAPI.project.pathExists(localPath)
 
         if (!exists) {
           // No local folder - all cloud files need to be downloaded

@@ -9,6 +9,7 @@ interface WizardLayoutProps {
   currentStep: number
   title?: string
   fullHeight?: boolean
+  showInternalStepHeader?: boolean
   // Navigation props formerly used by sidebar, kept optional for compatibility if needed elsewhere
   onStepClick?: (step: number) => void
   canNavigateToStep?: (step: number) => boolean
@@ -20,6 +21,7 @@ export function WizardLayout({
   currentStep,
   title = 'New Project',
   fullHeight = false,
+  showInternalStepHeader = false,
 }: WizardLayoutProps) {
   // Current step index (0-based)
   // Step 0 is entry, so "Step 1" for user is actually step index 1
@@ -35,7 +37,7 @@ export function WizardLayout({
       "flex flex-col -m-4",
       fullHeight ? "h-[calc(100vh-56px)]" : "min-h-[calc(100vh-56px)]"
     )}>
-      {!fullHeight && currentStep > 0 && (
+      {!fullHeight && showInternalStepHeader && currentStep > 0 && (
         <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm bdry-b">
           <div className="w-full px-8 py-4 flex items-center justify-between">
             <div className="flex flex-col">

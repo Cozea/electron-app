@@ -64,6 +64,19 @@ body {
   z-index: 5;
 }
 
+/* Theme-aware translucent glass treatment for primary left sidebars. */
+.sidebar-glass [data-slot="sidebar-inner"] {
+  background-color: color-mix(in oklab, var(--sidebar) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .sidebar-glass [data-slot="sidebar-inner"] {
+    background-color: var(--sidebar);
+  }
+}
+
 .sidebar-fade-border::before {
   left: 0;
   background: linear-gradient(

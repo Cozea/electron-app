@@ -63,6 +63,12 @@ export interface CloneRepositoryResult {
   error?: string
 }
 
+export interface CopyDirectorySnapshotResult {
+  success: boolean
+  copiedTo?: string
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -358,6 +364,7 @@ export interface ElectronAPI {
     renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<{ success: boolean; error?: string }>
     deletePath: (options: { projectPath: string; targetPath: string }) => Promise<ProjectOperationResult>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<ProjectOperationResult>
+    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string }) => Promise<CopyDirectorySnapshotResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }

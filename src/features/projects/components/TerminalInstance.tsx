@@ -22,6 +22,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
     const fitAddonRef = useRef<FitAddon | null>(null)
     const searchAddonRef = useRef<SearchAddon | null>(null)
     const hasInitializedRef = useRef(false)
+    const hasInputErrorRef = useRef(false)
     const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [initRetry, setInitRetry] = useState(0)
     const [selectedText, setSelectedText] = useState("")
@@ -186,7 +187,12 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
 
         // CRITICAL: Forward keyboard input to the PTY process
         term.onData((data) => {
-            window.electronAPI.terminal.input({ terminalId, data })
+            void window.electronAPI.terminal.input({ terminalId, data }).catch((error) => {
+                if (hasInputErrorRef.current) return
+                hasInputErrorRef.current = true
+                console.error('[Terminal] Failed to forward input to PTY:', error)
+                updateTerminalStatus(terminalId, 'error')
+            })
         })
 
         const unsubSelectionChange = term.onSelectionChange(() => {
@@ -207,6 +213,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
                 fitAddon.fit()
                 const { cols, rows } = term
                 window.electronAPI.terminal.resize({ terminalId, cols, rows })
+                term.focus()
             } catch (e) {
                 console.error('[Terminal] Fit failed:', e)
             }
@@ -247,6 +254,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
             fitAddonRef.current = null
             searchAddonRef.current = null
             hasInitializedRef.current = false
+            hasInputErrorRef.current = false
             setSelectedText("")
         }
     }, [terminalId, initRetry, onFocus, updateTerminalStatus, setTerminalHasOutput])
@@ -316,6 +324,7 @@ export function TerminalInstance({ terminalId, className, onFocus }: TerminalIns
                 ref={containerRef}
                 className="w-full h-full pl-3 pt-1"
                 onClick={focus}
+                onMouseDown={focus}
             />
         </div>
     )
