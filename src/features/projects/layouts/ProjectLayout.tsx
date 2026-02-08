@@ -31,6 +31,7 @@ import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
 import { Loader2 } from "lucide-react"
+import { useShallow } from "zustand/react/shallow"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -502,11 +503,21 @@ export function ProjectLayout({
     // Determine if we can enable sync (need project + user data + resolved path decision)
     const hasSyncIdentities = Boolean(project?._id && convexUser?._id && slug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
-    const headerContent = useProjectHeaderStore((state) => state.header)
-    const breadcrumbAddon = useProjectHeaderStore((state) => state.breadcrumbAddon)
-    const hideBreadcrumbs = useProjectHeaderStore((state) => state.hideBreadcrumbs)
-    const insetLeft = useProjectHeaderStore((state) => state.insetLeft)
-    const insetRight = useProjectHeaderStore((state) => state.insetRight)
+    const {
+        header: headerContent,
+        breadcrumbAddon,
+        hideBreadcrumbs,
+        insetLeft,
+        insetRight,
+    } = useProjectHeaderStore(
+        useShallow((state) => ({
+            header: state.header,
+            breadcrumbAddon: state.breadcrumbAddon,
+            hideBreadcrumbs: state.hideBreadcrumbs,
+            insetLeft: state.insetLeft,
+            insetRight: state.insetRight,
+        }))
+    )
 
     // Main layout content
     const subpageLabel = useMemo(

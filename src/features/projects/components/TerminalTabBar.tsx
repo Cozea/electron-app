@@ -150,6 +150,7 @@ export function TerminalTabBar({
                 id: result.terminalId,
                 profileId: profile?.id || 'default',
                 profileName: label,
+                projectPath,
                 label,
                 kind: 'shell',
                 nameSource: 'auto',

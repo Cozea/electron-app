@@ -24,6 +24,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
+import type { NavMainItem } from "@/components/nav-main"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -35,48 +36,50 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLogout?: () => void
 }
 
+const PLATFORM_ITEMS: NavMainItem[] = [
+  { title: "Projects", url: "/projects", icon: IconFolderCode },
+]
+
+const TEAM_ITEMS: NavMainItem[] = [
+  { title: "Members", url: "/teams", icon: Users },
+  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true },
+]
+
+const WORKSPACE_ITEMS: NavMainItem[] = [
+  { title: "General", url: "/workspace/general", icon: Settings },
+  { title: "Billing", url: "/workspace/billing", icon: CreditCard },
+  { title: "AI", url: "/workspace/ai", icon: Bot },
+  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
+  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
+]
+
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
-  const platformItems = [
-    { title: "Projects", url: "/projects", icon: IconFolderCode },
-  ]
-
-  const teamItems = [
-    { title: "Members", url: "/teams", icon: Users },
-    { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true },
-  ]
-
-  const workspaceItems = [
-    { title: "General", url: "/workspace/general", icon: Settings },
-    { title: "Billing", url: "/workspace/billing", icon: CreditCard },
-    { title: "AI", url: "/workspace/ai", icon: Bot },
-    { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
-    { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
-  ]
-
   return (
-    <Sidebar
-      collapsible="icon"
-      className={cn("titlebar-no-drag sidebar-glass", className)}
-      {...props}
-    >
-      <SidebarHeader className="mt-9 titlebar-drag-region">
-        <div className="titlebar-no-drag">
-          <ContextSwitcher />
-        </div>
-      </SidebarHeader>
-      <SidebarContent className="group-data-[collapsible=icon]:mt-9">
-        <NavMain label="Platform" items={platformItems} />
-        <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
-        <NavMain label="Team" items={teamItems} />
-        <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
-        <NavMain label="Workspace" items={workspaceItems} />
-      </SidebarContent>
-      <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
-        <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-          <NavUser user={user} onLogout={onLogout} />
-        </div>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
+      <Sidebar
+        collapsible="icon"
+        className={cn("w-56 shrink-0 z-20 h-screen titlebar-no-drag sidebar-glass", className)}
+        {...props}
+      >
+        <SidebarHeader className="mt-9 titlebar-drag-region">
+          <div className="titlebar-no-drag">
+            <ContextSwitcher />
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="group-data-[collapsible=icon]:mt-9">
+          <NavMain label="Platform" items={PLATFORM_ITEMS} />
+          <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
+          <NavMain label="Team" items={TEAM_ITEMS} />
+          <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
+          <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
+        </SidebarContent>
+        <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+          <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+            <NavUser user={user} onLogout={onLogout} />
+          </div>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+    </div>
   )
 }

@@ -5,7 +5,6 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useTerminalStore } from '@/stores/useTerminalStore'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
@@ -160,19 +159,10 @@ export function ProjectPagesPage() {
     // Reset project-scoped UI state when switching projects (prevents "wrong project" preview/terminals)
     useEffect(() => {
         const prev = prevProjectPathRef.current
-        if (prev !== projectPath) {
+        if (prev && prev !== projectPath) {
             // Clear page routes and focused selection
             actions.setRoutes([])
             setFocusedPageIndex(null)
-
-            // Reset dev server state (ServerControl also cleans up its own terminal)
-            actions.setServerStatus('stopped')
-            actions.setServerPort(null)
-            actions.setServerPid(null)
-            actions.clearServerOutput()
-
-            // Reset terminal UI state
-            useTerminalStore.getState().actions.reset()
         }
 
         prevProjectPathRef.current = projectPath

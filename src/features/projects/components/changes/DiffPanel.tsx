@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -118,6 +118,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
   const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowTopFade(!atTop)
     setShowBottomFade(!atBottom)
@@ -181,6 +182,78 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       handleSubmitComment()
     }
   }
+
+  const applyWrapFormatting = useCallback(
+    (prefix: string, suffix: string) => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const selected = commentText.slice(start, end)
+
+      const nextText =
+        commentText.slice(0, start) +
+        prefix +
+        selected +
+        suffix +
+        commentText.slice(end)
+
+      setCommentText(nextText)
+
+      window.requestAnimationFrame(() => {
+        textarea.focus()
+        if (selected.length > 0) {
+          textarea.setSelectionRange(start + prefix.length, end + prefix.length)
+          return
+        }
+        const cursor = start + prefix.length
+        textarea.setSelectionRange(cursor, cursor)
+      })
+    },
+    [commentText]
+  )
+
+  const insertTextAtCursor = useCallback(
+    (text: string) => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const nextText = commentText.slice(0, start) + text + commentText.slice(end)
+      setCommentText(nextText)
+
+      window.requestAnimationFrame(() => {
+        textarea.focus()
+        const cursor = start + text.length
+        textarea.setSelectionRange(cursor, cursor)
+      })
+    },
+    [commentText]
+  )
+
+  const handleLinkInsert = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selected = commentText.slice(start, end).trim() || 'link'
+    const rawUrl = window.prompt('Enter link URL')
+    if (!rawUrl) return
+    const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+
+    const linkText = `[${selected}](${normalizedUrl})`
+    const nextText = commentText.slice(0, start) + linkText + commentText.slice(end)
+    setCommentText(nextText)
+
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      const cursor = start + linkText.length
+      textarea.setSelectionRange(cursor, cursor)
+    })
+  }, [commentText])
 
   if (!changeId) return null
 
@@ -271,6 +344,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
         <div className="rounded-xl border border-primary/30 bg-background overflow-hidden shadow-sm">
           {/* Text Input */}
           <Textarea
+            ref={textareaRef}
             placeholder="Add comment"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
@@ -283,13 +357,34 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex items-center gap-1">
               {/* Formatting buttons */}
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => applyWrapFormatting('**', '**')}
+                disabled={isSubmitting || isSwitchingDiff}
+                aria-label="Bold"
+              >
                 <Bold className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => applyWrapFormatting('*', '*')}
+                disabled={isSubmitting || isSwitchingDiff}
+                aria-label="Italic"
+              >
                 <Italic className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => applyWrapFormatting('<u>', '</u>')}
+                disabled={isSubmitting || isSwitchingDiff}
+                aria-label="Underline"
+              >
                 <Underline className="h-4 w-4" />
               </Button>
 
@@ -297,10 +392,24 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
               <div className="w-px h-5 bg-border mx-1" />
 
               {/* Link and emoji */}
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={handleLinkInsert}
+                disabled={isSubmitting || isSwitchingDiff}
+                aria-label="Insert link"
+              >
                 <Link2 className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => insertTextAtCursor('😄')}
+                disabled={isSubmitting || isSwitchingDiff}
+                aria-label="Insert emoji"
+              >
                 <Smile className="h-4 w-4" />
               </Button>
             </div>

@@ -3,7 +3,7 @@ import { Play, Square, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
-import { useTerminalActions } from "@/stores/useTerminalStore"
+import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
 import {
     getDevServerConfig,
     detectPackageManager,
@@ -48,6 +48,7 @@ interface ServerControlProps {
 export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: ServerControlProps) {
     const { serverStatus, actions } = useProjectPagesStore()
     const { addTerminal, removeTerminal, updateTerminalDisplay, updateTerminalStatus, setPanelOpen } = useTerminalActions()
+    const terminals = useTerminalStore((state) => state.terminals)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
 
@@ -59,6 +60,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     // Ref for timeout fallback when ready patterns don't match
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const pendingProblemRef = useRef<{ message: string; severity: ProblemSeverity } | null>(null)
+    const previousProjectPathRef = useRef<string | null>(projectPath ?? null)
 
     // Clear the ready timeout
     const clearReadyTimeout = useCallback(() => {
@@ -109,23 +111,89 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
     }, [addRuntimeProblem, projectPath])
 
-    // Cleanup dev server terminal when switching projects or leaving page
+    // Stop the previous project's dev server only when project path changes while mounted.
+    useEffect(() => {
+        const previousProjectPath = previousProjectPathRef.current
+        const nextProjectPath = projectPath ?? null
+
+        if (
+            previousProjectPath &&
+            nextProjectPath &&
+            previousProjectPath !== nextProjectPath &&
+            devServerTerminalIdRef.current &&
+            devServerProjectPathRef.current === previousProjectPath
+        ) {
+            void window.electronAPI.terminal.kill({ terminalId: devServerTerminalIdRef.current })
+            removeTerminal(devServerTerminalIdRef.current)
+            devServerTerminalIdRef.current = null
+            devServerProjectPathRef.current = null
+        }
+
+        previousProjectPathRef.current = nextProjectPath
+    }, [projectPath, removeTerminal])
+
+    // Do not kill dev server on route unmount; keep it alive until explicit stop or project switch.
     useEffect(() => {
         return () => {
-            if (devServerTerminalIdRef.current && devServerProjectPathRef.current === projectPath) {
-                // Kill the terminal process
-                window.electronAPI.terminal.kill({ terminalId: devServerTerminalIdRef.current })
-                removeTerminal(devServerTerminalIdRef.current)
+            clearReadyTimeout()
+        }
+    }, [clearReadyTimeout])
+
+    // Re-bind to an existing running dev-server terminal when returning to the Pages view.
+    useEffect(() => {
+        if (!projectPath) return
+
+        let cancelled = false
+
+        void (async () => {
+            const liveTerminalIds = new Set(await window.electronAPI.terminal.list({ projectPath }))
+            if (cancelled) return
+
+            const currentTerminalId = devServerTerminalIdRef.current
+            if (currentTerminalId) {
+                const current = terminals[currentTerminalId]
+                if (current && liveTerminalIds.has(currentTerminalId)) {
+                    return
+                }
+
                 devServerTerminalIdRef.current = null
                 devServerProjectPathRef.current = null
+                actions.setServerStatus('stopped')
+                actions.setServerPort(null)
+                actions.setServerPid(null)
             }
-            clearReadyTimeout()
-            // Reset server status
-            actions.setServerStatus('stopped')
-            actions.setServerPort(null)
-            actions.setServerPid(null)
+
+            const existingDevTerminal = Object.values(terminals).find((terminal) =>
+                terminal.kind === 'dev-server' &&
+                terminal.projectPath === projectPath &&
+                terminal.status !== 'exited' &&
+                liveTerminalIds.has(terminal.id)
+            )
+
+            if (!existingDevTerminal) return
+
+            devServerTerminalIdRef.current = existingDevTerminal.id
+            devServerProjectPathRef.current = projectPath
+            devServerLabelRef.current = existingDevTerminal.label || existingDevTerminal.profileName || 'Dev Server'
+
+            if (typeof existingDevTerminal.port === 'number') {
+                actions.setServerPort(existingDevTerminal.port)
+            }
+
+            if (existingDevTerminal.status === 'error') {
+                actions.setServerStatus('error')
+                return
+            }
+
+            actions.setServerStatus(existingDevTerminal.status === 'starting' ? 'starting' : 'running')
+        })().catch((error) => {
+            console.error('[ServerControl] Failed to re-bind dev server terminal:', error)
+        })
+
+        return () => {
+            cancelled = true
         }
-    }, [projectPath, actions, clearReadyTimeout, removeTerminal])
+    }, [actions, projectPath, terminals])
 
     // Subscribe to terminal events for dev server detection
     useEffect(() => {
@@ -254,6 +322,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     id: result.terminalId,
                     profileId: 'dev-server',
                     profileName: config.label,
+                    projectPath,
                     label: config.label,
                     kind: 'dev-server',
                     command,

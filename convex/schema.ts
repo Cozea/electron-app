@@ -1326,7 +1326,7 @@ export default defineSchema({
     userColor: v.string(),
     userImage: v.optional(v.string()),
 
-    // For threading (future)
+    // Threading support (reply chains)
     parentCommentId: v.optional(v.id("changeComments")),
 
     // Status
@@ -1341,6 +1341,20 @@ export default defineSchema({
   })
     .index("by_change", ["changeId"])
     .index("by_project", ["projectId"])
+    .index("by_user", ["userId"]),
+
+  // Emoji reactions on change comments
+  changeCommentReactions: defineTable({
+    commentId: v.id("changeComments"),
+    changeId: v.id("fileChanges"),
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    emoji: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_change", ["changeId"])
+    .index("by_comment_and_user", ["commentId", "userId"])
     .index("by_user", ["userId"]),
 
   // Project assets (images, videos, PDFs, etc.)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
@@ -10,6 +10,13 @@ import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Activity,
@@ -22,6 +29,7 @@ import {
 } from 'lucide-react'
 import { DiffPanel } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+import { cn } from '@/lib/utils'
 
 interface SelectedChangeSummary {
   id: Id<"fileChanges">
@@ -47,6 +55,25 @@ interface ActivityFeedItem {
   userImage?: string
   isAgent?: boolean
   timestamp: number
+}
+
+interface ChangeCommentReaction {
+  emoji: string
+  count: number
+  reactedByViewer: boolean
+}
+
+interface ChangeComment {
+  id: Id<"changeComments">
+  changeId: Id<"fileChanges">
+  userId: Id<"users">
+  parentCommentId?: Id<"changeComments">
+  content: string
+  userName: string
+  userColor: string
+  userImage?: string
+  createdAt: number
+  reactions: ChangeCommentReaction[]
 }
 
 function formatTimeOnly(timestamp: number) {
@@ -217,33 +244,277 @@ function DiffPanelLoadingShell() {
 }
 
 // Component to display comments for a change
-function ChangeComments({ changeId }: { changeId: Id<"fileChanges"> }) {
-  const comments = useQuery(api.activity.getCommentsForChange, { changeId })
+function ChangeComments({
+  changeId,
+  viewerUserId,
+}: {
+  changeId: Id<"fileChanges">
+  viewerUserId: Id<"users"> | null
+}) {
+  const comments = useQuery(api.activity.getCommentsForChange, {
+    changeId,
+    viewerUserId: viewerUserId ?? undefined,
+  }) as ChangeComment[] | undefined
+  const addComment = useMutation(api.activity.addComment)
+  const toggleCommentReaction = useMutation(api.activity.toggleCommentReaction)
   const [isExpanded, setIsExpanded] = useState(true)
+  const [replyingToCommentId, setReplyingToCommentId] = useState<Id<"changeComments"> | null>(null)
+  const [replyDraftByComment, setReplyDraftByComment] = useState<Record<string, string>>({})
+  const [submittingReplyFor, setSubmittingReplyFor] = useState<string | null>(null)
+  const [pendingReactionKey, setPendingReactionKey] = useState<string | null>(null)
+
+  const commentsByParent = useMemo(() => {
+    const grouped = new Map<string, ChangeComment[]>()
+    if (!comments) return grouped
+
+    for (const comment of comments) {
+      const key = comment.parentCommentId?.toString() ?? "__root__"
+      const bucket = grouped.get(key) ?? []
+      bucket.push(comment)
+      grouped.set(key, bucket)
+    }
+
+    return grouped
+  }, [comments])
+
+  const topLevelComments = commentsByParent.get("__root__") ?? []
+
+  const handleToggleReaction = async (
+    commentId: Id<"changeComments">,
+    emoji: string
+  ) => {
+    if (!viewerUserId) return
+    const pendingKey = `${commentId}:${emoji}`
+    setPendingReactionKey(pendingKey)
+    try {
+      await toggleCommentReaction({
+        commentId,
+        userId: viewerUserId,
+        emoji,
+      })
+    } catch (error) {
+      console.error("Failed to toggle comment reaction:", error)
+    } finally {
+      setPendingReactionKey((current) => (current === pendingKey ? null : current))
+    }
+  }
+
+  const handleSubmitReply = async (parentCommentId: Id<"changeComments">) => {
+    if (!viewerUserId) return
+    const draft = replyDraftByComment[parentCommentId.toString()]?.trim()
+    if (!draft) return
+
+    const pendingKey = parentCommentId.toString()
+    setSubmittingReplyFor(pendingKey)
+    try {
+      await addComment({
+        changeId,
+        userId: viewerUserId,
+        content: draft,
+        parentCommentId,
+      })
+      setReplyDraftByComment((current) => ({ ...current, [pendingKey]: "" }))
+      setReplyingToCommentId(null)
+    } catch (error) {
+      console.error("Failed to add reply:", error)
+    } finally {
+      setSubmittingReplyFor((current) => (current === pendingKey ? null : current))
+    }
+  }
 
   if (!comments || comments.length === 0) return null
 
+  const renderComment = (comment: ChangeComment, depth: number) => {
+    const nestedReplies = commentsByParent.get(comment.id.toString()) ?? []
+    const replyKey = comment.id.toString()
+    const replyDraft = replyDraftByComment[replyKey] ?? ""
+    const isReplyComposerOpen = replyingToCommentId === comment.id
+    const isSubmittingReply = submittingReplyFor === replyKey
+    const thumbsReaction = comment.reactions.find((reaction) => reaction.emoji === "👍")
+    const thumbsCount = thumbsReaction?.count ?? 0
+    const thumbsReactedByViewer = thumbsReaction?.reactedByViewer ?? false
+
+    const extraReactions = comment.reactions.filter((reaction) => reaction.emoji !== "👍")
+
+    return (
+      <div key={comment.id} className={cn("flex gap-3", depth === 0 ? "pb-4" : "pb-3")}>
+        {comment.userImage ? (
+          <img
+            src={comment.userImage}
+            alt={comment.userName}
+            className={cn(
+              "rounded-full object-cover shrink-0",
+              depth === 0 ? "w-10 h-10" : "w-8 h-8"
+            )}
+          />
+        ) : (
+          <div
+            className={cn(
+              "rounded-full flex items-center justify-center font-medium text-white shrink-0",
+              depth === 0 ? "w-10 h-10 text-sm" : "w-8 h-8 text-xs"
+            )}
+            style={{ backgroundColor: comment.userColor }}
+          >
+            {comment.userName?.charAt(0).toUpperCase() || 'U'}
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1 min-w-0">
+            <span className="text-sm font-semibold truncate shrink min-w-0">{comment.userName}</span>
+            <span className="text-xs text-muted-foreground shrink-0">•</span>
+            <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+              {formatRelativeTime(comment.createdAt)}
+            </span>
+          </div>
+
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap mb-3">{comment.content}</p>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleToggleReaction(comment.id, "👍")}
+              disabled={!viewerUserId || pendingReactionKey === `${comment.id}:👍`}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors",
+                thumbsReactedByViewer
+                  ? "bg-primary/15 text-foreground"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <span>👍</span>
+              <span>{thumbsCount}</span>
+            </button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={!viewerUserId}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <Smile className="h-4 w-4" />
+                  <span>+</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-0">
+                {["❤️", "🎉", "😄", "🚀"].map((emoji) => (
+                  <DropdownMenuItem
+                    key={emoji}
+                    onClick={() => void handleToggleReaction(comment.id, emoji)}
+                    disabled={pendingReactionKey === `${comment.id}:${emoji}`}
+                    className="text-base"
+                  >
+                    {emoji}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <span className="text-muted-foreground/50">•</span>
+
+            <button
+              type="button"
+              onClick={() => setReplyingToCommentId(comment.id)}
+              disabled={!viewerUserId}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Reply
+            </button>
+          </div>
+
+          {extraReactions.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {extraReactions.map((reaction) => (
+                <button
+                  key={`${comment.id}-${reaction.emoji}`}
+                  type="button"
+                  onClick={() => void handleToggleReaction(comment.id, reaction.emoji)}
+                  disabled={!viewerUserId || pendingReactionKey === `${comment.id}:${reaction.emoji}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors",
+                    reaction.reactedByViewer
+                      ? "bg-primary/15 text-foreground"
+                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <span>{reaction.emoji}</span>
+                  <span>{reaction.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {isReplyComposerOpen && (
+            <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+              <Textarea
+                value={replyDraft}
+                onChange={(event) =>
+                  setReplyDraftByComment((current) => ({
+                    ...current,
+                    [replyKey]: event.target.value,
+                  }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault()
+                    void handleSubmitReply(comment.id)
+                  }
+                }}
+                placeholder={`Reply to ${comment.userName}`}
+                className="min-h-[72px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-md bg-background"
+                disabled={isSubmittingReply}
+              />
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setReplyingToCommentId(null)
+                    setReplyDraftByComment((current) => ({ ...current, [replyKey]: "" }))
+                  }}
+                  disabled={isSubmittingReply}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => void handleSubmitReply(comment.id)}
+                  disabled={!viewerUserId || !replyDraft.trim() || isSubmittingReply}
+                >
+                  Send Reply
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {nestedReplies.length > 0 && (
+            <div className="mt-3 border-l border-border/60 pl-4 space-y-3">
+              {nestedReplies.map((reply) => renderComment(reply, depth + 1))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="ml-[88px] mt-2 mb-3">
-      {/* Toggle button */}
       <button
-        onClick={(e) => {
-          e.stopPropagation()
-          setIsExpanded(!isExpanded)
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          setIsExpanded((current) => !current)
         }}
         className="text-xs font-medium text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
       >
-        {isExpanded ? 'Hide' : 'Show'} {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+        {isExpanded ? 'Hide' : 'Show'} {topLevelComments.length} {topLevelComments.length === 1 ? 'comment' : 'comments'}
       </button>
 
-      {/* Comments list */}
       {isExpanded && (
         <div className="relative">
-          {/* Dashed timeline line with rounded top and fade */}
           <div className="absolute left-[19px] top-0 bottom-0 flex flex-col items-center pointer-events-none">
-            {/* Rounded top dot */}
             <div className="w-2 h-2 rounded-full bg-border shrink-0" />
-            {/* Dashed line with fade */}
             <div
               className="w-px flex-1 border-l border-dashed border-border"
               style={{
@@ -253,58 +524,8 @@ function ChangeComments({ changeId }: { changeId: Id<"fileChanges"> }) {
             />
           </div>
 
-          {/* Comments */}
           <div className="space-y-0 pl-12">
-            {comments.map((comment) => (
-              <div key={comment.id} className="flex gap-3 pb-4">
-                {/* Avatar */}
-                {comment.userImage ? (
-                  <img
-                    src={comment.userImage}
-                    alt={comment.userName}
-                    className="w-10 h-10 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium text-white shrink-0"
-                    style={{ backgroundColor: comment.userColor }}
-                  >
-                    {comment.userName?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                )}
-
-                {/* Content column */}
-                <div className="flex-1 min-w-0">
-                  {/* Name and time */}
-                  <div className="flex items-center gap-1.5 mb-1 min-w-0">
-                    <span className="text-sm font-semibold truncate shrink min-w-0">{comment.userName}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">•</span>
-                    <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-                      {formatRelativeTime(comment.createdAt)}
-                    </span>
-                  </div>
-
-                  {/* Comment content */}
-                  <p className="text-sm text-foreground/90 mb-3">{comment.content}</p>
-
-                  {/* Floating reaction buttons */}
-                  <div className="flex items-center gap-2">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      <span>👍</span>
-                      <span>2</span>
-                    </button>
-                    <button className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      <Smile className="h-4 w-4" />
-                      <span>+</span>
-                    </button>
-                    <span className="text-muted-foreground/50">•</span>
-                    <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {topLevelComments.map((comment) => renderComment(comment, 0))}
           </div>
         </div>
       )}
@@ -315,7 +536,7 @@ function ChangeComments({ changeId }: { changeId: Id<"fileChanges"> }) {
 export function ChangesPage() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { currentOrganization } = useAuth()
+  const { currentOrganization, convexUserId } = useAuth()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
   const selectedUserId = searchParams.get('userId')
 
@@ -588,7 +809,10 @@ export function ChangesPage() {
                             </div>
                             {/* Comments under this change */}
                             {commentCounts && commentCounts[item.id] > 0 && (
-                              <ChangeComments changeId={item.id as Id<"fileChanges">} />
+                              <ChangeComments
+                                changeId={item.id as Id<"fileChanges">}
+                                viewerUserId={convexUserId ?? null}
+                              />
                             )}
                           </div>
                         ))}
