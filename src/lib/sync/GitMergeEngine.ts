@@ -50,6 +50,27 @@ export interface GitMergeResult {
   conflictFingerprint?: string
 }
 
+export interface GitMergeTreeFile {
+  path: string
+  content: string
+}
+
+export interface GitMergeTreeConflict {
+  path: string
+  message?: string
+}
+
+export interface GitMergeTreeResult {
+  success: boolean
+  clean: boolean
+  treeOid?: string
+  conflicts: GitMergeTreeConflict[]
+  mergedFiles: GitMergeTreeFile[]
+  gitVersion: string
+  rawOutput?: string
+  error?: string
+}
+
 interface MergePreviewResponse {
   success: boolean
   mergedContent: string
@@ -57,6 +78,17 @@ interface MergePreviewResponse {
   conflictCount: number
   strategyUsed: "zdiff3" | "diff3"
   gitVersion: string
+  error?: string
+}
+
+interface MergeTreePreviewResponse {
+  success: boolean
+  clean: boolean
+  treeOid?: string
+  conflicts: Array<{ path: string; message?: string }>
+  mergedFiles: Array<{ path: string; content: string }>
+  gitVersion: string
+  rawOutput?: string
   error?: string
 }
 
@@ -272,6 +304,45 @@ export class GitMergeEngine {
       conflictFingerprint: preview.hasConflicts
         ? await buildConflictFingerprint(base, local, cloud)
         : undefined,
+    }
+  }
+
+  async mergeTree(input: {
+    baseFiles: GitMergeTreeFile[]
+    localFiles: GitMergeTreeFile[]
+    cloudFiles: GitMergeTreeFile[]
+    maxPreviewFiles?: number
+    maxPreviewBytes?: number
+  }): Promise<GitMergeTreeResult> {
+    const health = await this.getRuntimeHealth()
+    if (!health.available || !health.supportsMergeTree || !health.supportsMergeTreeWriteTree) {
+      return {
+        success: false,
+        clean: false,
+        conflicts: [],
+        mergedFiles: [],
+        gitVersion: health.gitVersion ?? "unknown",
+        error: health.error ?? "Git merge-tree runtime is unavailable",
+      }
+    }
+
+    const response = (await window.electronAPI.sync.mergeTreePreview({
+      baseFiles: input.baseFiles,
+      localFiles: input.localFiles,
+      cloudFiles: input.cloudFiles,
+      maxPreviewFiles: input.maxPreviewFiles,
+      maxPreviewBytes: input.maxPreviewBytes,
+    })) as MergeTreePreviewResponse
+
+    return {
+      success: response.success,
+      clean: response.clean,
+      treeOid: response.treeOid,
+      conflicts: response.conflicts,
+      mergedFiles: response.mergedFiles,
+      gitVersion: response.gitVersion,
+      rawOutput: response.rawOutput,
+      error: response.error,
     }
   }
 

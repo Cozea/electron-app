@@ -459,6 +459,195 @@ export function classifyProjectReconciliation(
   }
 }
 
+interface NormalizedFileMaps {
+  localByPath: Map<string, LocalFileEntry>
+  cloudByPath: Map<string, CloudFileEntry>
+}
+
+function buildNormalizedFileMaps(
+  local: LocalFileEntry[],
+  cloud: CloudFileEntry[]
+): NormalizedFileMaps {
+  const localByPath = new Map<string, LocalFileEntry>()
+  for (const entry of local) {
+    const normalizedPath = normalizeRelativePath(entry.path)
+    if (!normalizedPath) continue
+    localByPath.set(normalizedPath, entry)
+  }
+
+  const cloudByPath = new Map<string, CloudFileEntry>()
+  for (const entry of normalizeCloudEntries(cloud)) {
+    cloudByPath.set(entry.normalizedPath, entry.entry)
+  }
+
+  return { localByPath, cloudByPath }
+}
+
+function detectStructuralConflictReasons(
+  localByPath: ReadonlyMap<string, LocalFileEntry>,
+  cloudByPath: ReadonlyMap<string, CloudFileEntry>
+): Map<string, string> {
+  const reasons = new Map<string, string>()
+
+  for (const localPath of localByPath.keys()) {
+    const parts = localPath.split("/")
+    let prefix = ""
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+      if (cloudByPath.has(prefix)) {
+        const reason = `Path conflict: local directory path collides with cloud file (${prefix})`
+        reasons.set(localPath, reason)
+        reasons.set(prefix, reason)
+      }
+    }
+  }
+
+  for (const cloudPath of cloudByPath.keys()) {
+    const parts = cloudPath.split("/")
+    let prefix = ""
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+      if (localByPath.has(prefix)) {
+        const reason = `Path conflict: cloud directory path collides with local file (${prefix})`
+        reasons.set(cloudPath, reason)
+        reasons.set(prefix, reason)
+      }
+    }
+  }
+
+  const caseCollisions = new Map<string, Set<string>>()
+  for (const path of [...localByPath.keys(), ...cloudByPath.keys()]) {
+    const key = path.toLowerCase()
+    let bucket = caseCollisions.get(key)
+    if (!bucket) {
+      bucket = new Set<string>()
+      caseCollisions.set(key, bucket)
+    }
+    bucket.add(path)
+  }
+
+  for (const variants of caseCollisions.values()) {
+    if (variants.size < 2) continue
+    const reason = `Case-only path conflict on case-insensitive filesystems: ${Array.from(variants).join(", ")}`
+    for (const variant of variants) {
+      reasons.set(variant, reason)
+    }
+  }
+
+  return reasons
+}
+
+function pathIsRelatedToConflict(path: string, conflictPath: string): boolean {
+  return (
+    path === conflictPath ||
+    path.startsWith(`${conflictPath}/`) ||
+    conflictPath.startsWith(`${path}/`)
+  )
+}
+
+function stripPlanOpsForPaths(plan: SyncPlan, blockedPaths: ReadonlySet<string>): void {
+  if (blockedPaths.size === 0) return
+  plan.downloads = plan.downloads.filter((operation) => !blockedPaths.has(operation.path))
+  plan.uploads = plan.uploads.filter((operation) => !blockedPaths.has(operation.path))
+  plan.localDeletes = plan.localDeletes.filter((operation) => !blockedPaths.has(operation.path))
+  plan.cloudDeletes = plan.cloudDeletes.filter((operation) => !blockedPaths.has(operation.path))
+  plan.autoMerged = (plan.autoMerged ?? []).filter((operation) => !blockedPaths.has(operation.path))
+}
+
+async function augmentConflictReasonsWithMergeTree(
+  reasons: Map<string, string>,
+  maps: NormalizedFileMaps,
+  checkpointMap: Record<string, { content: string; hash: string; syncedAt: number }>,
+  options: MergeOptions,
+  maxMergeBytes: number
+): Promise<Map<string, string>> {
+  if (reasons.size === 0) return reasons
+
+  const relatedPaths = new Set<string>()
+  const reasonPaths = Array.from(reasons.keys())
+
+  for (const localPath of maps.localByPath.keys()) {
+    if (reasonPaths.some((path) => pathIsRelatedToConflict(localPath, path))) {
+      relatedPaths.add(localPath)
+    }
+  }
+  for (const cloudPath of maps.cloudByPath.keys()) {
+    if (reasonPaths.some((path) => pathIsRelatedToConflict(cloudPath, path))) {
+      relatedPaths.add(cloudPath)
+    }
+  }
+  for (const checkpointPath of Object.keys(checkpointMap)) {
+    if (reasonPaths.some((path) => pathIsRelatedToConflict(checkpointPath, path))) {
+      relatedPaths.add(checkpointPath)
+    }
+  }
+
+  if (relatedPaths.size === 0) return reasons
+
+  const baseFiles: Array<{ path: string; content: string }> = []
+  const localFiles: Array<{ path: string; content: string }> = []
+  const cloudFiles: Array<{ path: string; content: string }> = []
+
+  const relatedList = Array.from(relatedPaths)
+  for (const relatedPath of relatedList) {
+    if (isBinaryPath(relatedPath)) continue
+
+    const checkpoint = checkpointMap[relatedPath]
+    if (checkpoint) {
+      const checkpointBytes = new TextEncoder().encode(checkpoint.content).byteLength
+      if (checkpointBytes <= maxMergeBytes) {
+        baseFiles.push({ path: relatedPath, content: checkpoint.content })
+      }
+    }
+
+    const localEntry = maps.localByPath.get(relatedPath)
+    if (localEntry && localEntry.size <= maxMergeBytes) {
+      const content = await options.readLocalFile(relatedPath)
+      if (content !== null) {
+        localFiles.push({ path: relatedPath, content })
+      }
+    }
+
+    const cloudEntry = maps.cloudByPath.get(relatedPath)
+    if (cloudEntry && cloudEntry.size <= maxMergeBytes) {
+      const content = await options.fetchCloudFile(cloudEntry.storageId as unknown as string)
+      if (content !== null) {
+        cloudFiles.push({ path: relatedPath, content })
+      }
+    }
+  }
+
+  if (baseFiles.length === 0 && localFiles.length === 0 && cloudFiles.length === 0) {
+    return reasons
+  }
+
+  const mergeTreeResult = await gitMergeEngine.mergeTree({
+    baseFiles,
+    localFiles,
+    cloudFiles,
+    maxPreviewFiles: 256,
+    maxPreviewBytes: 2 * 1024 * 1024,
+  })
+
+  if (!mergeTreeResult.success) {
+    for (const [path, reason] of reasons) {
+      reasons.set(path, `${reason}; git merge-tree unavailable (${mergeTreeResult.error ?? "unknown error"})`)
+    }
+    return reasons
+  }
+
+  for (const conflict of mergeTreeResult.conflicts) {
+    const normalizedPath = normalizeRelativePath(conflict.path)
+    if (!normalizedPath) continue
+    reasons.set(
+      normalizedPath,
+      conflict.message ?? `Path conflict detected by git merge-tree (${mergeTreeResult.gitVersion})`
+    )
+  }
+
+  return reasons
+}
+
 /**
  * Compute a sync plan with Git-backed 3-way merge support.
  */
@@ -471,6 +660,7 @@ export async function computeSyncPlanWithMerge(
 ): Promise<SyncPlan> {
   // Start with standard plan computation
   const plan = computeSyncPlan(local, cloud, lastSyncTime, cloudPathsAtLastSync)
+  const normalizedMaps = buildNormalizedFileMaps(local, cloud)
 
   // Try to auto-merge conflicts where possible
   const remainingConflicts: SyncOperation[] = []
@@ -491,9 +681,40 @@ export async function computeSyncPlanWithMerge(
     return Math.min(8, Math.max(2, cores))
   })()
 
+  let pathConflictReasons = detectStructuralConflictReasons(
+    normalizedMaps.localByPath,
+    normalizedMaps.cloudByPath
+  )
+  pathConflictReasons = await augmentConflictReasonsWithMergeTree(
+    pathConflictReasons,
+    normalizedMaps,
+    checkpointMap,
+    mergeOptions,
+    maxMergeBytes
+  )
+  const blockedConflictPaths = new Set(pathConflictReasons.keys())
+  stripPlanOpsForPaths(plan, blockedConflictPaths)
+
+  for (const [path, reason] of pathConflictReasons) {
+    if (!plan.conflicts.some((operation) => operation.path === path)) {
+      plan.conflicts.push({
+        type: "conflict",
+        path,
+        localEntry: normalizedMaps.localByPath.get(path),
+        cloudEntry: normalizedMaps.cloudByPath.get(path),
+        reason,
+      })
+    }
+  }
+
   const mergeCandidates: SyncOperation[] = []
 
   for (const conflict of plan.conflicts) {
+    if (blockedConflictPaths.has(conflict.path)) {
+      remainingConflicts.push(conflict)
+      continue
+    }
+
     // Skip delete-vs-modify conflicts - can't merge those
     if (!conflict.localEntry || !conflict.cloudEntry) {
       remainingConflicts.push(conflict)

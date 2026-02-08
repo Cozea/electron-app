@@ -1,8 +1,3 @@
-const MERGE_CACHE_DB_NAME = "cozea-sync-merge-cache"
-const MERGE_CACHE_DB_VERSION = 1
-const MERGE_CACHE_STORE = "mergeResults"
-const RESOLUTION_CACHE_STORE = "conflictResolutions"
-
 const DEFAULT_MAX_MEMORY_ENTRIES = 256
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -76,7 +71,7 @@ export async function buildConflictFingerprint(
 
 export class MergeCacheStore {
   private memoryCache = new Map<string, MergeCacheRecord>()
-  private dbPromise: Promise<IDBDatabase> | null = null
+  private conflictMemory = new Map<string, ConflictResolutionRecord>()
   private maxMemoryEntries: number
   private ttlMs: number
 
@@ -85,30 +80,13 @@ export class MergeCacheStore {
     this.ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS
   }
 
-  private async getDb(): Promise<IDBDatabase> {
-    if (this.dbPromise) return this.dbPromise
-
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(MERGE_CACHE_DB_NAME, MERGE_CACHE_DB_VERSION)
-
-      request.onerror = () => reject(request.error ?? new Error("Failed to open merge cache DB"))
-      request.onsuccess = () => resolve(request.result)
-      request.onupgradeneeded = () => {
-        const db = request.result
-        if (!db.objectStoreNames.contains(MERGE_CACHE_STORE)) {
-          db.createObjectStore(MERGE_CACHE_STORE, { keyPath: "key" })
-        }
-        if (!db.objectStoreNames.contains(RESOLUTION_CACHE_STORE)) {
-          db.createObjectStore(RESOLUTION_CACHE_STORE, { keyPath: "fingerprint" })
-        }
-      }
-    })
-
-    return this.dbPromise
+  private canUsePersistentCache(): boolean {
+    const syncApi = window.electronAPI?.sync as unknown as Record<string, unknown> | undefined
+    return Boolean(syncApi?.mergeCacheGet && syncApi?.mergeCacheSet)
   }
 
   private touchMemory(record: MergeCacheRecord): MergeCacheRecord {
-    const touched = {
+    const touched: MergeCacheRecord = {
       ...record,
       hitCount: record.hitCount + 1,
       lastUsedAt: Date.now(),
@@ -116,44 +94,47 @@ export class MergeCacheStore {
 
     this.memoryCache.delete(record.key)
     this.memoryCache.set(record.key, touched)
-
     if (this.memoryCache.size > this.maxMemoryEntries) {
       const oldest = this.memoryCache.keys().next().value
-      if (oldest) {
-        this.memoryCache.delete(oldest)
-      }
+      if (oldest) this.memoryCache.delete(oldest)
     }
+    return touched
+  }
 
+  private touchResolutionMemory(record: ConflictResolutionRecord): ConflictResolutionRecord {
+    const touched: ConflictResolutionRecord = {
+      ...record,
+      hitCount: record.hitCount + 1,
+      lastUsedAt: Date.now(),
+    }
+    this.conflictMemory.set(record.fingerprint, touched)
+    if (this.conflictMemory.size > this.maxMemoryEntries) {
+      const oldest = this.conflictMemory.keys().next().value
+      if (oldest) this.conflictMemory.delete(oldest)
+    }
     return touched
   }
 
   async get(key: string): Promise<MergeCacheRecord | null> {
     const fromMemory = this.memoryCache.get(key)
     if (fromMemory) {
-      if (Date.now() - fromMemory.createdAt > this.ttlMs) {
-        this.memoryCache.delete(key)
-      } else {
+      if (Date.now() - fromMemory.createdAt <= this.ttlMs) {
         return this.touchMemory(fromMemory)
       }
+      this.memoryCache.delete(key)
     }
 
-    const db = await this.getDb()
-    const record = await new Promise<MergeCacheRecord | null>((resolve, reject) => {
-      const tx = db.transaction(MERGE_CACHE_STORE, "readonly")
-      const store = tx.objectStore(MERGE_CACHE_STORE)
-      const req = store.get(key)
-      req.onerror = () => reject(req.error ?? new Error("Failed to read merge cache entry"))
-      req.onsuccess = () => resolve((req.result as MergeCacheRecord | undefined) ?? null)
-    })
+    if (!this.canUsePersistentCache()) return null
 
-    if (!record) return null
+    const fromStore = await window.electronAPI.sync.mergeCacheGet({ key })
+    if (!fromStore) return null
 
-    if (Date.now() - record.createdAt > this.ttlMs) {
+    if (Date.now() - fromStore.createdAt > this.ttlMs) {
       await this.delete(key)
       return null
     }
 
-    const touched = this.touchMemory(record)
+    const touched = this.touchMemory(fromStore)
     await this.set(touched)
     return touched
   }
@@ -173,81 +154,72 @@ export class MergeCacheStore {
       if (oldest) this.memoryCache.delete(oldest)
     }
 
-    const db = await this.getDb()
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(MERGE_CACHE_STORE, "readwrite")
-      const store = tx.objectStore(MERGE_CACHE_STORE)
-      const req = store.put(normalized)
-      req.onerror = () => reject(req.error ?? new Error("Failed to write merge cache entry"))
-      req.onsuccess = () => resolve()
-    })
+    if (!this.canUsePersistentCache()) return
+    await window.electronAPI.sync.mergeCacheSet({ record: normalized })
   }
 
   async delete(key: string): Promise<void> {
     this.memoryCache.delete(key)
-    const db = await this.getDb()
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(MERGE_CACHE_STORE, "readwrite")
-      const store = tx.objectStore(MERGE_CACHE_STORE)
-      const req = store.delete(key)
-      req.onerror = () => reject(req.error ?? new Error("Failed to delete merge cache entry"))
-      req.onsuccess = () => resolve()
-    })
+    if (!this.canUsePersistentCache()) return
+    await window.electronAPI.sync.mergeCacheDelete({ key })
   }
 
   async saveResolvedConflict(record: ConflictResolutionRecord): Promise<void> {
-    const db = await this.getDb()
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(RESOLUTION_CACHE_STORE, "readwrite")
-      const store = tx.objectStore(RESOLUTION_CACHE_STORE)
-      const req = store.put(record)
-      req.onerror = () => reject(req.error ?? new Error("Failed to write conflict resolution"))
-      req.onsuccess = () => resolve()
-    })
+    const normalized: ConflictResolutionRecord = {
+      ...record,
+      createdAt: record.createdAt || Date.now(),
+      lastUsedAt: record.lastUsedAt || Date.now(),
+      hitCount: Math.max(0, record.hitCount),
+    }
+    this.conflictMemory.set(record.fingerprint, normalized)
+    if (this.conflictMemory.size > this.maxMemoryEntries) {
+      const oldest = this.conflictMemory.keys().next().value
+      if (oldest) this.conflictMemory.delete(oldest)
+    }
+
+    if (!this.canUsePersistentCache()) return
+    await window.electronAPI.sync.mergeCacheSaveResolved({ record: normalized })
   }
 
   async getResolvedConflict(fingerprint: string): Promise<ConflictResolutionRecord | null> {
-    const db = await this.getDb()
-    const record = await new Promise<ConflictResolutionRecord | null>((resolve, reject) => {
-      const tx = db.transaction(RESOLUTION_CACHE_STORE, "readonly")
-      const store = tx.objectStore(RESOLUTION_CACHE_STORE)
-      const req = store.get(fingerprint)
-      req.onerror = () => reject(req.error ?? new Error("Failed to read conflict resolution"))
-      req.onsuccess = () => resolve((req.result as ConflictResolutionRecord | undefined) ?? null)
-    })
-
-    if (!record) return null
-    const touched: ConflictResolutionRecord = {
-      ...record,
-      hitCount: record.hitCount + 1,
-      lastUsedAt: Date.now(),
+    const fromMemory = this.conflictMemory.get(fingerprint)
+    if (fromMemory) {
+      if (Date.now() - fromMemory.createdAt <= this.ttlMs) {
+        const touched = this.touchResolutionMemory(fromMemory)
+        await this.saveResolvedConflict(touched)
+        return touched
+      }
+      this.conflictMemory.delete(fingerprint)
     }
+
+    if (!this.canUsePersistentCache()) return null
+
+    const fromStore = await window.electronAPI.sync.mergeCacheGetResolved({ fingerprint })
+    if (!fromStore) return null
+    if (Date.now() - fromStore.createdAt > this.ttlMs) return null
+
+    const touched = this.touchResolutionMemory(fromStore)
     await this.saveResolvedConflict(touched)
     return touched
   }
 
   async prune(): Promise<void> {
     const threshold = Date.now() - this.ttlMs
-    const db = await this.getDb()
-
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(MERGE_CACHE_STORE, "readwrite")
-      const store = tx.objectStore(MERGE_CACHE_STORE)
-      const req = store.openCursor()
-
-      req.onerror = () => reject(req.error ?? new Error("Failed to prune merge cache"))
-      req.onsuccess = () => {
-        const cursor = req.result
-        if (!cursor) {
-          resolve()
-          return
-        }
-        const value = cursor.value as MergeCacheRecord
-        if (value.createdAt < threshold) {
-          cursor.delete()
-        }
-        cursor.continue()
+    for (const [key, value] of this.memoryCache.entries()) {
+      if (value.createdAt < threshold) {
+        this.memoryCache.delete(key)
       }
+    }
+    for (const [key, value] of this.conflictMemory.entries()) {
+      if (value.createdAt < threshold) {
+        this.conflictMemory.delete(key)
+      }
+    }
+
+    if (!this.canUsePersistentCache()) return
+    await window.electronAPI.sync.mergeCachePrune({
+      threshold,
+      maxEntries: this.maxMemoryEntries * 20,
     })
   }
 }

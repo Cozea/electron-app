@@ -160,6 +160,41 @@ export interface MergePreviewResult {
   error?: string
 }
 
+export interface MergeTreePreviewResult {
+  success: boolean
+  clean: boolean
+  treeOid?: string
+  conflicts: Array<{ path: string; message?: string }>
+  mergedFiles: Array<{ path: string; content: string }>
+  gitVersion: string
+  rawOutput?: string
+  error?: string
+}
+
+export interface MergeCacheRecord {
+  key: string
+  mergedContent: string
+  hasConflicts: boolean
+  conflictCount: number
+  createdAt: number
+  lastUsedAt: number
+  hitCount: number
+  engine: 'git-merge-file'
+  strategy: 'zdiff3' | 'diff3'
+  gitVersion: string
+  baseHash: string
+  localHash: string
+  cloudHash: string
+}
+
+export interface ConflictResolutionRecord {
+  fingerprint: string
+  resolvedContent: string
+  createdAt: number
+  lastUsedAt: number
+  hitCount: number
+}
+
 export interface SyncOp {
   opId: string
   idempotencyKey: string
@@ -457,6 +492,22 @@ export interface ElectronAPI {
       strategy?: 'zdiff3' | 'diff3'
       labels?: { local?: string; base?: string; cloud?: string }
     }) => Promise<MergePreviewResult>
+    mergeTreePreview: (options: {
+      baseFiles: Array<{ path: string; content: string }>
+      localFiles: Array<{ path: string; content: string }>
+      cloudFiles: Array<{ path: string; content: string }>
+      maxPreviewFiles?: number
+      maxPreviewBytes?: number
+    }) => Promise<MergeTreePreviewResult>
+    mergeCacheGet: (options: { key: string }) => Promise<MergeCacheRecord | null>
+    mergeCacheSet: (options: { record: MergeCacheRecord }) => Promise<{ success: boolean }>
+    mergeCacheDelete: (options: { key: string }) => Promise<{ success: boolean }>
+    mergeCacheGetResolved: (options: { fingerprint: string }) =>
+      Promise<ConflictResolutionRecord | null>
+    mergeCacheSaveResolved: (options: { record: ConflictResolutionRecord }) =>
+      Promise<{ success: boolean }>
+    mergeCachePrune: (options: { threshold: number; maxEntries?: number }) =>
+      Promise<{ removed: number }>
     resolveConflict: (options: { fingerprint: string; resolvedContent: string }) =>
       Promise<{ success: boolean; error?: string }>
     enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
