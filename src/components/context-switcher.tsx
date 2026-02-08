@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
 import { useQuery, useMutation, useConvex } from 'convex/react'
@@ -28,7 +28,14 @@ interface ProjectListItem {
   _id: Id<'projects'>
   slug: string
   name?: string | null
+  template?: string | null
   status?: string
+}
+
+interface ProjectNavigationState {
+  projectSlug?: string
+  projectName?: string
+  projectTemplate?: string
 }
 
 export function ContextSwitcher() {
@@ -80,6 +87,16 @@ export function ContextSwitcher() {
 
   // Determine if we're in a project context
   const isInProject = location.pathname.startsWith('/projects/') && slug
+  const navigationState = location.state as ProjectNavigationState | null
+  const selectedProjectFromList = useMemo(() => {
+    if (!slug || !projects) return null
+    return projects.find((project) => project.slug === slug) ?? null
+  }, [projects, slug])
+  const hasMatchingNavigationState = navigationState?.projectSlug === slug
+  const navigationNameHint =
+    hasMatchingNavigationState ? navigationState?.projectName : undefined
+  const navigationTemplateHint =
+    hasMatchingNavigationState ? navigationState?.projectTemplate : undefined
 
   // Organization info
   const organization = {
@@ -167,7 +184,13 @@ export function ContextSwitcher() {
 
       setTimeout(() => {
         setOpen(false)
-        navigate(`/projects/${project.slug}`)
+        navigate(`/projects/${project.slug}`, {
+          state: {
+            projectSlug: project.slug,
+            projectName: project.name ?? undefined,
+            projectTemplate: project.template ?? undefined,
+          } satisfies ProjectNavigationState,
+        })
         resetSyncState()
       }, 200)
     } catch (error) {
@@ -214,17 +237,27 @@ export function ContextSwitcher() {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
-                  {isInProject ? currentProject?.name : organization.name}
+                  {isInProject
+                    ? currentProject?.name ??
+                      navigationNameHint ??
+                      selectedProjectFromList?.name ??
+                      slug
+                    : organization.name}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {isInProject ? currentProject?.template || 'Project' : `${organization.plan}`}
+                  {isInProject
+                    ? currentProject?.template ??
+                      navigationTemplateHint ??
+                      selectedProjectFromList?.template ??
+                      'Project'
+                    : `${organization.plan}`}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-2xl"
             align="start"
             side={isMobile ? 'bottom' : 'right'}
             sideOffset={4}

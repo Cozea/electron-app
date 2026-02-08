@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -30,6 +30,7 @@ import {
 import { DiffPanel } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
+import { CommentRichText } from '@/components/comments/CommentRichText'
 
 interface SelectedChangeSummary {
   id: Id<"fileChanges">
@@ -74,6 +75,15 @@ interface ChangeComment {
   userImage?: string
   createdAt: number
   reactions: ChangeCommentReaction[]
+}
+
+interface ChangeCommentsProps {
+  changeId: Id<"fileChanges">
+  viewerUserId: Id<"users"> | null
+  commentCount: number
+  isSelected: boolean
+  shouldPreload: boolean
+  expandOnSelect: boolean
 }
 
 function formatTimeOnly(timestamp: number) {
@@ -244,24 +254,36 @@ function DiffPanelLoadingShell() {
 }
 
 // Component to display comments for a change
-function ChangeComments({
+const ChangeComments = memo(function ChangeComments({
   changeId,
   viewerUserId,
-}: {
-  changeId: Id<"fileChanges">
-  viewerUserId: Id<"users"> | null
-}) {
-  const comments = useQuery(api.activity.getCommentsForChange, {
-    changeId,
-    viewerUserId: viewerUserId ?? undefined,
-  }) as ChangeComment[] | undefined
+  commentCount,
+  isSelected,
+  shouldPreload,
+  expandOnSelect,
+}: ChangeCommentsProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const comments = useQuery(
+    api.activity.getCommentsForChange,
+    commentCount > 0 && (isExpanded || shouldPreload)
+      ? {
+          changeId,
+          viewerUserId: viewerUserId ?? undefined,
+        }
+      : "skip"
+  ) as ChangeComment[] | undefined
   const addComment = useMutation(api.activity.addComment)
   const toggleCommentReaction = useMutation(api.activity.toggleCommentReaction)
-  const [isExpanded, setIsExpanded] = useState(true)
   const [replyingToCommentId, setReplyingToCommentId] = useState<Id<"changeComments"> | null>(null)
   const [replyDraftByComment, setReplyDraftByComment] = useState<Record<string, string>>({})
   const [submittingReplyFor, setSubmittingReplyFor] = useState<string | null>(null)
   const [pendingReactionKey, setPendingReactionKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isSelected && expandOnSelect) {
+      setIsExpanded(true)
+    }
+  }, [expandOnSelect, isSelected])
 
   const commentsByParent = useMemo(() => {
     const grouped = new Map<string, ChangeComment[]>()
@@ -322,19 +344,28 @@ function ChangeComments({
     }
   }
 
-  if (!comments || comments.length === 0) return null
+  if (commentCount <= 0) return null
 
   const renderComment = (comment: ChangeComment, depth: number) => {
-    const nestedReplies = commentsByParent.get(comment.id.toString()) ?? []
+    const nestedReplies =
+      depth === 0 ? commentsByParent.get(comment.id.toString()) ?? [] : []
     const replyKey = comment.id.toString()
     const replyDraft = replyDraftByComment[replyKey] ?? ""
-    const isReplyComposerOpen = replyingToCommentId === comment.id
+    const isReplyComposerOpen = depth === 0 && replyingToCommentId === comment.id
     const isSubmittingReply = submittingReplyFor === replyKey
     const thumbsReaction = comment.reactions.find((reaction) => reaction.emoji === "👍")
-    const thumbsCount = thumbsReaction?.count ?? 0
-    const thumbsReactedByViewer = thumbsReaction?.reactedByViewer ?? false
-
-    const extraReactions = comment.reactions.filter((reaction) => reaction.emoji !== "👍")
+    const nonThumbReactions = comment.reactions
+      .filter((reaction) => reaction.emoji !== "👍")
+      .sort((a, b) => b.count - a.count)
+    const reactionPillItems: ChangeCommentReaction[] = [
+      {
+        emoji: "👍",
+        count: thumbsReaction?.count ?? 0,
+        reactedByViewer: thumbsReaction?.reactedByViewer ?? false,
+      },
+      ...nonThumbReactions,
+    ]
+    const hasManyReactionTypes = reactionPillItems.length > 4
 
     return (
       <div key={comment.id} className={cn("flex gap-3", depth === 0 ? "pb-4" : "pb-3")}>
@@ -342,17 +373,11 @@ function ChangeComments({
           <img
             src={comment.userImage}
             alt={comment.userName}
-            className={cn(
-              "rounded-full object-cover shrink-0",
-              depth === 0 ? "w-10 h-10" : "w-8 h-8"
-            )}
+            className="h-8 w-8 rounded-full object-cover shrink-0"
           />
         ) : (
           <div
-            className={cn(
-              "rounded-full flex items-center justify-center font-medium text-white shrink-0",
-              depth === 0 ? "w-10 h-10 text-sm" : "w-8 h-8 text-xs"
-            )}
+            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium text-white shrink-0"
             style={{ backgroundColor: comment.userColor }}
           >
             {comment.userName?.charAt(0).toUpperCase() || 'U'}
@@ -368,23 +393,33 @@ function ChangeComments({
             </span>
           </div>
 
-          <p className="text-sm text-foreground/90 whitespace-pre-wrap mb-3">{comment.content}</p>
+          <CommentRichText
+            content={comment.content}
+            className="text-sm text-foreground/90 mb-3"
+          />
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleToggleReaction(comment.id, "👍")}
-              disabled={!viewerUserId || pendingReactionKey === `${comment.id}:👍`}
+            <div
               className={cn(
-                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors",
-                thumbsReactedByViewer
-                  ? "bg-primary/15 text-foreground"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                "inline-flex rounded-full bg-muted/50 p-1",
+                hasManyReactionTypes && "max-w-[220px] overflow-x-auto scrollbar-hide"
               )}
             >
-              <span>👍</span>
-              <span>{thumbsCount}</span>
-            </button>
+              <div className="inline-flex items-center gap-1">
+                {reactionPillItems.map((reaction) => (
+                  <button
+                    key={`${comment.id}:${reaction.emoji}`}
+                    type="button"
+                    onClick={() => void handleToggleReaction(comment.id, reaction.emoji)}
+                    disabled={!viewerUserId || pendingReactionKey === `${comment.id}:${reaction.emoji}`}
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <span>{reaction.emoji}</span>
+                    <span>{reaction.count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -411,39 +446,21 @@ function ChangeComments({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <span className="text-muted-foreground/50">•</span>
+            {depth === 0 && (
+              <>
+                <span className="text-muted-foreground/50">•</span>
 
-            <button
-              type="button"
-              onClick={() => setReplyingToCommentId(comment.id)}
-              disabled={!viewerUserId}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              Reply
-            </button>
-          </div>
-
-          {extraReactions.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {extraReactions.map((reaction) => (
                 <button
-                  key={`${comment.id}-${reaction.emoji}`}
                   type="button"
-                  onClick={() => void handleToggleReaction(comment.id, reaction.emoji)}
-                  disabled={!viewerUserId || pendingReactionKey === `${comment.id}:${reaction.emoji}`}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors",
-                    reaction.reactedByViewer
-                      ? "bg-primary/15 text-foreground"
-                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
+                  onClick={() => setReplyingToCommentId(comment.id)}
+                  disabled={!viewerUserId}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
-                  <span>{reaction.emoji}</span>
-                  <span>{reaction.count}</span>
+                  Reply
                 </button>
-              ))}
-            </div>
-          )}
+              </>
+            )}
+          </div>
 
           {isReplyComposerOpen && (
             <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
@@ -508,36 +525,56 @@ function ChangeComments({
         }}
         className="text-xs font-medium text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
       >
-        {isExpanded ? 'Hide' : 'Show'} {topLevelComments.length} {topLevelComments.length === 1 ? 'comment' : 'comments'}
+        {isExpanded ? 'Hide' : 'Show'} {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
       </button>
+      <div
+        aria-hidden={!isExpanded}
+        className={cn(
+          "grid overflow-hidden transition-[grid-template-rows,opacity,transform] duration-300 ease-out",
+          isExpanded
+            ? "grid-rows-[1fr] opacity-100 translate-y-0"
+            : "grid-rows-[0fr] opacity-0 -translate-y-1"
+        )}
+      >
+        <div className="min-h-0">
+          <div className="relative min-h-12">
+            {comments === undefined ? (
+              <Shimmer className="text-xs text-muted-foreground">Loading comments…</Shimmer>
+            ) : comments.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No comments yet.</p>
+            ) : (
+              <>
+                <div className="absolute left-[19px] top-0 bottom-0 flex flex-col items-center pointer-events-none">
+                  <div className="w-2 h-2 rounded-full bg-border shrink-0" />
+                  <div
+                    className="w-px flex-1 border-l border-dashed border-border"
+                    style={{
+                      maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+                      WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+                    }}
+                  />
+                </div>
 
-      {isExpanded && (
-        <div className="relative">
-          <div className="absolute left-[19px] top-0 bottom-0 flex flex-col items-center pointer-events-none">
-            <div className="w-2 h-2 rounded-full bg-border shrink-0" />
-            <div
-              className="w-px flex-1 border-l border-dashed border-border"
-              style={{
-                maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
-              }}
-            />
-          </div>
-
-          <div className="space-y-0 pl-12">
-            {topLevelComments.map((comment) => renderComment(comment, 0))}
+                <div className="space-y-0 pl-12">
+                  {topLevelComments.map((comment) => renderComment(comment, 0))}
+                </div>
+              </>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
-}
+})
+ChangeComments.displayName = "ChangeComments"
 
 export function ChangesPage() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const { currentOrganization, convexUserId } = useAuth()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
+  const [selectionWasUserDriven, setSelectionWasUserDriven] = useState(false)
+  const [backgroundPreloadIds, setBackgroundPreloadIds] = useState<Id<"fileChanges">[]>([])
   const selectedUserId = searchParams.get('userId')
 
   // Get Convex organization
@@ -570,7 +607,10 @@ export function ChangesPage() {
   }, [activity, selectedUserId])
 
   // Get comment counts for all changes
-  const changeIds = filteredActivity?.map(item => item.id as Id<"fileChanges">) || []
+  const changeIds = useMemo(
+    () => filteredActivity?.map((item) => item.id as Id<"fileChanges">) ?? [],
+    [filteredActivity]
+  )
   const commentCounts = useQuery(
     api.activity.getCommentCountsForChanges,
     changeIds.length > 0 ? { changeIds } : 'skip'
@@ -584,6 +624,15 @@ export function ChangesPage() {
   const [cachedSelectedChange, setCachedSelectedChange] = useState<SelectedChangeSummary | null>(null)
   const displayedSelectedChange = selectedChange ?? cachedSelectedChange
   const isSelectedChangeLoading = Boolean(selectedChangeId) && selectedChange === undefined
+  const groupedActivity = useMemo(
+    () => (filteredActivity ? groupActivityByDate(filteredActivity) : []),
+    [filteredActivity]
+  )
+  const latestChangeId = filteredActivity?.[0]?.id as Id<"fileChanges"> | undefined
+  const backgroundPreloadIdSet = useMemo(
+    () => new Set(backgroundPreloadIds.map((id) => id.toString())),
+    [backgroundPreloadIds]
+  )
 
   useEffect(() => {
     if (!selectedChangeId) {
@@ -604,6 +653,7 @@ export function ChangesPage() {
   // Auto-select the most recent change when activity loads
   useEffect(() => {
     if (!filteredActivity || filteredActivity.length === 0) {
+      setSelectionWasUserDriven(false)
       setSelectedChangeId(null)
       return
     }
@@ -613,9 +663,90 @@ export function ChangesPage() {
       : false
 
     if (selectedChangeId === null || !selectedStillVisible) {
+      setSelectionWasUserDriven(false)
       setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
     }
   }, [filteredActivity, selectedChangeId])
+
+  useEffect(() => {
+    if (!filteredActivity || filteredActivity.length === 0 || !latestChangeId) {
+      setBackgroundPreloadIds([])
+      return
+    }
+
+    const deferredIds = filteredActivity
+      .map((item) => item.id as Id<"fileChanges">)
+      .filter((id) => id !== latestChangeId)
+
+    if (deferredIds.length === 0) {
+      setBackgroundPreloadIds([])
+      return
+    }
+
+    setBackgroundPreloadIds([])
+
+    const preloadBatchSize = 6
+    let cursor = 0
+    let cancelled = false
+    const canUseIdleCallbacks =
+      typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function" &&
+      typeof window.cancelIdleCallback === "function"
+    const idleHandles: number[] = []
+    const timeoutHandles: Array<ReturnType<typeof setTimeout>> = []
+
+    const preloadNextBatch = () => {
+      if (cancelled || cursor >= deferredIds.length) return
+
+      const batch = deferredIds.slice(cursor, cursor + preloadBatchSize)
+      cursor += preloadBatchSize
+
+      setBackgroundPreloadIds((current) => {
+        if (batch.length === 0) return current
+        const existing = new Set(current.map((id) => id.toString()))
+        const next = [...current]
+        for (const id of batch) {
+          const key = id.toString()
+          if (!existing.has(key)) {
+            existing.add(key)
+            next.push(id)
+          }
+        }
+        return next
+      })
+
+      scheduleNextBatch()
+    }
+
+    const scheduleNextBatch = () => {
+      if (cancelled || cursor >= deferredIds.length) return
+      if (canUseIdleCallbacks) {
+        const handle = window.requestIdleCallback(
+          () => preloadNextBatch(),
+          { timeout: 1200 }
+        )
+        idleHandles.push(handle)
+        return
+      }
+
+      const timeoutHandle = globalThis.setTimeout(() => preloadNextBatch(), 120)
+      timeoutHandles.push(timeoutHandle)
+    }
+
+    scheduleNextBatch()
+
+    return () => {
+      cancelled = true
+      if (canUseIdleCallbacks) {
+        for (const handle of idleHandles) {
+          window.cancelIdleCallback(handle)
+        }
+      }
+      for (const handle of timeoutHandles) {
+        globalThis.clearTimeout(handle)
+      }
+    }
+  }, [filteredActivity, latestChangeId])
 
   // Mark sync feed as seen when page loads
   useEffect(() => {
@@ -725,7 +856,7 @@ export function ChangesPage() {
                       </Button>
                     </div>
                   )}
-                  {groupActivityByDate(filteredActivity).map((group) => (
+                  {groupedActivity.map((group) => (
                     <div key={group.dateHeader}>
                       {/* Date Header */}
                       <div className="flex items-center gap-3 mb-3">
@@ -737,10 +868,19 @@ export function ChangesPage() {
 
                       {/* Items for this date */}
                       <div className="space-y-1">
-                        {group.items.map((item) => (
-                          <div key={item.id}>
+                        {group.items.map((item) => {
+                          const rowChangeId = item.id as Id<"fileChanges">
+                          const shouldPreloadRowComments =
+                            rowChangeId === latestChangeId ||
+                            backgroundPreloadIdSet.has(rowChangeId.toString())
+
+                          return (
+                            <div key={item.id}>
                             <div
-                              onClick={() => setSelectedChangeId(item.id as Id<"fileChanges">)}
+                              onClick={() => {
+                                setSelectionWasUserDriven(true)
+                                setSelectedChangeId(rowChangeId)
+                              }}
                               className={`
                                 flex items-start gap-3 py-2 px-3 rounded-full cursor-pointer transition-colors
                                 ${selectedChangeId === item.id
@@ -810,12 +950,17 @@ export function ChangesPage() {
                             {/* Comments under this change */}
                             {commentCounts && commentCounts[item.id] > 0 && (
                               <ChangeComments
-                                changeId={item.id as Id<"fileChanges">}
+                                changeId={rowChangeId}
                                 viewerUserId={convexUserId ?? null}
+                                commentCount={commentCounts[item.id]}
+                                isSelected={selectedChangeId === item.id}
+                                shouldPreload={shouldPreloadRowComments}
+                                expandOnSelect={selectionWasUserDriven && selectedChangeId === item.id}
                               />
                             )}
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   ))}

@@ -234,6 +234,9 @@ export const addComment = mutation({
       if (parentComment.changeId !== changeId) {
         throw new Error("Parent comment must belong to the same change")
       }
+      if (parentComment.parentCommentId) {
+        throw new Error("Only one nested reply level is supported")
+      }
     }
 
     const userName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email
