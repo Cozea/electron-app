@@ -6,6 +6,46 @@ import xxhashInit, { type XXHashAPI } from 'xxhash-wasm'
 let xxhasher: XXHashAPI | null = null
 
 const BATCH_SIZE = 50
+const DEFAULT_EXCLUDED_DIRECTORIES = [
+  'node_modules',
+  '.git',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.svelte-kit',
+  '.vercel',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.turbo',
+  '.cache',
+  '.parcel-cache',
+  '.pnpm-store',
+  '.yarn',
+  '__pycache__',
+  'tmp',
+  'temp',
+  'logs',
+  'vendor',
+  'target',
+]
+const EXCLUDED_FILE_SUFFIXES = [
+  '.log',
+  '.tmp',
+  '.temp',
+  '.swp',
+  '.swo',
+  '.pid',
+  '/prisma/dev.db',
+  '/prisma/dev.db-wal',
+  '/prisma/dev.db-shm',
+]
+
+function shouldExcludeFile(relativePath: string): boolean {
+  const normalizedLower = relativePath.replace(/\\/g, '/').toLowerCase()
+  return EXCLUDED_FILE_SUFFIXES.some((suffix) => normalizedLower.endsWith(suffix))
+}
 
 interface ManifestRequest {
   type: 'getManifest' | 'getManifestIncremental'
@@ -39,8 +79,9 @@ async function generateManifest(
 ): Promise<ManifestResult> {
   if (!xxhasher) throw new Error('xxhash not initialized in worker')
 
-  const defaultExcludes = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
-  const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])])
+  const excludes = new Set(
+    [...DEFAULT_EXCLUDED_DIRECTORIES, ...(excludePatterns || [])].map((name) => name.toLowerCase())
+  )
   const previousByPath = previousEntries ? new Map(Object.entries(previousEntries)) : null
   const previousDirs = previousDirMtimes ?? {}
   const previousByDir = new Map<string, ManifestEntry[]>()
@@ -104,8 +145,10 @@ async function generateManifest(
     }
 
     for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue
+
       // Skip excluded directories/files
-      if (excludes.has(entry.name)) continue
+      if (excludes.has(entry.name.toLowerCase())) continue
       // Skip hidden files except .env.example
       if (entry.name.startsWith('.') && entry.name !== '.env.example') continue
 
@@ -116,6 +159,7 @@ async function generateManifest(
         await walkDir(fullPath, relPath)
       } else if (entry.isFile()) {
         const normalized = relPath.replace(/\\/g, '/')
+        if (shouldExcludeFile(normalized)) continue
         filePaths.push(normalized)
       }
     }
@@ -130,6 +174,7 @@ async function generateManifest(
     const batch = filePaths.slice(i, i + BATCH_SIZE)
     const batchResults = await Promise.all(
       batch.map(async (relPath) => {
+        if (shouldExcludeFile(relPath)) return null
         const fullPath = path.join(projectPath, relPath)
         try {
           const stats = await stat(fullPath)

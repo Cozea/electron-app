@@ -30,7 +30,6 @@ import {
   type FrameworkInfo,
   type PackageManager,
 } from '@/utils/projectDetector'
-import { scanForRoutes } from '@/utils/routeScanner'
 
 interface RepoScanStepProps {
   repoSource: WizardRepoSource
@@ -58,6 +57,29 @@ const FRAMEWORK_ICONS: Record<string, React.ComponentType<{ className?: string }
   nuxt: IconBrandNuxt,
   sveltekit: IconBrandSvelte,
   'vite-svelte': IconBrandSvelte,
+}
+
+function normalizePath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/')
+}
+
+function isComponentFile(pathValue: string): boolean {
+  const normalized = normalizePath(pathValue)
+  return (
+    normalized.includes('/components/') &&
+    /\.(tsx|jsx|vue|svelte)$/i.test(normalized)
+  )
+}
+
+function isPageFile(pathValue: string): boolean {
+  const normalized = normalizePath(pathValue)
+  return (
+    /\/app\/.*\/page\.(tsx|jsx|ts|js)$/i.test(normalized) ||
+    /\/pages\/.*\.(tsx|jsx|ts|js|vue|svelte|astro|md|mdx)$/i.test(normalized) ||
+    /\/src\/pages\/.*\.(tsx|jsx|ts|js|vue|svelte|astro|md|mdx)$/i.test(normalized) ||
+    /\/src\/routes\/.*\/\+page\.svelte$/i.test(normalized) ||
+    /\/app\/routes\/.*\.(tsx|jsx|ts|js)$/i.test(normalized)
+  )
 }
 
 export function RepoScanStep({
@@ -124,10 +146,21 @@ export function RepoScanStep({
 
       const packageManager = await detectPackageManager(projectPath)
 
-      setStatusMessage('Scanning routes...')
+      setStatusMessage('Scanning project files...')
       setProgress(60)
-
-      const routeInfo = await scanForRoutes(projectPath)
+      let pageCount = 0
+      let componentCount = 0
+      try {
+        const listResult = await window.electronAPI.project.listFiles({ projectPath })
+        if (listResult.success && listResult.files) {
+          for (const file of listResult.files) {
+            if (isComponentFile(file.path)) componentCount++
+            if (isPageFile(file.path)) pageCount++
+          }
+        }
+      } catch {
+        // Ignore list errors and keep defaults
+      }
 
       setStatusMessage('Analyzing dependencies...')
       setProgress(80)
@@ -176,19 +209,6 @@ export function RepoScanStep({
         // Ignore package.json parse errors
       }
 
-      // Count components
-      let componentCount = 0
-      try {
-        const manifest = await window.electronAPI.sync.getLocalManifest({
-          projectPath,
-        })
-        componentCount = manifest.manifest.filter(
-          (f) => f.path.includes('/components/') && (f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
-        ).length
-      } catch {
-        // Ignore count errors
-      }
-
       setProgress(100)
       setPhase('complete')
       setStatusMessage('Scan complete!')
@@ -199,7 +219,7 @@ export function RepoScanStep({
         styling,
         database,
         testingFramework,
-        pageCount: routeInfo.routes.length,
+        pageCount,
         componentCount,
       }
 
@@ -211,7 +231,7 @@ export function RepoScanStep({
         styling,
         database,
         testingFramework,
-        pageCount: routeInfo.routes.length,
+        pageCount,
         componentCount,
       })
     } catch (error) {

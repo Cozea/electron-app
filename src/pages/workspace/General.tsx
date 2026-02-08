@@ -187,174 +187,190 @@ export function General() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
     >
-      <div className="max-w-2xl space-y-6">
-        {/* Workspace Details */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="space-y-4 pt-0">
-            <div className="space-y-2">
-              <Label htmlFor="name">Workspace Name</Label>
-              <Input
-                id="name"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="slug">Workspace URL</Label>
-              <div className="flex items-stretch">
-                <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
-                  app.cozea.io/
-                </span>
+      <div className="flex min-h-[calc(100vh-8rem)] gap-0">
+        <div className="w-full max-w-2xl space-y-6 pr-0 xl:pr-10">
+          {/* Workspace Details */}
+          <Card className="border-none shadow-none bg-transparent">
+            <CardContent className="space-y-4 pt-0">
+              <div className="space-y-2">
+                <Label htmlFor="name">Workspace Name</Label>
                 <Input
-                  id="slug"
-                  value={workspaceSlug}
-                  onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  className="rounded-l-none"
+                  id="name"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                This is your workspace's unique identifier
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="A short description of your workspace"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            {saveError && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
-                <X className="h-4 w-4" />
-                {saveError}
-              </div>
-            )}
-
-            {saveSuccess && (
-              <div className="flex items-center gap-2 text-sm text-emerald-600">
-                <Check className="h-4 w-4" />
-                Changes saved successfully
-              </div>
-            )}
-
-            <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Workspace Info */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle>Workspace Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between py-2">
-              <span className="text-muted-foreground">Workspace ID</span>
-              <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
-                {convexOrg?._id}
-              </code>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between py-2">
-              <span className="text-muted-foreground">Created</span>
-              <span>{convexOrg?.createdAt ? formatDate(convexOrg.createdAt) : 'Unknown'}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Danger Zone */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Danger Zone
-            </CardTitle>
-            <CardDescription>
-              Irreversible and destructive actions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-5 rounded-2xl bg-destructive/5">
-              <div>
-                <h4 className="font-medium">Delete Workspace</h4>
-                <p className="text-sm text-muted-foreground">
-                  Permanently delete this workspace and all its data
+              <div className="space-y-2">
+                <Label htmlFor="slug">Workspace URL</Label>
+                <div className="flex items-stretch">
+                  <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
+                    app.cozea.io/
+                  </span>
+                  <Input
+                    id="slug"
+                    value={workspaceSlug}
+                    onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    className="rounded-l-none"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This is your workspace's unique identifier
                 </p>
               </div>
-              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="destructive" className="gap-2">
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Delete Workspace</DialogTitle>
-                    <DialogDescription>
-                      This action cannot be undone. All projects, data, and members will be permanently removed.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>
-                        Type <span className="font-semibold">{convexOrg?.name}</span> to confirm
-                      </Label>
-                      <Input
-                        placeholder={convexOrg?.name}
-                        value={deleteConfirmName}
-                        onChange={(e) => setDeleteConfirmName(e.target.value)}
-                      />
-                    </div>
-                    {deleteError && (
-                      <div className="flex items-center gap-2 text-sm text-destructive">
-                        <X className="h-4 w-4" />
-                        {deleteError}
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="A short description of your workspace"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {saveError && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <X className="h-4 w-4" />
+                  {saveError}
+                </div>
+              )}
+
+              {saveSuccess && (
+                <div className="flex items-center gap-2 text-sm text-emerald-600">
+                  <Check className="h-4 w-4" />
+                  Changes saved successfully
+                </div>
+              )}
+
+              <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Workspace Info */}
+          <Card className="border-none shadow-none bg-transparent">
+            <CardHeader>
+              <CardTitle>Workspace Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between py-2">
+                <span className="text-muted-foreground">Workspace ID</span>
+                <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
+                  {convexOrg?._id}
+                </code>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between py-2">
+                <span className="text-muted-foreground">Created</span>
+                <span>{convexOrg?.createdAt ? formatDate(convexOrg.createdAt) : 'Unknown'}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Danger Zone */}
+          <Card className="border-none shadow-none bg-transparent">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Danger Zone
+              </CardTitle>
+              <CardDescription>
+                Irreversible and destructive actions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-5 rounded-2xl bg-destructive/5">
+                <div>
+                  <h4 className="font-medium">Delete Workspace</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Permanently delete this workspace and all its data
+                  </p>
+                </div>
+                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="destructive" className="gap-2">
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Delete Workspace</DialogTitle>
+                      <DialogDescription>
+                        This action cannot be undone. All projects, data, and members will be permanently removed.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>
+                          Type <span className="font-semibold">{convexOrg?.name}</span> to confirm
+                        </Label>
+                        <Input
+                          placeholder={convexOrg?.name}
+                          value={deleteConfirmName}
+                          onChange={(e) => setDeleteConfirmName(e.target.value)}
+                        />
                       </div>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setDeleteDialogOpen(false)
-                        setDeleteConfirmName('')
-                        setDeleteError(null)
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={handleDelete}
-                      disabled={isDeleting || deleteConfirmName !== convexOrg?.name}
-                    >
-                      {isDeleting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Deleting...
-                        </>
-                      ) : (
-                        'Delete Workspace'
+                      {deleteError && (
+                        <div className="flex items-center gap-2 text-sm text-destructive">
+                          <X className="h-4 w-4" />
+                          {deleteError}
+                        </div>
                       )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardContent>
-        </Card>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setDeleteDialogOpen(false)
+                          setDeleteConfirmName('')
+                          setDeleteError(null)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handleDelete}
+                        disabled={isDeleting || deleteConfirmName !== convexOrg?.name}
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Deleting...
+                          </>
+                        ) : (
+                          'Delete Workspace'
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="relative hidden xl:block min-w-0 flex-1 pl-6">
+          <div className="absolute left-0 top-3 bottom-3 w-px bg-gradient-to-b from-transparent via-border/80 to-transparent" />
+          <div
+            className="h-full min-h-[560px] rounded-2xl bg-sidebar/35"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--muted-foreground) 38%, transparent) 1.15px, transparent 0)',
+              backgroundSize: '20px 20px',
+            }}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/40 via-transparent to-background/55" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/35 via-transparent to-background/20" />
+        </div>
       </div>
     </DashboardLayout>
   )

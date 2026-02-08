@@ -25,6 +25,7 @@ let workerReady = false
 let workerReadyPromise: Promise<void> | null = null
 const pendingRequests = new Map<string, PendingRequest>()
 let requestId = 0
+const MANIFEST_WORKER_TIMEOUT_MS = 180000
 
 function getWorkerPath(): string {
   // In development, the worker is in electron/workers
@@ -129,13 +130,13 @@ export async function getManifestFromWorker(
       },
     })
 
-    // Timeout after 60 seconds
+    // Timeout after 180 seconds
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         reject(new Error('Worker request timed out'))
       }
-    }, 60000)
+    }, MANIFEST_WORKER_TIMEOUT_MS)
   })
 }
 
@@ -167,13 +168,13 @@ export async function getManifestFromWorkerIncremental(
       },
     })
 
-    // Timeout after 60 seconds
+    // Timeout after 180 seconds
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         reject(new Error('Worker request timed out'))
       }
-    }, 60000)
+    }, MANIFEST_WORKER_TIMEOUT_MS)
   })
 }
 
