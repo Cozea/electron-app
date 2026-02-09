@@ -33,6 +33,11 @@ interface LineDiffStats {
   removed: number
 }
 
+const TOOL_DIFF_MAX_HEIGHT = 210
+const TOOL_DIFF_MIN_HEIGHT = 84
+const TOOL_DIFF_LINE_HEIGHT = 22
+const TOOL_DIFF_VERTICAL_PADDING = 24
+
 /**
  * Extract diff data from tool input based on tool type
  */
@@ -138,6 +143,24 @@ function getDisplayFileName(filePath: string): string {
   return parts[parts.length - 1] || filePath
 }
 
+function getAdaptivePanelHeight(diff: ToolDiffData, maxHeight: number): number {
+  const lineCount = Math.max(
+    splitLines(diff.original).length,
+    splitLines(diff.modified).length,
+    1
+  )
+  const naturalHeight = lineCount * TOOL_DIFF_LINE_HEIGHT + TOOL_DIFF_VERTICAL_PADDING
+  const clampedMaxHeight = Math.min(
+    TOOL_DIFF_MAX_HEIGHT,
+    Math.max(TOOL_DIFF_MIN_HEIGHT, maxHeight)
+  )
+
+  return Math.min(
+    clampedMaxHeight,
+    Math.max(TOOL_DIFF_MIN_HEIGHT, naturalHeight)
+  )
+}
+
 interface DiffCardProps {
   diff: ToolDiffData
   maxHeight: number
@@ -151,7 +174,7 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
 
   const hasStats = stats.added > 0 || stats.removed > 0
   const fileName = getDisplayFileName(diff.filePath)
-  const panelHeight = Math.min(210, Math.max(160, maxHeight))
+  const panelHeight = getAdaptivePanelHeight(diff, maxHeight)
   const panelSurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
   const panelBodySurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
   const cardStyle: CSSProperties = {
