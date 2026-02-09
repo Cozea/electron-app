@@ -60,6 +60,7 @@ import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachme
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 
@@ -674,6 +675,23 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return []
   }, [])
 
+  const enrichToolOutputWithDiagnostics = useCallback(async (
+    toolName: string,
+    input: Record<string, unknown>,
+    output: unknown
+  ) => {
+    if (!projectPath || !WRITE_TOOLS.has(toolName)) return output
+    const filePaths = getToolFilePaths(toolName, input)
+    if (filePaths.length === 0) return output
+
+    const summary = await collectToolDiagnosticsSummary({
+      projectPath,
+      filePaths,
+    })
+
+    return attachToolDiagnosticsToOutput(output, summary)
+  }, [getToolFilePaths, projectPath])
+
   const formatLockConflictError = useCallback((
     filePath: string,
     details: { lockedByName?: string | null; expiresAt?: number | null; status?: string | null }
@@ -1281,10 +1299,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     if (result.success) {
+      const enrichedOutput = await enrichToolOutputWithDiagnostics(
+        toolName,
+        toolInput,
+        result.output
+      )
       void addToolOutput({
         tool: toolName,
         toolCallId,
-        output: result.output,
+        output: enrichedOutput,
       })
     } else {
       void addToolOutput({
@@ -1298,6 +1321,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     addToolOutput,
     conversationId,
     getToolFilePaths,
+    enrichToolOutputWithDiagnostics,
     isToolAllowedInContext,
     localRuntime,
     projectPath,
