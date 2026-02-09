@@ -81,8 +81,8 @@ body {
 }
 
 .dark .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: rgb(10 10 10 / 0.58) !important;
-  background-color: color-mix(in srgb, var(--sidebar) 44%, transparent) !important;
+  background-color: rgb(10 10 10 / 0.6) !important;
+  background-color: color-mix(in srgb, var(--sidebar) 49%, transparent) !important;
 }
 
 @supports not (backdrop-filter: blur(1px)) {

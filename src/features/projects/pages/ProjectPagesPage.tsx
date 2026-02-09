@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation } from 'convex/react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
@@ -121,6 +122,7 @@ export function ProjectPagesPage() {
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
+    const [isFocusedIframeVisible, setIsFocusedIframeVisible] = useState(true)
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -133,6 +135,14 @@ export function ProjectPagesPage() {
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
     const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
+
+    useEffect(() => {
+        if (isFocusedPreview && focusedRoute && serverStatus === 'running' && serverPort) {
+            setIsFocusedIframeVisible(false)
+            return
+        }
+        setIsFocusedIframeVisible(true)
+    }, [isFocusedPreview, focusedRoute, serverStatus, serverPort])
 
     useEffect(() => {
         const el = headerRef.current
@@ -649,6 +659,8 @@ export function ProjectPagesPage() {
 
     // Inject bridge script when iframe loads
     const handleIframeLoad = useCallback(async () => {
+        setIsFocusedIframeVisible(true)
+
         // Reset bridge state before injection
         setBridgeReady(false)
         setBridgeError(null)
@@ -1231,9 +1243,17 @@ export function ProjectPagesPage() {
                 >
                     {/* Content */}
                     <div className="flex-1 overflow-hidden flex flex-col">
+                        <AnimatePresence mode="wait" initial={false}>
                         {routes.length === 0 ? (
                     /* Empty State */
-                    <div className="app-scrollbar flex-1 overflow-y-auto p-6">
+                    <motion.div
+                        key="pages-empty"
+                        initial={{ opacity: 0, y: 8, scale: 0.996 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.998 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className="app-scrollbar flex-1 overflow-y-auto p-6"
+                    >
                         <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                             <FileText className="h-10 w-10 mb-3 opacity-20" />
                             <p>No pages detected in this project.</p>
@@ -1264,16 +1284,23 @@ export function ProjectPagesPage() {
                                 )}
                             </Button>
                         </div>
-                    </div>
+                    </motion.div>
                         ) : isFocusedPreview && focusedRoute ? (
                     /* Focused/Slide View */
-                    <div className="flex-1 flex overflow-hidden min-h-0 min-w-0 bg-sidebar/60">
+                    <motion.div
+                        key="pages-focused"
+                        initial={{ opacity: 0, y: 10, scale: 0.996 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.998 }}
+                        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex-1 flex overflow-hidden min-h-0 min-w-0 bg-sidebar/60"
+                    >
                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                             {/* Preview area */}
                             <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
                                 <div
                                     className={cn(
-                                        "group/focused-preview relative bg-card overflow-hidden transition-all duration-300 shadow-xl rounded-xl border border-border/40",
+                                        "group/focused-preview relative bg-card overflow-hidden rounded-xl border border-border/40 shadow-xl transition-[transform,box-shadow,border-color] duration-300 ease-out",
                                         device === 'desktop' ? "w-full h-full" : "h-full",
                                         device === 'mobile' && "w-[375px]",
                                         device === 'tablet' && "w-[768px]"
@@ -1284,12 +1311,20 @@ export function ProjectPagesPage() {
                                     }}
                                 >
                                     {serverStatus === 'running' && serverPort ? (
-                                        <iframe
-                                            ref={iframeRef}
-                                            src={`http://localhost:${serverPort}${focusedRoute.path}`}
-                                            className="w-full h-full border-none"
-                                            onLoad={handleIframeLoad}
-                                        />
+                                        <div className="relative h-full w-full bg-sidebar/40">
+                                            <iframe
+                                                ref={iframeRef}
+                                                src={`http://localhost:${serverPort}${focusedRoute.path}`}
+                                                className={cn(
+                                                    "h-full w-full border-none transition-opacity duration-300 ease-out",
+                                                    isFocusedIframeVisible ? "opacity-100" : "opacity-0"
+                                                )}
+                                                onLoad={handleIframeLoad}
+                                            />
+                                            {!isFocusedIframeVisible && (
+                                                <div className="pointer-events-none absolute inset-0 bg-muted/35 backdrop-blur-[1px]" />
+                                            )}
+                                        </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                                             <AppWindow className="h-16 w-16 mb-4 opacity-20" />
@@ -1445,10 +1480,17 @@ export function ProjectPagesPage() {
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
                         ) : (
                     /* Grid View */
-                    <div className="app-scrollbar flex-1 overflow-y-auto p-6 bg-sidebar/60">
+                    <motion.div
+                        key="pages-grid"
+                        initial={{ opacity: 0, y: 8, scale: 0.996 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.998 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className="app-scrollbar flex-1 overflow-y-auto p-6 bg-sidebar/60"
+                    >
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {routes.map((route, index) => {
                                 const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
@@ -1544,8 +1586,9 @@ export function ProjectPagesPage() {
                                 )
                             })}
                         </div>
-                    </div>
+                    </motion.div>
                         )}
+                        </AnimatePresence>
                     </div>
 
                     {/* Terminal Panel */}

@@ -107,7 +107,7 @@ const NAV_GROUPS = [
     {
         title: "Development",
         items: [
-            { title: "Dependencies", icon: Box },
+            { title: "Dependencies", icon: Box, beta: true },
             { title: "Database", icon: Database, alpha: true },
             { title: "Backend Studio", icon: Server, alpha: true }
         ]
@@ -430,6 +430,11 @@ export function ProjectSidebar({
                                                         {'alpha' in item && item.alpha && (
                                                             <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
                                                                 alpha
+                                                            </Badge>
+                                                        )}
+                                                        {'beta' in item && item.beta && (
+                                                            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                                                                beta
                                                             </Badge>
                                                         )}
                                                         {hasSecondaryPanel && (
