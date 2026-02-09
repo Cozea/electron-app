@@ -1,7 +1,7 @@
 type DiagnosticSource = 'tsserver' | 'eslint' | 'runtime' | 'build'
 type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
-interface RawDiagnostic {
+export interface PipelineDiagnostic {
   source: DiagnosticSource
   severity: DiagnosticSeverity
   message: string
@@ -35,6 +35,13 @@ interface CollectToolDiagnosticsOptions {
   projectPath?: string | null
   filePaths: string[]
   timeoutMs?: number
+  maxItems?: number
+}
+
+interface SummarizeLintDiagnosticsOptions {
+  projectPath: string
+  diagnostics: PipelineDiagnostic[]
+  filePaths?: string[]
   maxItems?: number
 }
 
@@ -74,45 +81,35 @@ function toProjectRelativePath(projectPath: string, filePath: string): string {
   return normalizedFilePath
 }
 
-export async function collectToolDiagnosticsSummary({
+export function summarizeLintDiagnostics({
   projectPath,
+  diagnostics,
   filePaths,
-  timeoutMs = 900,
   maxItems = 8,
-}: CollectToolDiagnosticsOptions): Promise<ToolDiagnosticsSummary | null> {
-  if (!projectPath || !window.electronAPI?.diagnostics) return null
+}: SummarizeLintDiagnosticsOptions): ToolDiagnosticsSummary | null {
+  const normalizedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
+  if (normalizedDiagnostics.length === 0) return null
 
-  const checkedPaths = Array.from(
-    new Set(
-      filePaths
-        .filter((filePath): filePath is string => typeof filePath === 'string')
-        .map((filePath) => filePath.trim())
-        .filter(Boolean)
-    )
-  )
-
-  if (checkedPaths.length === 0) return null
-
-  const absolutePathSet = new Set(
-    checkedPaths.map((filePath) => toAbsoluteProjectPath(projectPath, filePath))
-  )
-
-  const response = await window.electronAPI.diagnostics.checkFiles({
-    projectPath,
-    filePaths: checkedPaths,
-    timeoutMs,
-  })
-
-  if (!response.success) return null
-
-  const diagnostics = Array.isArray(response.diagnostics)
-    ? response.diagnostics as RawDiagnostic[]
+  const checkedPaths = filePaths && filePaths.length > 0
+    ? Array.from(
+        new Set(
+          filePaths
+            .filter((filePath): filePath is string => typeof filePath === 'string')
+            .map((filePath) => filePath.trim())
+            .filter(Boolean)
+        )
+      )
     : []
 
-  const lintDiagnostics = diagnostics
+  const absolutePathSet = checkedPaths.length > 0
+    ? new Set(checkedPaths.map((filePath) => toAbsoluteProjectPath(projectPath, filePath)))
+    : null
+
+  const lintDiagnostics = normalizedDiagnostics
     .filter((item) => LINT_SOURCES.has(item.source))
     .filter((item) => {
       if (!item.file) return false
+      if (!absolutePathSet) return true
       const normalized = normalizePath(item.file)
       return absolutePathSet.has(normalized)
     })
@@ -153,6 +150,45 @@ export async function collectToolDiagnosticsSummary({
     items,
     truncated: lintDiagnostics.length > items.length,
   }
+}
+
+export async function collectToolDiagnosticsSummary({
+  projectPath,
+  filePaths,
+  timeoutMs = 900,
+  maxItems = 8,
+}: CollectToolDiagnosticsOptions): Promise<ToolDiagnosticsSummary | null> {
+  if (!projectPath || !window.electronAPI?.diagnostics) return null
+
+  const checkedPaths = Array.from(
+    new Set(
+      filePaths
+        .filter((filePath): filePath is string => typeof filePath === 'string')
+        .map((filePath) => filePath.trim())
+        .filter(Boolean)
+    )
+  )
+
+  if (checkedPaths.length === 0) return null
+
+  const response = await window.electronAPI.diagnostics.checkFiles({
+    projectPath,
+    filePaths: checkedPaths,
+    timeoutMs,
+  })
+
+  if (!response.success) return null
+
+  const diagnostics = Array.isArray(response.diagnostics)
+    ? response.diagnostics as PipelineDiagnostic[]
+    : []
+
+  return summarizeLintDiagnostics({
+    projectPath,
+    diagnostics,
+    filePaths: checkedPaths,
+    maxItems,
+  })
 }
 
 export function attachToolDiagnosticsToOutput(

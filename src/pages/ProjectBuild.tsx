@@ -27,6 +27,11 @@ import { BuildPreviewPanel } from '@/components/builder/BuildPreviewPanel'
 import { BuilderControlsPill } from '@/components/builder/BuilderControlsPill'
 import { BillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { useDevServerManager } from '@/hooks/useDevServerManager'
+import {
+  summarizeLintDiagnostics,
+  type PipelineDiagnostic,
+  type ToolDiagnosticsSummary,
+} from '@/lib/diagnostics/toolDiagnosticsPipeline'
 
 // MIME type mapping for file extensions
 const MIME_TYPES: Record<string, string> = {
@@ -80,6 +85,24 @@ async function computeHash(content: string): Promise<string> {
   const bytes = encoder.encode(content)
   const hash = await crypto.subtle.digest('SHA-256', bytes)
   return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function formatCount(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? '' : 's'}`
+}
+
+function formatLintSummary(summary: ToolDiagnosticsSummary): string {
+  const parts: string[] = []
+  if (summary.errors > 0) parts.push(formatCount(summary.errors, 'error'))
+  if (summary.warnings > 0) parts.push(formatCount(summary.warnings, 'warning'))
+  if (summary.infos > 0) parts.push(formatCount(summary.infos, 'info'))
+  return parts.length > 0 ? parts.join(', ') : 'no issues'
+}
+
+function formatDiagnosticLocation(file: string, line?: number, column?: number): string {
+  if (line && column) return `${file}:${line}:${column}`
+  if (line) return `${file}:${line}`
+  return file
 }
 
 export function ProjectBuild() {
@@ -354,7 +377,50 @@ export function ProjectBuild() {
     addLog('AI generation complete!')
     setIsAIGenerating(false)
     setHasError(false) // Clear any stale error state from recovered errors
-    setStatusMessage('Build complete!')
+    let completionStatusMessage = 'Build complete!'
+
+    if (localPath && window.electronAPI?.diagnostics) {
+      try {
+        const snapshot = await window.electronAPI.diagnostics.getSnapshot({ projectPath: localPath })
+        if (!snapshot.success) {
+          if (snapshot.error) {
+            addLog(`Final diagnostics unavailable: ${snapshot.error}`)
+          }
+        } else {
+          const diagnostics = Array.isArray(snapshot.diagnostics)
+            ? snapshot.diagnostics as PipelineDiagnostic[]
+            : []
+          const summary = summarizeLintDiagnostics({
+            projectPath: localPath,
+            diagnostics,
+            maxItems: 8,
+          })
+
+          if (summary) {
+            const summaryText = formatLintSummary(summary)
+            addLog(`Final diagnostics: ${summaryText}`)
+            summary.items.forEach((item) => {
+              const location = formatDiagnosticLocation(item.file, item.line, item.column)
+              const code = item.code ? ` (${item.code})` : ''
+              addLog(`- [${item.source}] ${item.severity.toUpperCase()} ${location}: ${item.message}${code}`)
+            })
+            if (summary.truncated) {
+              addLog(`...and ${summary.total - summary.items.length} more diagnostics`)
+            }
+            if (summary.errors > 0 || summary.warnings > 0) {
+              completionStatusMessage = `Build complete with ${summaryText}`
+            }
+          } else {
+            addLog('Final diagnostics: no TypeScript or ESLint issues detected')
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        addLog(`Final diagnostics check failed: ${message}`)
+      }
+    }
+
+    setStatusMessage(completionStatusMessage)
     setRunStatus('completed')
 
     if (project?._id && runIdRef.current) {
@@ -363,7 +429,7 @@ export function ProjectBuild() {
           projectId: project._id,
           runId: runIdRef.current,
           status: 'completed',
-          statusMessage: 'Build complete!',
+          statusMessage: completionStatusMessage,
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -414,7 +480,7 @@ export function ProjectBuild() {
         capturePreviewScreenshot()
       }, 2000)
     }
-  }, [addLog, project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
+  }, [addLog, localPath, project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
 
   const handleAIError = useCallback((error: string) => {
     addLog(`AI Error: ${error}`)
