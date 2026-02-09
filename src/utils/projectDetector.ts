@@ -191,10 +191,7 @@ interface PackageJson {
   name?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
-  optionalDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
   scripts?: Record<string, string>
-  packageManager?: string
 }
 
 /**
@@ -350,30 +347,11 @@ export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
  * Detect which package manager is used in the project
  */
 export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
-  try {
-    const pkgResult = await window.electronAPI.project.readFile({
-      projectPath,
-      filePath: 'package.json',
-    })
-    if (pkgResult.success && pkgResult.content) {
-      const pkg = JSON.parse(pkgResult.content) as PackageJson
-      const packageManager = (pkg.packageManager ?? '').toLowerCase()
-      if (packageManager.startsWith('pnpm@')) return 'pnpm'
-      if (packageManager.startsWith('yarn@')) return 'yarn'
-      if (packageManager.startsWith('bun@')) return 'bun'
-      if (packageManager.startsWith('npm@')) return 'npm'
-    }
-  } catch {
-    // Fall through to lockfile-based detection.
-  }
-
   const lockFiles: { file: string; manager: PackageManager }[] = [
-    { file: 'bun.lock', manager: 'bun' },
     { file: 'bun.lockb', manager: 'bun' },
     { file: 'pnpm-lock.yaml', manager: 'pnpm' },
     { file: 'yarn.lock', manager: 'yarn' },
     { file: 'package-lock.json', manager: 'npm' },
-    { file: 'npm-shrinkwrap.json', manager: 'npm' },
   ]
 
   for (const { file, manager } of lockFiles) {
@@ -405,71 +383,16 @@ export async function checkDependenciesInstalled(
   projectPath: string,
   packageManager?: PackageManager
 ): Promise<boolean> {
-  const directoryHasNodeModules = async (targetPath: string): Promise<boolean> => {
-    const entries = await window.electronAPI.fs.readDir(targetPath)
-    return entries.some(
+  try {
+    const rootEntries = await window.electronAPI.fs.readDir(projectPath)
+    const hasNodeModules = rootEntries.some(
       (entry) => entry.name === 'node_modules' && entry.type === 'directory'
     )
-  }
-
-  const getParentPath = (targetPath: string): string | null => {
-    const normalized = targetPath.replace(/[\\/]+$/, '')
-    const lastSeparator = Math.max(
-      normalized.lastIndexOf('/'),
-      normalized.lastIndexOf('\\')
-    )
-    if (lastSeparator <= 0) return null
-    return normalized.slice(0, lastSeparator)
-  }
-
-  const hasAnyDependencies = async (): Promise<boolean> => {
-    try {
-      const pkgResult = await window.electronAPI.project.readFile({
-        projectPath,
-        filePath: 'package.json',
-      })
-      if (!pkgResult.success || !pkgResult.content) return true
-
-      const pkg = JSON.parse(pkgResult.content) as PackageJson
-      const dependencyCount =
-        Object.keys(pkg.dependencies ?? {}).length +
-        Object.keys(pkg.devDependencies ?? {}).length +
-        Object.keys(pkg.optionalDependencies ?? {}).length +
-        Object.keys(pkg.peerDependencies ?? {}).length
-
-      return dependencyCount > 0
-    } catch {
-      return true
-    }
-  }
-
-  try {
-    // If there are no dependencies declared, there's nothing to install.
-    const hasDependencies = await hasAnyDependencies()
-    if (!hasDependencies) {
-      return true
-    }
-
-    const hasNodeModules = await directoryHasNodeModules(projectPath)
 
     // Yarn PnP repos can be fully installed without node_modules.
-    const rootEntries = await window.electronAPI.fs.readDir(projectPath)
     const hasYarnPnpArtifacts = rootEntries.some(
       (entry) => entry.name === '.pnp.cjs' || entry.name === '.pnp.js'
     )
-
-    // Monorepos often hoist node_modules to parent directories.
-    if (!hasNodeModules) {
-      let parentPath = getParentPath(projectPath)
-      let levels = 0
-      while (parentPath && levels < 2) {
-        if (await directoryHasNodeModules(parentPath)) {
-          return true
-        }
-        parentPath = getParentPath(parentPath)
-        levels += 1
-      }
-    }
 
     if (packageManager === 'yarn') {
       return hasNodeModules || hasYarnPnpArtifacts
