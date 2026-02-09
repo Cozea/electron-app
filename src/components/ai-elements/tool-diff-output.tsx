@@ -1,7 +1,10 @@
 "use client"
 
-import { useMemo } from 'react'
-import { CodeDiffViewer } from './code-diff-viewer'
+import { Copy } from 'lucide-react'
+import { useMemo, useState, type CSSProperties } from 'react'
+import { Button } from '@/components/ui/button'
+import { CodeMirrorMergeViewer } from '@/features/projects/components/changes/CodeMirrorMergeViewer'
+import { cn } from '@/lib/utils'
 
 export interface ToolDiffData {
   /** File path being edited */
@@ -23,6 +26,11 @@ export interface ToolDiffOutputProps {
   maxHeight?: number
   /** Use inline diff view */
   inline?: boolean
+}
+
+interface LineDiffStats {
+  added: number
+  removed: number
 }
 
 /**
@@ -84,6 +92,120 @@ function extractDiffData(
   }
 }
 
+function splitLines(input: string): string[] {
+  if (!input) return []
+  const normalized = input.replace(/\r\n/g, '\n')
+  const lines = normalized.endsWith('\n')
+    ? normalized.slice(0, -1).split('\n')
+    : normalized.split('\n')
+  return lines
+}
+
+function getLineDiffStats(original: string, modified: string): LineDiffStats {
+  const oldLines = splitLines(original)
+  const newLines = splitLines(modified)
+
+  if (oldLines.length === 0 && newLines.length === 0) {
+    return { added: 0, removed: 0 }
+  }
+
+  // Fast O(n) approximation: trim shared prefix/suffix and count changed middle.
+  let start = 0
+  let oldEnd = oldLines.length - 1
+  let newEnd = newLines.length - 1
+
+  while (start <= oldEnd && start <= newEnd && oldLines[start] === newLines[start]) {
+    start += 1
+  }
+
+  while (oldEnd >= start && newEnd >= start && oldLines[oldEnd] === newLines[newEnd]) {
+    oldEnd -= 1
+    newEnd -= 1
+  }
+
+  const removed = oldEnd >= start ? oldEnd - start + 1 : 0
+  const added = newEnd >= start ? newEnd - start + 1 : 0
+
+  return {
+    added,
+    removed,
+  }
+}
+
+function getDisplayFileName(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  return parts[parts.length - 1] || filePath
+}
+
+interface DiffCardProps {
+  diff: ToolDiffData
+  maxHeight: number
+}
+
+function DiffCard({ diff, maxHeight }: DiffCardProps) {
+  const stats = useMemo(
+    () => getLineDiffStats(diff.original, diff.modified),
+    [diff.modified, diff.original]
+  )
+
+  const hasStats = stats.added > 0 || stats.removed > 0
+  const fileName = getDisplayFileName(diff.filePath)
+  const panelHeight = Math.min(210, Math.max(160, maxHeight))
+  const panelSurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
+  const panelBodySurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
+  const cardStyle: CSSProperties = {
+    backgroundColor: panelSurface,
+    ['--cm-merge-gutter-bg' as string]: panelSurface,
+  }
+
+  return (
+    <div
+      className="overflow-hidden rounded-2xl"
+      style={cardStyle}
+    >
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-semibold text-foreground/95">{fileName}</span>
+          {hasStats && (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
+              {stats.added > 0 ? <span className="text-emerald-400/70">+{stats.added}</span> : null}
+              {stats.removed > 0 ? <span className="text-red-400/70">-{stats.removed}</span> : null}
+            </span>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+          title="Copy updated content"
+          onClick={() => {
+            void navigator.clipboard.writeText(diff.modified)
+          }}
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="h-px bg-white/8" />
+      <div
+        className={cn('w-full')}
+        style={{
+          backgroundColor: panelBodySurface,
+          height: `${panelHeight}px`,
+        }}
+      >
+        <CodeMirrorMergeViewer
+          original={diff.original}
+          modified={diff.modified}
+          filePath={diff.filePath}
+          className="h-full"
+        />
+      </div>
+    </div>
+  )
+}
+
 /**
  * Check if a tool is a file edit tool that should show diff
  */
@@ -102,8 +224,9 @@ export function ToolDiffOutput({
   toolName,
   input,
   maxHeight = 300,
-  inline = false,
+  inline: _inline = false,
 }: ToolDiffOutputProps) {
+  const [activeIndex, setActiveIndex] = useState(0)
   const diffData = useMemo(
     () => extractDiffData(toolName, input),
     [toolName, input]
@@ -113,37 +236,55 @@ export function ToolDiffOutput({
     return null
   }
 
-  // Handle multiple diffs (multi_replace_string_in_file)
-  if (Array.isArray(diffData)) {
-    if (diffData.length === 0) return null
+  const diffs = Array.isArray(diffData) ? diffData : [diffData]
+  if (diffs.length === 0) return null
+  const clampedIndex = Math.min(activeIndex, diffs.length - 1)
+  const activeDiff = diffs[clampedIndex]
 
+  if (diffs.length > 1) {
     return (
-      <div className="space-y-3 p-4">
-        {diffData.map((diff, index) => (
-          <CodeDiffViewer
-            key={`${diff.filePath}-${index}`}
-            original={diff.original}
-            modified={diff.modified}
-            filePath={diff.filePath}
-            maxHeight={maxHeight}
-            inline={inline}
-            showHeader={true}
-          />
-        ))}
+      <div className="space-y-2 px-2 pb-2">
+        <div className="app-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+          {diffs.map((diff, index) => {
+            const stats = getLineDiffStats(diff.original, diff.modified)
+            const active = index === clampedIndex
+            return (
+              <button
+                key={`${diff.filePath}-${index}`}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors',
+                  active
+                    ? 'bg-foreground/14 text-foreground'
+                    : 'bg-foreground/8 text-muted-foreground hover:bg-foreground/12 hover:text-foreground'
+                )}
+                title={diff.filePath}
+              >
+                <span className="max-w-[180px] truncate">{getDisplayFileName(diff.filePath)}</span>
+                {(stats.added > 0 || stats.removed > 0) && (
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] tabular-nums">
+                    {stats.added > 0 ? <span className="text-emerald-400/70">+{stats.added}</span> : null}
+                    {stats.removed > 0 ? <span className="text-red-400/70">-{stats.removed}</span> : null}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        <DiffCard
+          diff={activeDiff}
+          maxHeight={maxHeight}
+        />
       </div>
     )
   }
 
-  // Single diff
   return (
-    <div className="p-4">
-      <CodeDiffViewer
-        original={diffData.original}
-        modified={diffData.modified}
-        filePath={diffData.filePath}
+    <div className="px-2 pb-2">
+      <DiffCard
+        diff={activeDiff}
         maxHeight={maxHeight}
-        inline={inline}
-        showHeader={false}
       />
     </div>
   )
