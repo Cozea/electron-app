@@ -596,7 +596,77 @@ export interface ElectronAPI {
     updateFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
     closeFile: (options: { projectPath: string; filePath: string }) => Promise<{ success: boolean; error?: string }>
     refresh: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    getDiagnostics: (options: { projectPath: string; filePath?: string }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
+    getSnapshot: (options: { projectPath: string; filePaths?: string[] }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
+    checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
     onDiagnostics: (
+      callback: (payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => void
+    ) => () => void
+    onDidChangeDiagnostics: (
       callback: (payload: {
         projectPath: string
         source: 'tsserver' | 'eslint' | 'runtime' | 'build'
@@ -1016,7 +1086,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('diagnostics:closeFile', options),
     refresh: (options: { projectPath: string }) =>
       ipcRenderer.invoke('diagnostics:refresh', options),
+    getDiagnostics: (options: { projectPath: string; filePath?: string }) =>
+      ipcRenderer.invoke('diagnostics:getDiagnostics', options),
+    getSnapshot: (options: { projectPath: string; filePaths?: string[] }) =>
+      ipcRenderer.invoke('diagnostics:getSnapshot', options),
+    checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) =>
+      ipcRenderer.invoke('diagnostics:checkFiles', options),
     onDiagnostics: (callback: (payload: {
+      projectPath: string
+      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => callback(payload)
+      ipcRenderer.on('diagnostics:publish', handler)
+      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
+    },
+    onDidChangeDiagnostics: (callback: (payload: {
       projectPath: string
       source: 'tsserver' | 'eslint' | 'runtime' | 'build'
       diagnostics: Array<{

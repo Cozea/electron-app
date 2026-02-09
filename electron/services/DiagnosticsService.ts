@@ -56,6 +56,15 @@ interface ProjectContext {
   eslintDiagnosticsByFile: Map<string, DiagnosticItem[]>
 }
 
+interface DiagnosticsSnapshotOptions {
+  filePaths?: string[]
+}
+
+interface CheckFilesOptions {
+  filePaths: string[]
+  timeoutMs?: number
+}
+
 const appRequire = createRequire(import.meta.url)
 
 function resolveModule(moduleName: string, projectPath: string): string | null {
@@ -360,6 +369,10 @@ function toSeverity(category: string): DiagnosticSeverity {
   return 'info'
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export class DiagnosticsService {
   private static instance: DiagnosticsService
   private projects = new Map<string, ProjectContext>()
@@ -425,6 +438,50 @@ export class DiagnosticsService {
       })
       return { success: true }
     })
+
+    ipcMain.handle('diagnostics:getSnapshot', async (_event, options: { projectPath: string; filePaths?: string[] }) => {
+      try {
+        const diagnostics = this.getSnapshot(options.projectPath, { filePaths: options.filePaths })
+        return { success: true, diagnostics }
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : 'Failed to get diagnostics snapshot',
+          diagnostics: [] as DiagnosticItem[],
+        }
+      }
+    })
+
+    ipcMain.handle('diagnostics:getDiagnostics', async (_event, options: { projectPath: string; filePath?: string }) => {
+      try {
+        const diagnostics = this.getSnapshot(options.projectPath, {
+          filePaths: options.filePath ? [options.filePath] : undefined,
+        })
+        return { success: true, diagnostics }
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : 'Failed to get diagnostics',
+          diagnostics: [] as DiagnosticItem[],
+        }
+      }
+    })
+
+    ipcMain.handle('diagnostics:checkFiles', async (_event, options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) => {
+      try {
+        const diagnostics = await this.checkFiles(options.projectPath, {
+          filePaths: options.filePaths,
+          timeoutMs: options.timeoutMs,
+        })
+        return { success: true, diagnostics }
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : 'Failed to check files for diagnostics',
+          diagnostics: [] as DiagnosticItem[],
+        }
+      }
+    })
   }
 
   private ensureProject(projectPath: string): ProjectContext {
@@ -485,6 +542,116 @@ export class DiagnosticsService {
     ctx.tsServer?.dispose()
     ctx.eslint?.dispose()
     this.projects.delete(projectPath)
+  }
+
+  private resolveProjectFilePath(projectPath: string, filePath: string): string | null {
+    const resolved = path.resolve(
+      path.isAbsolute(filePath) ? filePath : path.join(projectPath, filePath)
+    )
+    const relative = path.relative(projectPath, resolved)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      return null
+    }
+    return resolved
+  }
+
+  private buildSnapshotDiagnostics(
+    ctx: ProjectContext,
+    options?: DiagnosticsSnapshotOptions
+  ): DiagnosticItem[] {
+    const sourceMaps: Array<[DiagnosticSource, Map<string, DiagnosticItem[]>]> = [
+      ['tsserver', ctx.tsDiagnosticsByFile],
+      ['eslint', ctx.eslintDiagnosticsByFile],
+    ]
+
+    const allowedPaths = new Set<string>()
+    if (options?.filePaths?.length) {
+      for (const filePath of options.filePaths) {
+        const resolved = this.resolveProjectFilePath(ctx.projectPath, filePath)
+        if (resolved) {
+          allowedPaths.add(resolved)
+        }
+      }
+    }
+
+    const diagnostics: DiagnosticItem[] = []
+    sourceMaps.forEach(([source, map]) => {
+      map.forEach((items, filePath) => {
+        if (allowedPaths.size > 0 && !allowedPaths.has(filePath)) return
+        items.forEach((item) => {
+          diagnostics.push({
+            ...item,
+            source,
+          })
+        })
+      })
+    })
+
+    return diagnostics
+  }
+
+  private getSnapshot(projectPath: string, options?: DiagnosticsSnapshotOptions): DiagnosticItem[] {
+    const ctx = this.ensureProject(projectPath)
+    return this.buildSnapshotDiagnostics(ctx, options)
+  }
+
+  private async checkFiles(
+    projectPath: string,
+    options: CheckFilesOptions
+  ): Promise<DiagnosticItem[]> {
+    const ctx = this.ensureProject(projectPath)
+    const requested = Array.isArray(options.filePaths) ? options.filePaths : []
+    if (requested.length === 0) {
+      return this.buildSnapshotDiagnostics(ctx)
+    }
+
+    const normalizedPaths: string[] = []
+    const lintPromises: Array<Promise<void>> = []
+
+    for (const requestedPath of requested) {
+      if (typeof requestedPath !== 'string' || requestedPath.trim().length === 0) {
+        continue
+      }
+
+      const resolvedPath = this.resolveProjectFilePath(projectPath, requestedPath)
+      if (!resolvedPath) continue
+
+      let stats: fs.Stats
+      try {
+        stats = fs.statSync(resolvedPath)
+      } catch {
+        continue
+      }
+
+      if (!stats.isFile()) continue
+
+      let content: string
+      try {
+        content = fs.readFileSync(resolvedPath, 'utf-8')
+      } catch {
+        continue
+      }
+
+      normalizedPaths.push(resolvedPath)
+      ctx.openFiles.set(resolvedPath, { content })
+      ctx.tsServer?.openFile(resolvedPath, content)
+
+      if (ctx.eslint) {
+        lintPromises.push(ctx.eslint.runLint(resolvedPath, content))
+      }
+    }
+
+    if (normalizedPaths.length === 0) {
+      return this.buildSnapshotDiagnostics(ctx, { filePaths: requested })
+    }
+
+    ctx.tsServer?.refresh(normalizedPaths)
+    await Promise.allSettled(lintPromises)
+
+    const waitMs = Math.min(5000, Math.max(200, options.timeoutMs ?? 900))
+    await delay(waitMs)
+
+    return this.buildSnapshotDiagnostics(ctx, { filePaths: normalizedPaths })
   }
 
   private publishDiagnostics(projectPath: string, source: DiagnosticSource, diagnosticsByFile: Map<string, DiagnosticItem[]>) {

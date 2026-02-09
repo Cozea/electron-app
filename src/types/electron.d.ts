@@ -642,7 +642,77 @@ export interface ElectronAPI {
     updateFile: (options: { projectPath: string; filePath: string; content: string }) => Promise<{ success: boolean; error?: string }>
     closeFile: (options: { projectPath: string; filePath: string }) => Promise<{ success: boolean; error?: string }>
     refresh: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
+    getDiagnostics: (options: { projectPath: string; filePath?: string }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
+    getSnapshot: (options: { projectPath: string; filePaths?: string[] }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
+    checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) => Promise<{
+      success: boolean
+      error?: string
+      diagnostics: Array<{
+        id?: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+    }>
     onDiagnostics: (
+      callback: (payload: {
+        projectPath: string
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        diagnostics: Array<{
+          id?: string
+          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+          severity: 'error' | 'warning' | 'info'
+          message: string
+          file?: string
+          line?: number
+          column?: number
+          endLine?: number
+          endColumn?: number
+          code?: string
+          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+        }>
+      }) => void
+    ) => () => void
+    onDidChangeDiagnostics: (
       callback: (payload: {
         projectPath: string
         source: 'tsserver' | 'eslint' | 'runtime' | 'build'

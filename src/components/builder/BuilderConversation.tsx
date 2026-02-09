@@ -25,6 +25,7 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -378,6 +379,40 @@ Now begin by defining your task list with build_tasks, then start working throug
     return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
   }, [])
 
+  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null): string[] => {
+    if (!input) return []
+    if (toolName === 'create_file' || toolName === 'replace_string_in_file') {
+      const filePath = input.filePath
+      return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
+    }
+    if (toolName === 'multi_replace_string_in_file') {
+      const replacements = Array.isArray(input.replacements) ? input.replacements : []
+      return replacements
+        .filter(isRecord)
+        .map((replacement) => replacement.filePath)
+        .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
+    }
+    return []
+  }, [])
+
+  const enrichToolOutputWithDiagnostics = useCallback(async (
+    toolName: string,
+    toolInput: Record<string, unknown> | null,
+    output: unknown
+  ) => {
+    if (!localPath) return output
+
+    const filePaths = getToolFilePaths(toolName, toolInput)
+    if (filePaths.length === 0) return output
+
+    const summary = await collectToolDiagnosticsSummary({
+      projectPath: localPath,
+      filePaths,
+    })
+
+    return attachToolDiagnosticsToOutput(output, summary)
+  }, [getToolFilePaths, localPath])
+
   const formatLockConflictError = useCallback((
     filePath: string,
     details: { lockedByName?: string | null; expiresAt?: number | null; status?: string | null }
@@ -584,10 +619,15 @@ Now begin by defining your task list with build_tasks, then start working throug
           }
 
           onFileCreated({ path: filePath, content })
+          const enrichedOutput = await enrichToolOutputWithDiagnostics(
+            toolName,
+            toolInput,
+            { success: true, path: filePath }
+          )
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, path: filePath }),
+            output: JSON.stringify(enrichedOutput),
           })
         })
         return
@@ -668,10 +708,15 @@ Now begin by defining your task list with build_tasks, then start working throug
           if (!writeResult.success) {
             throw new Error(writeResult.error || 'Failed to write file')
           }
+          const enrichedOutput = await enrichToolOutputWithDiagnostics(
+            toolName,
+            toolInput,
+            { filePath, replacements: 1 }
+          )
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ filePath, replacements: 1 }),
+            output: JSON.stringify(enrichedOutput),
           })
         })
         return
@@ -725,10 +770,15 @@ Now begin by defining your task list with build_tasks, then start working throug
             }
             results.push({ filePath: replacement.filePath, replacements: 1 })
           }
+          const enrichedOutput = await enrichToolOutputWithDiagnostics(
+            toolName,
+            toolInput,
+            { results }
+          )
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ results }),
+            output: JSON.stringify(enrichedOutput),
           })
         })
         return
@@ -988,10 +1038,15 @@ Now begin by defining your task list with build_tasks, then start working throug
       })
 
       if (runtimeResult.success) {
+        const enrichedOutput = await enrichToolOutputWithDiagnostics(
+          toolName,
+          toolInput,
+          runtimeResult.output
+        )
         void addToolOutput({
           tool: toolName,
           toolCallId,
-          output: runtimeResult.output,
+          output: enrichedOutput,
         })
       } else {
         void addToolOutput({
@@ -1011,6 +1066,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     }
   }, [
     conversationId,
+    enrichToolOutputWithDiagnostics,
     localPath,
     localRuntime,
     normalizeProjectPath,
