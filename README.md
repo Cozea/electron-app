@@ -161,9 +161,9 @@ Convex:
      - `base64 -w0 /absolute/path/Certificates.p12`
    - Use the full single-line output as the `CSC_LINK` secret.
 3) Dry-run matrix build (no publishing):
-   - GitHub Actions -> `Desktop Release Matrix` -> `Run workflow` -> `publish=never`.
+   - GitHub Actions -> `Desktop Release Matrix` -> `Run workflow`.
+   - Manual dispatch is intentionally configured as a non-publishing validation run.
 4) Publish release:
    - Push a version tag, e.g. `git tag v1.2.3 && git push origin v1.2.3`
-   - Or run workflow manually with `publish=always`.
 5) Verify output:
    - GitHub Release contains DMG/ZIP (mac) + NSIS artifacts (win) and update metadata files.

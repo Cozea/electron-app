@@ -5,15 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish artifacts to GitHub Releases'
-        required: true
-        default: 'never'
-        type: choice
-        options:
-          - never
-          - always
 
 permissions:
   contents: write
@@ -61,7 +52,6 @@ jobs:
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_ARM64 }}
-      PUBLISH_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish || 'always' }}
       GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -81,8 +71,18 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Resolve publish mode
+        id: publish_mode
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "mode=always" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=never" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Validate macOS release secrets
-        if: matrix.electron_target == 'mac' && env.PUBLISH_MODE == 'always'
+        if: matrix.electron_target == 'mac' && steps.publish_mode.outputs.mode == 'always'
         shell: bash
         run: |
           set -euo pipefail
@@ -110,7 +110,7 @@ jobs:
         run: npm run typecheck
 
       - name: Build and Package
-        run: npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ env.PUBLISH_MODE }}
+        run: npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }}
 
       - name: Upload Dist Artifacts
         if: always()
