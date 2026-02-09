@@ -552,8 +552,7 @@ export function Billing() {
                     return (
                       <div
                         key={plan.id}
-                        className={`relative rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 flex flex-col transition-all duration-300 ${isCurrent ? 'shadow-md' : 'shadow-sm'
-                          } ${showUpgradeOptions
+                        className={`relative rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 flex flex-col transition-all duration-300 shadow-none ${showUpgradeOptions
                             ? 'opacity-100 translate-y-0'
                             : 'opacity-0 -translate-y-4'
                           }`}
@@ -576,7 +575,7 @@ export function Billing() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-fit"
+                          className="w-fit bg-foreground/14 hover:bg-foreground/18 disabled:opacity-100 disabled:bg-foreground/14"
                           disabled={isCurrent || isUpgrading}
                           onClick={() => handleUpgrade(plan.id)}
                         >
@@ -688,7 +687,10 @@ export function Billing() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {creditPacks.map((pack) => (
-                <Card key={pack.id} className="cursor-pointer hover:border-primary transition-colors">
+                <Card
+                  key={pack.id}
+                  className="cursor-pointer transition-colors shadow-none bg-muted/70 dark:bg-secondary/40 hover:bg-muted/80 dark:hover:bg-secondary/50"
+                >
                   <CardContent className="pt-4 text-center">
                     <p className="text-2xl font-bold">{pack.credits.toLocaleString()}</p>
                     <p className="text-sm text-muted-foreground mb-3">credits</p>
@@ -696,7 +698,7 @@ export function Billing() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full"
+                      className="w-full bg-foreground/14 hover:bg-foreground/18"
                       onClick={() => handleBuyCredits(pack.id)}
                     >
                       Buy {pack.name}

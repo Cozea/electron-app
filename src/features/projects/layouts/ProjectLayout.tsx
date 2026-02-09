@@ -641,7 +641,7 @@ export function ProjectLayout({
     if (canSync && project && convexUser && slug) {
         return (
             <ProjectSyncProvider
-                key={project._id}
+                key={`${project._id}:${effectiveLocalPath ?? ''}`}
                 projectId={project._id}
                 userId={convexUser._id}
                 userName={convexUser.firstName || convexUser.email || "User"}
