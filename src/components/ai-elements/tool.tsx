@@ -166,11 +166,84 @@ const FilePill = ({
   );
 };
 
+interface DiffStats {
+  added: number;
+  removed: number;
+}
+
+function countContentLines(content: string): number {
+  if (!content) return 0;
+  const normalized = content.replace(/\r\n/g, "\n");
+  if (!normalized) return 0;
+  const lines = normalized.endsWith("\n")
+    ? normalized.slice(0, -1).split("\n")
+    : normalized.split("\n");
+  return lines.filter(() => true).length;
+}
+
+function getDiffStatsForTool(
+  toolName?: string,
+  input?: Record<string, unknown>
+) : DiffStats | null {
+  if (!toolName || !input) return null;
+
+  if (toolName === "create_file" || toolName === "replace_string_in_file") {
+    const filePath = input.filePath || input.file_path;
+    if (typeof filePath !== "string" || !filePath.trim()) return null;
+    const oldString = String(input.oldString || input.old_string || "");
+    const newString = String(input.newString || input.new_string || input.content || "");
+    const added = countContentLines(newString);
+    const removed = countContentLines(oldString);
+    return added > 0 || removed > 0 ? { added, removed } : null;
+  }
+
+  if (toolName === "multi_replace_string_in_file") {
+    const replacements = Array.isArray(input.replacements) ? input.replacements : [];
+    let added = 0;
+    let removed = 0;
+    for (const item of replacements) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      const filePath = record.filePath || record.file_path;
+      if (typeof filePath !== "string" || filePath.trim().length === 0) continue;
+      added += countContentLines(String(record.newString || record.new_string || ""));
+      removed += countContentLines(String(record.oldString || record.old_string || ""));
+    }
+    return added > 0 || removed > 0 ? { added, removed } : null;
+  }
+
+  if (toolName === "apply_patch") {
+    const patchInput = input.input || input.patch;
+    if (typeof patchInput !== "string" || !patchInput.trim()) return null;
+    let added = 0;
+    let removed = 0;
+    const lines = patchInput.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+      if (line.startsWith("+")) {
+        added += 1;
+      } else if (line.startsWith("-")) {
+        removed += 1;
+      }
+    }
+    return added > 0 || removed > 0 ? { added, removed } : null;
+  }
+
+  return null;
+}
+
+const DiffStatsBadge = ({ added, removed }: DiffStats) => (
+  <span className="inline-flex items-center gap-1 font-mono text-[11px] leading-none tabular-nums">
+    {added > 0 ? <span className="text-emerald-400/70">+{added}</span> : null}
+    {removed > 0 ? <span className="text-red-400/70">-{removed}</span> : null}
+  </span>
+);
+
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-2 w-full rounded-md", className)}
+    className={cn("group/tool-row not-prose mb-2 w-full rounded-md", className)}
     {...props}
   />
 );
@@ -196,6 +269,7 @@ export const ToolStatic = ({
   const Icon = toolName ? getToolIcon(toolName) : WrenchIcon;
   const isComplete = state === "output-available";
   const isError = state === "output-error" || state === "output-denied";
+  const diffStats = getDiffStatsForTool(toolName, input);
 
   // Get the target from input (file, folder, command, query)
   const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
@@ -225,14 +299,27 @@ export const ToolStatic = ({
           ) : (
             <span className="text-sm text-muted-foreground">{target.value}</span>
           )}
+          {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+        </div>
+      );
+    }
+
+    if (actionVerb && diffStats) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-sm">{actionVerb}</span>
+          <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} />
         </div>
       );
     }
 
     return (
-      <span className="font-medium text-sm">
-        {title ?? type.split("-").slice(1).join("-")}
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-sm">
+          {title ?? type.split("-").slice(1).join("-")}
+        </span>
+        {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+      </div>
     );
   };
 
@@ -301,6 +388,7 @@ export const ToolHeader = ({
   const Icon = toolName ? getToolIcon(toolName) : WrenchIcon;
   const isComplete = state === "output-available";
   const isError = state === "output-error" || state === "output-denied";
+  const diffStats = getDiffStatsForTool(toolName, input);
 
   // Get the target from input (file, folder, command, query)
   const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
@@ -331,15 +419,28 @@ export const ToolHeader = ({
           ) : (
             <span className="text-sm text-muted-foreground">{target.value}</span>
           )}
+          {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+        </div>
+      );
+    }
+
+    if (actionVerb && diffStats) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-sm">{actionVerb}</span>
+          <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} />
         </div>
       );
     }
 
     // Fallback to title or type
     return (
-      <span className="font-medium text-sm">
-        {title ?? type.split("-").slice(1).join("-")}
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-sm">
+          {title ?? type.split("-").slice(1).join("-")}
+        </span>
+        {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+      </div>
     );
   };
 
@@ -358,7 +459,7 @@ export const ToolHeader = ({
         {renderHeaderContent()}
         {getStatusIcon(state)}
       </div>
-      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-within:opacity-100 group-data-[state=open]:rotate-180" />
+      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] group-hover/tool-row:opacity-100 group-focus-within/tool-row:opacity-100 group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
   );
 };
