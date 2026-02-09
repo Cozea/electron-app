@@ -938,7 +938,7 @@ export function WizardConversation({
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className="w-full max-w-none px-6 md:px-8 pt-8 pb-8">
+          <ConversationContent className="w-full max-w-none px-10 md:px-16 lg:px-24 xl:px-32 pt-8 pb-8">
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}
