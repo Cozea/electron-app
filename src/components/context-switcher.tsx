@@ -95,6 +95,8 @@ export function ContextSwitcher() {
   const hasMatchingNavigationState = navigationState?.projectSlug === slug
   const navigationNameHint =
     hasMatchingNavigationState ? navigationState?.projectName : undefined
+  const navigationTemplateHint =
+    hasMatchingNavigationState ? navigationState?.projectTemplate : undefined
 
   // Organization info
   const organization = {
@@ -242,11 +244,14 @@ export function ContextSwitcher() {
                       slug
                     : organization.name}
                 </span>
-                {!isInProject && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {organization.plan}
-                  </span>
-                )}
+                <span className="truncate text-xs text-muted-foreground">
+                  {isInProject
+                    ? currentProject?.template ??
+                      navigationTemplateHint ??
+                      selectedProjectFromList?.template ??
+                      'Project'
+                    : organization.plan}
+                </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>

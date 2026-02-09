@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, MessageSquare, AlertCircle } from 'lucide-react'
+import { Search, MessageSquare, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ChatHistoryProps {
@@ -108,10 +108,10 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
   return (
     <div
       ref={panelRef}
-      className="absolute left-3 right-3 top-12 z-50 flex flex-col bg-sidebar border border-sidebar-border rounded-lg shadow-lg max-h-[400px] animate-in fade-in-0 slide-in-from-top-2 duration-150"
+      className="absolute left-3 right-3 top-12 z-50 flex max-h-[420px] flex-col overflow-hidden rounded-2xl bg-background dark:bg-muted p-1 shadow-md animate-in fade-in-0 slide-in-from-top-2 duration-150"
     >
       {/* Search */}
-      <div className="px-3 py-2">
+      <div className="px-2 pt-1 pb-1.5">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -120,14 +120,17 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
             placeholder="Search recent tasks"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 pl-8 text-sm bg-sidebar dark:bg-sidebar border-0 shadow-none focus-visible:ring-0"
+            className="h-8 pl-8 text-sm border-0 bg-transparent shadow-none focus-visible:ring-0"
           />
         </div>
       </div>
 
       {/* Conversations list */}
-      <ScrollArea className="flex-1 max-h-[300px]">
-        <div className="px-1 pb-2">
+      <div className="px-2 pb-1 pt-0.5 text-xs text-muted-foreground">
+        Recent Conversations
+      </div>
+      <ScrollArea className="flex-1 max-h-[336px]">
+        <div className="px-1 pb-1">
           {conversations === undefined ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <span className="text-sm">Loading...</span>
@@ -145,16 +148,19 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
                 key={conv._id}
                 onClick={() => handleSelect(conv)}
                 className={cn(
-                  "group flex items-center gap-3 px-2 py-2 mx-1 rounded-md cursor-pointer transition-colors",
+                  "group flex cursor-pointer items-center gap-2 rounded-full px-2 py-1.5 text-sm transition-colors",
                   currentConversationId === conv._id
-                    ? "bg-accent"
-                    : "hover:bg-muted/50"
+                    ? "bg-foreground/10 dark:bg-foreground/16 text-foreground"
+                    : "hover:bg-foreground/10 dark:hover:bg-foreground/16"
                 )}
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="text-sm truncate min-w-0">{conv.title}</span>
+                <div className="flex size-6 items-center justify-center rounded-md">
+                  <MessageSquare className="size-3.5 text-muted-foreground" />
+                </div>
+                <div className="flex min-w-0 items-center gap-2 flex-1">
+                  <span className="truncate min-w-0">{conv.title}</span>
                   {currentConversationId === conv._id && (
-                    <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                    <Check className="h-3.5 w-3.5 text-foreground shrink-0" />
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 tabular-nums">

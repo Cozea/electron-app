@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
 import { notifyFileChanged } from './yjsNotify'
 import { markInternalFsChange } from './projectWatcher'
+import { TerminalService } from './services/TerminalService'
 
 export interface ToolRequest {
   name: string
@@ -82,6 +83,8 @@ const WORKSPACE_ROOT = path.resolve(
 
 const MAX_OUTPUT_LENGTH = 60_000
 const TRUNCATION_MESSAGE = '\n...output truncated...\n'
+const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
+const TERMINAL_HISTORY_MAX_ENTRIES = 1000
 
 interface BackgroundProcess {
   id: string
@@ -90,10 +93,13 @@ interface BackgroundProcess {
   endedAt?: number
   exitCode?: number | null
   timedOut?: boolean
+  cancelled?: boolean
   stdout: string
   stderr: string
   process: ReturnType<typeof spawn>
 }
+
+type TerminalExecutionStatus = 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled'
 
 const backgroundProcesses = new Map<string, BackgroundProcess>()
 const activeRunProcesses = new Map<string, Set<ReturnType<typeof spawn>>>()
@@ -196,6 +202,55 @@ function truncateOutput(output: string) {
 
 function appendOutput(current: string, chunk: string) {
   return truncateOutput(current + chunk)
+}
+
+function getTerminalExecutionState(args: {
+  running: boolean
+  exitCode: number | null
+  timedOut: boolean
+  cancelled: boolean
+}): { success: boolean; status: TerminalExecutionStatus; error?: string } {
+  if (args.running) {
+    return { success: true, status: 'running' }
+  }
+  if (args.cancelled) {
+    return { success: false, status: 'cancelled', error: 'Command was cancelled by user.' }
+  }
+  if (args.timedOut) {
+    return { success: false, status: 'timed_out', error: 'Command timed out before completion.' }
+  }
+  if (typeof args.exitCode === 'number' && args.exitCode !== 0) {
+    return { success: false, status: 'failed', error: `Command exited with code ${args.exitCode}.` }
+  }
+  return { success: true, status: 'completed' }
+}
+
+function pruneTerminalHistory(now = Date.now()) {
+  for (const [id, entry] of backgroundProcesses.entries()) {
+    const endedAt = entry.endedAt ?? entry.startedAt
+    if (now - endedAt > TERMINAL_HISTORY_TTL_MS) {
+      backgroundProcesses.delete(id)
+    }
+  }
+
+  if (backgroundProcesses.size <= TERMINAL_HISTORY_MAX_ENTRIES) return
+  const entries = Array.from(backgroundProcesses.entries())
+    .sort((a, b) => {
+      const aTime = a[1].endedAt ?? a[1].startedAt
+      const bTime = b[1].endedAt ?? b[1].startedAt
+      return aTime - bTime
+    })
+  const overflow = entries.length - TERMINAL_HISTORY_MAX_ENTRIES
+  for (let i = 0; i < overflow; i += 1) {
+    backgroundProcesses.delete(entries[i][0])
+  }
+}
+
+function findEntryByProcess(processToFind: ReturnType<typeof spawn>) {
+  for (const entry of backgroundProcesses.values()) {
+    if (entry.process === processToFind) return entry
+  }
+  return null
 }
 
 function resolveToolPath(inputPath: string, workingDir: string): string {
@@ -563,34 +618,38 @@ async function runInTerminal(input: {
     ;(child as { __agentDetached?: boolean }).__agentDetached = true
   }
 
+  const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const entry: BackgroundProcess = {
+    id,
+    command: input.command,
+    startedAt: Date.now(),
+    stdout: '',
+    stderr: '',
+    process: child,
+    cancelled: false,
+    timedOut: false,
+  }
+  backgroundProcesses.set(id, entry)
+  pruneTerminalHistory()
+
+  child.stdout.on('data', (chunk) => {
+    entry.stdout = appendOutput(entry.stdout, chunk.toString())
+  })
+  child.stderr.on('data', (chunk) => {
+    entry.stderr = appendOutput(entry.stderr, chunk.toString())
+  })
+  child.on('close', (code) => {
+    entry.exitCode = code
+    entry.endedAt = Date.now()
+  })
+  child.on('error', (err) => {
+    entry.stderr = appendOutput(entry.stderr, `${err.message}\n`)
+    entry.exitCode = -1
+    entry.endedAt = Date.now()
+  })
+
   if (isBackground) {
-    const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    const entry: BackgroundProcess = {
-      id,
-      command: input.command,
-      startedAt: Date.now(),
-      stdout: '',
-      stderr: '',
-      process: child,
-    }
-
     registerRunProcess(context?.runId, child)
-
-    child.stdout.on('data', (chunk) => {
-      entry.stdout = appendOutput(entry.stdout, chunk.toString())
-    })
-    child.stderr.on('data', (chunk) => {
-      entry.stderr = appendOutput(entry.stderr, chunk.toString())
-    })
-    child.on('close', (code) => {
-      entry.exitCode = code
-      entry.endedAt = Date.now()
-    })
-    child.on('error', (err) => {
-      entry.stderr = appendOutput(entry.stderr, `${err.message}\n`)
-      entry.exitCode = -1
-      entry.endedAt = Date.now()
-    })
 
     if (timeoutMs > 0) {
       setTimeout(() => {
@@ -601,44 +660,64 @@ async function runInTerminal(input: {
       }, timeoutMs)
     }
 
-    backgroundProcesses.set(id, entry)
-    return { id, pid: child.pid, command: input.command, isBackground: true }
+    const executionState = getTerminalExecutionState({
+      running: true,
+      exitCode: null,
+      timedOut: false,
+      cancelled: false,
+    })
+
+    return {
+      id,
+      pid: child.pid,
+      command: input.command,
+      isBackground: true,
+      running: true,
+      timedOut: false,
+      cancelled: false,
+      success: executionState.success,
+      status: executionState.status,
+    }
   }
 
   registerRunProcess(context?.runId, child)
 
   return new Promise((resolve) => {
-    let stdout = ''
-    let stderr = ''
-    let timedOut = false
     let timeoutHandle: NodeJS.Timeout | undefined
 
     const finish = (code: number | null) => {
       if (timeoutHandle) clearTimeout(timeoutHandle)
-      resolve({
-        command: input.command,
-        stdout: truncateOutput(stdout),
-        stderr: truncateOutput(stderr),
+      entry.exitCode = code
+      entry.endedAt = Date.now()
+      const executionState = getTerminalExecutionState({
+        running: false,
         exitCode: code,
-        timedOut,
+        timedOut: entry.timedOut ?? false,
+        cancelled: entry.cancelled ?? false,
+      })
+      resolve({
+        id,
+        command: input.command,
+        stdout: truncateOutput(entry.stdout),
+        stderr: truncateOutput(entry.stderr),
+        exitCode: code,
+        running: false,
+        timedOut: entry.timedOut ?? false,
+        cancelled: entry.cancelled ?? false,
+        success: executionState.success,
+        status: executionState.status,
+        ...(executionState.error ? { error: executionState.error } : {}),
       })
     }
-
-    child.stdout.on('data', (chunk) => {
-      stdout = appendOutput(stdout, chunk.toString())
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr = appendOutput(stderr, chunk.toString())
-    })
     child.on('close', (code) => finish(code))
     child.on('error', (err) => {
-      stderr = appendOutput(stderr, `${err.message}\n`)
+      entry.stderr = appendOutput(entry.stderr, `${err.message}\n`)
       finish(-1)
     })
 
     if (timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
-        timedOut = true
+        entry.timedOut = true
         terminateProcess(child)
       }, timeoutMs)
     }
@@ -649,22 +728,65 @@ async function getTerminalOutput(input: { id: string }) {
   if (!input.id || typeof input.id !== 'string') {
     throw new Error('id is required')
   }
-  const entry = backgroundProcesses.get(input.id)
-  if (!entry) {
-    throw new Error('Unknown terminal id')
+  const id = input.id.trim()
+  if (!id) {
+    throw new Error('id is required')
   }
 
-  return {
-    id: entry.id,
-    command: entry.command,
-    stdout: entry.stdout,
-    stderr: entry.stderr,
-    exitCode: entry.exitCode ?? null,
-    running: entry.endedAt === undefined,
-    startedAt: entry.startedAt,
-    endedAt: entry.endedAt ?? null,
-    timedOut: entry.timedOut ?? false,
+  pruneTerminalHistory()
+
+  const entry = backgroundProcesses.get(id)
+  if (entry) {
+    const running = entry.endedAt === undefined
+    const executionState = getTerminalExecutionState({
+      running,
+      exitCode: entry.exitCode ?? null,
+      timedOut: entry.timedOut ?? false,
+      cancelled: entry.cancelled ?? false,
+    })
+    return {
+      id: entry.id,
+      command: entry.command,
+      stdout: entry.stdout,
+      stderr: entry.stderr,
+      exitCode: entry.exitCode ?? null,
+      running,
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt ?? null,
+      timedOut: entry.timedOut ?? false,
+      cancelled: entry.cancelled ?? false,
+      success: executionState.success,
+      status: executionState.status,
+      ...(executionState.error ? { error: executionState.error } : {}),
+    }
   }
+
+  const terminalSnapshot = TerminalService.getInstance().getTerminalSnapshot(id)
+  if (terminalSnapshot) {
+    const executionState = getTerminalExecutionState({
+      running: terminalSnapshot.running,
+      exitCode: terminalSnapshot.exitCode,
+      timedOut: terminalSnapshot.timedOut,
+      cancelled: terminalSnapshot.cancelled,
+    })
+    return {
+      id: terminalSnapshot.id,
+      command: terminalSnapshot.command ?? '',
+      stdout: terminalSnapshot.stdout,
+      stderr: terminalSnapshot.stderr,
+      exitCode: terminalSnapshot.exitCode,
+      running: terminalSnapshot.running,
+      startedAt: terminalSnapshot.startedAt,
+      endedAt: terminalSnapshot.endedAt,
+      timedOut: terminalSnapshot.timedOut,
+      cancelled: terminalSnapshot.cancelled,
+      success: executionState.success,
+      status: executionState.status,
+      ...(executionState.error ? { error: executionState.error } : {}),
+    }
+  }
+
+  throw new Error('Unknown terminal id')
 }
 
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
@@ -734,6 +856,13 @@ export function cancelToolRuns(runId: string): { success: boolean; canceled: num
 
   let canceled = 0
   for (const child of processes) {
+    const entry = findEntryByProcess(child)
+    if (entry) {
+      entry.cancelled = true
+      entry.endedAt = entry.endedAt ?? Date.now()
+      entry.exitCode = entry.exitCode ?? -1
+      entry.stderr = appendOutput(entry.stderr, '\n[Process cancelled by user]')
+    }
     terminateProcess(child)
     canceled++
   }
