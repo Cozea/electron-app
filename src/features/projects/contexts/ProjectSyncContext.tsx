@@ -373,6 +373,10 @@ export function ProjectSyncProvider({
       // Clear the diff badge for this project
       clearDiff(projectSlug)
       onFilesChanged?.()
+    } else {
+      // Surface failures in the sync screen so users can retry instead of
+      // continuing with a silently partial local/cloud state.
+      setShowSyncScreen(true)
     }
 
     // Mark sync as complete regardless of result

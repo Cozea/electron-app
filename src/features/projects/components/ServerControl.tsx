@@ -310,10 +310,10 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             let command = config.command
             const hasPackage = await hasPackageJson(projectPath)
             if (hasPackage) {
-                const depsInstalled = await checkDependenciesInstalled(projectPath)
+                const pm = await detectPackageManager(projectPath)
+                const depsInstalled = await checkDependenciesInstalled(projectPath, pm)
                 if (!depsInstalled) {
                     // Chain install + dev command so both run in the same terminal
-                    const pm = await detectPackageManager(projectPath)
                     const installCmd = getInstallCommand(pm)
                     command = `${installCmd} && ${config.command}`
                     console.log(`[DevServer] Dependencies missing, will run: ${command}`)

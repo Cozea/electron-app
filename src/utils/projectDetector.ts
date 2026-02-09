@@ -379,10 +379,30 @@ export function getInstallCommand(pm: PackageManager): string {
 /**
  * Check if dependencies are installed (node_modules exists and has content)
  */
-export async function checkDependenciesInstalled(projectPath: string): Promise<boolean> {
+export async function checkDependenciesInstalled(
+  projectPath: string,
+  packageManager?: PackageManager
+): Promise<boolean> {
   try {
-    const entries = await window.electronAPI.fs.readDir(`${projectPath}/node_modules`)
-    return entries && entries.length > 0
+    const rootEntries = await window.electronAPI.fs.readDir(projectPath)
+    const hasNodeModules = rootEntries.some(
+      (entry) => entry.name === 'node_modules' && entry.type === 'directory'
+    )
+
+    // Yarn PnP repos can be fully installed without node_modules.
+    const hasYarnPnpArtifacts = rootEntries.some(
+      (entry) => entry.name === '.pnp.cjs' || entry.name === '.pnp.js'
+    )
+
+    if (packageManager === 'yarn') {
+      return hasNodeModules || hasYarnPnpArtifacts
+    }
+
+    if (packageManager === 'pnpm' || packageManager === 'npm' || packageManager === 'bun') {
+      return hasNodeModules
+    }
+
+    return hasNodeModules || hasYarnPnpArtifacts
   } catch {
     return false
   }

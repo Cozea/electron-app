@@ -215,6 +215,7 @@ export async function executeSyncPlan(
   let deletedCount = 0
   let mergedCount = 0
   let writeFailureCount = 0
+  let operationFailureCount = 0
 
   const updateProgress = (message: string) => {
     onProgress({
@@ -241,12 +242,14 @@ export async function executeSyncPlan(
           const url = await getStorageUrl(op.cloudEntry.storageId)
           if (!url) {
             addLog(`⚠ Could not get URL for: ${op.path}`)
+            operationFailureCount++
             return
           }
 
           const response = await fetch(url)
           if (!response.ok) {
             addLog(`⚠ Failed to download: ${op.path}`)
+            operationFailureCount++
             return
           }
 
@@ -268,6 +271,7 @@ export async function executeSyncPlan(
           updateProgress(`Downloading: ${op.path}`)
         } catch (err) {
           addLog(`⚠ Error downloading ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
+          operationFailureCount++
         }
       })
 
@@ -350,6 +354,9 @@ export async function executeSyncPlan(
               sizeBytes: blob.size,
               checksum,
             })
+          } else {
+            operationFailureCount++
+            addLog(`⚠ Failed to upload merged file: ${op.path}`)
           }
 
           addLog(
@@ -360,6 +367,7 @@ export async function executeSyncPlan(
           updateProgress(`Merged: ${op.path}`)
         } catch (err) {
           addLog(`⚠ Failed to merge ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
+          operationFailureCount++
         }
       })
 
@@ -426,6 +434,7 @@ export async function executeSyncPlan(
 
             if (!readResult.success || !readResult.base64) {
               addLog(`⚠ Could not read: ${op.path}`)
+              operationFailureCount++
               continue
             }
 
@@ -439,6 +448,7 @@ export async function executeSyncPlan(
 
             if (!readResult.success || readResult.content === undefined) {
               addLog(`⚠ Could not read: ${op.path}`)
+              operationFailureCount++
               continue
             }
 
@@ -454,6 +464,7 @@ export async function executeSyncPlan(
 
           if (!response.ok) {
             addLog(`⚠ Failed to upload: ${op.path}`)
+            operationFailureCount++
             continue
           }
 
@@ -474,6 +485,7 @@ export async function executeSyncPlan(
           updateProgress(`Uploading: ${op.path}`)
         } catch (err) {
           addLog(`⚠ Error uploading ${op.path}: ${err instanceof Error ? err.message : "Unknown"}`)
+          operationFailureCount++
         }
       }
 
@@ -528,8 +540,15 @@ export async function executeSyncPlan(
       }
     }
 
-    if (writeFailureCount > 0) {
-      const error = `Sync completed with ${writeFailureCount} local filesystem failure(s)`
+    if (writeFailureCount > 0 || operationFailureCount > 0) {
+      const parts: string[] = []
+      if (operationFailureCount > 0) {
+        parts.push(`${operationFailureCount} transfer failure(s)`)
+      }
+      if (writeFailureCount > 0) {
+        parts.push(`${writeFailureCount} local filesystem failure(s)`)
+      }
+      const error = `Sync completed with ${parts.join(", ")}`
       addLog(`⚠ ${error}`)
       onProgress({
         status: "error",
