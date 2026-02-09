@@ -202,13 +202,15 @@ export function UnifiedHeader({
         style={headerFrameStyle}
       >
         <div className="flex items-center w-full gap-0.5">
-          <div className="flex items-center min-w-0 flex-1 titlebar-no-drag">
+          <div className="flex items-center min-w-0 flex-1">
             {compactHeaderActions ? (
-              <div className="shared-header-action-pills flex min-w-0 items-center">
+              <div className="shared-header-action-pills titlebar-no-drag inline-flex min-w-0 items-center">
                 {header}
               </div>
             ) : (
-              header
+              <div className="titlebar-no-drag inline-flex min-w-0 max-w-full items-center">
+                {header}
+              </div>
             )}
           </div>
           <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
@@ -232,11 +234,11 @@ export function UnifiedHeader({
       <div className="flex items-center w-full gap-3">
         <div
           ref={breadcrumbContainerRef}
-          className="flex min-w-0 flex-1 items-center gap-2 titlebar-no-drag"
+          className="flex min-w-0 flex-1 items-center gap-2"
         >
           {breadcrumbs.length > 0 && (
             <>
-              <div ref={breadcrumbViewportRef} className="min-w-0 max-w-full overflow-hidden">
+              <div ref={breadcrumbViewportRef} className="titlebar-no-drag min-w-0 max-w-full overflow-hidden">
                 <Breadcrumb className="min-w-0">
                   <BreadcrumbList className="min-w-0 flex-nowrap overflow-hidden">
                     {hasCollapsedLeftBreadcrumbs && (
@@ -311,7 +313,7 @@ export function UnifiedHeader({
             </>
           )}
           {breadcrumbAddon && (
-            <div ref={breadcrumbAddonRef} className="flex shrink-0 items-center gap-2">
+            <div ref={breadcrumbAddonRef} className="titlebar-no-drag flex shrink-0 items-center gap-2">
               {breadcrumbAddon}
             </div>
           )}

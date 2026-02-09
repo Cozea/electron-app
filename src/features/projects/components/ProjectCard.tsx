@@ -285,9 +285,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
 
     return (
         <div className="h-full">
-            <Card
-                className={cn(
-                    "group relative flex flex-col h-full hover:shadow-md transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
+                <Card
+                    className={cn(
+                    "group relative flex flex-col h-full shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
                     syncState !== 'idle' && "pointer-events-none"
                 )}
                 onClick={handleCardClick}
@@ -381,7 +381,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 </div>
 
                 {/* Content Section - Bottom Half */}
-                <div className="flex flex-col flex-1">
+                <div className="flex flex-col flex-1 bg-[var(--main-nav-sidebar-surface)] rounded-b-xl">
                     <CardHeader className="px-3 pt-4 pb-0 space-y-0.5">
                         <div className="flex items-start justify-between">
                             <Badge

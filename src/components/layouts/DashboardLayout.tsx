@@ -18,6 +18,7 @@ interface DashboardLayoutProps {
   footer?: ReactNode
   breadcrumbs?: { label: string; href?: string }[]
   contentMode?: 'scroll' | 'fixed'
+  headerContentInsetClassName?: string
   user?: {
     email: string
     firstName?: string | null
@@ -36,6 +37,7 @@ interface DashboardLayoutContentProps {
   footer?: ReactNode
   breadcrumbs: { label: string; href?: string }[]
   contentMode: 'scroll' | 'fixed'
+  headerContentInsetClassName?: string
   user?: {
     email: string
     firstName?: string | null
@@ -52,6 +54,7 @@ function DashboardLayoutContent({
   footer,
   breadcrumbs,
   contentMode,
+  headerContentInsetClassName,
   user,
   onLogout,
 }: DashboardLayoutContentProps) {
@@ -61,6 +64,7 @@ function DashboardLayoutContent({
   const effectiveBreadcrumbAddon =
     normalizedPath === "/workspace/ai" ? undefined : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
+  const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
   const areAllSidebarsCollapsed = state === "collapsed"
 
   return (
@@ -77,12 +81,12 @@ function DashboardLayoutContent({
               leftWindowControlsInset={areAllSidebarsCollapsed}
             />
             {contentMode === 'fixed' ? (
-              <div className={cn("flex flex-1 min-h-0 flex-col overflow-hidden", showHeader && "pt-16")}>
+              <div className={cn("flex flex-1 min-h-0 flex-col overflow-hidden", showHeader && contentTopInsetClassName)}>
                 {children}
               </div>
             ) : (
               <ScrollArea className="flex-1">
-                <div className={cn("flex flex-col gap-4 p-4 min-h-full", showHeader && "pt-16")}>
+                <div className={cn("flex flex-col gap-4 p-4 min-h-full", showHeader && contentTopInsetClassName)}>
                   {children}
                 </div>
               </ScrollArea>
@@ -107,6 +111,7 @@ export function DashboardLayout({
   footer,
   breadcrumbs = DEFAULT_BREADCRUMBS,
   contentMode = 'scroll',
+  headerContentInsetClassName,
   user,
   onLogout,
 }: DashboardLayoutProps) {
@@ -119,6 +124,7 @@ export function DashboardLayout({
         footer={footer}
         breadcrumbs={breadcrumbs}
         contentMode={contentMode}
+        headerContentInsetClassName={headerContentInsetClassName}
         user={user}
         onLogout={onLogout}
       />

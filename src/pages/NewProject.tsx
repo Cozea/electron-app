@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
@@ -28,9 +28,72 @@ import { useWizardState, type CreationPath } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
-import { detectFramework } from '../utils/projectDetector'
+import {
+  detectFramework,
+  detectPackageManager,
+  getInstallCommand,
+  checkDependenciesInstalled,
+  hasPackageJson,
+} from '../utils/projectDetector'
+import { saveLocalSyncHistory } from '../lib/sync/syncHistory'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
+
+const INSTALL_TIMEOUT_MS = 12 * 60 * 1000
+const UPLOAD_CONCURRENCY = 4
+const SAVE_BATCH_SIZE = 100
+const BINARY_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'tif', 'tiff',
+  'pdf', 'zip', 'gz', 'tar', 'rar', '7z',
+  'mp3', 'wav', 'ogg', 'mp4', 'mov', 'avi', 'webm',
+  'ttf', 'otf', 'woff', 'woff2', 'eot', 'wasm',
+])
+
+const MIME_TYPES: Record<string, string> = {
+  ts: 'text/typescript',
+  tsx: 'text/typescript',
+  js: 'application/javascript',
+  jsx: 'application/javascript',
+  json: 'application/json',
+  css: 'text/css',
+  scss: 'text/scss',
+  html: 'text/html',
+  htm: 'text/html',
+  md: 'text/markdown',
+  txt: 'text/plain',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  xml: 'text/xml',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  ico: 'image/x-icon',
+  bmp: 'image/bmp',
+  tiff: 'image/tiff',
+  tif: 'image/tiff',
+  pdf: 'application/pdf',
+  zip: 'application/zip',
+  gz: 'application/gzip',
+  tar: 'application/x-tar',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  avi: 'video/x-msvideo',
+  webm: 'video/webm',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  eot: 'application/vnd.ms-fontobject',
+  wasm: 'application/wasm',
+}
 
 function getRepoDisplayName(repoUrl: string): string {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
@@ -150,6 +213,9 @@ export function NewProject() {
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const deleteProject = useMutation(api.projects.deleteProject)
+  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
+  const saveFiles = useMutation(api.projectFiles.saveFiles)
+  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
 
   // Fetch organization members for the team step
   const orgMembersData = useQuery(
@@ -208,6 +274,223 @@ export function NewProject() {
       prevStep()
     }
   }
+
+  const isBinaryPath = useCallback((filePath: string): boolean => {
+    const fileName = filePath.split('/').pop() ?? filePath
+    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
+    return !!ext && BINARY_EXTENSIONS.has(ext)
+  }, [])
+
+  const getMimeType = useCallback((filePath: string): string => {
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    if (MIME_TYPES[ext]) return MIME_TYPES[ext]
+    return isBinaryPath(filePath) ? 'application/octet-stream' : 'text/plain'
+  }, [isBinaryPath])
+
+  const base64ToUint8Array = useCallback((base64: string): Uint8Array => {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  }, [])
+
+  const runTerminalCommand = useCallback(
+    async (projectPath: string, command: string): Promise<{ success: boolean; error?: string }> => {
+      const createResult = await window.electronAPI.terminal.create({
+        projectPath,
+        cwd: projectPath,
+        cols: 100,
+        rows: 30,
+      })
+
+      if (!createResult.success || !createResult.terminalId) {
+        return { success: false, error: createResult.error || 'Failed to create terminal session' }
+      }
+
+      const terminalId = createResult.terminalId
+
+      return await new Promise((resolve) => {
+        let settled = false
+        const cleanup = () => {
+          if (settled) return
+          settled = true
+          unsubscribeExit()
+          window.clearTimeout(timeoutId)
+        }
+
+        const unsubscribeExit = window.electronAPI.terminal.onExit(({ terminalId: exitedTerminalId, exitCode }) => {
+          if (exitedTerminalId !== terminalId || settled) return
+          cleanup()
+          resolve({
+            success: exitCode === 0,
+            error: exitCode === 0 ? undefined : `Command exited with code ${exitCode ?? 'unknown'}`,
+          })
+        })
+
+        const timeoutId = window.setTimeout(() => {
+          if (settled) return
+          cleanup()
+          void window.electronAPI.terminal.kill({ terminalId })
+          resolve({ success: false, error: 'Command timed out' })
+        }, INSTALL_TIMEOUT_MS)
+
+        window.electronAPI.terminal.input({
+          terminalId,
+          data: `${command}\rexit\r`,
+        }).catch((error) => {
+          if (settled) return
+          cleanup()
+          resolve({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to send terminal input',
+          })
+        })
+      })
+    },
+    []
+  )
+
+  const preinstallDependencies = useCallback(async (projectPath: string) => {
+    const hasPkg = await hasPackageJson(projectPath)
+    if (!hasPkg) return
+
+    const packageManager = await detectPackageManager(projectPath)
+    const depsInstalled = await checkDependenciesInstalled(projectPath, packageManager)
+    if (depsInstalled) return
+
+    setImportSyncMessage(`Installing dependencies (${packageManager})...`)
+    const installCommand = getInstallCommand(packageManager)
+    const installResult = await runTerminalCommand(projectPath, installCommand)
+    if (!installResult.success) {
+      throw new Error(installResult.error || 'Dependency installation failed')
+    }
+  }, [runTerminalCommand])
+
+  const uploadLocalSnapshotToCloud = useCallback(async (
+    projectId: Id<'projects'>,
+    userId: Id<'users'>,
+    projectPath: string,
+  ) => {
+    setImportSyncMessage('Indexing local files...')
+    const localManifestResult = await window.electronAPI.sync.getLocalManifest({ projectPath })
+    const entries = localManifestResult.manifest
+
+    if (entries.length === 0) {
+      await saveLocalSyncHistory(projectId, {
+        lastSyncAt: Date.now(),
+        cloudPathsAtLastSync: [],
+      })
+      return
+    }
+
+    setImportSyncMessage(`Uploading files to cloud (0/${entries.length})...`)
+
+    const uploadTasks = entries.map((entry) => async () => {
+      const uploadUrl = await generateUploadUrl({ projectId })
+      const mimeType = getMimeType(entry.path)
+      const binary = isBinaryPath(entry.path)
+      let blob: Blob
+
+      if (binary) {
+        const readResult = await window.electronAPI.project.readFileBase64({
+          projectPath,
+          filePath: entry.path,
+        })
+        if (!readResult.success || !readResult.base64) {
+          throw new Error(`Failed to read binary file: ${entry.path}`)
+        }
+        const bytes = base64ToUint8Array(readResult.base64)
+        blob = new Blob([bytes.buffer as ArrayBuffer], { type: mimeType })
+      } else {
+        const readResult = await window.electronAPI.project.readFile({
+          projectPath,
+          filePath: entry.path,
+        })
+        if (!readResult.success || readResult.content === undefined) {
+          throw new Error(`Failed to read file: ${entry.path}`)
+        }
+        blob = new Blob([readResult.content], { type: mimeType })
+      }
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': mimeType },
+        body: blob,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed for ${entry.path}: ${uploadResponse.status}`)
+      }
+
+      const uploadPayload = await uploadResponse.json() as { storageId?: Id<'_storage'> }
+      if (!uploadPayload.storageId) {
+        throw new Error(`Missing storageId for ${entry.path}`)
+      }
+
+      return {
+        storageId: uploadPayload.storageId,
+        fileName: entry.path.split('/').pop() || entry.path,
+        filePath: entry.path,
+        fileType: mimeType,
+        sizeBytes: entry.size,
+        checksum: entry.hash,
+      }
+    })
+
+    const uploadedFiles: Array<{
+      storageId: Id<'_storage'>
+      fileName: string
+      filePath: string
+      fileType: string
+      sizeBytes: number
+      checksum: string
+    }> = []
+    const failures: string[] = []
+    let completed = 0
+    let index = 0
+
+    const workers = new Array(Math.min(UPLOAD_CONCURRENCY, uploadTasks.length)).fill(0).map(async () => {
+      while (true) {
+        const current = index++
+        if (current >= uploadTasks.length) break
+        try {
+          const uploaded = await uploadTasks[current]()
+          uploadedFiles.push(uploaded)
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : `Upload failed for ${entries[current].path}`)
+        } finally {
+          completed += 1
+          if (completed % 20 === 0 || completed === entries.length) {
+            setImportSyncMessage(`Uploading files to cloud (${completed}/${entries.length})...`)
+          }
+        }
+      }
+    })
+
+    await Promise.all(workers)
+
+    if (failures.length > 0) {
+      throw new Error(`Failed to upload ${failures.length} file(s): ${failures.slice(0, 3).join(' | ')}`)
+    }
+
+    for (let i = 0; i < uploadedFiles.length; i += SAVE_BATCH_SIZE) {
+      const batch = uploadedFiles.slice(i, i + SAVE_BATCH_SIZE)
+      await saveFiles({ projectId, userId, files: batch })
+    }
+
+    await saveLocalSyncHistory(projectId, {
+      lastSyncAt: Date.now(),
+      cloudPathsAtLastSync: entries.map((entry) => entry.path),
+    })
+  }, [
+    base64ToUint8Array,
+    generateUploadUrl,
+    getMimeType,
+    isBinaryPath,
+    saveFiles,
+  ])
 
   const handleNext = async () => {
     // On the review step for fresh path, create project and go to build
@@ -565,6 +848,40 @@ export function NewProject() {
       }
 
       if (result.slug) {
+        setImportSyncState('syncing')
+
+        try {
+          await updateSyncStatus({
+            projectId: result.projectId,
+            userId: convexUserId,
+            status: 'syncing',
+          })
+        } catch (syncStatusError) {
+          console.warn('[Import] Failed to set sync status to syncing:', syncStatusError)
+        }
+
+        try {
+          await preinstallDependencies(importPath)
+          await uploadLocalSnapshotToCloud(result.projectId, convexUserId, importPath)
+          await updateSyncStatus({
+            projectId: result.projectId,
+            userId: convexUserId,
+            status: 'synced',
+          })
+        } catch (bootstrapError) {
+          console.warn('[Import] Pre-open bootstrap failed, falling back to normal open:', bootstrapError)
+          try {
+            await updateSyncStatus({
+              projectId: result.projectId,
+              userId: convexUserId,
+              status: 'error',
+              errorMessage: bootstrapError instanceof Error ? bootstrapError.message : 'Bootstrap failed',
+            })
+          } catch (syncStatusError) {
+            console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
+          }
+        }
+
         setImportSyncState('ready')
         setImportSyncMessage('Opening project...')
         setTimeout(() => {

@@ -128,11 +128,13 @@ interface BuilderTerminalOutputState {
   endedAt: number | null
   exitCode: number | null
   timedOut: boolean
+  cancelled: boolean
 }
 
 interface BuilderConversationProps {
   project: Project
   localPath: string
+  stopRequestCount?: number
   onTasksUpdate: (tasks: BuildTask[]) => void
   onFileCreated: (file: { path: string; content: string }) => void
   onComplete: () => void
@@ -160,11 +162,47 @@ const truncateTerminalOutput = (output: string) => {
 const appendTerminalOutput = (current: string, chunk: string) =>
   truncateTerminalOutput(current + chunk)
 
+type TerminalExecutionStatus = 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled'
+
+function getTerminalExecutionState(args: {
+  running: boolean
+  exitCode: number | null
+  timedOut: boolean
+  cancelled: boolean
+}): { success: boolean; status: TerminalExecutionStatus; error?: string } {
+  if (args.running) {
+    return { success: true, status: 'running' }
+  }
+  if (args.cancelled) {
+    return {
+      success: false,
+      status: 'cancelled',
+      error: 'Command was cancelled by user.',
+    }
+  }
+  if (args.timedOut) {
+    return {
+      success: false,
+      status: 'timed_out',
+      error: 'Command timed out before completion.',
+    }
+  }
+  if (typeof args.exitCode === 'number' && args.exitCode !== 0) {
+    return {
+      success: false,
+      status: 'failed',
+      error: `Command exited with code ${args.exitCode}.`,
+    }
+  }
+  return { success: true, status: 'completed' }
+}
+
 type ChatHookResult = ReturnType<typeof useChat>
 
 export function BuilderConversation({
   project,
   localPath,
+  stopRequestCount = 0,
   onTasksUpdate,
   onFileCreated,
   onComplete,
@@ -192,10 +230,14 @@ export function BuilderConversation({
   const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
   const terminalListenerCleanupRef = useRef<Map<string, () => void>>(new Map())
   const terminalOutputByIdRef = useRef<Map<string, BuilderTerminalOutputState>>(new Map())
+  const terminalSessionsRef = useRef<Map<string, string>>(new Map())
 
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
+  const cancelledToolCallsRef = useRef<Set<string>>(new Set())
+  const userStoppedRef = useRef(false)
+  const lastStopRequestCountRef = useRef(stopRequestCount)
 
   useEffect(() => {
     const listenerCleanupMap = terminalListenerCleanupRef.current
@@ -208,6 +250,10 @@ export function BuilderConversation({
       outputMap.clear()
     }
   }, [])
+
+  useEffect(() => {
+    terminalSessionsRef.current = terminalSessions
+  }, [terminalSessions])
 
   // Auto-continuation refs (defined early for use in error handling)
   const latestTasksRef = useRef<BuildTask[]>([])
@@ -504,6 +550,8 @@ Now begin by defining your task list with build_tasks, then start working throug
     toolCallId: string,
     input: unknown
   ) => {
+    if (cancelledToolCallsRef.current.has(toolCallId)) return
+
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
@@ -825,13 +873,20 @@ Now begin by defining your task list with build_tasks, then start working throug
       }
 
       if (toolName === 'get_terminal_output') {
-        const terminalId = toolInput && typeof toolInput.id === 'string' ? toolInput.id : ''
+        const terminalId = toolInput && typeof toolInput.id === 'string' ? toolInput.id.trim() : ''
         if (!terminalId) {
           throw new Error('get_terminal_output requires id')
         }
 
         const session = terminalOutputByIdRef.current.get(terminalId)
         if (session) {
+          const running = session.endedAt === null
+          const executionState = getTerminalExecutionState({
+            running,
+            exitCode: session.exitCode,
+            timedOut: session.timedOut,
+            cancelled: session.cancelled,
+          })
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -841,10 +896,14 @@ Now begin by defining your task list with build_tasks, then start working throug
               stdout: session.stdout,
               stderr: session.stderr,
               exitCode: session.exitCode,
-              running: session.endedAt === null,
+              running,
               startedAt: session.startedAt,
               endedAt: session.endedAt,
               timedOut: session.timedOut,
+              cancelled: session.cancelled,
+              success: executionState.success,
+              status: executionState.status,
+              ...(executionState.error ? { error: executionState.error } : {}),
             }),
           })
           return
@@ -857,6 +916,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         })
 
         if (runtimeResult.success) {
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -926,6 +986,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             endedAt: null,
             exitCode: null,
             timedOut: false,
+            cancelled: false,
           })
 
           // Track this terminal session for live UI rendering
@@ -981,6 +1042,7 @@ Now begin by defining your task list with build_tasks, then start working throug
 
           if (isBackground) {
             // For background processes, return immediately with terminal ID
+            if (cancelledToolCallsRef.current.has(toolCallId)) return
             void addToolOutput({
               tool: toolName,
               toolCallId,
@@ -988,6 +1050,9 @@ Now begin by defining your task list with build_tasks, then start working throug
                 id: terminalId,
                 command,
                 isBackground: true,
+                running: true,
+                success: true,
+                status: 'running',
                 message: 'Background process started. Use get_terminal_output to check status.',
               }),
             })
@@ -1011,6 +1076,8 @@ Now begin by defining your task list with build_tasks, then start working throug
               const session = terminalOutputByIdRef.current.get(terminalId)
               if (session) {
                 session.timedOut = true
+                session.exitCode = -1
+                session.endedAt = Date.now()
               }
               try {
                 await window.electronAPI.terminal.kill({ terminalId })
@@ -1031,15 +1098,28 @@ Now begin by defining your task list with build_tasks, then start working throug
 
             releaseListeners()
 
+            if (cancelledToolCallsRef.current.has(toolCallId)) return
+            const timedOut = !completed && timeout > 0
+            const executionState = getTerminalExecutionState({
+              running: false,
+              exitCode,
+              timedOut,
+              cancelled: false,
+            })
             void addToolOutput({
               tool: toolName,
               toolCallId,
               output: JSON.stringify({
+                id: terminalId,
                 command,
                 stdout: output,
                 stderr: '',
                 exitCode,
-                timedOut: !completed && timeout > 0,
+                timedOut,
+                cancelled: false,
+                success: executionState.success,
+                status: executionState.status,
+                ...(executionState.error ? { error: executionState.error } : {}),
               }),
             })
           }
@@ -1051,6 +1131,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             next.delete(toolCallId)
             return next
           })
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
@@ -1077,6 +1158,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         toolCallId,
       })
 
+      if (cancelledToolCallsRef.current.has(toolCallId)) return
       if (runtimeResult.success) {
         const enrichedOutput = await enrichToolOutputWithDiagnostics(
           toolName,
@@ -1178,6 +1260,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     status,
     error,
     sendMessage,
+    stop,
     addToolOutput,
   } = useChat({
     transport: chatTransport,
@@ -1217,6 +1300,82 @@ Now begin by defining your task list with build_tasks, then start working throug
   })
 
   addToolOutputRef.current = addToolOutput
+
+  const cancelPendingToolOutputs = useCallback((reasonText: string) => {
+    const addToolOutput = addToolOutputRef.current
+    if (!addToolOutput) return
+
+    const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
+
+    for (const message of messages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
+
+        const toolPart = part as ToolPart
+        const toolCallId = toolPart.toolCallId
+        if (!toolCallId) continue
+
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        const toolName = part.type === 'dynamic-tool'
+          ? toolPart.toolName
+          : part.type.replace(/^tool-/, '')
+        if (!toolName) continue
+
+        pendingToolCalls.set(toolCallId, { toolName, toolCallId })
+        cancelledToolCallsRef.current.add(toolCallId)
+      }
+    }
+
+    for (const pending of pendingToolCalls.values()) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+        errorText: reasonText,
+      })
+    }
+  }, [messages])
+
+  const cancelActiveTerminalSessions = useCallback(async () => {
+    const activeEntries = Array.from(terminalSessionsRef.current.entries())
+    if (activeEntries.length === 0) return
+
+    for (const [toolCallId, terminalId] of activeEntries) {
+      cancelledToolCallsRef.current.add(toolCallId)
+      const session = terminalOutputByIdRef.current.get(terminalId)
+      if (session) {
+        session.endedAt = Date.now()
+        session.exitCode = -1
+        session.cancelled = true
+        session.stdout = appendTerminalOutput(session.stdout, '\n[Process cancelled by user]')
+      }
+      terminalListenerCleanupRef.current.get(toolCallId)?.()
+    }
+
+    await Promise.allSettled(
+      activeEntries.map(([, terminalId]) => window.electronAPI.terminal.kill({ terminalId }))
+    )
+
+    setTerminalSessions(new Map())
+  }, [])
+
+  useEffect(() => {
+    if (stopRequestCount === lastStopRequestCountRef.current) return
+    lastStopRequestCountRef.current = stopRequestCount
+    userStoppedRef.current = true
+
+    cancelPendingToolOutputs('Cancelled by user.')
+    void cancelActiveTerminalSessions()
+    void localRuntime.cancelRun(conversationId)
+    stop()
+  }, [cancelActiveTerminalSessions, cancelPendingToolOutputs, conversationId, localRuntime, stop, stopRequestCount])
 
   // Send initial message on mount
   useEffect(() => {
@@ -1366,6 +1525,11 @@ Now begin by defining your task list with build_tasks, then start working throug
 
   // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
   useEffect(() => {
+    if (userStoppedRef.current) {
+      continuationSentRef.current = false
+      return
+    }
+
     // Only check when not loading and not completed
     if (status === 'streaming' || status === 'submitted' || completedRef.current) {
       continuationSentRef.current = false

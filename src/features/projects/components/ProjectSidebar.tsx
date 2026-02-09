@@ -370,7 +370,7 @@ export function ProjectSidebar({
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    className="w-56 shrink-0 z-20 h-screen titlebar-no-drag sidebar-glass"
+                    className="w-56 shrink-0 z-20 h-screen sidebar-glass"
                     {...props}
                 >
                     <SidebarHeader className="mt-9 titlebar-drag-region">
@@ -379,7 +379,7 @@ export function ProjectSidebar({
                         </div>
                     </SidebarHeader>
 
-                    <SidebarContent className="group-data-[collapsible=icon]:mt-9">
+                    <SidebarContent className="titlebar-no-drag group-data-[collapsible=icon]:mt-9">
                         {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -453,7 +453,7 @@ export function ProjectSidebar({
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+                    <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
                         <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
                             <ProjectSyncIndicator variant="sidebar" />
                             <div className="mt-2 flex items-center justify-between px-1 py-1">
@@ -504,7 +504,7 @@ export function ProjectSidebar({
                             side="left"
                             variant="sidebar"
                             collapsible="none"
-                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 titlebar-no-drag relative sidebar-fade-border sidebar-fade-border-right"
+                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 relative sidebar-fade-border sidebar-fade-border-right"
                         >
                             <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
                                 <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
@@ -545,7 +545,7 @@ export function ProjectSidebar({
                                     </button>
                                 </div>
                             </SidebarHeader>
-                            <SidebarContent className="h-full overflow-hidden pt-2">
+                            <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-2">
                                 {activeTab === 'Files' ? (
                                     <div className="relative h-full">
                                         <div
