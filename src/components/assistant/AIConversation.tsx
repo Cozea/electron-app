@@ -8,7 +8,6 @@ import {
 } from 'ai'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
-import { Textarea } from '@/components/ui/textarea'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -331,6 +330,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const addToolApprovalResponseRef = useRef<ChatHookResult['addToolApprovalResponse'] | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
@@ -1499,6 +1499,19 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     stop()
   }
 
+  const resizeComposerTextarea = useCallback((target: HTMLTextAreaElement) => {
+    target.style.height = 'auto'
+    const maxHeight = Math.floor(window.innerHeight * 0.25)
+    const nextHeight = Math.min(target.scrollHeight, maxHeight)
+    target.style.height = `${nextHeight}px`
+    target.style.overflowY = target.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    if (!composerTextareaRef.current) return
+    resizeComposerTextarea(composerTextareaRef.current)
+  }, [input, resizeComposerTextarea])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1554,7 +1567,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         )}
         style={{ backgroundColor: 'var(--assistant-surface, var(--background))' }}
       >
-        <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
+        <div className="bg-muted/40 border border-border rounded-2xl">
           {billingError ? (
             <BillingError
               error={billingError}
@@ -1594,7 +1607,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
           <div className="px-3 pt-3 pb-2 grow">
             <form onSubmit={handleSubmit}>
-              <Textarea
+              <textarea
+                ref={composerTextareaRef}
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value)
@@ -1604,12 +1618,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything"
-                className="w-full bg-transparent! p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-5 max-h-[25vh]"
+                className="w-full rounded-none border-0 bg-transparent p-0 text-sm leading-6 text-foreground placeholder:text-muted-foreground shadow-none outline-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-6 max-h-[25vh]"
                 rows={1}
                 onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = "auto";
-                  target.style.height = target.scrollHeight + "px";
+                  resizeComposerTextarea(e.currentTarget)
                 }}
               />
             </form>

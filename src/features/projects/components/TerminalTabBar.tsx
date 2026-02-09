@@ -207,28 +207,30 @@ export function TerminalTabBar({
                             key={term.id}
                             onClick={() => handleTerminalClick(term.id)}
                             className={cn(
-                                "group flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
+                                "group flex h-6 shrink-0 items-center rounded-full pl-3 pr-1.5 text-[11px] transition-[padding,background-color,color]",
                                 isActive
                                     ? "bg-foreground/14 text-sidebar-foreground"
                                     : "text-muted-foreground hover:bg-foreground/10 hover:text-sidebar-foreground"
                             )}
                         >
-                            {/* Status indicator */}
-                            <Circle
-                                className={cn(
-                                    "h-2 w-2 shrink-0",
-                                    term.status === 'running' && "fill-green-500 text-green-500",
-                                    term.status === 'starting' && "fill-yellow-500 text-yellow-500 animate-pulse",
-                                    term.status === 'exited' && "fill-muted-foreground text-muted-foreground",
-                                    term.status === 'error' && "fill-destructive text-destructive"
+                            <span className="flex min-w-0 items-center gap-1.5">
+                                {/* Status indicator */}
+                                <Circle
+                                    className={cn(
+                                        "h-2 w-2 shrink-0",
+                                        term.status === 'running' && "fill-green-500 text-green-500",
+                                        term.status === 'starting' && "fill-yellow-500 text-yellow-500 animate-pulse",
+                                        term.status === 'exited' && "fill-muted-foreground text-muted-foreground",
+                                        term.status === 'error' && "fill-destructive text-destructive"
+                                    )}
+                                />
+                                <span className="truncate max-w-[140px]">{display.label}</span>
+                                {portLabel && (
+                                    <span className="shrink-0 rounded-full bg-foreground/12 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/85">
+                                        {portLabel}
+                                    </span>
                                 )}
-                            />
-                            <span className="truncate max-w-[140px]">{display.label}</span>
-                            {portLabel && (
-                                <span className="shrink-0 rounded-full bg-foreground/12 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/85">
-                                    {portLabel}
-                                </span>
-                            )}
+                            </span>
                             {/* Close button for individual tab */}
                             <span
                                 role="button"
@@ -237,9 +239,9 @@ export function TerminalTabBar({
                                     window.electronAPI.terminal.kill({ terminalId: term.id })
                                     removeTerminal(term.id)
                                 }}
-                                className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
+                                className="pointer-events-none ml-0 grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1 group-hover:w-5 group-hover:opacity-100 hover:bg-accent"
                             >
-                                <X className="h-3 w-3" />
+                                <X className="h-3 w-3 shrink-0" />
                             </span>
                         </button>
                     )

@@ -170,7 +170,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn("group not-prose mb-2 w-full rounded-md", className)}
     {...props}
   />
 );
@@ -238,11 +238,11 @@ export const ToolStatic = ({
 
   return (
     <div
-      className={cn("not-prose mb-4 w-full rounded-md border", className)}
+      className={cn("not-prose mb-2 w-full rounded-md", className)}
       {...props}
     >
-      <div className="flex w-full items-center gap-4 p-3">
-        <div className="flex items-center gap-2">
+      <div className="inline-flex max-w-full items-center gap-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="flex size-4 items-center justify-center shrink-0">
             <Icon className="size-4 text-muted-foreground" />
           </span>
@@ -279,7 +279,7 @@ export const getStatusIcon = (status: ToolState): ReactNode => {
     case "approval-responded":
       return <CheckIcon className="size-3.5 text-blue-500" />;
     case "output-available":
-      return <CheckIcon className="size-3.5 text-green-500" />;
+      return null;
     case "output-error":
       return <XIcon className="size-3.5 text-red-500" />;
     case "output-denied":
@@ -346,19 +346,19 @@ export const ToolHeader = ({
   return (
     <CollapsibleTrigger
       className={cn(
-        "flex w-full items-center justify-between gap-4 p-3",
+        "inline-flex max-w-full items-center gap-2 py-1.5 text-left",
         className
       )}
       {...props}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <span className="flex size-4 items-center justify-center shrink-0">
           <Icon className="size-4 text-muted-foreground" />
         </span>
         {renderHeaderContent()}
         {getStatusIcon(state)}
       </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-within:opacity-100 group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
   );
 };
