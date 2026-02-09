@@ -8,6 +8,7 @@ import "@xterm/xterm/css/xterm.css"
 import { cn } from "@/lib/utils"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useProblemsStore, selectProjectProblems, selectUnreadCount } from "@/stores/useProblemsStore"
+import { useTerminalStore } from "@/stores/useTerminalStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 type TabType = "console" | "problems"
@@ -20,6 +21,25 @@ interface DevServerPanelProps {
 
 export function DevServerPanel({ className, defaultCollapsed = false, projectPath }: DevServerPanelProps) {
     const { serverStatus, serverOutput, consolePanelHeight, actions } = useProjectPagesStore()
+    const devServerTerminalId = useTerminalStore((state) => {
+        if (!projectPath) return null
+
+        const matchingTerminals = Object.values(state.terminals).filter((terminal) =>
+            terminal.projectPath === projectPath &&
+            terminal.kind === 'dev-server' &&
+            (terminal.status === 'starting' || terminal.status === 'running')
+        )
+
+        if (matchingTerminals.length === 0) return null
+
+        const activeGroup = state.activeGroupId ? state.groups[state.activeGroupId] : null
+        const activeTerminalId = activeGroup?.activeTerminalId
+        if (activeTerminalId && matchingTerminals.some((terminal) => terminal.id === activeTerminalId)) {
+            return activeTerminalId
+        }
+
+        return matchingTerminals[0].id
+    })
     const errors = useProblemsStore(selectProjectProblems(projectPath))
     const unreadErrorCount = useProblemsStore(selectUnreadCount(projectPath))
     const [activeTab, setActiveTab] = useState<TabType>("console")
@@ -38,6 +58,11 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     const xtermRef = useRef<Terminal | null>(null)
     const fitAddonRef = useRef<FitAddon | null>(null)
     const searchAddonRef = useRef<SearchAddon | null>(null)
+    const devServerTerminalIdRef = useRef<string | null>(null)
+
+    useEffect(() => {
+        devServerTerminalIdRef.current = devServerTerminalId
+    }, [devServerTerminalId])
 
     // Initialize xterm
     useEffect(() => {
@@ -166,6 +191,15 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
 
         term.open(container)
 
+        // Forward keyboard input to the active dev-server terminal.
+        term.onData((data) => {
+            const terminalId = devServerTerminalIdRef.current
+            if (!terminalId) return
+            void window.electronAPI.terminal.input({ terminalId, data }).catch((error) => {
+                console.error('[DevServerPanel] Failed to forward input to terminal:', error)
+            })
+        })
+
         xtermRef.current = term
         fitAddonRef.current = fitAddon
 
@@ -173,11 +207,17 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         setTimeout(() => {
             try {
                 fitAddon.fit()
-                // Notify PTY of the terminal dimensions
-                if (projectPath) {
-                    const { cols, rows } = term
-                    console.log(`[Terminal] Initial PTY resize: ${cols}x${rows}`)
-                    window.electronAPI.devServer.resize({ projectPath, cols, rows })
+                term.focus()
+
+                // Notify PTY of the terminal dimensions.
+                const { cols, rows } = term
+                const terminalId = devServerTerminalIdRef.current
+                if (terminalId) {
+                    console.log(`[Terminal] Initial terminal resize: ${cols}x${rows}`)
+                    void window.electronAPI.terminal.resize({ terminalId, cols, rows })
+                } else if (projectPath) {
+                    console.log(`[Terminal] Initial legacy PTY resize: ${cols}x${rows}`)
+                    void window.electronAPI.devServer.resize({ projectPath, cols, rows })
                 }
             } catch (e) {
                 console.error('Terminal fit failed:', e)
@@ -260,11 +300,20 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
 
     // Notify PTY of terminal resize
     const notifyPtyResize = useCallback(() => {
-        if (!xtermRef.current || !projectPath) return
+        if (!xtermRef.current) return
 
         const { cols, rows } = xtermRef.current
-        console.log(`[Terminal] Notifying PTY resize: ${cols}x${rows}`)
-        window.electronAPI.devServer.resize({ projectPath, cols, rows })
+        const terminalId = devServerTerminalIdRef.current
+        if (terminalId) {
+            console.log(`[Terminal] Notifying terminal resize: ${cols}x${rows}`)
+            void window.electronAPI.terminal.resize({ terminalId, cols, rows })
+            return
+        }
+
+        if (projectPath) {
+            console.log(`[Terminal] Notifying legacy PTY resize: ${cols}x${rows}`)
+            void window.electronAPI.devServer.resize({ projectPath, cols, rows })
+        }
     }, [projectPath])
 
     // Handle resize when panel height changes
@@ -476,6 +525,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
                         {/* xterm container */}
                         <div
                             ref={terminalContainerRef}
+                            onMouseDown={() => xtermRef.current?.focus()}
                             className="absolute inset-0 p-1 overflow-hidden"
                         />
 
