@@ -11,6 +11,7 @@ import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
 import { useProblemsStore } from '@/stores/useProblemsStore'
 import { scanForRoutes } from '@/utils/routeScanner'
+import { findBestPreviewRouteIndex, resolveNavigationPathFromBridge } from '@/lib/previewRouteMatching'
 import {
     injectBridgeScript,
     sendBridgeMessage,
@@ -625,13 +626,14 @@ export function ProjectPagesPage() {
                 case 'bridge:navigation': {
                     if (!isFocusedPreview) break
                     // Update focused page when user navigates inside the iframe
-                    const data = payload as { pathname: string; url: string }
-                    const normalizedPath = data.pathname === '/' ? '/' : data.pathname.replace(/\/$/, '')
-                    const matchedIndex = routes.findIndex(r => {
-                        const routePath = r.path === '/' ? '/' : r.path.replace(/\/$/, '')
-                        return routePath === normalizedPath
+                    const data = payload as { pathname?: string; url?: string }
+                    const navigationPath = resolveNavigationPathFromBridge({
+                        pathname: data.pathname,
+                        url: data.url,
                     })
-                    if (matchedIndex !== -1 && matchedIndex !== focusedPageIndex) {
+                    if (!navigationPath) break
+                    const matchedIndex = findBestPreviewRouteIndex(routes, navigationPath)
+                    if (matchedIndex !== null && matchedIndex !== focusedPageIndex) {
                         setFocusedPageIndex(matchedIndex)
                     }
                     break

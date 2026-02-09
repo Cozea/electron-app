@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { ArrowLeft, ArrowRight, Rocket, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -36,6 +43,8 @@ import {
   hasPackageJson,
 } from '../utils/projectDetector'
 import { saveLocalSyncHistory } from '../lib/sync/syncHistory'
+import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
+import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -207,6 +216,18 @@ export function NewProject() {
   const [isScanning, setIsScanning] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const isImporting = importSyncState !== 'idle' && importSyncState !== 'error'
+  const [importTerminalId, setImportTerminalId] = useState<string | null>(null)
+
+  const isTerminalPanelOpen = useTerminalStore((store) => store.isPanelOpen)
+  const terminals = useTerminalStore((store) => store.terminals)
+  const groups = useTerminalStore((store) => store.groups)
+  const activeGroupId = useTerminalStore((store) => store.activeGroupId)
+  const {
+    addTerminal,
+    setActiveTerminal,
+    setPanelOpen,
+    updateTerminalStatus,
+  } = useTerminalActions()
 
   // Convex mutation for creating project
   const createProject = useMutation(api.projects.create)
@@ -310,6 +331,23 @@ export function NewProject() {
       }
 
       const terminalId = createResult.terminalId
+      addTerminal({
+        id: terminalId,
+        profileId: 'task',
+        profileName: 'Import Setup',
+        title: 'Import Setup',
+        projectPath,
+        label: 'Import Setup',
+        kind: 'task',
+        command,
+        nameSource: 'auto',
+        status: 'starting',
+        hasOutput: false,
+      })
+      setActiveTerminal(terminalId)
+      setImportTerminalId(terminalId)
+      // Keep hidden by default; user can open it from the unified header toggle.
+      setPanelOpen(false)
 
       return await new Promise((resolve) => {
         let settled = false
@@ -322,6 +360,11 @@ export function NewProject() {
 
         const unsubscribeExit = window.electronAPI.terminal.onExit(({ terminalId: exitedTerminalId, exitCode }) => {
           if (exitedTerminalId !== terminalId || settled) return
+          updateTerminalStatus(
+            terminalId,
+            exitCode === 0 ? 'exited' : 'error',
+            exitCode ?? undefined
+          )
           cleanup()
           resolve({
             success: exitCode === 0,
@@ -333,6 +376,7 @@ export function NewProject() {
           if (settled) return
           cleanup()
           void window.electronAPI.terminal.kill({ terminalId })
+          updateTerminalStatus(terminalId, 'error')
           resolve({ success: false, error: 'Command timed out' })
         }, INSTALL_TIMEOUT_MS)
 
@@ -341,15 +385,18 @@ export function NewProject() {
           data: `${command}\rexit\r`,
         }).catch((error) => {
           if (settled) return
+          updateTerminalStatus(terminalId, 'error')
           cleanup()
           resolve({
             success: false,
             error: error instanceof Error ? error.message : 'Failed to send terminal input',
           })
         })
+
+        updateTerminalStatus(terminalId, 'running')
       })
     },
-    []
+    [addTerminal, setActiveTerminal, setPanelOpen, updateTerminalStatus]
   )
 
   const preinstallDependencies = useCallback(async (projectPath: string) => {
@@ -962,15 +1009,49 @@ export function NewProject() {
 
       case 'review':
         return (
-          <ReviewStep
-            state={state}
-            onEditStep={handleEditStep}
-            onImport={state.path === 'repo' ? handleImportProject : undefined}
-            isImporting={isImporting}
-            importError={importError}
-            importSyncState={importSyncState}
-            importSyncMessage={importSyncMessage}
-          />
+          <>
+            <ReviewStep
+              state={state}
+              onEditStep={handleEditStep}
+              onImport={state.path === 'repo' ? handleImportProject : undefined}
+              isImporting={isImporting}
+              importError={importError}
+              importSyncState={importSyncState}
+              importSyncMessage={importSyncMessage}
+            />
+            <Dialog
+              open={isTerminalPanelOpen}
+              onOpenChange={(open) => setPanelOpen(open)}
+            >
+              <DialogContent className="max-w-4xl h-[70vh] p-0 overflow-hidden">
+                <DialogHeader className="px-4 pt-4 pb-2">
+                  <DialogTitle>Import Terminal</DialogTitle>
+                  <DialogDescription>
+                    Live output from the import dependency installation task.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="h-full min-h-0 pb-4 px-4">
+                  {(() => {
+                    const activeTerminalId =
+                      importTerminalId ??
+                      (activeGroupId ? groups[activeGroupId]?.activeTerminalId : null)
+                    if (!activeTerminalId || !terminals[activeTerminalId]) {
+                      return (
+                        <div className="h-full flex items-center justify-center text-sm text-muted-foreground rounded-xl bg-muted/40">
+                          No active import terminal.
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="h-full rounded-xl overflow-hidden bg-sidebar">
+                        <TerminalInstance terminalId={activeTerminalId} className="h-full w-full" shouldAutoFocus />
+                      </div>
+                    )
+                  })()}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
         )
 
       case 'prompt':
