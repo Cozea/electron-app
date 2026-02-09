@@ -78,6 +78,13 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   google_search: { present: "Searching", past: "Searched" },
 };
 
+const FILE_WRITE_TOOLS = new Set([
+  "create_file",
+  "replace_string_in_file",
+  "multi_replace_string_in_file",
+  "apply_patch",
+]);
+
 // Extract filename from a file path
 const getFileName = (filePath: string): string => {
   if (!filePath) return "";
@@ -389,6 +396,7 @@ export const ToolHeader = ({
   const isComplete = state === "output-available";
   const isError = state === "output-error" || state === "output-denied";
   const diffStats = getDiffStatsForTool(toolName, input);
+  const isFileWriteTool = toolName ? FILE_WRITE_TOOLS.has(toolName) : false;
 
   // Get the target from input (file, folder, command, query)
   const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
@@ -456,7 +464,18 @@ export const ToolHeader = ({
         <span className="flex size-4 items-center justify-center shrink-0">
           <Icon className="size-4 text-muted-foreground" />
         </span>
-        {renderHeaderContent()}
+        {isFileWriteTool ? (
+          <>
+            <span className="hidden font-medium text-sm group-data-[state=open]/tool-row:inline">
+              {isComplete || isError ? "Edited file" : "Editing file"}
+            </span>
+            <div className="min-w-0 group-data-[state=open]/tool-row:hidden">
+              {renderHeaderContent()}
+            </div>
+          </>
+        ) : (
+          renderHeaderContent()
+        )}
         {getStatusIcon(state)}
       </div>
       <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] group-hover/tool-row:opacity-100 group-focus-within/tool-row:opacity-100 group-data-[state=open]:rotate-180" />

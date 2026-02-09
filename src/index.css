@@ -44,6 +44,7 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --terminal-panel-bg: var(--sidebar);
+  --main-nav-sidebar-surface: var(--sidebar);
   --app-scrollbar-size: 8px;
   --app-scrollbar-radius: 9999px;
   --app-scrollbar-track: transparent;
@@ -73,25 +74,15 @@ body {
 
 /* Solid treatment for primary left sidebars (no glass). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: var(--sidebar) !important;
+  background-color: var(--main-nav-sidebar-surface) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   isolation: auto;
 }
 
-.dark .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--sidebar), white 4%) !important;
-}
-
-.navy .sidebar-glass [data-slot="sidebar-inner"],
-.wine .sidebar-glass [data-slot="sidebar-inner"],
-.forest .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--sidebar), white 4%) !important;
-}
-
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar-glass [data-slot="sidebar-inner"] {
-    background-color: var(--sidebar) !important;
+    background-color: var(--main-nav-sidebar-surface) !important;
   }
 }
 
@@ -279,6 +270,7 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
 .navy {
@@ -313,6 +305,7 @@ body {
   --sidebar-accent-foreground: hsl(210 30% 94%);
   --sidebar-border: hsl(222 20% 28%);
   --sidebar-ring: hsl(210 78% 62%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
 .wine {
@@ -347,6 +340,7 @@ body {
   --sidebar-accent-foreground: hsl(330 22% 92%);
   --sidebar-border: hsl(340 24% 32%);
   --sidebar-ring: hsl(345 72% 50%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
 .sunny {
@@ -415,6 +409,7 @@ body {
   --sidebar-accent-foreground: hsl(148 18% 92%);
   --sidebar-border: hsl(150 18% 30%);
   --sidebar-ring: hsl(150 42% 34%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
 @layer base {

@@ -22,7 +22,7 @@
 }
 
 .changes-codemirror-merge .cm-gutters {
-  background: color-mix(in oklab, var(--sidebar) 78%, transparent);
+  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
   display: flex;
 }
 
