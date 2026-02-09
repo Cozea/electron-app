@@ -99,7 +99,7 @@ export const Reasoning = memo(
         value={{ isStreaming, isOpen: isOpen ?? false, setIsOpen, duration }}
       >
         <Collapsible
-          className={cn("not-prose mb-4", className)}
+          className={cn("group/reasoning-row not-prose mb-4", className)}
           onOpenChange={handleOpenChange}
           open={isOpen}
           {...props}
@@ -143,7 +143,7 @@ export const ReasoningTrigger = memo(
             {getThinkingMessage(isStreaming, duration)}
             <ChevronDownIcon
               className={cn(
-                "size-4 transition-transform",
+                "size-4 opacity-0 transition-[opacity,transform] group-hover/reasoning-row:opacity-100 group-focus-within/reasoning-row:opacity-100",
                 isOpen ? "rotate-180" : "rotate-0"
               )}
             />
