@@ -133,6 +133,15 @@ Convex:
 4) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
 5) Users receive updates automatically (checks on launch and every 6 hours).
 
+### Local distributable builds
+- Use dynamic Electron Builder config (`electron-builder.config.cjs`) so mac binary signing only includes bundled Git binaries that actually exist locally.
+- Fast local package validation (no publish, ad-hoc signing):
+  - `npm run dist:local -- --mac --arm64 --dir`
+- Local signed distributable build (DMG + ZIP, no publish):
+  - `npm run dist -- --mac --arm64 --publish never`
+- Windows distributable build (run on Windows host, no publish):
+  - `npm run dist -- --win --x64 --publish never`
+
 ## Dev test for bundled Git runtime
 - `npm run dev:bundled-git` runs a bundled-Git preflight check first, then starts dev with bundled-Git lookup forced.
 - `npm run prepare:bundled-git:check` validates the required bundle for the current host without launching the app.
