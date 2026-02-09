@@ -26,8 +26,8 @@ import { parseBillingError, type BillingErrorData } from '@/components/assistant
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import {
-  enrichToolOutputWithLintDiagnostics,
-  extractToolFilePaths,
+  attachToolDiagnosticsToOutput,
+  collectToolDiagnosticsSummary,
   summarizeLintDiagnostics,
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
@@ -44,16 +44,6 @@ const BUILDER_LOCAL_TOOLS = new Set([
   'get_terminal_output',
   'replace_string_in_file',
   'multi_replace_string_in_file',
-])
-
-const WRITE_TOOLS = new Set([
-  'create_file',
-  'create_directory',
-  'replace_string_in_file',
-  'multi_replace_string_in_file',
-  'run_in_terminal',
-  'get_terminal_output',
-  'apply_patch',
 ])
 
 // Project type from Convex
@@ -394,20 +384,39 @@ Now begin by defining your task list with build_tasks, then start working throug
     return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
   }, [])
 
+  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null): string[] => {
+    if (!input) return []
+    if (toolName === 'create_file' || toolName === 'replace_string_in_file') {
+      const filePath = input.filePath
+      return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
+    }
+    if (toolName === 'multi_replace_string_in_file') {
+      const replacements = Array.isArray(input.replacements) ? input.replacements : []
+      return replacements
+        .filter(isRecord)
+        .map((replacement) => replacement.filePath)
+        .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
+    }
+    return []
+  }, [])
+
   const enrichToolOutputWithDiagnostics = useCallback(async (
     toolName: string,
     toolInput: Record<string, unknown> | null,
     output: unknown
   ) => {
-    if (!WRITE_TOOLS.has(toolName)) return output
+    if (!localPath) return output
 
-    return enrichToolOutputWithLintDiagnostics({
+    const filePaths = getToolFilePaths(toolName, toolInput)
+    if (filePaths.length === 0) return output
+
+    const summary = await collectToolDiagnosticsSummary({
       projectPath: localPath,
-      toolName,
-      input: toolInput,
-      output,
+      filePaths,
     })
-  }, [localPath])
+
+    return attachToolDiagnosticsToOutput(output, summary)
+  }, [getToolFilePaths, localPath])
 
   const getFinalDiagnosticsSummary = useCallback(async () => {
     if (!localPath || !window.electronAPI?.diagnostics) return null
@@ -1062,18 +1071,11 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      const toolFilePaths = extractToolFilePaths(toolName, toolInput)
-      const runRuntimeTool = () =>
-        localRuntime.requestToolExecution(conversationId, {
-          toolName,
-          input: toolInput,
-          toolCallId,
-        })
-
-      const runtimeResult =
-        toolFilePaths.length > 0 && WRITE_TOOLS.has(toolName)
-          ? await withFileLocks(toolFilePaths, runRuntimeTool)
-          : await runRuntimeTool()
+      const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
+        toolName,
+        input: toolInput,
+        toolCallId,
+      })
 
       if (runtimeResult.success) {
         const enrichedOutput = await enrichToolOutputWithDiagnostics(

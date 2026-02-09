@@ -54,20 +54,12 @@ export function useDevServerManager({
   const startedRef = useRef(false)
   const expectedPortRef = useRef<number | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
-  const startupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearStartupTimeout = useCallback(() => {
-    if (!startupTimeoutRef.current) return
-    clearTimeout(startupTimeoutRef.current)
-    startupTimeoutRef.current = null
-  }, [])
 
   // Start the dev server
   const start = useCallback(async () => {
     if (!projectPath) return
     if (state.status === 'starting' || state.status === 'ready') return
 
-    clearStartupTimeout()
     setState((prev) => ({
       ...prev,
       status: 'starting',
@@ -95,22 +87,8 @@ export function useDevServerManager({
 
       startedRef.current = true
       console.log('[DevServer] Started with PID:', result.pid)
-
-      startupTimeoutRef.current = setTimeout(() => {
-        setState((prev) => {
-          if (prev.status !== 'starting') return prev
-          const error = 'Dev server startup timed out'
-          onError?.(error)
-          return {
-            ...prev,
-            status: 'error',
-            error,
-          }
-        })
-      }, 120000)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      clearStartupTimeout()
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -118,14 +96,13 @@ export function useDevServerManager({
       }))
       onError?.(errorMessage)
     }
-  }, [clearStartupTimeout, onError, projectPath, state.status])
+  }, [projectPath, state.status, onError])
 
   // Stop the dev server
   const stop = useCallback(async () => {
     if (!projectPath) return
 
     try {
-      clearStartupTimeout()
       await window.electronAPI.devServer.stop({ projectPath })
       startedRef.current = false
       setState((prev) => ({
@@ -137,7 +114,7 @@ export function useDevServerManager({
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }
-  }, [clearStartupTimeout, projectPath])
+  }, [projectPath])
 
   // Restart the dev server
   const restart = useCallback(async () => {
@@ -186,7 +163,6 @@ export function useDevServerManager({
         if (port) {
           const url = `http://localhost:${port}`
           console.log('[DevServer] Ready at:', url)
-          clearStartupTimeout()
           setState((prev) => ({
             ...prev,
             status: 'ready',
@@ -203,7 +179,6 @@ export function useDevServerManager({
 
       console.log('[DevServer] Exited with code:', code)
       startedRef.current = false
-      clearStartupTimeout()
 
       setState((prev) => ({
         ...prev,
@@ -216,7 +191,6 @@ export function useDevServerManager({
       if (path !== projectPath) return
 
       console.error('[DevServer] Error:', error)
-      clearStartupTimeout()
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -234,7 +208,7 @@ export function useDevServerManager({
     return () => {
       cleanupRef.current?.()
     }
-  }, [clearStartupTimeout, projectPath, state.status, checkForReady, onReady, onError, onOutput])
+  }, [projectPath, state.status, checkForReady, onReady, onError, onOutput])
 
   // Auto-start if enabled
   useEffect(() => {
@@ -246,13 +220,12 @@ export function useDevServerManager({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearStartupTimeout()
       if (startedRef.current && projectPath) {
         console.log('[DevServer] Cleaning up on unmount')
         window.electronAPI.devServer.stop({ projectPath }).catch(console.error)
       }
     }
-  }, [clearStartupTimeout, projectPath])
+  }, [projectPath])
 
   return {
     ...state,

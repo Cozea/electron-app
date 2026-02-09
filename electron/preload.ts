@@ -559,7 +559,6 @@ export interface ElectronAPI {
     start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>
     stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { projectPath: string; cols: number; rows: number }) => Promise<{ success: boolean }>
-    input: (options: { projectPath: string; data: string }) => Promise<{ success: boolean; error?: string }>
     isRunning: (options: { projectPath: string }) => Promise<boolean>
     onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => void) => () => void
     onExit: (callback: (data: { projectPath: string; code: number | null }) => void) => () => void
@@ -964,8 +963,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devServer:stop', options),
     resize: (options: { projectPath: string; cols: number; rows: number }) =>
       ipcRenderer.invoke('devServer:resize', options),
-    input: (options: { projectPath: string; data: string }) =>
-      ipcRenderer.invoke('devServer:input', options),
     isRunning: (options: { projectPath: string }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
     onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => void) => {

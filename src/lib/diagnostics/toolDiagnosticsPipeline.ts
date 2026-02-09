@@ -38,15 +38,6 @@ interface CollectToolDiagnosticsOptions {
   maxItems?: number
 }
 
-interface EnrichToolOutputWithLintDiagnosticsOptions {
-  projectPath?: string | null
-  toolName: string
-  input: Record<string, unknown> | null
-  output: unknown
-  timeoutMs?: number
-  maxItems?: number
-}
-
 interface SummarizeLintDiagnosticsOptions {
   projectPath: string
   diagnostics: PipelineDiagnostic[]
@@ -88,90 +79,6 @@ function toProjectRelativePath(projectPath: string, filePath: string): string {
     return '.'
   }
   return normalizedFilePath
-}
-
-function readToolFilePath(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function parseApplyPatchFilePaths(patch: string): string[] {
-  const paths = new Set<string>()
-  const lines = patch.split(/\r?\n/)
-
-  for (const line of lines) {
-    const updateMatch = line.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/)
-    if (updateMatch?.[1]) {
-      const filePath = updateMatch[1].trim()
-      if (filePath) {
-        paths.add(filePath)
-      }
-      continue
-    }
-
-    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/)
-    if (moveMatch?.[1]) {
-      const filePath = moveMatch[1].trim()
-      if (filePath) {
-        paths.add(filePath)
-      }
-    }
-  }
-
-  return Array.from(paths)
-}
-
-function getApplyPatchFilePaths(input: Record<string, unknown>): string[] {
-  const candidates: unknown[] = [input.input, input.patch]
-
-  const operation = input.operation
-  if (typeof operation === 'string') {
-    candidates.push(operation)
-  } else if (isRecord(operation)) {
-    candidates.push(operation.input, operation.patch)
-  }
-
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string') continue
-    const parsed = parseApplyPatchFilePaths(candidate)
-    if (parsed.length > 0) {
-      return parsed
-    }
-  }
-
-  return []
-}
-
-export function extractToolFilePaths(
-  toolName: string,
-  input: Record<string, unknown> | null | undefined
-): string[] {
-  if (!input) return []
-
-  if (
-    toolName === 'create_file' ||
-    toolName === 'replace_string_in_file' ||
-    toolName === 'read_file'
-  ) {
-    const filePath = readToolFilePath(input.filePath ?? input.file_path)
-    return filePath ? [filePath] : []
-  }
-
-  if (toolName === 'multi_replace_string_in_file') {
-    const replacements = Array.isArray(input.replacements) ? input.replacements : []
-    const paths = replacements
-      .filter(isRecord)
-      .map((replacement) => readToolFilePath(replacement.filePath ?? replacement.file_path))
-      .filter((filePath): filePath is string => Boolean(filePath))
-    return Array.from(new Set(paths))
-  }
-
-  if (toolName === 'apply_patch') {
-    return getApplyPatchFilePaths(input)
-  }
-
-  return []
 }
 
 export function summarizeLintDiagnostics({
@@ -282,29 +189,6 @@ export async function collectToolDiagnosticsSummary({
     filePaths: checkedPaths,
     maxItems,
   })
-}
-
-export async function enrichToolOutputWithLintDiagnostics({
-  projectPath,
-  toolName,
-  input,
-  output,
-  timeoutMs,
-  maxItems,
-}: EnrichToolOutputWithLintDiagnosticsOptions): Promise<unknown> {
-  if (!projectPath || !window.electronAPI?.diagnostics) return output
-
-  const filePaths = extractToolFilePaths(toolName, input)
-  if (filePaths.length === 0) return output
-
-  const summary = await collectToolDiagnosticsSummary({
-    projectPath,
-    filePaths,
-    timeoutMs,
-    maxItems,
-  })
-
-  return attachToolDiagnosticsToOutput(output, summary)
 }
 
 export function attachToolDiagnosticsToOutput(

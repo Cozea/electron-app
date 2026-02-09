@@ -2799,7 +2799,6 @@ ipcMain.handle(
       }
 
       const excludedDirectories = new Set([
-        '.git',
         'node_modules',
         '.next',
         '.nuxt',
@@ -3700,30 +3699,6 @@ ipcMain.handle(
     } catch (err) {
       console.error('[DevServer] Failed to resize PTY:', err)
       return { success: false }
-    }
-  }
-)
-
-// Forward keyboard input to a running dev-server PTY.
-ipcMain.handle(
-  'devServer:input',
-  (
-    _event,
-    { projectPath, data }: { projectPath: string; data: string }
-  ): { success: boolean; error?: string } => {
-    const ptyProcess = devServerProcesses.get(projectPath)
-    if (!ptyProcess) {
-      return { success: false, error: 'Dev server is not running for this project' }
-    }
-
-    try {
-      ptyProcess.write(data)
-      return { success: true }
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Failed to send input to dev server',
-      }
     }
   }
 )
