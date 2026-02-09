@@ -807,17 +807,43 @@ export const BRIDGE_SCRIPT = `
     }
   }, true);
 
-  // Track navigation changes (for React Router and other SPA routers)
-  let lastPathname = window.location.pathname;
+  // Track navigation changes (supports browser routers and hash routers)
+  function normalizeNavigationPath(pathname) {
+    if (typeof pathname !== 'string' || pathname.length === 0) return '/';
+    let normalized = pathname;
+    if (!normalized.startsWith('/')) normalized = '/' + normalized;
+    normalized = normalized.replace(/\\/{2,}/g, '/');
+    if (normalized.length > 1) {
+      normalized = normalized.replace(/\\/+$/, '');
+    }
+    return normalized || '/';
+  }
+
+  function extractHashRoutePath() {
+    const rawHash = window.location.hash || '';
+    if (!rawHash || rawHash === '#') return null;
+    const hashContent = rawHash.startsWith('#!') ? rawHash.slice(2) : rawHash.slice(1);
+    if (!hashContent.startsWith('/')) return null;
+    const hashPath = hashContent.split('?')[0].split('#')[0];
+    return normalizeNavigationPath(hashPath);
+  }
+
+  function getCurrentNavigationPath() {
+    const hashRoutePath = extractHashRoutePath();
+    if (hashRoutePath) return hashRoutePath;
+    return normalizeNavigationPath(window.location.pathname);
+  }
+
+  let lastNavigationPath = getCurrentNavigationPath();
 
   function notifyNavigation() {
-    const newPathname = window.location.pathname;
-    if (newPathname !== lastPathname) {
+    const newPathname = getCurrentNavigationPath();
+    if (newPathname !== lastNavigationPath) {
       bridgeLog('Detected in-frame navigation', {
-        from: lastPathname,
+        from: lastNavigationPath,
         to: newPathname,
       });
-      lastPathname = newPathname;
+      lastNavigationPath = newPathname;
       postToParent({
         type: 'bridge:navigation',
         payload: {
@@ -846,6 +872,7 @@ export const BRIDGE_SCRIPT = `
 
   // Listen for popstate (back/forward navigation)
   window.addEventListener('popstate', notifyNavigation);
+  window.addEventListener('hashchange', notifyNavigation);
 
   // Signal bridge is ready
   bridgeLog('Bridge ready, notifying parent');

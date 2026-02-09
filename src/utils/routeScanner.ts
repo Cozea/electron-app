@@ -498,6 +498,8 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
     const result = await window.electronAPI.project.listFiles({ projectPath })
     if (!result.success || !result.files) return routes
 
+    let hasExplicitRootRoute = false
+
     // First, try to parse App.tsx for React Router route definitions
     const appFile = result.files.find(f => {
       const p = f.path.replace(/\\/g, '/')
@@ -509,6 +511,7 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
       if (parsedRoutes.length > 0) {
         return sortRoutes(parsedRoutes)
       }
+      hasExplicitRootRoute = await detectExplicitRootRouteInReactApp(projectPath, appFile.path)
     }
 
     // Fallback: Check for src/pages directory (common convention)
@@ -529,9 +532,11 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
           .replace(/\/index$/, '')
           .replace(/\/Index$/, '')
 
-        // Special case: Home.tsx typically maps to / (index route)
-        if (routePath === '/Home') {
-          routePath = '/'
+        // Home files are often mapped explicitly in router config.
+        // When we can detect an explicit root route, keep Home as "/".
+        // Otherwise preserve "/home" so non-standard home routes remain reachable.
+        if (/^\/home$/i.test(routePath)) {
+          routePath = hasExplicitRootRoute ? '/' : '/home'
         }
 
         if (routePath === '') routePath = '/'
@@ -651,6 +656,30 @@ async function parseReactRouterRoutes(
   }
 
   return routes
+}
+
+async function detectExplicitRootRouteInReactApp(
+  projectPath: string,
+  appFilePath: string
+): Promise<boolean> {
+  try {
+    const content = await window.electronAPI.project.readFile({
+      projectPath,
+      filePath: appFilePath,
+    })
+
+    if (!content.success || !content.content) return false
+
+    const source = content.content
+    return (
+      /<Route[^>]*\bpath=["']\/["']/.test(source) ||
+      /<Route[^>]*\bindex\b/.test(source) ||
+      /\bpath\s*:\s*["']\/["']/.test(source) ||
+      /\bindex\s*:\s*true\b/.test(source)
+    )
+  } catch {
+    return false
+  }
 }
 
 /**

@@ -44,11 +44,13 @@ export function LayoutToggles() {
     const { toggleSidebar, state } = useSidebar()
     const toggleTerminal = useTerminalStore((state) => state.actions.togglePanel)
     const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen)
+    const hasTerminalSessions = useTerminalStore((state) => Object.keys(state.terminals).length > 0)
     const toggleAssistant = useAssistantPanelStore((state) => state.togglePanel)
     const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== 'closed')
 
     const { slug } = useParams<{ slug: string }>()
     const isProjectContext = Boolean(slug)
+    const canToggleTerminal = isProjectContext || hasTerminalSessions
 
     return (
         <div className="flex items-center gap-0.5">
@@ -64,7 +66,7 @@ export function LayoutToggles() {
             <Button
                 variant="ghost"
                 size="icon"
-                disabled={!isProjectContext}
+                disabled={!canToggleTerminal}
                 className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
                 onClick={toggleTerminal}
             >

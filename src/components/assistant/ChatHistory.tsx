@@ -157,8 +157,8 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
                 <div className="flex size-6 items-center justify-center rounded-md">
                   <MessageSquare className="size-3.5 text-muted-foreground" />
                 </div>
-                <div className="flex min-w-0 items-center gap-2 flex-1">
-                  <span className="truncate min-w-0">{conv.title}</span>
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                  <span className="min-w-0 flex-1 truncate">{conv.title}</span>
                   {currentConversationId === conv._id && (
                     <Check className="h-3.5 w-3.5 text-foreground shrink-0" />
                   )}
