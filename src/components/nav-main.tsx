@@ -29,6 +29,31 @@ export const NavMain = memo(function NavMain({
   const location = useLocation()
   const currentPath = location.pathname
 
+  const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/"
+  const normalizedCurrentPath = normalizePath(currentPath)
+
+  const isItemActive = (item: NavMainItem) => {
+    const normalizedItemPath = normalizePath(item.url)
+    const matchesCurrentPath =
+      normalizedCurrentPath === normalizedItemPath ||
+      normalizedCurrentPath.startsWith(`${normalizedItemPath}/`)
+
+    if (!matchesCurrentPath) return false
+
+    // When multiple items match by prefix, keep only the most specific one active.
+    const hasMoreSpecificMatch = items.some((candidate) => {
+      if (candidate.url === item.url) return false
+      const normalizedCandidatePath = normalizePath(candidate.url)
+      const candidateMatches =
+        normalizedCurrentPath === normalizedCandidatePath ||
+        normalizedCurrentPath.startsWith(`${normalizedCandidatePath}/`)
+
+      return candidateMatches && normalizedCandidatePath.length > normalizedItemPath.length
+    })
+
+    return !hasMoreSpecificMatch
+  }
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
@@ -37,7 +62,7 @@ export const NavMain = memo(function NavMain({
           <SidebarMenuItem key={item.title}>
             <SidebarMenuButton
               tooltip={item.title}
-              isActive={currentPath === item.url || currentPath.startsWith(item.url + "/")}
+              isActive={isItemActive(item)}
               asChild
             >
               <Link to={item.url}>
