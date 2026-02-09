@@ -70,19 +70,22 @@ body {
   z-index: 5;
 }
 
-/* Theme-aware translucent glass treatment for primary left sidebars. */
+/* Solid treatment for primary left sidebars (no glass). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  /* Fallbacks first, then token-based mix when supported. */
-  background-color: rgb(255 255 255 / 0.62) !important;
-  background-color: color-mix(in srgb, var(--sidebar) 48%, transparent) !important;
-  backdrop-filter: blur(22px) saturate(135%);
-  -webkit-backdrop-filter: blur(22px) saturate(135%);
-  isolation: isolate;
+  background-color: var(--sidebar) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: auto;
 }
 
 .dark .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: rgb(10 10 10 / 0.6) !important;
-  background-color: color-mix(in srgb, var(--sidebar) 49%, transparent) !important;
+  background-color: color-mix(in oklch, var(--sidebar), white 4%) !important;
+}
+
+.navy .sidebar-glass [data-slot="sidebar-inner"],
+.wine .sidebar-glass [data-slot="sidebar-inner"],
+.forest .sidebar-glass [data-slot="sidebar-inner"] {
+  background-color: color-mix(in oklch, var(--sidebar), white 4%) !important;
 }
 
 @supports not (backdrop-filter: blur(1px)) {

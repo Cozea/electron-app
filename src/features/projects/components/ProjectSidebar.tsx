@@ -456,7 +456,7 @@ export function ProjectSidebar({
                     <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
                         <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
                             <ProjectSyncIndicator variant="sidebar" />
-                            <div className="mt-2 flex items-center justify-between rounded-lg bg-background/70 px-2.5 py-2">
+                            <div className="mt-2 flex items-center justify-between px-1 py-1">
                                 <p className="text-[11px] text-muted-foreground">
                                     {totalPresenceCount} online
                                 </p>
