@@ -91,7 +91,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   return (
     <div
       className={cn(
-        'flex flex-col bg-background overflow-hidden bdry-l relative sidebar-fade-border',
+        'flex flex-col bg-[var(--assistant-surface)] overflow-hidden bdry-l relative sidebar-fade-border [--assistant-surface:var(--background)]',
         'relative',
         !isDragging && 'transition-all duration-300 ease-in-out',
         className

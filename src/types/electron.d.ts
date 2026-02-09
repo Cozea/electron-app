@@ -437,7 +437,7 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
   }
   preview: {
-    injectBridge: (options: { url: string }) => Promise<PreviewInjectBridgeResult>
+    injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
   }
   project: {

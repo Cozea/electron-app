@@ -195,7 +195,9 @@ export function EditorTabs() {
                                     onClick={() => handleTabClick(path)}
                                     className={cn(
                                         "relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs cursor-pointer select-none group",
-                                        isActive ? "bg-secondary/80 text-secondary-foreground rounded-full h-7 my-1" : "bg-transparent text-muted-foreground hover:bg-transparent"
+                                        isActive
+                                            ? "bg-foreground/14 text-foreground rounded-full h-7 my-1"
+                                            : "bg-transparent text-muted-foreground hover:bg-foreground/10 hover:text-foreground rounded-full h-7 my-1"
                                     )}
                                 >
                                     {showSeparator && (
@@ -229,13 +231,13 @@ export function EditorTabs() {
 
                     <div
                         className={cn(
-                            "pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background via-background/80 to-transparent transition-opacity duration-150",
+                            "tab-scroll-fade-left pointer-events-none absolute left-0 top-0 h-full w-6 transition-opacity duration-150",
                             showLeftFade ? "opacity-100" : "opacity-0"
                         )}
                     />
                     <div
                         className={cn(
-                            "pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-background via-background/80 to-transparent transition-opacity duration-150",
+                            "tab-scroll-fade-right pointer-events-none absolute right-0 top-0 h-full w-6 transition-opacity duration-150",
                             showRightFade ? "opacity-100" : "opacity-0"
                         )}
                     />

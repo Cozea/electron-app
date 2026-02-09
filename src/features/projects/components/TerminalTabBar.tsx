@@ -188,10 +188,13 @@ export function TerminalTabBar({
         ? activeGroup.terminalIds.map((id) => terminals[id]).filter(Boolean)
         : []
 
-    const buttonClass = "p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+    const buttonClass = "p-1 rounded text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-sidebar-foreground"
 
     return (
-        <div className="flex items-center justify-between bg-sidebar w-full h-9">
+        <div
+            className="flex items-center justify-between w-full h-9"
+            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+        >
             {/* Left: Terminal tabs + Problems tab */}
             <div className="app-scrollbar flex items-center h-full flex-1 min-w-0 overflow-x-auto gap-1 px-2">
                 {/* Terminal tabs */}
@@ -206,8 +209,8 @@ export function TerminalTabBar({
                             className={cn(
                                 "group flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
                                 isActive
-                                    ? "bg-secondary text-foreground"
-                                    : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+                                    ? "bg-foreground/14 text-sidebar-foreground"
+                                    : "text-muted-foreground hover:bg-foreground/10 hover:text-sidebar-foreground"
                             )}
                         >
                             {/* Status indicator */}
@@ -222,7 +225,7 @@ export function TerminalTabBar({
                             />
                             <span className="truncate max-w-[140px]">{display.label}</span>
                             {portLabel && (
-                                <span className="shrink-0 rounded-full bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                <span className="shrink-0 rounded-full bg-foreground/12 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/85">
                                     {portLabel}
                                 </span>
                             )}
@@ -248,8 +251,8 @@ export function TerminalTabBar({
                     className={cn(
                         "flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
                         activeView === "problems"
-                            ? "bg-secondary text-foreground"
-                            : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+                            ? "bg-foreground/14 text-sidebar-foreground"
+                            : "text-muted-foreground hover:bg-foreground/10 hover:text-sidebar-foreground"
                     )}
                 >
                     <AlertTriangle className="h-3 w-3" />

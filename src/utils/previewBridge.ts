@@ -37,6 +37,11 @@ export type BridgeMessageType =
 export interface BridgeMessage {
   type: BridgeMessageType
   payload?: unknown
+  __cozeaBridgeMeta?: {
+    frameName?: string
+    href?: string
+    instanceId?: string
+  }
 }
 
 /** Data returned when an element is selected */
@@ -67,21 +72,33 @@ export interface ElementContextMenuData extends SelectedElementData {
  * - Electron: uses main-process injection (cross-origin safe)
  */
 export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<boolean> {
+  const frameName = iframe.getAttribute('name') || undefined
+  const targetUrl = iframe.src || '(no-src)'
+  console.log('[PreviewBridge][Renderer] Injection requested', { frameName, url: targetUrl })
+
   // Prefer Electron main-process injection when available (works cross-origin).
   const electronInject = window.electronAPI?.preview?.injectBridge
   if (electronInject && iframe.src) {
     try {
-      const result = await electronInject({ url: iframe.src })
-      if (result.success) return true
+      const result = await electronInject({ url: iframe.src, frameName })
+      if (result.success) {
+        console.log('[PreviewBridge][Renderer] Electron injection succeeded', { frameName, url: targetUrl })
+        return true
+      }
+      console.warn('[PreviewBridge][Renderer] Electron injection returned unsuccessful result', {
+        frameName,
+        url: targetUrl,
+        error: result.error,
+      })
     } catch (err) {
-      console.warn('[Bridge] Electron injection failed:', err)
+      console.warn('[PreviewBridge][Renderer] Electron injection failed', { frameName, url: targetUrl, error: err })
     }
   }
 
   try {
     const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
     if (!iframeDoc) {
-      console.warn('[Bridge] Cannot access iframe document')
+      console.warn('[PreviewBridge][Renderer] Cannot access iframe document', { frameName, url: targetUrl })
       return false
     }
 
@@ -100,10 +117,11 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<boo
     const script = iframeDoc.createElement('script')
     script.textContent = BRIDGE_SCRIPT
     iframeDoc.head.appendChild(script)
+    console.log('[PreviewBridge][Renderer] DOM injection fallback succeeded', { frameName, url: targetUrl })
     return true
   } catch (err) {
     // Cross-origin iframe
-    console.warn('[Bridge] Cannot inject into cross-origin iframe:', err)
+    console.warn('[PreviewBridge][Renderer] Cannot inject into cross-origin iframe', { frameName, url: targetUrl, error: err })
     return false
   }
 }
@@ -115,9 +133,17 @@ export function sendBridgeMessage(
   iframe: HTMLIFrameElement,
   message: BridgeMessage
 ): void {
+  const noisyType = message.type === 'host:update-style' || message.type === 'host:update-text'
+  if (!noisyType) {
+    console.log('[PreviewBridge][Renderer] Sending host message', {
+      type: message.type,
+      frameName: iframe.getAttribute('name') || undefined,
+      url: iframe.src || '(no-src)',
+    })
+  }
   try {
     iframe.contentWindow?.postMessage(message, '*')
   } catch (err) {
-    console.warn('[Bridge] Failed to send message:', err)
+    console.warn('[PreviewBridge][Renderer] Failed to send message', { type: message.type, error: err })
   }
 }

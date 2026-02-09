@@ -1509,11 +1509,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', className)}>
       {/* Messages Area */}
-      <div className="flex-1 min-h-0 relative">
-        {/* Top fade */}
-        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
+        <div className="flex-1 min-h-0 relative">
+          {/* Top fade */}
+        <div className="assistant-scroll-fade-top absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none" />
+          {/* Bottom fade */}
+        <div className="assistant-scroll-fade-bottom absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none" />
         <Conversation className="h-full">
           <ConversationContent className={cn(uniqueMessages.length === 0 && "h-full p-0")}>
             {uniqueMessages.length === 0 ? (
@@ -1549,9 +1549,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       {/* Input Area - Compact AI Prompt */}
       <div
         className={cn(
-          "px-3 pb-3 shrink-0 mt-auto bg-background z-10 w-full max-w-2xl mx-auto",
+          "px-3 pb-3 shrink-0 mt-auto z-10 w-full max-w-2xl mx-auto",
           uniqueMessages.length === 0 ? "pt-1" : "pt-2"
         )}
+        style={{ backgroundColor: 'var(--assistant-surface, var(--background))' }}
       >
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
           {billingError ? (
