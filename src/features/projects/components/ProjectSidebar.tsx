@@ -469,7 +469,7 @@ export function ProjectSidebar({
                                 )}
                             </div>
                         </div>
-                        <div className="hidden pb-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-2">
+                        <div className="hidden pb-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1.5">
                             <ProjectSyncIndicator variant="compact" />
                             <Badge
                                 variant="secondary"

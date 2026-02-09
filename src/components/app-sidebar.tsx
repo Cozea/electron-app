@@ -21,7 +21,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
-  SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
@@ -68,9 +67,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         </SidebarHeader>
         <SidebarContent className="group-data-[collapsible=icon]:mt-9">
           <NavMain label="Platform" items={PLATFORM_ITEMS} />
-          <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
           <NavMain label="Team" items={TEAM_ITEMS} />
-          <SidebarSeparator className="hidden group-data-[collapsible=icon]:block my-2 mx-0 w-full" />
           <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
         </SidebarContent>
         <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
