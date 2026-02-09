@@ -25,7 +25,12 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import {
+  attachToolDiagnosticsToOutput,
+  collectToolDiagnosticsSummary,
+  summarizeLintDiagnostics,
+  type PipelineDiagnostic,
+} from '@/lib/diagnostics/toolDiagnosticsPipeline'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -413,6 +418,23 @@ Now begin by defining your task list with build_tasks, then start working throug
     return attachToolDiagnosticsToOutput(output, summary)
   }, [getToolFilePaths, localPath])
 
+  const getFinalDiagnosticsSummary = useCallback(async () => {
+    if (!localPath || !window.electronAPI?.diagnostics) return null
+
+    const snapshot = await window.electronAPI.diagnostics.getSnapshot({ projectPath: localPath })
+    if (!snapshot.success) return null
+
+    const diagnostics = Array.isArray(snapshot.diagnostics)
+      ? snapshot.diagnostics as PipelineDiagnostic[]
+      : []
+
+    return summarizeLintDiagnostics({
+      projectPath: localPath,
+      diagnostics,
+      maxItems: 8,
+    })
+  }, [localPath])
+
   const formatLockConflictError = useCallback((
     filePath: string,
     details: { lockedByName?: string | null; expiresAt?: number | null; status?: string | null }
@@ -567,15 +589,24 @@ Now begin by defining your task list with build_tasks, then start working throug
         }
 
         const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'completed')
+        let finalDiagnostics = null
         if (allCompleted && !completedRef.current) {
+          finalDiagnostics = await getFinalDiagnosticsSummary()
           completedRef.current = true
           setTimeout(() => onComplete(), 500)
+        }
+
+        const outputPayload = {
+          success: true,
+          taskCount: tasks.length,
+          tasks,
+          ...(finalDiagnostics ? { diagnostics: finalDiagnostics } : {}),
         }
 
         void addToolOutput({
           tool: toolName,
           toolCallId,
-          output: JSON.stringify({ success: true, taskCount: tasks.length, tasks }),
+          output: JSON.stringify(outputPayload),
         })
         return
       }
@@ -583,19 +614,28 @@ Now begin by defining your task list with build_tasks, then start working throug
       if (toolName === 'mark_complete') {
         const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
         console.log('[Builder] mark_complete called with summary:', summary)
+        const finalDiagnostics = await getFinalDiagnosticsSummary()
         if (!completedRef.current) {
           completedRef.current = true
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, message: 'Build marked as complete' }),
+            output: JSON.stringify({
+              success: true,
+              message: 'Build marked as complete',
+              ...(finalDiagnostics ? { diagnostics: finalDiagnostics } : {}),
+            }),
           })
           setTimeout(() => onComplete(), 500)
         } else {
           void addToolOutput({
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({ success: true, message: 'Build was already completed' }),
+            output: JSON.stringify({
+              success: true,
+              message: 'Build was already completed',
+              ...(finalDiagnostics ? { diagnostics: finalDiagnostics } : {}),
+            }),
           })
         }
         return
@@ -1073,6 +1113,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     onComplete,
     onFileCreated,
     onTasksUpdate,
+    getFinalDiagnosticsSummary,
     withFileLocks,
   ])
 
