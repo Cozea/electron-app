@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -115,24 +115,15 @@ function getRelativePath(filePath: string): string {
 export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelProps) {
   const { convexUserId } = useAuth()
   const [commentText, setCommentText] = useState('')
-  const deferredCommentText = useDeferredValue(commentText)
+  const [composerMode, setComposerMode] = useState<'write' | 'preview'>('write')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
   const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const composerPreviewRef = useRef<HTMLDivElement | null>(null)
   const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowTopFade(!atTop)
     setShowBottomFade(!atBottom)
-  }, [])
-
-  const syncComposerScroll = useCallback(() => {
-    const textarea = composerTextareaRef.current
-    const preview = composerPreviewRef.current
-    if (!textarea || !preview) return
-    preview.scrollTop = textarea.scrollTop
-    preview.scrollLeft = textarea.scrollLeft
   }, [])
 
   useEffect(() => {
@@ -142,6 +133,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   useEffect(() => {
     setCommentText('')
+    setComposerMode('write')
   }, [changeId])
 
   const change = useQuery(
@@ -266,10 +258,6 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     })
   }, [commentText])
 
-  useEffect(() => {
-    syncComposerScroll()
-  }, [commentText, syncComposerScroll])
-
   if (!changeId) return null
 
   if (!displayedChange && change === undefined) {
@@ -290,6 +278,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   const fileName = displayedChange.filePath.split('/').pop() || displayedChange.filePath
   const displayPath = getRelativePath(displayedChange.filePath)
+  const isComposerLocked = isSubmitting || isSwitchingDiff
 
   return (
     <div className="relative flex flex-col h-full bg-background">
@@ -357,31 +346,60 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       {/* Comment Input */}
       <div className="p-4 bg-sidebar">
         <div className="rounded-xl border border-primary/30 bg-background overflow-hidden shadow-sm">
-          {/* Text Input */}
-          <div className="relative min-h-[80px]">
-            <div
-              ref={composerPreviewRef}
-              className="pointer-events-none absolute inset-0 overflow-auto px-3 py-2"
-            >
-              {deferredCommentText.length > 0 ? (
-                <CommentRichText
-                  content={deferredCommentText}
-                  className="text-sm text-foreground min-h-[64px]"
-                />
-              ) : (
-                <span className="text-sm text-muted-foreground">Add comment</span>
-              )}
+          <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-2 py-1.5">
+            <div className="inline-flex items-center rounded-md bg-muted p-0.5">
+              <button
+                type="button"
+                onClick={() => setComposerMode('write')}
+                className={`rounded-sm px-2 py-1 text-xs transition-colors ${
+                  composerMode === 'write'
+                    ? 'bg-background text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Write
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerMode('preview')}
+                className={`rounded-sm px-2 py-1 text-xs transition-colors ${
+                  composerMode === 'preview'
+                    ? 'bg-background text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Preview
+              </button>
             </div>
-            <Textarea
-              ref={composerTextareaRef}
-              placeholder="Add comment"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onScroll={syncComposerScroll}
-              className="min-h-[80px] resize-none border-0 bg-transparent text-transparent caret-foreground selection:bg-primary/20 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none placeholder:text-transparent"
-              disabled={isSubmitting || isSwitchingDiff}
-            />
+            <span className="text-[11px] text-muted-foreground">
+              {composerMode === 'preview' ? 'Rendered preview' : 'Markdown supported'}
+            </span>
+          </div>
+
+          {/* Text Input */}
+          <div className="min-h-[96px]">
+            {composerMode === 'write' ? (
+              <Textarea
+                ref={composerTextareaRef}
+                placeholder="Add comment"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="min-h-[96px] resize-none border-0 bg-transparent text-sm focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
+                disabled={isComposerLocked}
+              />
+            ) : (
+              <div className="min-h-[96px] px-3 py-2">
+                {commentText.trim().length > 0 ? (
+                  <CommentRichText
+                    content={commentText}
+                    className="text-sm text-foreground"
+                  />
+                ) : (
+                  <span className="text-sm text-muted-foreground">Nothing to preview yet.</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Toolbar */}
@@ -393,7 +411,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => applyWrapFormatting('**', '**')}
-                disabled={isSubmitting || isSwitchingDiff}
+                disabled={isComposerLocked || composerMode === 'preview'}
                 aria-label="Bold"
               >
                 <Bold className="h-4 w-4" />
@@ -403,7 +421,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => applyWrapFormatting('*', '*')}
-                disabled={isSubmitting || isSwitchingDiff}
+                disabled={isComposerLocked || composerMode === 'preview'}
                 aria-label="Italic"
               >
                 <Italic className="h-4 w-4" />
@@ -413,7 +431,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => applyWrapFormatting('<u>', '</u>')}
-                disabled={isSubmitting || isSwitchingDiff}
+                disabled={isComposerLocked || composerMode === 'preview'}
                 aria-label="Underline"
               >
                 <Underline className="h-4 w-4" />
@@ -428,7 +446,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={handleLinkInsert}
-                disabled={isSubmitting || isSwitchingDiff}
+                disabled={isComposerLocked || composerMode === 'preview'}
                 aria-label="Insert link"
               >
                 <Link2 className="h-4 w-4" />
@@ -438,7 +456,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => insertTextAtCursor('😄')}
-                disabled={isSubmitting || isSwitchingDiff}
+                disabled={isComposerLocked || composerMode === 'preview'}
                 aria-label="Insert emoji"
               >
                 <Smile className="h-4 w-4" />
@@ -448,7 +466,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
             {/* Send button */}
             <Button
               onClick={handleSubmitComment}
-              disabled={!commentText.trim() || isSubmitting || !convexUserId || isSwitchingDiff}
+              disabled={!commentText.trim() || isComposerLocked || !convexUserId}
               size="sm"
               className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-4"
             >
