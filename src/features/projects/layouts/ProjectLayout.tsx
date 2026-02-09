@@ -616,6 +616,7 @@ export function ProjectLayout({
                         </div>
                         <ChatPanel />
                         <AssistantPanel
+                            className="[--assistant-surface:var(--sidebar-surface)]"
                             projectPath={effectiveLocalPath ?? undefined}
                             projectId={project?._id ?? null}
                             projectName={project?.name}

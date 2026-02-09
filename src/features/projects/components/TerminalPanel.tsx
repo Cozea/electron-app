@@ -129,12 +129,15 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     return (
         <div
             className={cn(
-                "flex flex-col border-t border-border bg-background w-full mt-auto relative",
+                "flex flex-col border-t border-border w-full mt-auto relative",
                 isMaximized && "absolute inset-0 z-50",
                 !isPanelOpen && "hidden",
                 className
             )}
-            style={{ height: actualHeight }}
+            style={{
+                height: actualHeight,
+                backgroundColor: "var(--terminal-panel-bg, var(--sidebar))",
+            }}
         >
             {/* Resize Handle (only when not maximized) */}
             {!isMaximized && (
@@ -186,7 +189,10 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                 >
                     {terminalCount === 0 ? (
                         // Empty state
-                        <div className="flex items-center justify-center h-full bg-sidebar text-muted-foreground">
+                        <div
+                            className="flex items-center justify-center h-full text-muted-foreground"
+                            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+                        >
                             <div className="text-center">
                                 <p className="text-sm">No terminal running</p>
                                 <p className="text-xs mt-1">Use the + button to create a new terminal</p>
@@ -215,7 +221,10 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                         </div>
                     ) : (
                         // Fallback empty state
-                        <div className="flex items-center justify-center h-full bg-sidebar text-muted-foreground">
+                        <div
+                            className="flex items-center justify-center h-full text-muted-foreground"
+                            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+                        >
                             <p className="text-sm">Select a terminal</p>
                         </div>
                     )}

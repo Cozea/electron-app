@@ -125,6 +125,7 @@ export function ProjectPagesPage() {
     const [isFocusedIframeVisible, setIsFocusedIframeVisible] = useState(true)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
+    const focusedPreviewFrameName = 'cozea-focused-preview-frame'
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -457,12 +458,51 @@ export function ProjectPagesPage() {
         }
     }, [setCurrentPage])
 
+    // Add a log entry
+    const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
+        setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message, type }])
+        console.log(`[Bridge] ${message}`)
+    }, [])
+
     // Listen for bridge messages from iframe
     useEffect(() => {
+        const getSourceWindowName = (source: MessageEventSource | null): string | null => {
+            if (!source) return null
+            try {
+                const name = (source as { name?: unknown }).name
+                return typeof name === 'string' && name.length > 0 ? name : null
+            } catch {
+                return null
+            }
+        }
+
         const handleMessage = (event: MessageEvent<BridgeMessage>) => {
+            const messageType = typeof event.data?.type === 'string' ? event.data.type : null
+            const bridgeMeta = event.data?.__cozeaBridgeMeta
             const activePreviewWindow = iframeRef.current?.contentWindow
-            if (activePreviewWindow && event.source !== activePreviewWindow) {
+            const sourceWindowName = getSourceWindowName(event.source)
+            const sourceMatchesActiveWindow = Boolean(activePreviewWindow && event.source === activePreviewWindow)
+            const sourceMatchesByFrameName = sourceWindowName === focusedPreviewFrameName
+            const sourceMatchesByBridgeMeta = bridgeMeta?.frameName === focusedPreviewFrameName
+
+            if (
+                activePreviewWindow &&
+                !sourceMatchesActiveWindow &&
+                !sourceMatchesByFrameName &&
+                !sourceMatchesByBridgeMeta
+            ) {
+                if (messageType === 'bridge:ready') {
+                    addBridgeLog(
+                        `Ignoring bridge:ready from non-focused source (sourceName=${sourceWindowName ?? 'unknown'}, metaFrame=${bridgeMeta?.frameName ?? 'none'}, origin=${event.origin})`,
+                        'error'
+                    )
+                }
                 return
+            }
+
+            if (messageType === 'bridge:ready' && !sourceMatchesActiveWindow) {
+                const via = sourceMatchesByBridgeMeta ? 'bridge-meta' : sourceMatchesByFrameName ? 'source-window-name' : 'unknown'
+                addBridgeLog(`Accepted bridge:ready via ${via} fallback`)
             }
             const { type, payload } = event.data || {}
 
@@ -472,6 +512,7 @@ export function ProjectPagesPage() {
                     break
 
                 case 'bridge:shift-keydown':
+                    if (!isFocusedPreview) break
                     // Shift pressed in iframe: enable inspector (same as window Shift keydown)
                     if (!manualInspectorEnabled.current && bridgeReady) {
                         setShiftInspectorActive(true)
@@ -480,6 +521,7 @@ export function ProjectPagesPage() {
                     break
 
                 case 'bridge:shift-keyup':
+                    if (!isFocusedPreview) break
                     // Shift released in iframe: only disable inspector if no element selected
                     if (shiftInspectorActive) {
                         const hasSelection = !!useVisualEditorStore.getState().selectedElement
@@ -499,6 +541,7 @@ export function ProjectPagesPage() {
                     // Bridge is ready
                     setBridgeReady(true)
                     setBridgeError(null)
+                    addBridgeLog(`bridge:ready received for ${previewRoute?.path ?? 'unknown route'}`, 'success')
                     setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message: 'Bridge connected successfully!', type: 'success' }])
                     // Enable inspector if it was already enabled
                     if (inspectorEnabled && iframeRef.current) {
@@ -635,7 +678,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -650,7 +693,7 @@ export function ProjectPagesPage() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Shift: enable inspector while held (same as toolbar toggle)
-            if (e.key === 'Shift' && !e.repeat && !manualInspectorEnabled.current && bridgeReady) {
+            if (e.key === 'Shift' && !e.repeat && isFocusedPreview && !manualInspectorEnabled.current && bridgeReady) {
                 setShiftInspectorActive(true)
                 setInspectorEnabled(true)
             }
@@ -665,7 +708,7 @@ export function ProjectPagesPage() {
         }
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'Shift' && shiftInspectorActive) {
+            if (e.key === 'Shift' && isFocusedPreview && shiftInspectorActive) {
                 const hasSelection = !!useVisualEditorStore.getState().selectedElement
                 setShiftInspectorActive(false)
                 if (!hasSelection) {
@@ -685,13 +728,7 @@ export function ProjectPagesPage() {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
         }
-    }, [shiftInspectorActive, bridgeReady, inspectorEnabled, focusedPageIndex, handleCloseInspectorSidebar, setSelectedElement, setInspectedElement, closeVisualEditor])
-
-    // Add a log entry
-    const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
-        setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message, type }])
-        console.log(`[Bridge] ${message}`)
-    }, [])
+    }, [shiftInspectorActive, bridgeReady, inspectorEnabled, focusedPageIndex, handleCloseInspectorSidebar, setSelectedElement, setInspectedElement, closeVisualEditor, isFocusedPreview])
 
     // Inject bridge script when iframe loads
     const handleIframeLoad = useCallback(async () => {
@@ -706,7 +743,8 @@ export function ProjectPagesPage() {
         // Reset bridge state before injection
         setBridgeReady(false)
         setBridgeError(null)
-        addBridgeLog('Iframe loaded, attempting injection...')
+        const frameName = iframeRef.current?.getAttribute('name') || 'unnamed-frame'
+        addBridgeLog(`Iframe loaded for ${previewRoute?.path ?? 'unknown route'} [${frameName}], attempting injection...`)
 
         if (iframeRef.current) {
             try {
@@ -732,7 +770,8 @@ export function ProjectPagesPage() {
             return false
         }
 
-        addBridgeLog('Retrying injection...')
+        const frameName = iframeRef.current.getAttribute('name') || 'unnamed-frame'
+        addBridgeLog(`Retrying injection for ${previewRoute?.path ?? 'unknown route'} [${frameName}]...`)
         setBridgeError(null)
 
         try {
@@ -751,7 +790,7 @@ export function ProjectPagesPage() {
             addBridgeLog(`Injection error: ${msg}`, 'error')
             return false
         }
-    }, [addBridgeLog])
+    }, [addBridgeLog, previewRoute?.path])
 
     // Attempt to reinject bridge if not ready
     const ensureBridgeReady = useCallback((): boolean => {
@@ -1468,6 +1507,7 @@ export function ProjectPagesPage() {
                                                         <div className="relative h-full w-full bg-sidebar/40">
                                                             <iframe
                                                                 ref={iframeRef}
+                                                                name={focusedPreviewFrameName}
                                                                 src={`http://localhost:${serverPort}${previewRoute.path}`}
                                                                 className={cn(
                                                                     "h-full w-full border-none transition-opacity duration-300 ease-out",
@@ -1549,7 +1589,7 @@ export function ProjectPagesPage() {
                                                                         }
                                                                     }}
                                                                     className={cn(
-                                                                        "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer",
+                                                                        "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0",
                                                                         index === previewRouteIndex
                                                                             ? "opacity-100"
                                                                             : "opacity-50 hover:opacity-100"

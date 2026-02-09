@@ -131,7 +131,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         }
 
         // Map theme colors
-        const background = getThemeColor('--sidebar', '#1a1a1a')
+        const background = getThemeColor('--terminal-panel-bg', '#1a1a1a')
         const foreground = getThemeColor('--sidebar-foreground', '#fafafa')
         const muted = getThemeColor('--muted', '#27272a')
 
@@ -332,7 +332,8 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
 
     return (
         <div
-            className={cn("relative w-full h-full bg-sidebar overflow-hidden", className)}
+            className={cn("relative w-full h-full overflow-hidden", className)}
+            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
             onContextMenu={handleContextMenu}
         >
             {selectedText.trim().length > 0 && (

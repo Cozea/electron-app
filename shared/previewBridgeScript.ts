@@ -34,7 +34,10 @@ const STYLE_PROPERTIES = [
 export const BRIDGE_SCRIPT = `
 (function() {
   // Prevent double initialization
-  if (window.__COZEA_BRIDGE_LOADED__) return;
+  if (window.__COZEA_BRIDGE_LOADED__) {
+    console.log('[Cozea Bridge] Skipping initialization because bridge is already loaded');
+    return;
+  }
   window.__COZEA_BRIDGE_LOADED__ = true;
 
   let inspectorEnabled = false;
@@ -46,6 +49,41 @@ export const BRIDGE_SCRIPT = `
   let lastContextMenuTime = 0;
   let selectedTrackRaf = null;
   let lastSelectedRect = null;
+  const BRIDGE_INSTANCE_ID = Math.random().toString(36).slice(2, 10);
+  const BRIDGE_FRAME_NAME = window.name || '(unnamed)';
+  const BRIDGE_LOG_PREFIX = '[Cozea Bridge]';
+  const TRACE_POST_TYPES = {
+    'bridge:ready': true,
+    'bridge:close-inspector': true,
+    'bridge:shift-keydown': true,
+    'bridge:shift-keyup': true,
+    'bridge:element-selected': true,
+    'bridge:element-contextmenu': true,
+    'bridge:selection-cleared': true,
+    'bridge:screenshot-ready': true,
+    'bridge:style-update-ack': true,
+    'bridge:navigation': true,
+    'bridge:runtime-error': true,
+  };
+
+  function bridgeLog(message, details) {
+    try {
+      if (typeof details === 'undefined') {
+        console.log(BRIDGE_LOG_PREFIX, message);
+      } else {
+        console.log(BRIDGE_LOG_PREFIX, message, details);
+      }
+    } catch (_err) {
+      // ignore
+    }
+  }
+
+  bridgeLog('Initializing bridge runtime', {
+    href: window.location.href,
+    origin: window.location.origin,
+    frameName: BRIDGE_FRAME_NAME,
+    instanceId: BRIDGE_INSTANCE_ID,
+  });
 
   // Create highlight overlay element
   function createOverlay(id, color) {
@@ -331,7 +369,24 @@ export const BRIDGE_SCRIPT = `
   // Send message to parent window
   function postToParent(message) {
     try {
-      window.parent.postMessage(message, '*');
+      const messageWithMeta = message && typeof message === 'object'
+        ? Object.assign({}, message, {
+            __cozeaBridgeMeta: {
+              frameName: BRIDGE_FRAME_NAME,
+              href: window.location.href,
+              instanceId: BRIDGE_INSTANCE_ID,
+            }
+          })
+        : message;
+
+      if (messageWithMeta && TRACE_POST_TYPES[messageWithMeta.type]) {
+        bridgeLog('postMessage -> parent', {
+          type: messageWithMeta.type,
+          frameName: BRIDGE_FRAME_NAME,
+          instanceId: BRIDGE_INSTANCE_ID,
+        });
+      }
+      window.parent.postMessage(messageWithMeta, '*');
     } catch (e) {
       console.warn('[Bridge] Failed to post message:', e);
     }
@@ -556,8 +611,10 @@ export const BRIDGE_SCRIPT = `
   // Capture screenshot using html2canvas
   async function captureScreenshot() {
     try {
+      bridgeLog('Starting screenshot capture');
       // Dynamically load html2canvas if not present
       if (!window.html2canvas) {
+        bridgeLog('Loading html2canvas from CDN');
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
         await new Promise((resolve, reject) => {
@@ -581,11 +638,13 @@ export const BRIDGE_SCRIPT = `
       });
 
       const dataUrl = canvas.toDataURL('image/png');
+      bridgeLog('Screenshot capture completed', { dataUrlLength: dataUrl.length });
       postToParent({
         type: 'bridge:screenshot-ready',
         payload: { dataUrl }
       });
     } catch (err) {
+      bridgeLog('Screenshot capture failed', { error: err && err.message ? err.message : String(err) });
       postToParent({
         type: 'bridge:screenshot-ready',
         payload: { error: err.message || 'Screenshot capture failed' }
@@ -596,6 +655,7 @@ export const BRIDGE_SCRIPT = `
   // Apply style update to selected element
   function applyStyleUpdate(styles) {
     if (!currentSelectedElement) {
+      bridgeLog('host:update-style ignored: no selected element');
       postToParent({
         type: 'bridge:style-update-ack',
         payload: { success: false, error: 'No element selected' }
@@ -604,6 +664,7 @@ export const BRIDGE_SCRIPT = `
     }
 
     try {
+      bridgeLog('Applying style update', { styleCount: Object.keys(styles || {}).length });
       for (const [prop, value] of Object.entries(styles)) {
         currentSelectedElement.style[prop] = value;
       }
@@ -618,6 +679,7 @@ export const BRIDGE_SCRIPT = `
         payload: { success: true }
       });
     } catch (err) {
+      bridgeLog('Style update failed', { error: err && err.message ? err.message : String(err) });
       postToParent({
         type: 'bridge:style-update-ack',
         payload: { success: false, error: err.message }
@@ -631,11 +693,15 @@ export const BRIDGE_SCRIPT = `
     hideIndicator(selectedOverlay, selectedLabel);
     hideIndicator(highlightOverlay, highlightLabel);
     stopSelectionTracking();
+    bridgeLog('Selection cleared');
   }
 
   // Listen for messages from parent
   window.addEventListener('message', (e) => {
     const { type, payload } = e.data || {};
+    if (typeof type === 'string' && type.startsWith('host:')) {
+      bridgeLog('message <- host', { type: type });
+    }
 
     switch (type) {
       case 'host:enable-inspector':
@@ -645,6 +711,7 @@ export const BRIDGE_SCRIPT = `
         if (!highlightLabel) highlightLabel = createLabel('cozea-highlight-label', '#3b82f6');
         if (!selectedLabel) selectedLabel = createLabel('cozea-selected-label', '#22c55e');
         document.body.style.cursor = 'crosshair';
+        bridgeLog('Inspector enabled');
         break;
 
       case 'host:disable-inspector':
@@ -652,9 +719,11 @@ export const BRIDGE_SCRIPT = `
         // Clear all overlays and selection state
         clearSelection();
         document.body.style.cursor = '';
+        bridgeLog('Inspector disabled');
         break;
 
       case 'host:request-screenshot':
+        bridgeLog('Screenshot requested by host');
         captureScreenshot();
         break;
 
@@ -666,6 +735,7 @@ export const BRIDGE_SCRIPT = `
 
       case 'host:update-text':
         if (payload && typeof payload.text === 'string' && currentSelectedElement) {
+          bridgeLog('Applying text update', { textLength: payload.text.length });
           currentSelectedElement.textContent = payload.text;
 
           // Update selection overlay position in case size changed
@@ -676,6 +746,7 @@ export const BRIDGE_SCRIPT = `
         break;
 
       case 'host:clear-selection':
+        bridgeLog('Clear selection requested by host');
         clearSelection();
         break;
     }
@@ -742,6 +813,10 @@ export const BRIDGE_SCRIPT = `
   function notifyNavigation() {
     const newPathname = window.location.pathname;
     if (newPathname !== lastPathname) {
+      bridgeLog('Detected in-frame navigation', {
+        from: lastPathname,
+        to: newPathname,
+      });
       lastPathname = newPathname;
       postToParent({
         type: 'bridge:navigation',
@@ -773,6 +848,7 @@ export const BRIDGE_SCRIPT = `
   window.addEventListener('popstate', notifyNavigation);
 
   // Signal bridge is ready
+  bridgeLog('Bridge ready, notifying parent');
   postToParent({ type: 'bridge:ready' });
   console.log('[Cozea] Preview bridge initialized');
 })();

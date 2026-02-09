@@ -1682,12 +1682,31 @@ function isAllowedPreviewUrl(url: URL): boolean {
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
 }
 
+function summarizePreviewFrames(maxFrames = 12): Array<{
+  name: string
+  url: string
+  frameTreeNodeId: number
+  routingId: number
+}> {
+  if (!win) return []
+  return win.webContents.mainFrame.frames
+    .filter((frame) => frame !== win?.webContents.mainFrame)
+    .slice(0, maxFrames)
+    .map((frame) => ({
+      name: frame.name || '(unnamed)',
+      url: frame.url,
+      frameTreeNodeId: frame.frameTreeNodeId,
+      routingId: frame.routingId,
+    }))
+}
+
 async function findFrameByUrl(
   targetUrl: string,
-  options?: { attempts?: number; delayMs?: number }
+  options?: { attempts?: number; delayMs?: number; frameName?: string }
 ): Promise<WebFrameMain | null> {
   const attempts = options?.attempts ?? 15
   const delayMs = options?.delayMs ?? 50
+  const frameName = options?.frameName?.trim() || null
 
   if (!win) return null
 
@@ -1700,12 +1719,19 @@ async function findFrameByUrl(
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     const frames = win.webContents.mainFrame.frames.filter((f) => f !== win?.webContents.mainFrame)
+    const namedFrames = frameName ? frames.filter((f) => f.name === frameName) : frames
+    const candidates = frameName ? namedFrames : frames
 
-    const exact = frames.find((f) => f.url === targetUrl)
+    if (frameName && candidates.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      continue
+    }
+
+    const exact = candidates.find((f) => f.url === targetUrl)
     if (exact) return exact
 
     if (targetOrigin) {
-      const sameOrigin = frames.find((f) => {
+      const sameOrigin = candidates.find((f) => {
         try {
           return new URL(f.url).origin === targetOrigin
         } catch {
@@ -1724,7 +1750,15 @@ async function findFrameByUrl(
 // Inject the preview bridge into the project's dev-server iframe (cross-origin safe via WebFrameMain)
 ipcMain.handle(
   'preview:injectBridge',
-  async (_event, { url }: { url: string }): Promise<PreviewInjectBridgeResult> => {
+  async (
+    _event,
+    { url, frameName }: { url: string; frameName?: string }
+  ): Promise<PreviewInjectBridgeResult> => {
+    console.log('[PreviewBridge][Main] Injection requested', {
+      url,
+      frameName: frameName || '(none)',
+    })
+
     if (!win) return { success: false, error: 'No window available' }
     if (!url || typeof url !== 'string') return { success: false, error: 'Missing url' }
 
@@ -1750,12 +1784,26 @@ ipcMain.handle(
       // ignore parse errors (e.g. about:blank during startup)
     }
 
-    const frame = await findFrameByUrl(url)
+    const frame = await findFrameByUrl(url, { frameName })
     if (!frame) {
+      console.warn('[PreviewBridge][Main] Frame not found for injection', {
+        url,
+        frameName: frameName || '(none)',
+        availableFrames: summarizePreviewFrames(),
+      })
       return { success: false, error: 'Preview frame not found' }
     }
 
     try {
+      console.log('[PreviewBridge][Main] Matched frame', {
+        requestedUrl: url,
+        requestedFrameName: frameName || '(none)',
+        matchedFrameName: frame.name || '(unnamed)',
+        matchedFrameUrl: frame.url,
+        frameTreeNodeId: frame.frameTreeNodeId,
+        routingId: frame.routingId,
+      })
+
       // Force-refresh bridge instance so style/script updates apply immediately.
       await frame.executeJavaScript(`
         try {
@@ -1767,9 +1815,20 @@ ipcMain.handle(
         } catch {}
       `)
       await frame.executeJavaScript(BRIDGE_SCRIPT)
+      console.log('[PreviewBridge][Main] Bridge script injected successfully', {
+        matchedFrameName: frame.name || '(unnamed)',
+        matchedFrameUrl: frame.url,
+      })
       return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to inject preview bridge'
+      console.error('[PreviewBridge][Main] Bridge script injection failed', {
+        requestedUrl: url,
+        requestedFrameName: frameName || '(none)',
+        matchedFrameName: frame.name || '(unnamed)',
+        matchedFrameUrl: frame.url,
+        error: message,
+      })
       return { success: false, error: message }
     }
   }

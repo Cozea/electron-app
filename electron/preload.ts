@@ -449,7 +449,7 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
   }
   preview: {
-    injectBridge: (options: { url: string }) => Promise<PreviewInjectBridgeResult>
+    injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
   }
   project: {
@@ -752,7 +752,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   preview: {
-    injectBridge: (options: { url: string }) => ipcRenderer.invoke('preview:injectBridge', options),
+    injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),
     captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
       ipcRenderer.invoke('preview:captureScreenshot', options),
   },
