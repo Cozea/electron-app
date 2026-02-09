@@ -183,14 +183,14 @@ export function ProblemsView({
     }, [openWithPrompt, projectPath])
 
     return (
-        <div className="h-full flex flex-col bg-sidebar">
-            <ScrollArea className="flex-1">
+        <div className="h-full min-w-0 flex flex-col bg-sidebar">
+            <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:!w-full [&>[data-slot=scroll-area-viewport]>div]:!min-w-0">
                 {filteredErrors.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
                         No problems detected
                     </div>
                 ) : viewMode === "tree" ? (
-                    <div className="p-2 space-y-2">
+                    <div className="w-full min-w-0 overflow-hidden p-2 space-y-2">
                         {groupedErrors.map((group) => {
                             const isCollapsed = collapsedGroups.has(group.id)
                             const fileLabel = group.label
@@ -201,16 +201,18 @@ export function ProblemsView({
                                     <button
                                         type="button"
                                         onClick={() => toggleGroup(group.id)}
-                                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs font-medium text-foreground/80 hover:bg-muted/40 transition-colors"
+                                        className="w-full min-w-0 flex items-center gap-2 px-2 py-1.5 text-left text-xs font-medium text-foreground/80 hover:bg-muted/40 transition-colors"
                                     >
                                         {isCollapsed ? (
                                             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                                         ) : (
                                             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                         )}
-                                        <span className="truncate">{fileName}</span>
-                                        <span className="text-muted-foreground truncate">({fileLabel})</span>
-                                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                        <div className="min-w-0 flex-1 flex items-center gap-1 overflow-hidden">
+                                            <span className="truncate">{fileName}</span>
+                                            <span className="text-muted-foreground truncate">({fileLabel})</span>
+                                        </div>
+                                        <span className="ml-auto shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                                             {groupCount}
                                         </span>
                                     </button>
@@ -233,7 +235,7 @@ export function ProblemsView({
                         })}
                     </div>
                 ) : (
-                    <div className="p-2 space-y-1">
+                    <div className="w-full min-w-0 overflow-hidden p-2 space-y-1">
                         {sortedErrors.map((error) => (
                             <ProblemRow
                                 key={error.id}
@@ -278,7 +280,7 @@ function ProblemRow({ error, onOpenFile, onAskAI, onDismiss, projectPath }: Prob
                 }
             }}
             className={cn(
-                "group flex items-start gap-2 px-2 py-1.5 text-xs",
+                "group w-full max-w-full overflow-hidden flex items-start gap-2 px-2 py-1.5 text-xs",
                 clickable ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
             )}
         >
@@ -290,15 +292,15 @@ function ProblemRow({ error, onOpenFile, onAskAI, onDismiss, projectPath }: Prob
                     error.severity === "info" && "text-blue-400"
                 )}
             />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="text-foreground/90 truncate">{error.message}</div>
-                <div className="flex items-center gap-2 text-muted-foreground mt-0.5">
-                    {fileLabel && <span className="truncate">{fileLabel}</span>}
+                <div className="min-w-0 flex items-center gap-2 text-muted-foreground mt-0.5">
+                    {fileLabel && <span className="min-w-0 flex-1 truncate">{fileLabel}</span>}
                     {location && <span className="shrink-0">{location}</span>}
                     <span className="shrink-0 uppercase text-[10px]">{error.source}</span>
                 </div>
             </div>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <button
