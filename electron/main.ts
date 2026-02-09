@@ -23,6 +23,11 @@ import {
   consumeManifestDirtyPaths,
 } from './services/manifestCache'
 import {
+  EXCLUDED_GENERATED_DIRECTORIES,
+  shouldExcludeGeneratedDirectory,
+  shouldExcludeGeneratedFile,
+} from './services/generatedArtifactFilters'
+import {
   getGitRuntimeHealth,
   mergeTextWithGit,
   mergeTreeWithGit,
@@ -52,6 +57,19 @@ const localManifestRequests = new Map<
     totalFiles: number
   }>
 >()
+let localManifestRequestCounter = 0
+
+function buildManifestRequestKey(
+  projectPath: string,
+  excludePatterns?: string[],
+  strict?: boolean
+): string {
+  const normalizedExcludes = [...(excludePatterns ?? [])]
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+  return `${projectPath}::${strict ? 'strict' : 'lenient'}::${normalizedExcludes.join(',')}`
+}
 
 interface ReplicaStateRecord {
   replicaHead: number
@@ -2136,6 +2154,115 @@ interface CopyDirectorySnapshotResult {
   error?: string
 }
 
+interface ImportSourcePreflightIssue {
+  path: string
+  reason: 'likely-offline-placeholder'
+}
+
+interface ImportSourcePreflightResult {
+  success: boolean
+  scannedFiles?: number
+  issues?: ImportSourcePreflightIssue[]
+  truncated?: boolean
+  error?: string
+}
+
+const IMPORT_PREFLIGHT_MAX_ISSUES = 50
+
+function normalizeRelativePathForFilters(relativePath: string): string {
+  return relativePath.replace(/\\/g, '/')
+}
+
+async function preflightImportSource(
+  projectPath: string,
+  mode: 'relocation' | 'raw' = 'relocation'
+): Promise<ImportSourcePreflightResult> {
+  const normalizedRoot = path.resolve(projectPath)
+  const issues: ImportSourcePreflightIssue[] = []
+  let scannedFiles = 0
+  let truncated = false
+  const queue: string[] = ['']
+
+  if (!fs.existsSync(normalizedRoot) || !fs.statSync(normalizedRoot).isDirectory()) {
+    return {
+      success: false,
+      error: 'Source project directory does not exist',
+    }
+  }
+
+  while (queue.length > 0) {
+    const currentRelativeDir = queue.pop() ?? ''
+    const currentDir = path.join(normalizedRoot, currentRelativeDir)
+
+    let entries: fs.Dirent[]
+    try {
+      entries = await fs.promises.readdir(currentDir, { withFileTypes: true })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to read source directory',
+      }
+    }
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue
+
+      const relPath = currentRelativeDir
+        ? path.join(currentRelativeDir, entry.name)
+        : entry.name
+      const normalizedRelPath = normalizeRelativePathForFilters(relPath)
+      const fullPath = path.join(normalizedRoot, relPath)
+
+      if (entry.isDirectory()) {
+        if (mode === 'relocation' && shouldExcludeGeneratedDirectory(entry.name)) {
+          continue
+        }
+        queue.push(relPath)
+        continue
+      }
+
+      if (!entry.isFile()) continue
+      if (mode === 'relocation' && shouldExcludeGeneratedFile(normalizedRelPath)) {
+        continue
+      }
+
+      scannedFiles += 1
+      try {
+        const stats = await fs.promises.stat(fullPath)
+        // On macOS, many File Provider placeholders report logical size but 0 allocated blocks.
+        // Treat those as unavailable to avoid import hangs on deferred hydration.
+        if (
+          process.platform === 'darwin' &&
+          stats.size > 0 &&
+          typeof stats.blocks === 'number' &&
+          stats.blocks === 0
+        ) {
+          if (issues.length < IMPORT_PREFLIGHT_MAX_ISSUES) {
+            issues.push({
+              path: normalizedRelPath,
+              reason: 'likely-offline-placeholder',
+            })
+          } else {
+            truncated = true
+          }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : `Failed to stat ${normalizedRelPath}`,
+        }
+      }
+    }
+  }
+
+  return {
+    success: true,
+    scannedFiles,
+    issues,
+    truncated,
+  }
+}
+
 function buildGitAuthorizationHeader(provider: string, accessToken?: string): string | null {
   if (!accessToken?.trim()) return null
 
@@ -2556,41 +2683,7 @@ ipcMain.handle(
   }> => {
     try {
       const files: { path: string; sizeBytes: number }[] = []
-      const skippedDirectories = new Set([
-        'node_modules',
-        '.git',
-        '.next',
-        '.nuxt',
-        '.output',
-        '.svelte-kit',
-        '.vercel',
-        'dist',
-        'build',
-        'out',
-        'coverage',
-        '.turbo',
-        '.cache',
-        '.parcel-cache',
-        '.pnpm-store',
-        '.yarn',
-        '__pycache__',
-        'tmp',
-        'temp',
-        'logs',
-        'vendor',
-        'target',
-      ])
-      const skippedFileSuffixes = [
-        '.log',
-        '.tmp',
-        '.temp',
-        '.swp',
-        '.swo',
-        '.pid',
-        '/prisma/dev.db',
-        '/prisma/dev.db-wal',
-        '/prisma/dev.db-shm',
-      ]
+      const skippedDirectories = new Set(['.git', ...EXCLUDED_GENERATED_DIRECTORIES])
       const maxFiles = 20000
 
       function walkDir(dir: string, relativePath = '') {
@@ -2604,14 +2697,14 @@ ipcMain.handle(
           const relPath = path.join(relativePath, entry.name)
           const fullPath = path.join(dir, entry.name)
           const nameLower = entry.name.toLowerCase()
-          const normalizedPathLower = relPath.replace(/\\/g, '/').toLowerCase()
+          const normalizedPathLower = relPath.replace(/\\/g, '/')
 
           if (entry.isDirectory()) {
             if (!skippedDirectories.has(nameLower)) {
               walkDir(fullPath, relPath)
             }
           } else {
-            if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
+            if (shouldExcludeGeneratedFile(normalizedPathLower)) {
               continue
             }
             const stats = fs.statSync(fullPath)
@@ -2770,7 +2863,15 @@ ipcMain.handle(
   'project:copyDirectorySnapshot',
   async (
     _event,
-    { sourcePath, targetPath }: { sourcePath: string; targetPath: string }
+    {
+      sourcePath,
+      targetPath,
+      mode = 'relocation',
+    }: {
+      sourcePath: string
+      targetPath: string
+      mode?: 'relocation' | 'raw'
+    }
   ): Promise<CopyDirectorySnapshotResult> => {
     try {
       if (!sourcePath || !targetPath) {
@@ -2798,48 +2899,21 @@ ipcMain.handle(
         await fs.promises.mkdir(normalizedTarget, { recursive: true })
       }
 
-      const excludedDirectories = new Set([
-        'node_modules',
-        '.next',
-        '.nuxt',
-        '.output',
-        '.svelte-kit',
-        'dist',
-        'build',
-        'out',
-        'coverage',
-        '.turbo',
-        '.cache',
-        '.parcel-cache',
-        '.pnpm-store',
-        '.yarn',
-        '__pycache__',
-        'tmp',
-        'temp',
-        'logs',
-      ])
-      const excludedFileSuffixes = ['.log', '.tmp', '.temp', '.swp', '.swo', '.pid']
-
       await fs.promises.cp(normalizedSource, normalizedTarget, {
         recursive: true,
         force: true,
         errorOnExist: false,
         filter: (src) => {
+          if (mode === 'raw') return true
+
           const relative = path.relative(normalizedSource, src)
           if (!relative || relative === '') return true
 
-          const normalizedRelative = relative.replace(/\\/g, '/').toLowerCase()
-          const entryName = path.basename(src).toLowerCase()
+          const normalizedRelative = relative.replace(/\\/g, '/')
+          const entryName = path.basename(src)
 
-          if (excludedDirectories.has(entryName)) return false
-          if (excludedFileSuffixes.some((suffix) => normalizedRelative.endsWith(suffix))) return false
-          if (
-            normalizedRelative.endsWith('/prisma/dev.db') ||
-            normalizedRelative.endsWith('/prisma/dev.db-wal') ||
-            normalizedRelative.endsWith('/prisma/dev.db-shm')
-          ) {
-            return false
-          }
+          if (shouldExcludeGeneratedDirectory(entryName)) return false
+          if (shouldExcludeGeneratedFile(normalizedRelative)) return false
           return true
         },
       })
@@ -2849,6 +2923,36 @@ ipcMain.handle(
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to copy project files',
+      }
+    }
+  }
+)
+
+ipcMain.handle(
+  'project:preflightImportSource',
+  async (
+    _event,
+    {
+      projectPath,
+      mode = 'relocation',
+    }: {
+      projectPath: string
+      mode?: 'relocation' | 'raw'
+    }
+  ): Promise<ImportSourcePreflightResult> => {
+    if (!projectPath) {
+      return {
+        success: false,
+        error: 'Project path is required',
+      }
+    }
+
+    try {
+      return await preflightImportSource(projectPath, mode)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to preflight import source',
       }
     }
   }
@@ -2957,23 +3061,60 @@ ipcMain.handle(
     {
       projectPath,
       excludePatterns,
+      debugSource,
+      strict,
     }: {
       projectPath: string
       excludePatterns?: string[]
+      debugSource?: string
+      strict?: boolean
     }
   ): Promise<{
     manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
     totalFiles: number
   }> => {
-    const inFlight = localManifestRequests.get(projectPath)
+    const requestId = `manifest-${++localManifestRequestCounter}-${Date.now().toString(36)}`
+    const source = debugSource?.trim() || 'unknown'
+    const startedAt = Date.now()
+    const logPrefix = `[SyncManifest:${requestId}]`
+    const requestKey = buildManifestRequestKey(projectPath, excludePatterns, strict)
+    console.log(`${logPrefix} start`, {
+      source,
+      projectPath,
+      excludeCount: excludePatterns?.length ?? 0,
+      strict: strict === true,
+    })
+
+    const inFlight = localManifestRequests.get(requestKey)
     if (inFlight) {
-      return inFlight
+      console.log(`${logPrefix} joining in-flight request`, { source, projectPath })
+      try {
+        const result = await inFlight
+        console.log(`${logPrefix} in-flight request resolved`, {
+          source,
+          totalFiles: result.totalFiles,
+          durationMs: Date.now() - startedAt,
+        })
+        return result
+      } catch (error) {
+        console.warn(`${logPrefix} in-flight request failed`, {
+          source,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
 
     const manifestTask = (async (): Promise<{
       manifest: Array<{ path: string; hash: string; size: number; mtime: number }>
       totalFiles: number
     }> => {
+      let resolutionPath:
+        | 'dirty-path-cache-update'
+        | 'worker-incremental'
+        | 'worker-full'
+        | 'main-thread' = 'main-thread'
       const cached = loadManifestCache(projectPath)
       const dirtyPaths = consumeManifestDirtyPaths(projectPath)
       const hasLegacyHashes = cached
@@ -2981,6 +3122,11 @@ ipcMain.handle(
         : false
 
       if (cached && !hasLegacyHashes && dirtyPaths.length > 0 && dirtyPaths.length <= 1000) {
+        console.log(`${logPrefix} using dirty-path cache update`, {
+          source,
+          dirtyPathCount: dirtyPaths.length,
+        })
+        resolutionPath = 'dirty-path-cache-update'
         const updatedEntries = { ...cached.entries }
 
         for (const relPath of dirtyPaths) {
@@ -3004,13 +3150,20 @@ ipcMain.handle(
               size: stats.size,
               mtime: stats.mtimeMs,
             }
-          } catch {
+          } catch (error) {
+            if (strict) {
+              throw error
+            }
             delete updatedEntries[relPath]
           }
         }
 
         saveManifestCache(projectPath, updatedEntries, cached.dirMtimes)
         const manifest = Object.values(updatedEntries)
+        console.log(`${logPrefix} dirty-path cache update complete`, {
+          source,
+          totalFiles: manifest.length,
+        })
         return { manifest, totalFiles: manifest.length }
       }
 
@@ -3023,18 +3176,41 @@ ipcMain.handle(
         | null = null
 
       try {
+        const incrementalStartedAt = Date.now()
+        console.log(`${logPrefix} worker incremental manifest attempt`, { source })
         workerResult = await getManifestFromWorkerIncremental(
           projectPath,
           excludePatterns,
+          strict,
           cached?.entries,
           cached?.dirMtimes
         )
+        resolutionPath = 'worker-incremental'
+        console.log(`${logPrefix} worker incremental manifest success`, {
+          source,
+          totalFiles: workerResult.totalFiles,
+          durationMs: Date.now() - incrementalStartedAt,
+        })
       } catch (error) {
-        console.warn('[Sync] Worker incremental manifest failed:', error)
+        console.warn(`${logPrefix} worker incremental manifest failed`, {
+          source,
+          error: error instanceof Error ? error.message : String(error),
+        })
         try {
-          workerResult = await getManifestFromWorker(projectPath, excludePatterns)
+          const fullWorkerStartedAt = Date.now()
+          console.log(`${logPrefix} worker full manifest attempt`, { source })
+          workerResult = await getManifestFromWorker(projectPath, excludePatterns, strict)
+          resolutionPath = 'worker-full'
+          console.log(`${logPrefix} worker full manifest success`, {
+            source,
+            totalFiles: workerResult.totalFiles,
+            durationMs: Date.now() - fullWorkerStartedAt,
+          })
         } catch (err) {
-          console.warn('[Sync] Worker manifest failed, falling back to main thread:', err)
+          console.warn(`${logPrefix} worker full manifest failed; using main thread fallback`, {
+            source,
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
       }
 
@@ -3044,48 +3220,23 @@ ipcMain.handle(
           entries[entry.path] = entry
         }
         saveManifestCache(projectPath, entries, workerResult.dirMtimes)
+        console.log(`${logPrefix} manifest resolved`, {
+          source,
+          resolutionPath,
+          totalFiles: workerResult.totalFiles,
+        })
         return { manifest: workerResult.manifest, totalFiles: workerResult.totalFiles }
       }
 
       const defaultExcludes = [
-      'node_modules',
-      '.git',
-      '.next',
-      '.nuxt',
-      '.output',
-      '.svelte-kit',
-      '.vercel',
-      'dist',
-      'build',
-      'out',
-      'coverage',
-      '.turbo',
-      '.cache',
-      '.parcel-cache',
-      '.pnpm-store',
-      '.yarn',
-      '__pycache__',
-      'tmp',
-      'temp',
-      'logs',
-      'vendor',
-      'target',
-    ]
+        '.git',
+        ...EXCLUDED_GENERATED_DIRECTORIES,
+      ]
       const excludes = new Set([...defaultExcludes, ...(excludePatterns || [])].map((name) => name.toLowerCase()))
-      const skippedFileSuffixes = [
-      '.log',
-      '.tmp',
-      '.temp',
-      '.swp',
-      '.swo',
-      '.pid',
-      '/prisma/dev.db',
-      '/prisma/dev.db-wal',
-      '/prisma/dev.db-shm',
-    ]
       const previousByPath = cached?.entries ? new Map(Object.entries(cached.entries)) : null
 
       const manifest: Array<{ path: string; hash: string; size: number; mtime: number }> = []
+      console.log(`${logPrefix} main-thread manifest generation start`, { source })
 
       function walkDir(dir: string, relativePath = '') {
         if (!fs.existsSync(dir)) return
@@ -3108,8 +3259,7 @@ ipcMain.handle(
             try {
               const stats = fs.statSync(fullPath)
               const normalizedPath = relPath.replace(/\\/g, '/')
-              const normalizedPathLower = normalizedPath.toLowerCase()
-              if (skippedFileSuffixes.some((suffix) => normalizedPathLower.endsWith(suffix))) {
+              if (shouldExcludeGeneratedFile(normalizedPath)) {
                 continue
               }
               const previous = previousByPath?.get(normalizedPath)
@@ -3139,6 +3289,9 @@ ipcMain.handle(
                 mtime: stats.mtimeMs,
               })
             } catch (err) {
+              if (strict) {
+                throw err
+              }
               console.warn(`[Sync] Could not read file: ${fullPath}`, err)
             }
           }
@@ -3149,7 +3302,10 @@ ipcMain.handle(
         walkDir(projectPath)
       }
 
-      console.log(`[Sync] Generated manifest with ${manifest.length} files for ${projectPath}`)
+      console.log(`${logPrefix} main-thread manifest generation complete`, {
+        source,
+        totalFiles: manifest.length,
+      })
       const entries: Record<string, { path: string; hash: string; size: number; mtime: number }> = {}
       for (const entry of manifest) {
         entries[entry.path] = entry
@@ -3158,12 +3314,25 @@ ipcMain.handle(
       return { manifest, totalFiles: manifest.length }
     })()
 
-    localManifestRequests.set(projectPath, manifestTask)
+    localManifestRequests.set(requestKey, manifestTask)
     try {
-      return await manifestTask
+      const result = await manifestTask
+      console.log(`${logPrefix} completed`, {
+        source,
+        totalFiles: result.totalFiles,
+        durationMs: Date.now() - startedAt,
+      })
+      return result
+    } catch (error) {
+      console.warn(`${logPrefix} failed`, {
+        source,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
     } finally {
-      if (localManifestRequests.get(projectPath) === manifestTask) {
-        localManifestRequests.delete(projectPath)
+      if (localManifestRequests.get(requestKey) === manifestTask) {
+        localManifestRequests.delete(requestKey)
       }
     }
   }

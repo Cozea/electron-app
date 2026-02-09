@@ -190,6 +190,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('Checking files...')
                 const localResult = await window.electronAPI.sync.getLocalManifest({
                     projectPath: effectiveLocalPath,
+                    debugSource: `project-list-row:${project._id}`,
                 })
 
                 const hasChanges = localResult.totalFiles !== cloudManifest.length

@@ -2,47 +2,68 @@ import { parentPort } from 'node:worker_threads'
 import { readdir, readFile, stat, access } from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import {
+  EXCLUDED_GENERATED_DIRECTORIES,
+  shouldExcludeGeneratedFile,
+} from '../services/generatedArtifactFilters'
 
 const BATCH_SIZE = 50
-const DEFAULT_EXCLUDED_DIRECTORIES = [
-  'node_modules',
-  '.git',
-  '.next',
-  '.nuxt',
-  '.output',
-  '.svelte-kit',
-  '.vercel',
-  'dist',
-  'build',
-  'out',
-  'coverage',
-  '.turbo',
-  '.cache',
-  '.parcel-cache',
-  '.pnpm-store',
-  '.yarn',
-  '__pycache__',
-  'tmp',
-  'temp',
-  'logs',
-  'vendor',
-  'target',
-]
-const EXCLUDED_FILE_SUFFIXES = [
-  '.log',
-  '.tmp',
-  '.temp',
-  '.swp',
-  '.swo',
-  '.pid',
-  '/prisma/dev.db',
-  '/prisma/dev.db-wal',
-  '/prisma/dev.db-shm',
-]
+const DEFAULT_EXCLUDED_DIRECTORIES = ['.git', ...EXCLUDED_GENERATED_DIRECTORIES]
+const SLOW_FS_OP_WARNING_MS = 5000
+const MANIFEST_DEBUG_VERBOSE = process.env.COZEA_DEBUG_MANIFEST === '1'
+
+function postDebug(message: string, details?: Record<string, unknown>) {
+  if (!MANIFEST_DEBUG_VERBOSE) return
+  parentPort?.postMessage({
+    type: 'debug',
+    message,
+    details,
+  })
+}
+
+async function withSlowOpDebug<T>(
+  op: string,
+  target: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const startedAt = Date.now()
+  let warned = false
+  const timeoutId = setTimeout(() => {
+    warned = true
+    postDebug('slow-op-pending', {
+      op,
+      target,
+      elapsedMs: Date.now() - startedAt,
+    })
+  }, SLOW_FS_OP_WARNING_MS)
+
+  try {
+    const result = await run()
+    if (warned) {
+      postDebug('slow-op-resolved', {
+        op,
+        target,
+        elapsedMs: Date.now() - startedAt,
+      })
+    }
+    return result
+  } catch (error) {
+    if (warned) {
+      postDebug('slow-op-failed', {
+        op,
+        target,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 function shouldExcludeFile(relativePath: string): boolean {
-  const normalizedLower = relativePath.replace(/\\/g, '/').toLowerCase()
-  return EXCLUDED_FILE_SUFFIXES.some((suffix) => normalizedLower.endsWith(suffix))
+  return shouldExcludeGeneratedFile(relativePath)
 }
 
 interface ManifestRequest {
@@ -51,6 +72,7 @@ interface ManifestRequest {
   payload: {
     projectPath: string
     excludePatterns?: string[]
+    strict?: boolean
     previousEntries?: Record<string, ManifestEntry>
     previousDirMtimes?: Record<string, number>
   }
@@ -72,6 +94,7 @@ interface ManifestResult {
 async function generateManifest(
   projectPath: string,
   excludePatterns?: string[],
+  strict?: boolean,
   previousEntries?: Record<string, ManifestEntry>,
   previousDirMtimes?: Record<string, number>
 ): Promise<ManifestResult> {
@@ -96,8 +119,13 @@ async function generateManifest(
 
   // Check if project path exists
   try {
-    await access(projectPath)
-  } catch {
+    await withSlowOpDebug('access', projectPath, async () => {
+      await access(projectPath)
+    })
+  } catch (error) {
+    if (strict) {
+      throw error
+    }
     return { manifest: [], totalFiles: 0, dirMtimes }
   }
 
@@ -108,15 +136,25 @@ async function generateManifest(
   async function walkDir(dir: string, relativePath = '') {
     let entries
     try {
-      entries = await readdir(dir, { withFileTypes: true })
-    } catch {
+      entries = await withSlowOpDebug('readdir', dir, async () => {
+        return await readdir(dir, { withFileTypes: true })
+      })
+    } catch (error) {
+      if (strict) {
+        throw error
+      }
       return
     }
 
     let dirStats
     try {
-      dirStats = await stat(dir)
-    } catch {
+      dirStats = await withSlowOpDebug('stat-dir', dir, async () => {
+        return await stat(dir)
+      })
+    } catch (error) {
+      if (strict) {
+        throw error
+      }
       return
     }
 
@@ -171,7 +209,9 @@ async function generateManifest(
         if (shouldExcludeFile(relPath)) return null
         const fullPath = path.join(projectPath, relPath)
         try {
-          const stats = await stat(fullPath)
+          const stats = await withSlowOpDebug('stat-file', fullPath, async () => {
+            return await stat(fullPath)
+          })
           const previous = previousByPath?.get(relPath)
 
           if (
@@ -188,7 +228,9 @@ async function generateManifest(
             }
           }
 
-          const content = await readFile(fullPath)
+          const content = await withSlowOpDebug('read-file', fullPath, async () => {
+            return await readFile(fullPath)
+          })
           const hash = createHash('sha256').update(content).digest('hex')
           return {
             path: relPath,
@@ -196,7 +238,10 @@ async function generateManifest(
             size: stats.size,
             mtime: stats.mtimeMs,
           }
-        } catch {
+        } catch (error) {
+          if (strict) {
+            throw error
+          }
           return null
         }
       })
@@ -228,6 +273,7 @@ parentPort?.on('message', async (msg: ManifestRequest) => {
       const result = await generateManifest(
         msg.payload.projectPath,
         msg.payload.excludePatterns,
+        msg.payload.strict,
         msg.payload.previousEntries,
         msg.payload.previousDirMtimes
       )

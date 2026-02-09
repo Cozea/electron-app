@@ -25,7 +25,10 @@ let workerReady = false
 let workerReadyPromise: Promise<void> | null = null
 const pendingRequests = new Map<string, PendingRequest>()
 let requestId = 0
-const MANIFEST_WORKER_TIMEOUT_MS = 45000
+// Full repo indexing can legitimately take longer (especially first import scans).
+// Keep this aligned with the 180s timeout expectation below.
+const MANIFEST_WORKER_TIMEOUT_MS = 180000
+const MANIFEST_DEBUG_VERBOSE = process.env.COZEA_DEBUG_MANIFEST === '1'
 
 function rejectPendingRequests(error: Error): void {
   for (const [id, pending] of pendingRequests) {
@@ -79,6 +82,8 @@ function ensureWorker(): Promise<void> {
         } else if (msg.type === 'progress') {
           // Progress updates can be used for UI feedback if needed
           // console.log(`[FileOpsManager] Progress: ${msg.processed}/${msg.total}`)
+        } else if (msg.type === 'debug' && MANIFEST_DEBUG_VERBOSE) {
+          console.warn('[FileOpsWorker]', msg.message, msg.details ?? {})
         } else if (msg.type === 'error') {
           console.error('[FileOpsManager] Worker error:', msg.error)
           reject(new Error(msg.error))
@@ -113,7 +118,8 @@ function ensureWorker(): Promise<void> {
 
 export async function getManifestFromWorker(
   projectPath: string,
-  excludePatterns?: string[]
+  excludePatterns?: string[],
+  strict?: boolean
 ): Promise<ManifestResult> {
   await ensureWorker()
 
@@ -132,6 +138,7 @@ export async function getManifestFromWorker(
       payload: {
         projectPath,
         excludePatterns,
+        strict,
       },
     })
 
@@ -149,6 +156,7 @@ export async function getManifestFromWorker(
 export async function getManifestFromWorkerIncremental(
   projectPath: string,
   excludePatterns?: string[],
+  strict?: boolean,
   previousEntries?: Record<string, ManifestEntry>,
   previousDirMtimes?: Record<string, number>
 ): Promise<ManifestResult> {
@@ -169,6 +177,7 @@ export async function getManifestFromWorkerIncremental(
       payload: {
         projectPath,
         excludePatterns,
+        strict,
         previousEntries,
         previousDirMtimes,
       },

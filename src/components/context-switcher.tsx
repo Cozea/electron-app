@@ -169,6 +169,7 @@ export function ContextSwitcher() {
         if (cloudManifest) {
           const localResult = await window.electronAPI.sync.getLocalManifest({
             projectPath: effectiveLocalPath,
+            debugSource: `context-switcher:${project._id}`,
           })
 
           const hasChanges = localResult.totalFiles !== cloudManifest.length
