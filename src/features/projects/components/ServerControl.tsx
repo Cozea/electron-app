@@ -170,7 +170,22 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 liveTerminalIds.has(terminal.id)
             )
 
-            if (!existingDevTerminal) return
+            if (!existingDevTerminal) {
+                // Reconcile stale page-store state after route switches/reloads:
+                // if no live dev-server terminal exists for this project, preview
+                // must not keep rendering localhost URLs with an old port.
+                const snapshot = useProjectPagesStore.getState()
+                if (
+                    snapshot.serverStatus !== 'stopped' ||
+                    snapshot.serverPort !== null ||
+                    snapshot.serverPid !== null
+                ) {
+                    actions.setServerStatus('stopped')
+                    actions.setServerPort(null)
+                    actions.setServerPid(null)
+                }
+                return
+            }
 
             devServerTerminalIdRef.current = existingDevTerminal.id
             devServerProjectPathRef.current = projectPath
