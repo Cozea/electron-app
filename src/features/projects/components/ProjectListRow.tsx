@@ -38,6 +38,10 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
+import {
+    TableCell,
+    TableRow,
+} from '@/components/ui/table'
 
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
@@ -228,152 +232,127 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
 
     return (
         <>
-            <div className="relative">
-                <div
-                    className={cn(
-                        "group grid grid-cols-12 items-center gap-4 py-3 px-4 border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer",
-                        syncState !== 'idle' && "pointer-events-none"
-                    )}
-                    onClick={handleRowClick}
-                >
-                    {/* Sync status overlay text - only show when syncing */}
-                    {syncState !== 'idle' && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-[1px] z-10">
-                            <div className="flex items-center gap-2 text-xs font-medium">
+            <TableRow
+                className={cn(
+                    "group cursor-pointer",
+                    syncState !== 'idle' && "pointer-events-none"
+                )}
+                onClick={handleRowClick}
+            >
+                <TableCell className="min-w-0">
+                    <div className="flex min-w-0 flex-col justify-center gap-1">
+                        <span className="truncate font-medium text-sm">
+                            {project.name}
+                        </span>
+                        {syncState !== 'idle' && (
+                            <div className="flex items-center gap-1.5 text-xs">
                                 {syncState === 'error' ? (
                                     <>
                                         <Cloud className="h-3.5 w-3.5 text-destructive" />
-                                        <span className="text-destructive">{syncMessage}</span>
+                                        <span className="truncate text-destructive">{syncMessage}</span>
                                     </>
                                 ) : syncState === 'ready' ? (
                                     <>
                                         <Check className="h-3.5 w-3.5 text-green-500" />
-                                        <span className="text-muted-foreground">{syncMessage}</span>
+                                        <span className="truncate text-muted-foreground">{syncMessage}</span>
                                     </>
                                 ) : (
                                     <>
-                                        <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
-                                        <span className="text-muted-foreground">{syncMessage}</span>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                        <span className="truncate text-muted-foreground">{syncMessage}</span>
                                     </>
                                 )}
                             </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-3 min-w-0 col-span-8 sm:col-span-6 md:col-span-5 lg:col-span-4">
-                        <div className="flex flex-col min-w-0 justify-center w-full">
-                            <span className="font-medium truncate text-sm">
-                                {project.name}
-                            </span>
-                        </div>
+                        )}
                     </div>
+                </TableCell>
 
-                    {/* Status Column */}
-                    <div className="col-span-2 sm:col-span-2 md:col-span-1 flex items-center justify-center">
+                <TableCell className="text-center">
+                    <div className="flex items-center justify-center">
                         {isBuilding && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                         {project.status === 'active' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
                         {project.status === 'draft' && <Pencil className="h-4 w-4 text-muted-foreground" />}
                         {project.status === 'archived' && <Archive className="h-4 w-4 text-muted-foreground" />}
                         {project.status === 'failed' && <AlertCircle className="h-4 w-4 text-destructive" />}
                     </div>
+                </TableCell>
 
-                    {/* Owner/Status - Middle Column to Last Modified By */}
-                    <div className="hidden md:flex md:col-span-4 lg:col-span-3 items-center text-sm text-muted-foreground truncate min-w-0">
-                        <div className="flex items-center gap-2 truncate">
-                            <Avatar className="h-5 w-5">
-                                <AvatarImage src={creatorImage} />
-                                <AvatarFallback className="text-[10px]">
-                                    {creatorName?.substring(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate">{creatorName || project.createdBy || 'Unknown'}</span>
+                <TableCell className="hidden min-w-0 md:table-cell">
+                    <div className="flex items-center gap-2 truncate text-sm text-muted-foreground">
+                        <Avatar className="h-5 w-5">
+                            <AvatarImage src={creatorImage} />
+                            <AvatarFallback className="text-[10px]">
+                                {creatorName?.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{creatorName || project.createdBy || 'Unknown'}</span>
+                    </div>
+                </TableCell>
+
+                <TableCell className="hidden text-center lg:table-cell">
+                    {project.status !== 'draft' && localPath ? (
+                        <div onClick={(e) => e.stopPropagation()}>
+                            <ProjectSyncStats
+                                projectId={project._id}
+                                projectSlug={project.slug}
+                                localPath={localPath}
+                                lastSyncAt={project.lastSyncAt}
+                            />
                         </div>
-                    </div>
+                    ) : (
+                        <span className="text-xs text-muted-foreground/30">--</span>
+                    )}
+                </TableCell>
 
-                    {/* Sync Stats */}
-                    <div className="hidden lg:flex lg:col-span-1 items-center justify-center">
-                        {project.status !== 'draft' && localPath ? (
-                            <div onClick={(e) => e.stopPropagation()}>
-                                <ProjectSyncStats
-                                    projectId={project._id}
-                                    projectSlug={project.slug}
-                                    localPath={localPath}
-                                    lastSyncAt={project.lastSyncAt}
-                                />
-                            </div>
-                        ) : (
-                            <span className="text-muted-foreground/30 text-xs">--</span>
-                        )}
-                    </div>
+                <TableCell className="hidden text-right text-sm text-muted-foreground sm:table-cell">
+                    {formatRelativeTime(project.updatedAt)}
+                </TableCell>
 
-                    {/* Last Modified */}
-                    <div className="hidden sm:flex sm:col-span-3 md:col-span-2 items-center text-sm text-muted-foreground justify-end pr-4 min-w-0">
-                        {formatRelativeTime(project.updatedAt)}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2 pr-2">
-                        <DropdownMenu open={showMenu} onOpenChange={setShowMenu}>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground"
-                                >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={(e) => {
+                <TableCell className="text-right">
+                    <DropdownMenu open={showMenu} onOpenChange={setShowMenu}>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground"
+                            >
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/projects/${project.slug}`, {
+                                    state: {
+                                        projectSlug: project.slug,
+                                        projectName: project.name,
+                                        projectTemplate: project.template ?? undefined,
+                                    },
+                                })
+                            }}>
+                                Open Project
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/projects/${project.slug}/settings`)
+                            }}>
+                                Settings
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={(e) => {
                                     e.stopPropagation()
-                                    navigate(`/projects/${project.slug}`, {
-                                        state: {
-                                            projectSlug: project.slug,
-                                            projectName: project.name,
-                                            projectTemplate: project.template ?? undefined,
-                                        },
-                                    })
-                                }}>
-                                    Open Project
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={(e) => {
-                                    e.stopPropagation()
-                                    navigate(`/projects/${project.slug}/settings`)
-                                }}>
-                                    Settings
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        setShowDeleteDialog(true)
-                                    }}
-                                    className="text-destructive focus:text-destructive"
-                                >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
-                </div>
-
-                {/* Progress bar at the bottom of the row - spans full width */}
-                {syncState !== 'idle' && syncState !== 'error' && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-border/30 overflow-hidden">
-                        <div
-                            className={cn(
-                                "h-full transition-all duration-300",
-                                syncState === 'ready' ? "bg-green-500" : "bg-primary",
-                                syncState !== 'ready' && "animate-pulse"
-                            )}
-                            style={{
-                                width: syncState === 'ready' ? '100%' : syncState === 'syncing' ? '70%' : '30%'
-                            }}
-                        />
-                    </div>
-                )}
-            </div>
+                                    setShowDeleteDialog(true)
+                                }}
+                                className="text-destructive focus:text-destructive"
+                            >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </TableCell>
+            </TableRow>
 
             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogContent onClick={(e) => e.stopPropagation()}>
