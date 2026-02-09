@@ -17,7 +17,6 @@ import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 import {
   Loader2,
-  Sparkles,
   Monitor,
   MonitorOff,
 } from 'lucide-react'
@@ -164,6 +163,7 @@ export function ProjectBuild() {
   const [runId, setRunId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'failed' | 'completed' | 'interrupted'>('idle')
   const [runAttempt, setRunAttempt] = useState(0)
+  const [stopRequestCount, setStopRequestCount] = useState(0)
   const [hasHydratedRemote, setHasHydratedRemote] = useState(false)
   const runIdRef = useRef<string | null>(null)
 
@@ -500,6 +500,7 @@ export function ProjectBuild() {
   }, [addLog, project?._id, updateBuilderRunStatus])
 
   const handleAIStop = useCallback(() => {
+    setStopRequestCount((prev) => prev + 1)
     setIsAIGenerating(false)
     setHasError(true)
     setRunStatus('interrupted')
@@ -900,36 +901,6 @@ export function ProjectBuild() {
     )
   }
 
-  // Chat panel header - matches DashboardLayout header height (h-12) with blur
-  const chatPanelHeader = (
-    <div className="flex items-center gap-3 h-12 px-4 bg-background/50 backdrop-blur-md shrink-0">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium">Building {project.name}</span>
-      </div>
-      <div className="flex-1" />
-      {/* Preview toggle button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setShowPreview((prev) => !prev)}
-        className="h-8 gap-2 text-xs"
-      >
-        {showPreview ? (
-          <>
-            <MonitorOff className="h-3.5 w-3.5" />
-            Hide Preview
-          </>
-        ) : (
-          <>
-            <Monitor className="h-3.5 w-3.5" />
-            Show Preview
-          </>
-        )}
-      </Button>
-    </div>
-  )
-
   return (
     <DashboardLayout
       user={user}
@@ -939,6 +910,27 @@ export function ProjectBuild() {
         { label: project.name },
         { label: 'Build' },
       ]}
+      header={(
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowPreview((prev) => !prev)}
+          className="h-8 gap-2 text-xs"
+        >
+          {showPreview ? (
+            <>
+              <MonitorOff className="h-3.5 w-3.5" />
+              Hide Preview
+            </>
+          ) : (
+            <>
+              <Monitor className="h-3.5 w-3.5" />
+              Show Preview
+            </>
+          )}
+        </Button>
+      )}
+      headerContentInsetClassName="pt-11"
       contentMode="fixed"
     >
       <div className="h-full flex flex-col overflow-hidden">
@@ -959,15 +951,12 @@ export function ProjectBuild() {
               {/* Builder Conversation Panel - Left Side */}
               <ResizablePanel defaultSize={40} minSize={25} id="builder-conversation" className="min-w-0">
                 <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-                  {/* Chat panel header - unified with preview panel */}
-                  {chatPanelHeader}
-
-                  {/* Chat content */}
                   <div className="flex-1 min-h-0 relative">
                     {localPath && project ? (
                       <BuilderConversation
                         project={project}
                         localPath={localPath}
+                        stopRequestCount={stopRequestCount}
                         onTasksUpdate={handleTasksUpdate}
                         onFileCreated={handleFileCreated}
                         onComplete={handleAIComplete}
@@ -1018,22 +1007,19 @@ export function ProjectBuild() {
                   error={devServer.error}
                   onRefresh={devServer.restart}
                   onCapture={capturePreviewScreenshot}
-                  className="h-full"
+                  className="h-full relative sidebar-fade-border sidebar-fade-border-left"
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
           ) : (
             /* Full-width Builder Conversation when preview is hidden */
             <div className="h-full flex flex-col overflow-hidden">
-              {/* Chat panel header */}
-              {chatPanelHeader}
-
-              {/* Chat content */}
               <div className="flex-1 min-h-0 relative">
                 {localPath && project && (
                   <BuilderConversation
                     project={project}
                     localPath={localPath}
+                    stopRequestCount={stopRequestCount}
                     onTasksUpdate={handleTasksUpdate}
                     onFileCreated={handleFileCreated}
                     onComplete={handleAIComplete}
