@@ -141,12 +141,29 @@ Convex:
 ## CI Release Matrix
 - Use `.github/workflows/release-matrix.yml` to build/publish `darwin-arm64`, `darwin-x64`, `win32-x64`, and `win32-arm64`.
 - Trigger by tag push (`v*`) or manual workflow dispatch.
-- Required secrets for full publishing/signing:
-  - `GH_TOKEN`
-  - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
-  - `CSC_LINK`, `CSC_KEY_PASSWORD` (for mac signing certificate)
+- GitHub Actions release secrets:
+  - Required for publish: `GH_TOKEN`
+  - Required for macOS sign/notarize: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `CSC_LINK`, `CSC_KEY_PASSWORD`
+  - Optional bundled Git archives (override auto-fetch/build): `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`, `COZEA_GIT_BUNDLE_URL_DARWIN_X64`, `COZEA_GIT_BUNDLE_URL_WIN32_X64`, `COZEA_GIT_BUNDLE_URL_WIN32_ARM64`
 
-### Pending Follow-Up (macOS distribution signing)
-- Current machine has `Developer ID Application: Crossand LLC (779Z7M75YU)` certificate present but not as a valid signing identity in `security find-identity -p codesigning` (private key missing).
-- Temporary CI `CSC_LINK` / `CSC_KEY_PASSWORD` were generated from available `Apple Development` identity to keep pipeline wiring testable.
-- Before production macOS release, replace `CSC_LINK` / `CSC_KEY_PASSWORD` with a `.p12` exported from a valid `Developer ID Application` identity that includes the private key.
+### GitHub Actions release flow
+1) Create GitHub repository secrets:
+   - `GH_TOKEN` = PAT with repo release write scope.
+   - `APPLE_ID` = Apple ID email.
+   - `APPLE_APP_SPECIFIC_PASSWORD` = app-specific password.
+   - `APPLE_TEAM_ID` = Apple developer team ID.
+   - `CSC_KEY_PASSWORD` = password used when exporting your signing `.p12`.
+   - `CSC_LINK` = base64-encoded `.p12` contents.
+2) Build `CSC_LINK` from local `.p12`:
+   - macOS:
+     - `base64 -i /absolute/path/Certificates.p12 | tr -d '\n'`
+   - Linux:
+     - `base64 -w0 /absolute/path/Certificates.p12`
+   - Use the full single-line output as the `CSC_LINK` secret.
+3) Dry-run matrix build (no publishing):
+   - GitHub Actions -> `Desktop Release Matrix` -> `Run workflow`.
+   - Manual dispatch is intentionally configured as a non-publishing validation run.
+4) Publish release:
+   - Push a version tag, e.g. `git tag v1.2.3 && git push origin v1.2.3`
+5) Verify output:
+   - GitHub Release contains DMG/ZIP (mac) + NSIS artifacts (win) and update metadata files.
