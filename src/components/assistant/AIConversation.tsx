@@ -60,7 +60,7 @@ import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachme
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import { enrichToolOutputWithLintDiagnostics, extractToolFilePaths } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 
@@ -656,41 +656,20 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return normalized.replace(/^\/+/, '')
   }, [projectPath])
 
-  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null | undefined): string[] => {
-    if (!input) return []
-
-    if (toolName === 'create_file' || toolName === 'replace_string_in_file' || toolName === 'read_file') {
-      const filePath = input.filePath
-      return typeof filePath === 'string' && filePath.trim() ? [filePath] : []
-    }
-
-    if (toolName === 'multi_replace_string_in_file') {
-      const replacements = Array.isArray(input.replacements) ? input.replacements : []
-      return replacements
-        .filter(isRecord)
-        .map((r) => r.filePath)
-        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-    }
-
-    return []
-  }, [])
-
   const enrichToolOutputWithDiagnostics = useCallback(async (
     toolName: string,
     input: Record<string, unknown>,
     output: unknown
   ) => {
-    if (!projectPath || !WRITE_TOOLS.has(toolName)) return output
-    const filePaths = getToolFilePaths(toolName, input)
-    if (filePaths.length === 0) return output
+    if (!WRITE_TOOLS.has(toolName)) return output
 
-    const summary = await collectToolDiagnosticsSummary({
+    return enrichToolOutputWithLintDiagnostics({
       projectPath,
-      filePaths,
+      toolName,
+      input,
+      output,
     })
-
-    return attachToolDiagnosticsToOutput(output, summary)
-  }, [getToolFilePaths, projectPath])
+  }, [projectPath])
 
   const formatLockConflictError = useCallback((
     filePath: string,
@@ -822,7 +801,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     try {
-      const toolFilePaths = getToolFilePaths(toolCall.toolName, toolInput)
+      const toolFilePaths = extractToolFilePaths(toolCall.toolName, toolInput)
       const run = () =>
         localRuntime.requestToolExecution(conversationId, {
           toolName: toolCall.toolName,
@@ -841,10 +820,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       }
 
       if (result.success) {
+        const enrichedOutput = await enrichToolOutputWithDiagnostics(
+          toolCall.toolName,
+          toolInput,
+          result.output
+        )
         void addToolOutput({
           tool: toolCall.toolName,
           toolCallId: toolCall.toolCallId,
-          output: result.output,
+          output: enrichedOutput,
         })
       } else {
         void addToolOutput({
@@ -867,7 +851,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [
     conversationId,
-    getToolFilePaths,
+    enrichToolOutputWithDiagnostics,
     isToolAllowedInContext,
     localRuntime,
     projectPath,
@@ -1281,7 +1265,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
-    const toolFilePaths = getToolFilePaths(toolName, toolInput)
+    const toolFilePaths = extractToolFilePaths(toolName, toolInput)
     const run = () =>
       localRuntime.requestToolExecution(conversationId, {
         toolName,
@@ -1320,7 +1304,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [
     addToolOutput,
     conversationId,
-    getToolFilePaths,
     enrichToolOutputWithDiagnostics,
     isToolAllowedInContext,
     localRuntime,

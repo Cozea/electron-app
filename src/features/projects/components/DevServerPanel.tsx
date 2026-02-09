@@ -169,6 +169,18 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         xtermRef.current = term
         fitAddonRef.current = fitAddon
 
+        // Forward keyboard input to the running dev-server PTY.
+        const inputDisposable = term.onData((data) => {
+            if (!projectPath) return
+            void window.electronAPI.devServer.input({ projectPath, data }).then((result) => {
+                if (!result.success) {
+                    console.warn('[DevServerPanel] Failed to forward terminal input:', result.error)
+                }
+            }).catch((error) => {
+                console.error('[DevServerPanel] Error forwarding terminal input:', error)
+            })
+        })
+
         // Fit after opening and notify PTY of dimensions
         setTimeout(() => {
             try {
@@ -179,6 +191,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
                     console.log(`[Terminal] Initial PTY resize: ${cols}x${rows}`)
                     window.electronAPI.devServer.resize({ projectPath, cols, rows })
                 }
+                term.focus()
             } catch (e) {
                 console.error('Terminal fit failed:', e)
             }
@@ -225,6 +238,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         })
 
         return () => {
+            inputDisposable.dispose()
             term.dispose()
             xtermRef.current = null
             fitAddonRef.current = null
@@ -477,6 +491,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
                         <div
                             ref={terminalContainerRef}
                             className="absolute inset-0 p-1 overflow-hidden"
+                            onMouseDown={() => xtermRef.current?.focus()}
                         />
 
                         {/* Search overlay */}

@@ -516,7 +516,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                         <AlertDialogAction
                             onClick={handleDelete}
                             disabled={deleteConfirmName !== project.name || isDeleting}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
                         >
                             {isDeleting ? 'Deleting...' : 'Delete Project'}
                         </AlertDialogAction>

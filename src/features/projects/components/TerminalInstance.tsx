@@ -334,6 +334,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         <div
             className={cn("relative w-full h-full overflow-hidden", className)}
             style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+            onMouseDown={() => focus()}
             onContextMenu={handleContextMenu}
         >
             {selectedText.trim().length > 0 && (

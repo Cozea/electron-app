@@ -278,7 +278,7 @@ export function EntryChoice({
               onKeyDown={handleKeyDown}
               onInput={handleInput}
               placeholder="Build me a project management app with kanban boards, user authentication, and real-time collaboration..."
-              className="w-full !bg-transparent p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-[80px] max-h-[200px]"
+              className="w-full !bg-transparent rounded-none p-0 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder-muted-foreground resize-none border-none outline-none text-sm min-h-[80px] max-h-[200px]"
               rows={3}
             />
           </div>
