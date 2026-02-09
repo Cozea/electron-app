@@ -9,6 +9,13 @@ import { Button } from '../components/ui/button'
 import { ProjectCard } from '../features/projects/components/ProjectCard'
 import { ProjectListRow } from '../features/projects/components/ProjectListRow'
 import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
+import {
   Plus,
   ArrowUpDown,
   FileCode,
@@ -331,28 +338,35 @@ export function Projects() {
               ))}
             </div>
           ) : (
-            <div className="flex flex-col pb-10">
-              <div className="sticky top-12 z-10 bg-background grid grid-cols-12 gap-4 py-2 px-4 border-b text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                <div className="col-span-8 sm:col-span-6 md:col-span-5 lg:col-span-4">Name</div>
-                <div className="col-span-2 sm:col-span-2 md:col-span-1 text-center">Status</div>
-                <div className="hidden md:block md:col-span-4 lg:col-span-3 text-left">Last modified by</div>
-                <div className="hidden lg:block lg:col-span-1 text-center">Sync</div>
-                <div className="hidden sm:block sm:col-span-3 md:col-span-2 text-right pr-4">Last modified</div>
-                <div className="col-span-2 sm:col-span-1"></div>
+            <div className="pb-10">
+              <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+                <Table className="w-full table-fixed [&_th]:px-4 [&_td]:px-4">
+                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
+                      <TableHead className="w-[13%] text-center">Status</TableHead>
+                      <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>
+                      <TableHead className="hidden lg:table-cell lg:w-[11%] text-center">Sync</TableHead>
+                      <TableHead className="hidden sm:table-cell sm:w-[14%] text-right">Last modified</TableHead>
+                      <TableHead className="w-[10%] text-right" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                    {paginatedProjects.map((project) => {
+                      const modifier = userMap[project.lastSyncBy || project.createdBy]
+                      return (
+                        <ProjectListRow
+                          key={project._id}
+                          project={project}
+                          userId={convexUser?._id}
+                          creatorName={modifier?.name || 'Unknown'}
+                          creatorImage={modifier?.image}
+                        />
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
-              {/* List Items */}
-              {paginatedProjects.map((project) => {
-                const modifier = userMap[project.lastSyncBy || project.createdBy]
-                return (
-                  <ProjectListRow
-                    key={project._id}
-                    project={project}
-                    userId={convexUser?._id}
-                    creatorName={modifier?.name || 'Unknown'}
-                    creatorImage={modifier?.image}
-                  />
-                )
-              })}
             </div>
           )
         )}
