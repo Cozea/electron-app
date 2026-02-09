@@ -69,6 +69,19 @@ export interface CopyDirectorySnapshotResult {
   error?: string
 }
 
+export interface ImportSourcePreflightIssue {
+  path: string
+  reason: 'likely-offline-placeholder'
+}
+
+export interface ImportSourcePreflightResult {
+  success: boolean
+  scannedFiles?: number
+  issues?: ImportSourcePreflightIssue[]
+  truncated?: boolean
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -459,7 +472,8 @@ export interface ElectronAPI {
     renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<{ success: boolean; error?: string }>
     deletePath: (options: { projectPath: string; targetPath: string }) => Promise<ProjectOperationResult>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<ProjectOperationResult>
-    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string }) => Promise<CopyDirectorySnapshotResult>
+    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
+    preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
@@ -469,7 +483,7 @@ export interface ElectronAPI {
   }
   sync: {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
+    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
       Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
     writeFiles: (options: {
       projectPath: string

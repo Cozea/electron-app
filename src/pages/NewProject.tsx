@@ -115,28 +115,6 @@ function normalizePath(pathValue: string): string {
   return pathValue.replace(/\\/g, '/')
 }
 
-function normalizeDirectoryPath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').replace(/\/+$/, '')
-}
-
-function pathIsInsideDirectory(candidate: string, directory: string): boolean {
-  const normalizedCandidate = normalizeDirectoryPath(candidate)
-  const normalizedDirectory = normalizeDirectoryPath(directory)
-  return (
-    normalizedCandidate === normalizedDirectory ||
-    normalizedCandidate.startsWith(`${normalizedDirectory}/`)
-  )
-}
-
-function buildPathPreferenceKey(projectId: string, userId: string): string {
-  return `cozea:path-preference:${projectId}:${userId}`
-}
-
-interface StoredPathPreference {
-  acceptedExternalPath: string
-  projectsDirectory: string
-}
-
 function isComponentFile(pathValue: string): boolean {
   const normalized = normalizePath(pathValue)
   return (
@@ -189,6 +167,14 @@ function extractRepoAccessToken(
     readTokenValue(credentials, 'apiToken') ||
     readTokenValue(credentials, 'token')
   )
+}
+
+function buildImportPreflightIssueMessage(
+  issues: Array<{ path: string; reason: string }>,
+  truncated?: boolean
+): string {
+  const countLabel = truncated ? `${issues.length}+` : String(issues.length)
+  return `Local files unavailable (${countLabel}). Download this folder in Finder, then retry import.`
 }
 
 export function NewProject() {
@@ -421,7 +407,17 @@ export function NewProject() {
     projectPath: string,
   ) => {
     setImportSyncMessage('Indexing local files...')
-    const localManifestResult = await window.electronAPI.sync.getLocalManifest({ projectPath })
+    const importTraceId = `import-${projectId}-${Date.now().toString(36)}`
+    console.log('[Import] Requesting local manifest', { importTraceId, projectPath })
+    const localManifestResult = await window.electronAPI.sync.getLocalManifest({
+      projectPath,
+      debugSource: `new-project-import:${importTraceId}`,
+      strict: true,
+    })
+    console.log('[Import] Local manifest ready', {
+      importTraceId,
+      totalFiles: localManifestResult.totalFiles,
+    })
     const entries = localManifestResult.manifest
 
     if (entries.length === 0) {
@@ -481,7 +477,7 @@ export function NewProject() {
         fileName: entry.path.split('/').pop() || entry.path,
         filePath: entry.path,
         fileType: mimeType,
-        sizeBytes: entry.size,
+        sizeBytes: blob.size,
         checksum: entry.hash,
       }
     })
@@ -763,6 +759,36 @@ export function NewProject() {
 
     const repoName = getRepoDisplayName(repoSource.repoUrl)
     console.log('[Import] Starting import:', { repoName, repoSource })
+    if (repoSource.provider === 'local') {
+      const runImportPreflight = window.electronAPI.project.preflightImportSource
+      if (typeof runImportPreflight === 'function') {
+        setImportSyncMessage('Checking local files...')
+        const preflightResult = await runImportPreflight({
+          projectPath: repoSource.repoUrl,
+          mode: 'relocation',
+        })
+
+        if (!preflightResult.success) {
+          const message = preflightResult.error || 'Unable to verify local source files'
+          setImportError(message)
+          setImportSyncState('error')
+          setImportSyncMessage('Local check failed')
+          return
+        }
+
+        const issues = preflightResult.issues ?? []
+        if (issues.length > 0) {
+          const message = buildImportPreflightIssueMessage(issues, preflightResult.truncated)
+          setImportError(message)
+          setImportSyncState('error')
+          setImportSyncMessage('Files unavailable')
+          return
+        }
+      } else {
+        console.warn('[Import] preflightImportSource bridge unavailable; continuing without preflight')
+      }
+    }
+
     setImportSyncMessage('Creating project...')
 
     try {
@@ -871,27 +897,48 @@ export function NewProject() {
           localPath: importPath,
         })
       } else {
+        if (!result.slug) {
+          await cleanupCreatedProject()
+          setImportSyncState('error')
+          setImportSyncMessage('Project created but no slug was returned.')
+          setImportError('Project created but no slug was returned.')
+          return
+        }
+
+        setImportSyncMessage('Relocating repository...')
+        const createFolderResult = await window.electronAPI.project.createFolder({
+          slug: result.slug,
+          initGit: false,
+        })
+        if (!createFolderResult.success || !createFolderResult.localPath) {
+          await cleanupCreatedProject()
+          const message = createFolderResult.error || 'Failed to prepare project workspace'
+          setImportSyncState('error')
+          setImportSyncMessage(message)
+          setImportError(message)
+          return
+        }
+
+        const copyResult = await window.electronAPI.project.copyDirectorySnapshot({
+          sourcePath: repoSource.repoUrl,
+          targetPath: createFolderResult.localPath,
+          mode: 'relocation',
+        })
+        if (!copyResult.success) {
+          await cleanupCreatedProject()
+          const message = copyResult.error || 'Failed to relocate local repository'
+          setImportSyncState('error')
+          setImportSyncMessage(message)
+          setImportError(message)
+          return
+        }
+
+        importPath = copyResult.copiedTo || createFolderResult.localPath
         await updateMemberLocalPath({
           projectId: result.projectId,
           userId: convexUserId,
           localPath: importPath,
         })
-
-        // The user explicitly picked this external folder, so trust it for the
-        // current projects directory and skip the first "directory changed" prompt.
-        const settings = await window.electronAPI.settings.get()
-        const projectsDirectory = settings.projectsDirectory
-        if (!pathIsInsideDirectory(importPath, projectsDirectory)) {
-          const preferenceKey = buildPathPreferenceKey(
-            result.projectId.toString(),
-            convexUserId.toString()
-          )
-          const preference: StoredPathPreference = {
-            acceptedExternalPath: importPath,
-            projectsDirectory,
-          }
-          localStorage.setItem(preferenceKey, JSON.stringify(preference))
-        }
       }
 
       if (result.slug) {
@@ -916,7 +963,7 @@ export function NewProject() {
             status: 'synced',
           })
         } catch (bootstrapError) {
-          console.warn('[Import] Pre-open bootstrap failed, falling back to normal open:', bootstrapError)
+          console.warn('[Import] Pre-open bootstrap failed:', bootstrapError)
           try {
             await updateSyncStatus({
               projectId: result.projectId,
@@ -927,6 +974,11 @@ export function NewProject() {
           } catch (syncStatusError) {
             console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
           }
+          const message = bootstrapError instanceof Error ? bootstrapError.message : 'Bootstrap failed'
+          setImportError(message)
+          setImportSyncState('error')
+          setImportSyncMessage('Import failed')
+          return
         }
 
         setImportSyncState('ready')

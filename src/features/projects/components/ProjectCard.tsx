@@ -203,6 +203,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 setSyncMessage('Checking files...')
                 const localResult = await window.electronAPI.sync.getLocalManifest({
                     projectPath: effectiveLocalPath,
+                    debugSource: `project-card:${project._id}`,
                 })
 
                 const hasChanges = localResult.totalFiles !== cloudManifest.length

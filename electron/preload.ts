@@ -88,6 +88,19 @@ export interface CopyDirectorySnapshotResult {
   error?: string
 }
 
+export interface ImportSourcePreflightIssue {
+  path: string
+  reason: 'likely-offline-placeholder'
+}
+
+export interface ImportSourcePreflightResult {
+  success: boolean
+  scannedFiles?: number
+  issues?: ImportSourcePreflightIssue[]
+  truncated?: boolean
+  error?: string
+}
+
 export interface WriteFileResult {
   success: boolean
   fullPath?: string
@@ -472,7 +485,12 @@ export interface ElectronAPI {
     copyDirectorySnapshot: (options: {
       sourcePath: string
       targetPath: string
+      mode?: 'relocation' | 'raw'
     }) => Promise<CopyDirectorySnapshotResult>
+    preflightImportSource: (options: {
+      projectPath: string
+      mode?: 'relocation' | 'raw'
+    }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
@@ -482,7 +500,7 @@ export interface ElectronAPI {
   }
   sync: {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
+    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
       Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
     writeFiles: (options: {
       projectPath: string
@@ -844,8 +862,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:deletePath', options),
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) =>
       ipcRenderer.invoke('project:copyPath', options),
-    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string }) =>
+    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) =>
       ipcRenderer.invoke('project:copyDirectorySnapshot', options),
+    preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) =>
+      ipcRenderer.invoke('project:preflightImportSource', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
   },
@@ -855,7 +875,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   sync: {
     hashFile: (options: { filePath: string }) => ipcRenderer.invoke('sync:hashFile', options),
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[] }) =>
+    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
       ipcRenderer.invoke('sync:getLocalManifest', options),
     writeFiles: (options: {
       projectPath: string

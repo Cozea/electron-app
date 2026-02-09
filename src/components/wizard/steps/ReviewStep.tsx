@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Pencil, GitBranch, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2 } from 'lucide-react'
+import { Pencil, GitBranch, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2, AlertTriangle } from 'lucide-react'
 import { IconBrandGithub, IconBrandGitlab } from '@tabler/icons-react'
 import type { WizardState } from '@/hooks/useWizardState'
 
@@ -314,7 +314,7 @@ export function ReviewStep({
 
         {/* Import Button - only for repo path */}
         {isRepoPath && onImport && (
-          <div className="p-6 flex flex-col items-end gap-2">
+          <div className="p-6 flex flex-col items-end gap-3">
             <Button onClick={onImport} disabled={isImporting} className="gap-2">
               {isImporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -355,9 +355,15 @@ export function ReviewStep({
               </div>
             )}
             {importError && (
-              <p className="text-xs text-destructive text-right max-w-[24rem]">
-                {importError}
-              </p>
+              <div className="w-full rounded-2xl bg-destructive/10 px-4 py-3 text-left">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <p className="text-xs font-semibold uppercase tracking-wide">Import blocked</p>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-destructive/95 whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-40 overflow-y-auto">
+                  {importError}
+                </p>
+              </div>
             )}
           </div>
         )}

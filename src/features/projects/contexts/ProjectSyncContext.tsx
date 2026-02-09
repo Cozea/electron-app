@@ -489,6 +489,7 @@ export function ProjectSyncProvider({
         // Get local manifest
         const localResult = await window.electronAPI.sync.getLocalManifest({
           projectPath: effectiveLocalPath,
+          debugSource: `project-sync-context:${projectSlug}`,
         })
 
         // Convert manifests

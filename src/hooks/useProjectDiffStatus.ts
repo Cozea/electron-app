@@ -58,6 +58,7 @@ export function useProjectDiffStatus({
 
         const localResult = await window.electronAPI.sync.getLocalManifest({
           projectPath: localPath,
+          debugSource: `project-diff-status:${projectSlug}`,
         })
 
         const localFiles: LocalFileEntry[] = localResult.manifest
