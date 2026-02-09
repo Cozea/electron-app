@@ -2795,7 +2795,7 @@ ipcMain.handle(
       }
 
       if (!fs.existsSync(normalizedTarget)) {
-        fs.mkdirSync(normalizedTarget, { recursive: true })
+        await fs.promises.mkdir(normalizedTarget, { recursive: true })
       }
 
       const excludedDirectories = new Set([
@@ -2820,7 +2820,7 @@ ipcMain.handle(
       ])
       const excludedFileSuffixes = ['.log', '.tmp', '.temp', '.swp', '.swo', '.pid']
 
-      fs.cpSync(normalizedSource, normalizedTarget, {
+      await fs.promises.cp(normalizedSource, normalizedTarget, {
         recursive: true,
         force: true,
         errorOnExist: false,

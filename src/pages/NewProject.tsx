@@ -43,6 +43,28 @@ function normalizePath(pathValue: string): string {
   return pathValue.replace(/\\/g, '/')
 }
 
+function normalizeDirectoryPath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+function pathIsInsideDirectory(candidate: string, directory: string): boolean {
+  const normalizedCandidate = normalizeDirectoryPath(candidate)
+  const normalizedDirectory = normalizeDirectoryPath(directory)
+  return (
+    normalizedCandidate === normalizedDirectory ||
+    normalizedCandidate.startsWith(`${normalizedDirectory}/`)
+  )
+}
+
+function buildPathPreferenceKey(projectId: string, userId: string): string {
+  return `cozea:path-preference:${projectId}:${userId}`
+}
+
+interface StoredPathPreference {
+  acceptedExternalPath: string
+  projectsDirectory: string
+}
+
 function isComponentFile(pathValue: string): boolean {
   const normalized = normalizePath(pathValue)
   return (
@@ -524,6 +546,22 @@ export function NewProject() {
           userId: convexUserId,
           localPath: importPath,
         })
+
+        // The user explicitly picked this external folder, so trust it for the
+        // current projects directory and skip the first "directory changed" prompt.
+        const settings = await window.electronAPI.settings.get()
+        const projectsDirectory = settings.projectsDirectory
+        if (!pathIsInsideDirectory(importPath, projectsDirectory)) {
+          const preferenceKey = buildPathPreferenceKey(
+            result.projectId.toString(),
+            convexUserId.toString()
+          )
+          const preference: StoredPathPreference = {
+            acceptedExternalPath: importPath,
+            projectsDirectory,
+          }
+          localStorage.setItem(preferenceKey, JSON.stringify(preference))
+        }
       }
 
       if (result.slug) {
