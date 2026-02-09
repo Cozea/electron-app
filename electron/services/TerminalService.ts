@@ -17,6 +17,13 @@ export interface ManagedTerminal {
     ptyProcess: pty.IPty
     profile: TerminalProfile
     title: string
+    startedAt: number
+    endedAt?: number
+    exitCode?: number | null
+    output: string
+    cancelled?: boolean
+    timedOut?: boolean
+    lastInput?: string
 }
 
 export interface TerminalInfo {
@@ -26,10 +33,40 @@ export interface TerminalInfo {
     title: string
 }
 
+export interface TerminalSnapshot {
+    id: string
+    projectPath: string
+    command?: string
+    stdout: string
+    stderr: string
+    exitCode: number | null
+    running: boolean
+    startedAt: number
+    endedAt: number | null
+    timedOut: boolean
+    cancelled: boolean
+}
+
+const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
+const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
+const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
+const TERMINAL_HISTORY_MAX_ENTRIES = 500
+
+function truncateTerminalOutput(output: string): string {
+    if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
+    const tailLength = Math.max(0, MAX_TERMINAL_OUTPUT_LENGTH - TERMINAL_TRUNCATION_MESSAGE.length)
+    return `${TERMINAL_TRUNCATION_MESSAGE}${output.slice(-tailLength)}`
+}
+
+function appendTerminalOutput(current: string, chunk: string): string {
+    return truncateTerminalOutput(current + chunk)
+}
+
 export class TerminalService {
     private static instance: TerminalService
     private terminals = new Map<string, ManagedTerminal>()
     private projectTerminals = new Map<string, string[]>()
+    private terminalHistory = new Map<string, TerminalSnapshot>()
 
     private constructor() { }
 
@@ -88,6 +125,59 @@ export class TerminalService {
         }
     }
 
+    private pruneHistory(now = Date.now()) {
+        for (const [id, snapshot] of this.terminalHistory.entries()) {
+            const endedAt = snapshot.endedAt ?? snapshot.startedAt
+            if (now - endedAt > TERMINAL_HISTORY_TTL_MS) {
+                this.terminalHistory.delete(id)
+            }
+        }
+
+        if (this.terminalHistory.size <= TERMINAL_HISTORY_MAX_ENTRIES) return
+        const entries = Array.from(this.terminalHistory.entries())
+            .sort((a, b) => {
+                const aTime = a[1].endedAt ?? a[1].startedAt
+                const bTime = b[1].endedAt ?? b[1].startedAt
+                return aTime - bTime
+            })
+        const overflow = entries.length - TERMINAL_HISTORY_MAX_ENTRIES
+        for (let i = 0; i < overflow; i += 1) {
+            this.terminalHistory.delete(entries[i][0])
+        }
+    }
+
+    private toSnapshot(terminal: ManagedTerminal): TerminalSnapshot {
+        return {
+            id: terminal.id,
+            projectPath: terminal.projectPath,
+            command: terminal.lastInput,
+            stdout: terminal.output,
+            stderr: '',
+            exitCode: terminal.exitCode ?? null,
+            running: terminal.endedAt === undefined,
+            startedAt: terminal.startedAt,
+            endedAt: terminal.endedAt ?? null,
+            timedOut: terminal.timedOut ?? false,
+            cancelled: terminal.cancelled ?? false,
+        }
+    }
+
+    private persistTerminalSnapshot(terminal: ManagedTerminal) {
+        this.terminalHistory.set(terminal.id, this.toSnapshot(terminal))
+        this.pruneHistory()
+    }
+
+    getTerminalSnapshot(terminalId: string): TerminalSnapshot | null {
+        const trimmedId = terminalId.trim()
+        if (!trimmedId) return null
+
+        const active = this.terminals.get(trimmedId)
+        if (active) return this.toSnapshot(active)
+
+        this.pruneHistory()
+        return this.terminalHistory.get(trimmedId) ?? null
+    }
+
     registerIpcHandlers(): void {
         ipcMain.handle('terminal:create', async (event, options: {
             projectPath: string
@@ -117,6 +207,8 @@ export class TerminalService {
                     ptyProcess,
                     profile,
                     title: profile.name,
+                    startedAt: Date.now(),
+                    output: '',
                 }
 
                 this.terminals.set(terminalId, terminal)
@@ -128,12 +220,16 @@ export class TerminalService {
 
                 // Setup listeners
                 ptyProcess.onData((data) => {
+                    terminal.output = appendTerminalOutput(terminal.output, data)
                     if (!event.sender.isDestroyed()) {
                         event.sender.send('terminal:output', { terminalId, data })
                     }
                 })
 
                 ptyProcess.onExit((res) => {
+                    terminal.exitCode = res.exitCode ?? null
+                    terminal.endedAt = Date.now()
+                    this.persistTerminalSnapshot(terminal)
                     this.terminals.delete(terminalId)
                     this.removeProjectTerminal(options.projectPath, terminalId)
 
@@ -151,6 +247,10 @@ export class TerminalService {
         ipcMain.handle('terminal:input', async (_event, options: { terminalId: string; data: string }) => {
             const term = this.terminals.get(options.terminalId)
             if (term) {
+                const normalized = options.data.replace(/\r?\n/g, '').trim()
+                if (normalized) {
+                    term.lastInput = normalized
+                }
                 term.ptyProcess.write(options.data)
             }
         })
@@ -167,6 +267,10 @@ export class TerminalService {
         ipcMain.handle('terminal:kill', async (_event, options: { terminalId: string }) => {
             const term = this.terminals.get(options.terminalId)
             if (term) {
+                term.cancelled = true
+                term.endedAt = Date.now()
+                term.exitCode = term.exitCode ?? -1
+                this.persistTerminalSnapshot(term)
                 try {
                     term.ptyProcess.kill()
                 } catch {
@@ -205,6 +309,10 @@ export class TerminalService {
         ids.forEach(id => {
             const term = this.terminals.get(id)
             if (term) {
+                term.cancelled = true
+                term.endedAt = Date.now()
+                term.exitCode = term.exitCode ?? -1
+                this.persistTerminalSnapshot(term)
                 term.ptyProcess.kill()
                 this.terminals.delete(id)
             }
@@ -216,6 +324,10 @@ export class TerminalService {
     killAll() {
         for (const terminal of this.terminals.values()) {
             try {
+                terminal.cancelled = true
+                terminal.endedAt = Date.now()
+                terminal.exitCode = terminal.exitCode ?? -1
+                this.persistTerminalSnapshot(terminal)
                 terminal.ptyProcess.kill()
             } catch {
                 // Ignore errors
