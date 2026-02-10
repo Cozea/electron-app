@@ -1071,7 +1071,7 @@ export function NewProject() {
           />
         )
 
-      case 'review':
+      case 'review': {
         const showImportTerminalPanel = Boolean(
           importTerminalId && (isImporting || importTerminal || importSyncState === 'error')
         )
@@ -1123,6 +1123,7 @@ export function NewProject() {
             </div>
           </div>
         )
+      }
 
       case 'prompt':
         return (
