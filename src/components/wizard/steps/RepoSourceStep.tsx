@@ -323,7 +323,7 @@ export function RepoSourceStep({
         )}
       </div>
 
-      <div className="flex items-center justify-end px-3 pt-2 pb-3">
+      <div className="flex items-center justify-end px-3 pt-1 pb-2">
         <Button
           type="button"
           onClick={onContinue}

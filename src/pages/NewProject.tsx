@@ -1066,41 +1066,62 @@ export function NewProject() {
             onRemoveMember={removeTeamMember}
             organizationMembers={organizationMembers}
             currentUserEmail={user?.email}
+            onContinue={handleNext}
+            canContinue={Boolean(canProceed)}
           />
         )
 
       case 'review':
+        const showImportTerminalPanel = Boolean(
+          importTerminalId && (isImporting || importTerminal || importSyncState === 'error')
+        )
         return (
-          <>
-            <ReviewStep
-              state={state}
-              onEditStep={handleEditStep}
-              onImport={state.path === 'repo' ? handleImportProject : undefined}
-              isImporting={isImporting}
-              importError={importError}
-              importSyncState={importSyncState}
-              importSyncMessage={importSyncMessage}
-            />
-            {(importTerminalId && (isImporting || importTerminal || importSyncState === 'error')) && (
-              <div className="mt-4 max-w-2xl mx-auto">
-                <div className="rounded-2xl border border-border overflow-hidden bg-sidebar">
-                  <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                    <p className="text-sm font-medium">Import Terminal</p>
-                    <p className="text-xs text-muted-foreground">
-                      Live output from dependency installation
-                    </p>
-                  </div>
-                  <div className="h-[44vh] min-h-[260px]">
-                    <TerminalInstance
-                      terminalId={importTerminalId}
-                      className="h-full w-full"
-                      shouldAutoFocus={isImporting}
-                    />
+          <div
+            className={cn(
+              showImportTerminalPanel ? "mx-auto w-full max-w-6xl" : ""
+            )}
+          >
+            <div
+              className={cn(
+                showImportTerminalPanel
+                  ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 items-start"
+                  : ""
+              )}
+            >
+              <div className="min-w-0">
+                <ReviewStep
+                  state={state}
+                  onEditStep={handleEditStep}
+                  onImport={state.path === 'repo' ? handleImportProject : undefined}
+                  isImporting={isImporting}
+                  importError={importError}
+                  importSyncState={importSyncState}
+                  importSyncMessage={importSyncMessage}
+                  className={showImportTerminalPanel ? "max-w-none mx-0" : undefined}
+                />
+              </div>
+
+              {showImportTerminalPanel && importTerminalId && (
+                <div className="min-w-0 lg:sticky lg:top-14">
+                  <div className="rounded-2xl border border-border overflow-hidden bg-sidebar">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                      <p className="text-sm font-medium">Import Terminal</p>
+                      <p className="text-xs text-muted-foreground">
+                        Live output from dependency installation
+                      </p>
+                    </div>
+                    <div className="h-[44vh] min-h-[260px] max-h-[520px]">
+                      <TerminalInstance
+                        terminalId={importTerminalId}
+                        className="h-full w-full"
+                        shouldAutoFocus={isImporting}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </>
+              )}
+            </div>
+          </div>
         )
 
       case 'prompt':

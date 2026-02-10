@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Users, X, AlertCircle, UserPlus, ChevronDown, Trash2 } from 'lucide-react'
+import { Users, X, AlertCircle, UserPlus, ChevronDown, Trash2, ArrowRight } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DropdownMenu,
@@ -37,6 +37,8 @@ interface TeamStepProps {
   onRemoveMember: (email: string) => void
   organizationMembers?: OrgMember[]
   currentUserEmail?: string
+  onContinue?: () => void
+  canContinue?: boolean
 }
 
 const ROLE_DESCRIPTIONS: Record<ProjectRole, string> = {
@@ -52,6 +54,8 @@ export function TeamStep({
   onRemoveMember,
   organizationMembers = [],
   currentUserEmail,
+  onContinue,
+  canContinue = true,
 }: TeamStepProps) {
   const [selectedRole, setSelectedRole] = useState<ProjectRole>('developer')
 
@@ -115,14 +119,14 @@ export function TeamStep({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-10"
-    >
-
-
-      <div className="space-y-8 max-w-2xl mx-auto">
+    <div className="flex flex-col flex-1 min-h-0">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="app-scrollbar flex-1 min-h-0 overflow-y-auto py-2"
+      >
+        <div className="space-y-10">
+          <div className="space-y-8 max-w-2xl mx-auto">
         {/* Warning if no PM */}
         {!hasPM && (
           <Alert variant="destructive" className="border-destructive/20 bg-destructive/10">
@@ -361,6 +365,20 @@ export function TeamStep({
           ))}
         </div>
       </div>
-    </motion.div>
+        </div>
+      </motion.div>
+
+      <div className="flex items-center justify-end px-3 pt-1 pb-2">
+        <Button
+          type="button"
+          onClick={onContinue}
+          disabled={!canContinue || !onContinue}
+          className="rounded-full focus-visible:ring-0 focus-visible:ring-offset-0"
+        >
+          Continue
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   )
 }
