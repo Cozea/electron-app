@@ -1149,6 +1149,8 @@ export function NewProject() {
               repoSource={state.repoSource}
               onUpdate={updateRepoSourcePartial}
               onBrowseFolder={browseLocalRepoFolder}
+              onContinue={handleNext}
+              canContinue={Boolean(canProceed)}
             />
           </div>
         )
