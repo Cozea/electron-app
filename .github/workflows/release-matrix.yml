@@ -42,6 +42,8 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # Vite env vars must be available at build time (GitHub Actions runner env).
+      VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || vars.VITE_CONVEX_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
+          for name in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD VITE_CONVEX_URL; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
