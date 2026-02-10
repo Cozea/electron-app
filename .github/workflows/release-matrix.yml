@@ -29,6 +29,7 @@ jobs:
             bundle_targets: darwin-arm64
     env:
       CI: true
+      NODE_OPTIONS: --max-old-space-size=4096
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
       COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
