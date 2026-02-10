@@ -27,14 +27,18 @@ interface UpdateMenuProps {
   dropdownAlign?: 'start' | 'center' | 'end'
   dropdownSide?: 'top' | 'right' | 'bottom' | 'left'
   buttonClassName?: string
+  disableAutoUpdaterHook?: boolean
 }
 
 export function UpdateMenu({
   dropdownAlign = 'end',
   dropdownSide = 'bottom',
   buttonClassName,
+  disableAutoUpdaterHook = false,
 }: UpdateMenuProps) {
-  useAutoUpdater()
+  if (!disableAutoUpdaterHook) {
+    useAutoUpdater()
+  }
 
   const status = useAutoUpdateStore((s) => s.status)
   const version = useAutoUpdateStore((s) => s.version)
