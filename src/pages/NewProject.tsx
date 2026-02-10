@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { ArrowLeft, ArrowRight, Rocket, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowRight, Rocket, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
 
 import {
@@ -1148,6 +1148,7 @@ export function NewProject() {
             <RepoSourceStep
               repoSource={state.repoSource}
               onUpdate={updateRepoSourcePartial}
+              onBrowseFolder={browseLocalRepoFolder}
             />
           </div>
         )
@@ -1226,8 +1227,36 @@ export function NewProject() {
     [setRepoSource, state.repoSource]
   )
 
+  const browseLocalRepoFolder = useCallback(async () => {
+    try {
+      const result = await window.electronAPI.dialog.selectDirectory()
+      if (result && result.path) {
+        updateRepoSourcePartial({ repoUrl: result.path, provider: 'local', branch: 'main' })
+      }
+    } catch (error) {
+      console.error('[Import] Failed to select directory:', error)
+    }
+  }, [updateRepoSourcePartial])
+
+  const isRepoSourceStep = state.path === 'repo' && currentStepDef?.id === 'repo-source'
+
   const headerControls = (!showNavigation || isConversationMode || state.step <= 0) ? null : (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
+      {isRepoSourceStep && (
+        <button
+          type="button"
+          onClick={browseLocalRepoFolder}
+          className={cn(
+            "shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium",
+            "bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15",
+            "text-foreground/80 hover:text-foreground transition-colors",
+            "focus-visible:ring-0 focus-visible:ring-offset-0"
+          )}
+        >
+          <ArrowLeftRight className="h-3.5 w-3.5 opacity-80" />
+          Change folder
+        </button>
+      )}
       <Button
         variant="ghost"
         size="icon"
