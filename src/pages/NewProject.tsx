@@ -1084,7 +1084,7 @@ export function NewProject() {
             <div
               className={cn(
                 showImportTerminalPanel
-                  ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 items-start"
+                  ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 items-stretch"
                   : ""
               )}
             >
@@ -1102,15 +1102,15 @@ export function NewProject() {
               </div>
 
               {showImportTerminalPanel && importTerminalId && (
-                <div className="min-w-0 lg:sticky lg:top-14">
-                  <div className="rounded-2xl border border-border overflow-hidden bg-sidebar">
+                <div className="min-w-0 lg:sticky lg:top-14 lg:self-stretch">
+                  <div className="rounded-2xl border border-border overflow-hidden bg-sidebar flex flex-col h-[44vh] min-h-[260px] lg:h-full">
                     <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
                       <p className="text-sm font-medium">Import Terminal</p>
                       <p className="text-xs text-muted-foreground">
                         Live output from dependency installation
                       </p>
                     </div>
-                    <div className="h-[44vh] min-h-[260px] max-h-[520px]">
+                    <div className="flex-1 min-h-0">
                       <TerminalInstance
                         terminalId={importTerminalId}
                         className="h-full w-full"
