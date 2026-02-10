@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { WizardRepoSource } from '@/hooks/useWizardState'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface DirectoryEntry {
   name: string
@@ -140,12 +141,16 @@ interface RepoSourceStepProps {
   repoSource: WizardRepoSource | undefined
   onUpdate: (repoSource: Partial<WizardRepoSource>) => void
   onBrowseFolder?: () => void | Promise<void>
+  onContinue?: () => void
+  canContinue?: boolean
 }
 
 export function RepoSourceStep({
   repoSource,
   onUpdate,
   onBrowseFolder,
+  onContinue,
+  canContinue = true,
 }: RepoSourceStepProps) {
   const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(null)
   const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([])
@@ -250,7 +255,7 @@ export function RepoSourceStep({
   }, [directoryEntries, folderPath, selectedDirectoryPath])
 
   return (
-    <div className="flex flex-col gap-6 flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="relative flex-1 min-h-0">
         {!hasLocalFolderSelected ? (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -318,6 +323,20 @@ export function RepoSourceStep({
         )}
       </div>
 
+      <div className="flex items-center justify-end px-3 pt-2 pb-3">
+        <Button
+          type="button"
+          onClick={onContinue}
+          disabled={!hasLocalFolderSelected || !canContinue || !onContinue}
+          className={cn(
+            "rounded-full",
+            "focus-visible:ring-0 focus-visible:ring-offset-0"
+          )}
+        >
+          Continue
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   )
 }
