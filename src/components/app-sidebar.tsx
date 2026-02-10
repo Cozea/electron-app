@@ -68,7 +68,7 @@ function SidebarUpdate() {
         <div className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           Update
         </div>
-        <UpdateMenu dropdownAlign="start" dropdownSide="right" />
+        <UpdateMenu disableAutoUpdaterHook dropdownAlign="start" dropdownSide="right" />
       </div>
     </div>
   )
