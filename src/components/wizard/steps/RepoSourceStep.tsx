@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { WizardRepoSource } from '@/hooks/useWizardState'
@@ -139,11 +139,13 @@ function LocalDocumentIcon({
 interface RepoSourceStepProps {
   repoSource: WizardRepoSource | undefined
   onUpdate: (repoSource: Partial<WizardRepoSource>) => void
+  onBrowseFolder?: () => void | Promise<void>
 }
 
 export function RepoSourceStep({
   repoSource,
   onUpdate,
+  onBrowseFolder,
 }: RepoSourceStepProps) {
   const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(null)
   const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([])
@@ -210,7 +212,12 @@ export function RepoSourceStep({
     }
   }, [selectedDirectoryPath])
 
-  const handleBrowseFolder = async () => {
+  const handleBrowseFolder = useCallback(async () => {
+    if (onBrowseFolder) {
+      await onBrowseFolder()
+      return
+    }
+
     try {
       const result = await window.electronAPI.dialog.selectDirectory()
       if (result && result.path) {
@@ -219,7 +226,7 @@ export function RepoSourceStep({
     } catch (error) {
       console.error('Failed to select directory:', error)
     }
-  }
+  }, [onBrowseFolder, onUpdate])
 
   const selectedDirectoryLabel = useMemo(() => {
     if (!selectedDirectoryPath) return 'Files'
@@ -257,17 +264,10 @@ export function RepoSourceStep({
           </div>
         ) : (
           <div className="absolute inset-0 flex flex-col min-h-0 rounded-lg bg-transparent">
-            <div className="flex items-center justify-between px-3 py-2">
+            <div className="px-3 pt-2 pb-1">
               <p className="text-sm font-medium text-muted-foreground truncate pr-3">
                 {selectedDirectoryLabel || selectedFolderName || 'Selected folder'}
               </p>
-              <button
-                type="button"
-                onClick={handleBrowseFolder}
-                className="text-xs text-primary hover:underline shrink-0"
-              >
-                Change folder
-              </button>
             </div>
             <div className="app-scrollbar flex-1 min-h-0 overflow-y-auto px-2 pb-2">
               {isLoadingGrid ? (
@@ -425,6 +425,21 @@ function FileGridItem({
             draggable={false}
             onError={() => setThumbnailOk(false)}
           />
+        ) : entry.kind === 'up' ? (
+          <div
+            className={cn(
+              "h-12 w-12 rounded-full",
+              "bg-black/5 dark:bg-white/10",
+              "flex items-center justify-center"
+            )}
+            aria-hidden="true"
+          >
+            <div className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/70" />
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/70" />
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/70" />
+            </div>
+          </div>
         ) : (
           <div className="scale-[1.35]">
             {entry.isDirectory ? (
