@@ -1140,7 +1140,10 @@ const mainStart = performance.now()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-process.env.APP_ROOT = path.join(__dirname, '..')
+// In production, main bundle lives in `.../app.asar/out/main`, and renderer in `.../app.asar/out/renderer`.
+// In dev/build, main bundle lives in `<repo>/out/main`, renderer in `<repo>/out/renderer`.
+// So APP_ROOT must point to the repo root (dev) or `app.asar` root (prod), not the `out/` folder.
+process.env.APP_ROOT = path.join(__dirname, '..', '..')
 
 // Dev server URL from electron-vite (ELECTRON_RENDERER_URL) or legacy var
 export const VITE_DEV_SERVER_URL =
