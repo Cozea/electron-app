@@ -3,13 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { ArrowLeft, ArrowRight, Rocket, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -45,6 +38,7 @@ import {
 import { saveLocalSyncHistory } from '../lib/sync/syncHistory'
 import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
+import { cn } from '@/lib/utils'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -170,11 +164,10 @@ function extractRepoAccessToken(
 }
 
 function buildImportPreflightIssueMessage(
-  issues: Array<{ path: string; reason: string }>,
-  truncated?: boolean
+  _issues: Array<{ path: string; reason: string }>,
+  _truncated?: boolean
 ): string {
-  const countLabel = truncated ? `${issues.length}+` : String(issues.length)
-  return `Local files unavailable (${countLabel}). Download this folder in Finder, then retry import.`
+  return 'Some iCloud files are not available locally. Download them in Finder first.'
 }
 
 export function NewProject() {
@@ -203,15 +196,12 @@ export function NewProject() {
   const [importError, setImportError] = useState<string | null>(null)
   const isImporting = importSyncState !== 'idle' && importSyncState !== 'error'
   const [importTerminalId, setImportTerminalId] = useState<string | null>(null)
-
-  const isTerminalPanelOpen = useTerminalStore((store) => store.isPanelOpen)
-  const terminals = useTerminalStore((store) => store.terminals)
-  const groups = useTerminalStore((store) => store.groups)
-  const activeGroupId = useTerminalStore((store) => store.activeGroupId)
+  const importTerminal = useTerminalStore((store) =>
+    importTerminalId ? store.terminals[importTerminalId] ?? null : null
+  )
   const {
     addTerminal,
     setActiveTerminal,
-    setPanelOpen,
     updateTerminalStatus,
   } = useTerminalActions()
 
@@ -332,16 +322,19 @@ export function NewProject() {
       })
       setActiveTerminal(terminalId)
       setImportTerminalId(terminalId)
-      // Keep hidden by default; user can open it from the unified header toggle.
-      setPanelOpen(false)
 
       return await new Promise((resolve) => {
         let settled = false
+        let commandDispatchTimer: number | null = null
         const cleanup = () => {
           if (settled) return
           settled = true
           unsubscribeExit()
           window.clearTimeout(timeoutId)
+          if (commandDispatchTimer !== null) {
+            window.clearTimeout(commandDispatchTimer)
+            commandDispatchTimer = null
+          }
         }
 
         const unsubscribeExit = window.electronAPI.terminal.onExit(({ terminalId: exitedTerminalId, exitCode }) => {
@@ -366,23 +359,25 @@ export function NewProject() {
           resolve({ success: false, error: 'Command timed out' })
         }, INSTALL_TIMEOUT_MS)
 
-        window.electronAPI.terminal.input({
-          terminalId,
-          data: `${command}\rexit\r`,
-        }).catch((error) => {
-          if (settled) return
-          updateTerminalStatus(terminalId, 'error')
-          cleanup()
-          resolve({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to send terminal input',
+        commandDispatchTimer = window.setTimeout(() => {
+          window.electronAPI.terminal.input({
+            terminalId,
+            data: `${command}; exit\r`,
+          }).catch((error) => {
+            if (settled) return
+            updateTerminalStatus(terminalId, 'error')
+            cleanup()
+            resolve({
+              success: false,
+              error: error instanceof Error ? error.message : 'Failed to send terminal input',
+            })
           })
-        })
+        }, 100)
 
         updateTerminalStatus(terminalId, 'running')
       })
     },
-    [addTerminal, setActiveTerminal, setPanelOpen, updateTerminalStatus]
+    [addTerminal, setActiveTerminal, updateTerminalStatus]
   )
 
   const preinstallDependencies = useCallback(async (projectPath: string) => {
@@ -657,8 +652,23 @@ export function NewProject() {
     nextStep()
   }
 
-  const handleSelectPath = (path: CreationPath) => {
-    setPath(path)
+  const handleSelectPath = async (path: CreationPath) => {
+    if (path !== 'repo') {
+      setPath(path)
+      return
+    }
+
+    const result = await window.electronAPI.dialog.selectDirectory()
+    if (!result.success || result.canceled || !result.path) {
+      return
+    }
+
+    setRepoSource({
+      provider: 'local',
+      repoUrl: result.path,
+      branch: 'main',
+    })
+    setPath('repo')
   }
 
   const handlePromptSubmit = async (settings: PromptSettings, promptText: string) => {
@@ -1071,38 +1081,25 @@ export function NewProject() {
               importSyncState={importSyncState}
               importSyncMessage={importSyncMessage}
             />
-            <Dialog
-              open={isTerminalPanelOpen}
-              onOpenChange={(open) => setPanelOpen(open)}
-            >
-              <DialogContent className="max-w-4xl h-[70vh] p-0 overflow-hidden">
-                <DialogHeader className="px-4 pt-4 pb-2">
-                  <DialogTitle>Import Terminal</DialogTitle>
-                  <DialogDescription>
-                    Live output from the import dependency installation task.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="h-full min-h-0 pb-4 px-4">
-                  {(() => {
-                    const activeTerminalId =
-                      importTerminalId ??
-                      (activeGroupId ? groups[activeGroupId]?.activeTerminalId : null)
-                    if (!activeTerminalId || !terminals[activeTerminalId]) {
-                      return (
-                        <div className="h-full flex items-center justify-center text-sm text-muted-foreground rounded-xl bg-muted/40">
-                          No active import terminal.
-                        </div>
-                      )
-                    }
-                    return (
-                      <div className="h-full rounded-xl overflow-hidden bg-sidebar">
-                        <TerminalInstance terminalId={activeTerminalId} className="h-full w-full" shouldAutoFocus />
-                      </div>
-                    )
-                  })()}
+            {(importTerminalId && (isImporting || importTerminal || importSyncState === 'error')) && (
+              <div className="mt-4 max-w-2xl mx-auto">
+                <div className="rounded-2xl border border-border overflow-hidden bg-sidebar">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                    <p className="text-sm font-medium">Import Terminal</p>
+                    <p className="text-xs text-muted-foreground">
+                      Live output from dependency installation
+                    </p>
+                  </div>
+                  <div className="h-[44vh] min-h-[260px]">
+                    <TerminalInstance
+                      terminalId={importTerminalId}
+                      className="h-full w-full"
+                      shouldAutoFocus={isImporting}
+                    />
+                  </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+              </div>
+            )}
           </>
         )
 
@@ -1140,17 +1137,19 @@ export function NewProject() {
       // Repo path steps
       case 'repo-source':
         return (
-          <RepoSourceStep
-            repoSource={state.repoSource}
-            onUpdate={(partial) => {
-              const baseRepoSource = state.repoSource ?? {
-                provider: 'github',
-                repoUrl: '',
-                branch: 'main',
-              }
-              setRepoSource({ ...baseRepoSource, ...partial })
-            }}
-          />
+          <div
+            className={cn(
+              "flex-1 min-h-0 flex flex-col",
+              // Local folder uses a split file tree + Monaco preview; remove WizardLayout padding
+              // so the panes can truly fill the available vertical space.
+              "-my-8"
+            )}
+          >
+            <RepoSourceStep
+              repoSource={state.repoSource}
+              onUpdate={updateRepoSourcePartial}
+            />
+          </div>
         )
 
       // Plan and Build steps redirect to dedicated pages
@@ -1215,20 +1214,38 @@ export function NewProject() {
     )
   }, [isConversationMode, state.step, stepProgressValue])
 
-  // Navigation Footer
-  const footerContent = showNavigation ? (
-    <div className="flex items-center justify-between py-3 px-6 md:px-8 max-w-7xl mx-auto w-full">
-      <Button variant="outline" size="sm" onClick={handleBack} className="gap-2">
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </Button>
+  const updateRepoSourcePartial = useCallback(
+    (partial: Partial<NonNullable<typeof state.repoSource>>) => {
+      const baseRepoSource = state.repoSource ?? {
+        provider: 'local',
+        repoUrl: '',
+        branch: 'main',
+      }
+      setRepoSource({ ...baseRepoSource, ...partial })
+    },
+    [setRepoSource, state.repoSource]
+  )
 
+  const headerControls = (!showNavigation || isConversationMode || state.step <= 0) ? null : (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleBack}
+        disabled={state.isSaving || isScanning || isImporting}
+        aria-label="Back"
+        className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </Button>
       {showNextButton && (
         <Button
           onClick={handleNext}
-          size="sm"
+          variant="ghost"
+          size="icon"
           disabled={!canProceed || state.isSaving || isScanning}
-          className="gap-2"
+          aria-label={nextButtonText}
+          className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
         >
           {state.isSaving || isScanning ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1237,11 +1254,10 @@ export function NewProject() {
           ) : (
             <ArrowRight className="h-4 w-4" />
           )}
-          {nextButtonText}
         </Button>
       )}
     </div>
-  ) : null
+  )
 
   return (
     <DashboardLayout
@@ -1251,9 +1267,9 @@ export function NewProject() {
         { label: 'Projects', href: '/projects' },
         { label: 'New Project' },
       ]}
-      header={headerContent || undefined}
+      header={headerControls || headerContent || undefined}
       breadcrumbAddon={breadcrumbAddon || undefined}
-      footer={footerContent}
+      footer={undefined}
       contentMode="fixed"
     >
       <WizardLayout
@@ -1266,7 +1282,15 @@ export function NewProject() {
         showInternalStepHeader={false}
       >
         {/* Step Content */}
-        <div className={isConversationMode ? "flex-1 flex flex-col min-h-0" : "min-h-[300px]"}>
+        <div
+          className={
+            isConversationMode
+              ? "flex-1 flex flex-col min-h-0"
+              : state.step === 0
+                ? "min-h-[300px]"
+                : "flex-1 flex flex-col min-h-0"
+          }
+        >
           {renderStepContent()}
         </div>
       </WizardLayout>
