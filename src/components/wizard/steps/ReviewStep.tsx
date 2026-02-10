@@ -14,6 +14,7 @@ interface ReviewStepProps {
   importError?: string | null
   importSyncState?: 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
   importSyncMessage?: string | null
+  className?: string
 }
 
 export function ReviewStep({
@@ -24,6 +25,7 @@ export function ReviewStep({
   importError,
   importSyncState = 'idle',
   importSyncMessage,
+  className,
 }: ReviewStepProps) {
   const isRepoPath = state.path === 'repo'
   const isImportActive = importSyncState !== 'idle'
@@ -72,7 +74,7 @@ export function ReviewStep({
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className={cn("max-w-2xl mx-auto", className)}>
       {/* Blueprint Card */}
       <div className="rounded-xl bg-card overflow-hidden">
         {/* Header */}
