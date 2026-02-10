@@ -94,6 +94,7 @@ import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-di
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -121,15 +122,6 @@ interface ToolMeta {
   providerToolId?: string
   providerToolArgs?: Record<string, unknown>
   supportsDeferredResults?: boolean
-}
-
-interface ModelOption {
-  id: string
-  name: string
-  chef: string
-  chefSlug: string
-  tier: string
-  providers: string[]
 }
 
 interface ModelCapabilities {
@@ -259,15 +251,7 @@ const PLANNING_TOOLS = new Set([
 ])
 
 // Model catalog (same as AIConversation)
-const defaultModels: ModelOption[] = [
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'fast', providers: ['anthropic'] },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', chef: 'Google', chefSlug: 'google', tier: 'fast', providers: ['google'] },
-  { id: 'gpt-5.1', name: 'GPT-5.1', chef: 'OpenAI', chefSlug: 'openai', tier: 'standard', providers: ['openai'] },
-  { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'standard', providers: ['anthropic'] },
-  { id: 'gpt-5.2', name: 'GPT-5.2', chef: 'OpenAI', chefSlug: 'openai', tier: 'powerful', providers: ['openai'] },
-  { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'powerful', providers: ['anthropic'] },
-  { id: 'gemini-3-pro', name: 'Gemini 3 Pro', chef: 'Google', chefSlug: 'google', tier: 'powerful', providers: ['google'] },
-]
+const defaultModels: ModelOption[] = DEFAULT_MODELS
 
 export function WizardConversation({
   projectId,
