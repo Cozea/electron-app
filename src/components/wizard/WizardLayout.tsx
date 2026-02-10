@@ -23,6 +23,7 @@ export function WizardLayout({
   fullHeight = false,
   showInternalStepHeader = false,
 }: WizardLayoutProps) {
+  const isEntryStep = currentStep === 0
   // Current step index (0-based)
   // Step 0 is entry, so "Step 1" for user is actually step index 1
   const effectiveStepIndex = currentStep
@@ -68,7 +69,7 @@ export function WizardLayout({
         fullHeight && "min-h-0"
       )}>
         <div className={cn(
-          "flex-1 w-full px-8 py-8 flex flex-col",
+          "flex-1 w-full px-8 py-8 flex flex-col min-h-0",
           fullHeight ? "max-w-full p-0 min-h-0" :
             currentStep === 0 ? "max-w-2xl mx-auto justify-center" : ""
         )}>
@@ -83,7 +84,12 @@ export function WizardLayout({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
-                className="w-full"
+                className={cn(
+                  "w-full flex flex-col min-h-0",
+                  // Entry step wants to be vertically centered via the parent container's `justify-center`.
+                  // Don't force the motion wrapper to consume all vertical space.
+                  !isEntryStep && "flex-1"
+                )}
               >
                 {children}
               </motion.div>

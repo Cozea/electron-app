@@ -1,9 +1,10 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Pencil, GitBranch, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2, AlertTriangle } from 'lucide-react'
+import { Pencil, GitBranch, Layers, Palette, Code2, Server, Cloud, Sparkles, Rocket, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { IconBrandGithub, IconBrandGitlab } from '@tabler/icons-react'
 import type { WizardState } from '@/hooks/useWizardState'
+import { cn } from '@/lib/utils'
 
 interface ReviewStepProps {
   state: WizardState
@@ -25,6 +26,17 @@ export function ReviewStep({
   importSyncMessage,
 }: ReviewStepProps) {
   const isRepoPath = state.path === 'repo'
+  const isImportActive = importSyncState !== 'idle'
+  const isImportError = importSyncState === 'error'
+  const isImportReady = importSyncState === 'ready'
+  const progressValue = isImportError || isImportReady
+    ? 100
+    : importSyncState === 'syncing'
+      ? 72
+      : 34
+  const statusText = isImportError
+    ? (importError || importSyncMessage || 'Import failed')
+    : importSyncMessage || (isImportReady ? 'Opening project...' : 'Importing...')
 
   // For repo path, get the folder/repo name from the URL
   const repoName = state.repoSource?.repoUrl
@@ -314,57 +326,62 @@ export function ReviewStep({
 
         {/* Import Button - only for repo path */}
         {isRepoPath && onImport && (
-          <div className="p-6 flex flex-col items-end gap-3">
-            <Button onClick={onImport} disabled={isImporting} className="gap-2">
-              {isImporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Rocket className="h-4 w-4" />
-              )}
-              {isImporting ? 'Importing...' : 'Import Project'}
-            </Button>
-            {importSyncState !== 'idle' && (
-              <div className="w-full max-w-[18rem]">
-                <div className="h-0.5 w-full bg-border/50 overflow-hidden">
-                  <div
-                    className={[
-                      "h-full transition-all duration-300",
-                      importSyncState === 'ready' ? "bg-green-500" : importSyncState === 'error' ? "bg-destructive" : "bg-primary",
-                      importSyncState !== 'ready' && importSyncState !== 'error' ? "animate-pulse" : "",
-                    ].join(" ")}
-                    style={{
-                      width:
-                        importSyncState === 'ready'
-                          ? '100%'
-                          : importSyncState === 'syncing'
-                            ? '70%'
-                            : '30%',
-                    }}
-                  />
-                </div>
-                {importSyncMessage && (
-                  <p
-                    className={[
-                      "mt-1 text-[11px] text-right",
-                      importSyncState === 'error' ? "text-destructive" : "text-muted-foreground",
-                    ].join(" ")}
-                  >
-                    {importSyncMessage}
-                  </p>
+          <div className="p-6">
+            <div className="flex justify-end">
+              <div
+                className={cn(
+                  'relative h-12 transition-all duration-300 ease-out',
+                  isImportActive ? 'w-full' : 'w-60'
                 )}
-              </div>
-            )}
-            {importError && (
-              <div className="w-full rounded-2xl bg-destructive/10 px-4 py-3 text-left">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <p className="text-xs font-semibold uppercase tracking-wide">Import blocked</p>
+              >
+                <Button
+                  onClick={onImport}
+                  disabled={isImporting}
+                  className={cn(
+                    'absolute inset-0 h-12 rounded-full gap-2 transition-all duration-300 ease-out',
+                    isImportActive ? 'pointer-events-none opacity-0 scale-[0.98]' : 'opacity-100 scale-100'
+                  )}
+                >
+                  <Rocket className="h-4 w-4" />
+                  Import Project
+                </Button>
+
+                <div
+                  className={cn(
+                    'absolute inset-0 overflow-hidden rounded-full bg-secondary/90 transition-all duration-300 ease-out',
+                    isImportActive ? 'opacity-100 scale-100' : 'pointer-events-none opacity-0 scale-[0.98]'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'absolute inset-y-0 left-0 transition-[width,background-color] duration-500 ease-out',
+                      isImportError ? 'bg-destructive/75' : isImportReady ? 'bg-green-500/70' : 'bg-primary/65',
+                      !isImportError && !isImportReady ? 'animate-pulse' : ''
+                    )}
+                    style={{ width: `${progressValue}%` }}
+                  />
+
+                  <div className="relative z-10 flex h-full items-center gap-2 px-4">
+                    {isImportError ? (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-destructive-foreground" />
+                    ) : isImportReady ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-foreground" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-foreground" />
+                    )}
+                    <p
+                      className={cn(
+                        'min-w-0 flex-1 truncate text-sm font-medium',
+                        isImportError ? 'text-destructive-foreground' : 'text-foreground'
+                      )}
+                      title={statusText}
+                    >
+                      {statusText}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-destructive/95 whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-40 overflow-y-auto">
-                  {importError}
-                </p>
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>

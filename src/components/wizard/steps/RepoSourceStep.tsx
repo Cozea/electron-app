@@ -1,88 +1,184 @@
-import { useState, useEffect } from 'react'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { GitBranch, Loader2, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react'
-import { IconBrandGithub, IconBrandGitlab, IconFolder } from '@tabler/icons-react'
+import { useMemo, useRef, useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { WizardRepoSource } from '@/hooks/useWizardState'
-import { getFileIcon, getFolderIcon } from '@/lib/fileExplorer/fileIcons'
+import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
 
-interface FileTreeNode {
+interface DirectoryEntry {
   name: string
   path: string
   isDirectory: boolean
-  children?: FileTreeNode[]
+  kind?: 'up'
+}
+
+const IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'svg',
+  'ico',
+  'tif',
+  'tiff',
+])
+
+const THUMBNAIL_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+])
+
+function getImageMimeType(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'png': return 'image/png'
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg'
+    case 'gif': return 'image/gif'
+    case 'webp': return 'image/webp'
+    case 'svg': return 'image/svg+xml'
+    default: return 'application/octet-stream'
+  }
+}
+
+function getParentDirectoryPath(fullPath: string): string {
+  const normalized = fullPath.replace(/\\/g, '/').replace(/\/+$/, '')
+  const lastSlash = normalized.lastIndexOf('/')
+  if (lastSlash <= 0) return normalized
+  return normalized.slice(0, lastSlash)
+}
+
+function LocalFolderIcon({
+  className,
+}: {
+  className?: string
+}) {
+  return (
+    <svg
+      width="56"
+      height="48"
+      viewBox="0 0 56 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn("shrink-0", className)}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M2 8C2 5.79086 3.79086 4 6 4H18L24 12H50C52.2091 12 54 13.7909 54 16V42C54 44.2091 52.2091 46 50 46H6C3.79086 46 2 44.2091 2 42V8Z"
+        fill="#F5C242"
+      />
+      <path
+        d="M2 16H54V42C54 44.2091 52.2091 46 50 46H6C3.79086 46 2 44.2091 2 42V16Z"
+        fill="#FCDC6C"
+      />
+      <path d="M18 4L24 12H18V4Z" fill="#E5A620" />
+    </svg>
+  )
+}
+
+function LocalDocumentIcon({
+  className,
+}: {
+  className?: string
+}) {
+  return (
+    <svg
+      width="46"
+      height="56"
+      viewBox="0 0 46 56"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn("shrink-0", className)}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M10 2H28L44 18V50C44 52.2091 42.2091 54 40 54H10C7.79086 54 6 52.2091 6 50V6C6 3.79086 7.79086 2 10 2Z"
+        fill="#F4F4F5"
+      />
+      <path
+        d="M28 2V18H44"
+        fill="#E4E4E7"
+      />
+      <path
+        d="M28 2L44 18H28V2Z"
+        fill="#D4D4D8"
+      />
+      <path
+        d="M14 26H36"
+        stroke="#A1A1AA"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+      <path
+        d="M14 34H32"
+        stroke="#A1A1AA"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.4"
+      />
+      <path
+        d="M14 42H28"
+        stroke="#A1A1AA"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.3"
+      />
+    </svg>
+  )
 }
 
 interface RepoSourceStepProps {
   repoSource: WizardRepoSource | undefined
   onUpdate: (repoSource: Partial<WizardRepoSource>) => void
-  hasGitHubIntegration?: boolean
-  onConnectGitHub?: () => void
 }
-
-const REPO_PROVIDERS = [
-  { id: 'github', name: 'GitHub', icon: IconBrandGithub },
-  { id: 'gitlab', name: 'GitLab', icon: IconBrandGitlab },
-  { id: 'local', name: 'Local Folder', icon: IconFolder },
-]
-
-const COMMON_BRANCHES = ['main', 'master', 'develop', 'dev']
 
 export function RepoSourceStep({
   repoSource,
   onUpdate,
-  hasGitHubIntegration = false,
-  onConnectGitHub,
 }: RepoSourceStepProps) {
-  const [isValidating, setIsValidating] = useState(false)
-  const [validationResult, setValidationResult] = useState<'valid' | 'invalid' | null>(null)
-  const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
-  const [isLoadingTree, setIsLoadingTree] = useState(false)
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
-  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+  const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(null)
+  const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([])
+  const [isLoadingGrid, setIsLoadingGrid] = useState(false)
 
-  const currentProvider = repoSource?.provider || 'github'
+  const folderPath = repoSource?.repoUrl ?? ''
+  const hasLocalFolderSelected = Boolean(folderPath)
+  const selectedFolderName = folderPath ? folderPath.split(/[/\\]/).pop() : null
 
   useEffect(() => {
-    const updates: Partial<WizardRepoSource> = {}
-
-    if (!repoSource?.provider) {
-      updates.provider = currentProvider
+    if (repoSource?.provider !== 'local' || !repoSource?.branch) {
+      onUpdate({ provider: 'local', branch: 'main' })
     }
+  }, [onUpdate, repoSource?.branch, repoSource?.provider])
 
-    if (!repoSource?.branch) {
-      updates.branch = 'main'
-    }
-
-    if (Object.keys(updates).length > 0) {
-      onUpdate(updates)
-    }
-  }, [currentProvider, onUpdate, repoSource?.branch, repoSource?.provider])
-
-  // Load file tree when local folder is selected
   useEffect(() => {
-    if (currentProvider === 'local' && repoSource?.repoUrl) {
-      loadFileTree(repoSource.repoUrl)
-    } else {
-      setFileTree([])
+    if (!folderPath) {
+      setSelectedDirectoryPath(null)
+      setDirectoryEntries([])
+      return
     }
-  }, [currentProvider, repoSource?.repoUrl])
+    setSelectedDirectoryPath(folderPath)
+  }, [folderPath])
 
-  const loadFileTree = async (folderPath: string) => {
-    setIsLoadingTree(true)
-    try {
-      const entries = await window.electronAPI.fs.readDir(folderPath)
-      if (entries && Array.isArray(entries)) {
-        const tree = entries
+  useEffect(() => {
+    const dirPath = selectedDirectoryPath
+    if (!dirPath) return
+
+    let canceled = false
+    setIsLoadingGrid(true)
+
+    window.electronAPI.fs.readDir(dirPath)
+      .then((entries) => {
+        if (canceled) return
+        const next = (entries ?? [])
           .filter((entry: { name: string }) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
           .sort((a: { type?: string; name: string }, b: { type?: string; name: string }) => {
             const aIsDir = a.type === 'directory'
@@ -91,450 +187,269 @@ export function RepoSourceStep({
             if (!aIsDir && bIsDir) return 1
             return a.name.localeCompare(b.name)
           })
-          .slice(0, 50) // Limit to first 50 entries
+          .slice(0, 200)
           .map((entry: { name: string; type?: string }) => ({
             name: entry.name,
-            path: `${folderPath}/${entry.name}`,
+            path: `${dirPath}/${entry.name}`,
             isDirectory: entry.type === 'directory',
           }))
-        setFileTree(tree)
-        // Auto-expand root level
-        setExpandedDirs(new Set())
-      }
-    } catch (error) {
-      console.error('Failed to load file tree:', error)
-    } finally {
-      setIsLoadingTree(false)
+        setDirectoryEntries(next)
+      })
+      .catch((error) => {
+        if (canceled) return
+        console.error('Failed to load directory entries:', error)
+        setDirectoryEntries([])
+      })
+      .finally(() => {
+        if (canceled) return
+        setIsLoadingGrid(false)
+      })
+
+    return () => {
+      canceled = true
     }
-  }
-
-  const toggleDir = async (path: string) => {
-    const isCurrentlyExpanded = expandedDirs.has(path)
-
-    if (!isCurrentlyExpanded) {
-      // Check if we need to load children
-      const findNode = (nodes: FileTreeNode[]): FileTreeNode | undefined => {
-        for (const node of nodes) {
-          if (node.path === path) return node
-          if (node.children) {
-            const found = findNode(node.children)
-            if (found) return found
-          }
-        }
-        return undefined
-      }
-
-      const targetNode = findNode(fileTree)
-      if (targetNode?.isDirectory && !targetNode.children) {
-        // Start loading
-        setLoadingDirs(prev => new Set(prev).add(path))
-
-        try {
-          const entries = await window.electronAPI.fs.readDir(path)
-          if (entries && Array.isArray(entries)) {
-            const children = entries
-              .filter((entry: { name: string }) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
-              .sort((a: { type?: string; name: string }, b: { type?: string; name: string }) => {
-                const aIsDir = a.type === 'directory'
-                const bIsDir = b.type === 'directory'
-                if (aIsDir && !bIsDir) return -1
-                if (!aIsDir && bIsDir) return 1
-                return a.name.localeCompare(b.name)
-              })
-              .slice(0, 50)
-              .map((entry: { name: string; type?: string }) => ({
-                name: entry.name,
-                path: `${path}/${entry.name}`,
-                isDirectory: entry.type === 'directory',
-              }))
-
-            // Update tree with children
-            const updateTree = (nodes: FileTreeNode[]): FileTreeNode[] => {
-              return nodes.map(node => {
-                if (node.path === path) {
-                  return { ...node, children }
-                }
-                if (node.children) {
-                  return { ...node, children: updateTree(node.children) }
-                }
-                return node
-              })
-            }
-
-            setFileTree(prev => updateTree(prev))
-          }
-        } catch (error) {
-          console.error('Failed to load children:', error)
-        } finally {
-          setLoadingDirs(prev => {
-            const next = new Set(prev)
-            next.delete(path)
-            return next
-          })
-        }
-      }
-    }
-
-    setExpandedDirs((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) {
-        next.delete(path)
-      } else {
-        next.add(path)
-      }
-      return next
-    })
-  }
-
-  const handleProviderChange = (providerId: string) => {
-    onUpdate({ provider: providerId, repoUrl: '', branch: 'main' })
-    setValidationResult(null)
-    setFileTree([])
-  }
-
-  const handleUrlChange = (url: string) => {
-    onUpdate({
-      repoUrl: url,
-      provider: repoSource?.provider || currentProvider,
-      branch: repoSource?.branch || 'main',
-    })
-    setValidationResult(null)
-  }
-
-  const handleBranchChange = (branch: string) => {
-    onUpdate({ branch })
-  }
+  }, [selectedDirectoryPath])
 
   const handleBrowseFolder = async () => {
     try {
       const result = await window.electronAPI.dialog.selectDirectory()
       if (result && result.path) {
-        // For local folders, set branch to 'main' as default (required by mutation)
         onUpdate({ repoUrl: result.path, provider: 'local', branch: 'main' })
-        setValidationResult('valid')
       }
     } catch (error) {
       console.error('Failed to select directory:', error)
     }
   }
 
-  const validateGitHubUrl = (url: string): boolean => {
-    if (!url) return false
-    try {
-      const parsed = new URL(url)
-      return parsed.hostname === 'github.com' && parsed.pathname.split('/').filter(Boolean).length >= 2
-    } catch {
-      // Try matching owner/repo pattern
-      return /^[\w.-]+\/[\w.-]+$/.test(url)
-    }
-  }
+  const selectedDirectoryLabel = useMemo(() => {
+    if (!selectedDirectoryPath) return 'Files'
+    return selectedDirectoryPath.split(/[/\\]/).pop() ?? 'Files'
+  }, [selectedDirectoryPath])
 
-  const validateGitLabUrl = (url: string): boolean => {
-    if (!url) return false
-    try {
-      const parsed = new URL(url)
-      return parsed.hostname.includes('gitlab') && parsed.pathname.split('/').filter(Boolean).length >= 2
-    } catch {
-      // Try matching owner/repo pattern for gitlab.com shorthand.
-      return /^[\w.-]+\/[\w.-]+$/.test(url)
-    }
-  }
+  const gridEntries = useMemo(() => {
+    if (!folderPath || !selectedDirectoryPath) return directoryEntries
+    if (selectedDirectoryPath === folderPath) return directoryEntries
 
-  const handleValidate = async () => {
-    const url = repoSource?.repoUrl || ''
-    if (!url) return
+    const normalizedDir = selectedDirectoryPath.replace(/[/\\]+$/, '')
+    const lastSlash = Math.max(normalizedDir.lastIndexOf('/'), normalizedDir.lastIndexOf('\\'))
+    const parent = lastSlash > 0 ? normalizedDir.slice(0, lastSlash) : folderPath
+    const clampedParent =
+      parent.startsWith(folderPath) && parent.length >= folderPath.length ? parent : folderPath
 
-    setIsValidating(true)
-
-    // Simple validation for now - just check URL format
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    let isValid = false
-    if (currentProvider === 'github') {
-      isValid = validateGitHubUrl(url)
-    } else if (currentProvider === 'gitlab') {
-      isValid = validateGitLabUrl(url)
-    } else if (currentProvider === 'local') {
-      isValid = !!url
-    }
-
-    setValidationResult(isValid ? 'valid' : 'invalid')
-    setIsValidating(false)
-  }
-
-  const getPlaceholder = () => {
-    switch (currentProvider) {
-      case 'github':
-        return 'https://github.com/owner/repo or owner/repo'
-      case 'gitlab':
-        return 'https://gitlab.com/owner/repo'
-      case 'local':
-        return '/path/to/project'
-      default:
-        return ''
-    }
-  }
+    return [
+      { name: '..', path: clampedParent, isDirectory: true, kind: 'up' as const },
+      ...directoryEntries,
+    ]
+  }, [directoryEntries, folderPath, selectedDirectoryPath])
 
   return (
-    <div className="flex flex-col gap-6 h-full">
-      {/* Provider Selection */}
-      <div className="shrink-0">
-        <div className="flex flex-wrap gap-2">
-          {REPO_PROVIDERS.map((provider) => {
-            const Icon = provider.icon
-            return (
-              <Badge
-                key={provider.id}
-                variant={currentProvider === provider.id ? 'default' : 'outline'}
-                className="cursor-pointer px-4 py-2 text-sm gap-2"
-                onClick={() => handleProviderChange(provider.id)}
-              >
-                <Icon className="h-4 w-4" />
-                {provider.name}
-              </Badge>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Repository URL / Path */}
-      {currentProvider === 'local' ? (
-        <div className="flex flex-col gap-4 flex-1">
-          {/* Drop zone */}
-          <button
-            type="button"
-            onClick={handleBrowseFolder}
-            className="w-full flex-1 min-h-[320px] rounded-xl border border-dashed border-muted-foreground/30 bg-muted/20 hover:bg-muted/30 hover:border-muted-foreground/50 transition-colors p-8 cursor-pointer flex items-center justify-center"
-          >
-            <div className="flex flex-col items-center gap-4">
-              {/* Windows-style folder icon */}
-              <svg width="56" height="48" viewBox="0 0 56 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Folder tab */}
-                <path d="M2 8C2 5.79086 3.79086 4 6 4H18L24 12H50C52.2091 12 54 13.7909 54 16V42C54 44.2091 52.2091 46 50 46H6C3.79086 46 2 44.2091 2 42V8Z" fill="#F5C242"/>
-                {/* Folder body */}
-                <path d="M2 16H54V42C54 44.2091 52.2091 46 50 46H6C3.79086 46 2 44.2091 2 42V16Z" fill="#FCDC6C"/>
-                {/* Tab fold */}
-                <path d="M18 4L24 12H18V4Z" fill="#E5A620"/>
-              </svg>
-              <div className="text-center">
-                <p className="text-sm text-foreground">
-                  Click to select a folder, or{' '}
-                  <span className="underline underline-offset-2">browse</span>
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Select a folder containing your existing project
-                </p>
-              </div>
-            </div>
-          </button>
-
-          {/* File tree */}
-          {repoSource?.repoUrl && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-muted-foreground">
-                  {repoSource.repoUrl.split('/').pop()}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleBrowseFolder}
-                  className="text-xs text-primary hover:underline"
-                >
-                  Change folder
-                </button>
-              </div>
-              <div className="app-scrollbar rounded-lg border border-border bg-muted/20 max-h-64 overflow-y-auto">
-                {isLoadingTree ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : fileTree.length > 0 ? (
-                  <div className="p-2 space-y-0.5">
-                    {fileTree.map((node) => (
-                      <FileTreeItem
-                        key={node.path}
-                        node={node}
-                        level={0}
-                        expandedDirs={expandedDirs}
-                        loadingDirs={loadingDirs}
-                        onToggle={toggleDir}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-sm text-muted-foreground">
-                    No files found
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <Label className="text-base font-medium">
-            Repository URL <span className="text-destructive">*</span>
-          </Label>
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <Input
-                  value={repoSource?.repoUrl || ''}
-                  onChange={(e) => handleUrlChange(e.target.value)}
-                  onBlur={handleValidate}
-                  placeholder={getPlaceholder()}
-                  className={`h-11 bg-muted/30 border-muted/60 focus:bg-background transition-colors pr-10 ${
-                    validationResult === 'valid' ? 'border-green-500' : ''
-                  } ${validationResult === 'invalid' ? 'border-destructive' : ''}`}
-                />
-                {isValidating && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                )}
-                {validationResult === 'valid' && !isValidating && (
-                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500" />
-                )}
-                {validationResult === 'invalid' && !isValidating && (
-                  <AlertCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-destructive" />
-                )}
-              </div>
-            </div>
-            {validationResult === 'invalid' && (
-              <p className="text-xs text-destructive">
-                Please enter a valid {currentProvider === 'github' ? 'GitHub' : 'GitLab'} repository URL
-              </p>
-            )}
-            {currentProvider === 'github' && !hasGitHubIntegration && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>For private repos,</span>
-                <button
-                  onClick={onConnectGitHub}
-                  className="text-primary hover:underline"
-                >
-                  connect your GitHub account
-                </button>
-              </div>
-            )}
+    <div className="flex flex-col gap-6 flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
+        {!hasLocalFolderSelected ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={handleBrowseFolder}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Choose a folder
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* Branch Selection - only for remote repos */}
-      {currentProvider !== 'local' && (
-        <div className="space-y-3">
-          <Label className="text-base font-medium flex items-center gap-2">
-            <GitBranch className="h-4 w-4" />
-            Branch
-          </Label>
-          <Select
-            value={repoSource?.branch || 'main'}
-            onValueChange={handleBranchChange}
-          >
-            <SelectTrigger className="h-11 bg-muted/30 border-muted/60 focus:bg-background">
-              <SelectValue placeholder="Select branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {COMMON_BRANCHES.map((branch) => (
-                <SelectItem key={branch} value={branch}>
-                  {branch}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Select the branch to import. You can change this later.
-          </p>
-        </div>
-      )}
-
-      {/* Provider-specific info */}
-      {currentProvider === 'github' && (
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
-          <p className="text-sm font-medium">GitHub Import</p>
-          <p className="text-xs text-muted-foreground">
-            We'll clone your repository, analyze the codebase structure, and detect your tech stack automatically.
-            {hasGitHubIntegration
-              ? ' Your GitHub account is connected for private repo access.'
-              : ' Public repositories can be imported directly.'}
-          </p>
-        </div>
-      )}
-
-      {currentProvider === 'gitlab' && (
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
-          <p className="text-sm font-medium">GitLab Import</p>
-          <p className="text-xs text-muted-foreground">
-            Works with GitLab.com and self-hosted GitLab instances.
-            Make sure your repository is accessible.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="absolute inset-0 flex flex-col min-h-0 rounded-lg bg-transparent">
+            <div className="flex items-center justify-between px-3 py-2">
+              <p className="text-sm font-medium text-muted-foreground truncate pr-3">
+                {selectedDirectoryLabel || selectedFolderName || 'Selected folder'}
+              </p>
+              <button
+                type="button"
+                onClick={handleBrowseFolder}
+                className="text-xs text-primary hover:underline shrink-0"
+              >
+                Change folder
+              </button>
+            </div>
+            <div className="app-scrollbar flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+              {isLoadingGrid ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : gridEntries.length > 0 ? (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={selectedDirectoryPath ?? 'root'}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                  >
+                    <motion.div
+                      className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-x-10 gap-y-7 px-3 py-4"
+                      initial="hidden"
+                      animate="show"
+                      variants={{
+                        hidden: { opacity: 1 },
+                        show: {
+                          opacity: 1,
+                          transition: { staggerChildren: 0.02, delayChildren: 0.02 },
+                        },
+                      }}
+                    >
+                      {gridEntries.map((entry) => (
+                        <FileGridItem
+                          key={`${entry.kind ?? 'entry'}:${entry.path}`}
+                          entry={entry}
+                          onOpenDirectory={(path) => {
+                            if (!entry.isDirectory) return
+                            setSelectedDirectoryPath(path)
+                          }}
+                        />
+                      ))}
+                    </motion.div>
+                  </motion.div>
+                </AnimatePresence>
+              ) : (
+                <div className="py-10 text-center text-sm text-muted-foreground">
+                  No files
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
     </div>
   )
 }
 
-function FileTreeItem({
-  node,
-  level,
-  expandedDirs,
-  loadingDirs,
-  onToggle,
+function FileGridItem({
+  entry,
+  onOpenDirectory,
 }: {
-  node: FileTreeNode
-  level: number
-  expandedDirs: Set<string>
-  loadingDirs: Set<string>
-  onToggle: (path: string) => void
+  entry: DirectoryEntry
+  onOpenDirectory: (path: string) => void
 }) {
-  const isExpanded = expandedDirs.has(node.path)
-  const isLoading = loadingDirs.has(node.path)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [thumbnailOk, setThumbnailOk] = useState(true)
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null)
+  const [thumbnailRequested, setThumbnailRequested] = useState(false)
+  const [isInView, setIsInView] = useState(false)
+  const isImage = useMemo(() => {
+    const ext = entry.name.split('.').pop()?.toLowerCase() ?? ''
+    return !!ext && IMAGE_EXTENSIONS.has(ext)
+  }, [entry.name])
+
+  const wantsThumbnail = useMemo(() => {
+    if (!isImage) return false
+    const ext = entry.name.split('.').pop()?.toLowerCase() ?? ''
+    return THUMBNAIL_EXTENSIONS.has(ext)
+  }, [entry.name, isImage])
+
+  useEffect(() => {
+    // Entry changed: reset thumbnail state.
+    setThumbnailOk(true)
+    setThumbnailDataUrl(null)
+    setThumbnailRequested(false)
+  }, [entry.path])
+
+  useEffect(() => {
+    const element = buttonRef.current
+    if (!element) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setIsInView(entries.some((entry) => entry.isIntersecting))
+      },
+      { root: null, threshold: 0.05 }
+    )
+
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!wantsThumbnail || !thumbnailOk) return
+    if (!isInView) return
+    if (thumbnailRequested) return
+    if (entry.isDirectory || entry.kind === 'up') return
+
+    setThumbnailRequested(true)
+
+    const projectPath = getParentDirectoryPath(entry.path)
+    void window.electronAPI.project.readFileBase64({
+      projectPath,
+      filePath: entry.name,
+    })
+      .then((result) => {
+        if (!result?.success || !result.base64) {
+          setThumbnailOk(false)
+          return
+        }
+        const mime = getImageMimeType(entry.name)
+        setThumbnailDataUrl(`data:${mime};base64,${result.base64}`)
+      })
+      .catch(() => setThumbnailOk(false))
+  }, [entry.isDirectory, entry.kind, entry.name, entry.path, isInView, thumbnailOk, thumbnailRequested, wantsThumbnail])
 
   return (
-    <div>
+    <motion.button
+      ref={buttonRef}
+      type="button"
+      className={cn(
+        "min-w-0 rounded-2xl px-3 py-2",
+        "bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
+        "flex flex-col items-center gap-2"
+      )}
+      variants={{
+        hidden: { opacity: 0, y: 6, scale: 0.985 },
+        show: { opacity: 1, y: 0, scale: 1 },
+      }}
+      transition={{ duration: 0.16, ease: 'easeOut' }}
+      whileTap={{ scale: 0.97 }}
+      onClick={() => {
+        if (entry.isDirectory) onOpenDirectory(entry.path)
+      }}
+    >
       <div
         className={cn(
-          "flex items-center gap-1.5 py-1 px-2 rounded-md text-sm select-none",
-          node.isDirectory ? "cursor-pointer hover:bg-accent/50" : "cursor-default"
+          "w-[92px] h-[92px] rounded-3xl overflow-hidden",
+          "bg-transparent flex items-center justify-center"
         )}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-        onClick={() => node.isDirectory && onToggle(node.path)}
       >
-        {node.isDirectory ? (
-          <>
-            {isLoading ? (
-              <Loader2 className="h-3.5 w-3.5 text-muted-foreground shrink-0 animate-spin" />
-            ) : (
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform duration-200",
-                  isExpanded && "rotate-90"
-                )}
-              />
-            )}
-            {getFolderIcon(node.name, isExpanded)}
-          </>
+        {thumbnailDataUrl ? (
+          <img
+            src={thumbnailDataUrl}
+            alt={entry.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setThumbnailOk(false)}
+          />
         ) : (
-          <>
-            <span className="w-3.5" />
-            {getFileIcon(node.name)}
-          </>
+          <div className="scale-[1.35]">
+            {entry.isDirectory ? (
+              <LocalFolderIcon className="scale-[0.72] opacity-95" />
+            ) : (
+              <div className="relative">
+                <LocalDocumentIcon className="scale-[0.74] opacity-95" />
+                <div
+                  className={cn(
+                    "absolute -right-1.5 -bottom-1.5 opacity-90"
+                  )}
+                >
+                  {getFileIcon(entry.name, { width: 14, height: 14 })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
-        <span className="truncate text-foreground/90">{node.name}</span>
       </div>
-      {node.isDirectory && isExpanded && node.children && (
-        <div>
-          {node.children.map((child) => (
-            <FileTreeItem
-              key={child.path}
-              node={child}
-              level={level + 1}
-              expandedDirs={expandedDirs}
-              loadingDirs={loadingDirs}
-              onToggle={onToggle}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+
+      <div className="w-full px-1">
+        <p className="text-center text-xs leading-snug text-foreground/90 line-clamp-2">
+          {entry.kind === 'up' ? 'Back' : entry.name}
+        </p>
+      </div>
+    </motion.button>
   )
 }

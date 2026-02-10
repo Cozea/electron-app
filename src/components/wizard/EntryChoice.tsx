@@ -72,7 +72,7 @@ const GUIDED_OPTIONS = [
     id: 'repo' as const,
     icon: FolderGit2,
     title: 'Existing Repo',
-    description: 'Import from GitHub, GitLab, or local folder',
+    description: 'Import from a local folder',
   },
 ]
 
