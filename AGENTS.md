@@ -90,6 +90,21 @@ The release workflow expects these to be set in GitHub Actions for `20023136kely
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID Application certificate)
 - Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
 
+### Local Release (Fallback)
+
+If GitHub Actions is blocked/unavailable, you can publish a release from a macOS machine (arm64) as long as:
+
+- You have a valid **Developer ID Application** signing identity installed in Keychain, and
+- `VITE_CONVEX_URL` is available at build time (e.g. via `.env.local`), and
+- You are authenticated with GitHub CLI (`gh auth login`).
+
+Then run:
+
+```shell
+# Publishes to the distribution repo configured in electron-builder.config.cjs (cozea-prod)
+GH_TOKEN="$(gh auth token)" npm run release
+```
+
 > **IMPORTANT - Convex Deployment**: This project uses **production Convex only**.
 > - Always use `npx convex deploy` to push schema/function changes
 > - **NEVER** use `convex dev` or `npx convex dev --once` - it switches the app to a dev deployment
