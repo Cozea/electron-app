@@ -23,7 +23,17 @@ import { useAutoUpdater } from '@/hooks/useAutoUpdater'
 import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
 import { cn } from '@/lib/utils'
 
-export function UpdateMenu() {
+interface UpdateMenuProps {
+  dropdownAlign?: 'start' | 'center' | 'end'
+  dropdownSide?: 'top' | 'right' | 'bottom' | 'left'
+  buttonClassName?: string
+}
+
+export function UpdateMenu({
+  dropdownAlign = 'end',
+  dropdownSide = 'bottom',
+  buttonClassName,
+}: UpdateMenuProps) {
   useAutoUpdater()
 
   const status = useAutoUpdateStore((s) => s.status)
@@ -78,7 +88,10 @@ export function UpdateMenu() {
           <Button
             variant="ghost"
             size="icon"
-            className={cn('relative h-7 w-7 text-muted-foreground hover:text-foreground')}
+            className={cn(
+              'relative h-7 w-7 text-muted-foreground hover:text-foreground',
+              buttonClassName
+            )}
           >
             <ArrowDownToLine className="h-4 w-4" />
             {status === 'available' && (
@@ -87,7 +100,7 @@ export function UpdateMenu() {
             <span className="sr-only">Update available</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuContent align={dropdownAlign} side={dropdownSide} sideOffset={8} className="w-64">
           <DropdownMenuLabel className="text-xs text-muted-foreground">
             {title}
           </DropdownMenuLabel>
