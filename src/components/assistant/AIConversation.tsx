@@ -63,6 +63,7 @@ import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
+import { useConversationSync } from '@/components/assistant/useConversationSync'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
@@ -149,17 +150,6 @@ const WRITE_TOOLS = new Set([
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-function getMessageCreatedAt(message: UIMessage): number {
-  const candidate = (message as UIMessage & { createdAt?: Date | string | number }).createdAt
-  if (candidate instanceof Date) return candidate.getTime()
-  if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate
-  if (typeof candidate === 'string') {
-    const parsed = Date.parse(candidate)
-    if (!Number.isNaN(parsed)) return parsed
-  }
-  return Date.now()
-}
-
 type ChatHookResult = ReturnType<typeof useChat>
 
 // Model catalog per CrossCode Pricing Spec v3
@@ -231,9 +221,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const recordedApprovalIdsRef = useRef<Set<string>>(new Set())
-  const conversationInitializedRef = useRef<string | null>(null)
-  const isSavingRef = useRef(false)
-  const lastProjectSlugRef = useRef<string | null>(null)
 
   const selectedModelData = availableModels.find((m) => m.id === model)
   const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
@@ -246,6 +233,18 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     allowCrossProviderSwitching || !activeProvider
       ? availableModels
       : availableModels.filter((m) => m.chefSlug === activeProvider)
+  const visibleModelsByChef = useMemo(() => {
+    const grouped = new Map<string, ModelOption[]>()
+    for (const candidate of visibleModels) {
+      const bucket = grouped.get(candidate.chef)
+      if (bucket) {
+        bucket.push(candidate)
+      } else {
+        grouped.set(candidate.chef, [candidate])
+      }
+    }
+    return grouped
+  }, [visibleModels])
 
   // Apply pending prompt injections (e.g. from screenshot capture or inspector actions)
   useEffect(() => {
@@ -809,6 +808,18 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     })
   }, [messages])
 
+  const { markConversationInitialized } = useConversationSync({
+    projectSlug,
+    currentConversationId,
+    project,
+    storedConversation,
+    setCurrentConversationId,
+    setMessages,
+    uniqueMessages,
+    status,
+    saveConversationMessages,
+  })
+
   const hasPendingToolCalls = useMemo(() => {
     for (const message of uniqueMessages) {
       if (message.role !== 'assistant') continue
@@ -875,127 +886,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       })
     }
   }, [uniqueMessages])
-
-  // Load stored messages when conversation changes
-  useEffect(() => {
-    if (!storedConversation) return
-    if (conversationInitializedRef.current === currentConversationId) return
-    if (project && storedConversation.projectId !== project._id) return
-
-    // Convert stored messages to UIMessage format
-    const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => ({
-      id: msg.id,
-      role: msg.role,
-      parts: [{ type: 'text' as const, text: msg.content }],
-      createdAt: new Date(msg.createdAt),
-    }))
-
-    const dedupedMessages = uiMessages.filter((message, index, all) => {
-      if (!message.id) return true
-      return all.findIndex((m) => m.id === message.id) === index
-    })
-
-    setMessages(dedupedMessages)
-    conversationInitializedRef.current = currentConversationId
-
-    // Update chat title
-    if (storedConversation.title) {
-      useAssistantPanelStore.getState().setChatTitle(storedConversation.title)
-    }
-  }, [storedConversation, currentConversationId, project, setMessages])
-
-  // Clear project-scoped conversations when leaving or switching projects.
-  useEffect(() => {
-    const nextSlug = projectSlug ?? null
-    if (lastProjectSlugRef.current === null) {
-      lastProjectSlugRef.current = nextSlug
-      return
-    }
-
-    if (lastProjectSlugRef.current !== nextSlug) {
-      setCurrentConversationId(null)
-      setMessages([])
-      useAssistantPanelStore.getState().setChatTitle("New Chat")
-      lastProjectSlugRef.current = nextSlug
-    }
-  }, [projectSlug, setCurrentConversationId, setMessages])
-
-  // If a conversation doesn't belong to the current project, drop it.
-  useEffect(() => {
-    if (!projectSlug) return
-    if (!project) return
-    if (!currentConversationId || !storedConversation) return
-    if (storedConversation.projectId === project._id) return
-
-    setCurrentConversationId(null)
-    setMessages([])
-    useAssistantPanelStore.getState().setChatTitle("New Chat")
-  }, [projectSlug, project, currentConversationId, storedConversation, setCurrentConversationId, setMessages])
-
-  // If project slug exists but project is missing, ensure we don't reuse old conversations.
-  useEffect(() => {
-    if (!projectSlug) return
-    if (project !== null) return
-    if (!currentConversationId) return
-
-    setCurrentConversationId(null)
-    setMessages([])
-    useAssistantPanelStore.getState().setChatTitle("New Chat")
-  }, [projectSlug, project, currentConversationId, setCurrentConversationId, setMessages])
-
-  // Reset initialization ref when conversation changes to null
-  useEffect(() => {
-    if (currentConversationId === null) {
-      conversationInitializedRef.current = null
-    }
-  }, [currentConversationId])
-
-  // Save messages to Convex when they change (debounced)
-  useEffect(() => {
-    if (!projectSlug) return
-    if (!currentConversationId) return
-    if (uniqueMessages.length === 0) return
-    if (isSavingRef.current) return
-    if (status === 'streaming' || status === 'submitted') return
-
-    const saveMessages = async () => {
-      isSavingRef.current = true
-      try {
-        // Convert UIMessages to storage format
-        const storedMessages = uniqueMessages.map((msg) => {
-          const textParts = msg.parts.filter((p) => p.type === 'text')
-          const content = textParts.map((p) => (p as { text: string }).text).join('')
-
-          return {
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant' | 'system',
-            content,
-            createdAt: getMessageCreatedAt(msg),
-          }
-        })
-
-        // Generate title from first user message
-        const firstUserMessage = storedMessages.find((m) => m.role === 'user')
-        const title = firstUserMessage
-          ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '')
-          : 'New Conversation'
-
-        await saveConversationMessages({
-          conversationId: currentConversationId,
-          messages: storedMessages,
-          title,
-        })
-      } catch (err) {
-        console.warn('Failed to save conversation messages:', err)
-      } finally {
-        isSavingRef.current = false
-      }
-    }
-
-    // Debounce saves
-    const timeoutId = setTimeout(saveMessages, 500)
-    return () => clearTimeout(timeoutId)
-  }, [uniqueMessages, currentConversationId, projectSlug, status, saveConversationMessages])
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
@@ -1383,7 +1273,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           title: input.slice(0, 50) + (input.length > 50 ? '...' : '') || 'New Conversation',
         })
         setCurrentConversationId(newConversationId)
-        conversationInitializedRef.current = newConversationId
+        markConversationInitialized(newConversationId)
       } catch (err) {
         console.warn('Failed to create conversation:', err)
       }
@@ -1610,8 +1500,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
                     {visibleChefs.map((chef) => (
                       <ModelSelectorGroup heading={chef} key={chef}>
-                        {visibleModels
-                          .filter((m) => m.chef === chef)
+                        {(visibleModelsByChef.get(chef) ?? [])
                           .map((m) => (
                             <ModelSelectorItem
                               key={m.id}
