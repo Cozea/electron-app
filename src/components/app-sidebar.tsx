@@ -42,17 +42,24 @@ const PLATFORM_ITEMS: NavMainItem[] = [
   { title: "Projects", url: "/projects", icon: IconFolderCode },
 ]
 
+const preloadRolesPage = () => import("@/pages/teams/Roles")
+const preloadGeneralPage = () => import("@/pages/workspace/General")
+const preloadBillingPage = () => import("@/pages/workspace/Billing")
+const preloadAiPage = () => import("@/pages/workspace/AI")
+const preloadIntegrationsPage = () => import("@/pages/workspace/Integrations")
+const preloadSyncPage = () => import("@/pages/workspace/Sync")
+
 const TEAM_ITEMS: NavMainItem[] = [
   { title: "Members", url: "/teams", icon: Users },
-  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true },
+  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true, preload: preloadRolesPage },
 ]
 
 const WORKSPACE_ITEMS: NavMainItem[] = [
-  { title: "General", url: "/workspace/general", icon: Settings },
-  { title: "Billing", url: "/workspace/billing", icon: CreditCard },
-  { title: "AI", url: "/workspace/ai", icon: Bot },
-  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
-  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
+  { title: "General", url: "/workspace/general", icon: Settings, preload: preloadGeneralPage },
+  { title: "Billing", url: "/workspace/billing", icon: CreditCard, preload: preloadBillingPage },
+  { title: "AI", url: "/workspace/ai", icon: Bot, preload: preloadAiPage },
+  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal, preload: preloadIntegrationsPage },
+  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true, preload: preloadSyncPage },
 ]
 
 function SidebarUpdate() {

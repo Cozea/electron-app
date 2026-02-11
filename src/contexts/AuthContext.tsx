@@ -399,12 +399,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const newSession = await window.electronAPI.auth.refresh()
       if (newSession) {
         setAccessToken(newSession.accessToken)
+        localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
         return true
       }
       // Refresh failed - session expired, need to re-login
       setUser(null)
       setConvexUserId(null)
       setAccessToken(null)
+      localStorage.removeItem(STORAGE_KEY_TOKEN)
       setOrganizationsState([])
       setCurrentOrganization(null)
       return false
@@ -424,11 +426,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(refreshTimeoutRef.current)
       }
 
-      // Calculate when to refresh (at 80% of token lifetime, minimum 30 seconds before expiry)
+      // Calculate when to refresh:
+      // - around 80% of token lifetime
+      // - but never later than 30 seconds before expiry
       const timeToExpiry = getTokenTimeToExpiry(accessToken)
-      const refreshIn = Math.max(
-        timeToExpiry * 0.8, // Refresh at 80% of lifetime
-        Math.min(timeToExpiry - 30000, 0) // Or 30 seconds before expiry, whichever is sooner
+      const refreshIn = Math.min(
+        timeToExpiry * 0.8,
+        timeToExpiry - 30000
       )
 
       if (refreshIn > 0) {

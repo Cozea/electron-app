@@ -1,7 +1,7 @@
 "use client"
 
 import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
-import { Outlet, useLocation, useParams } from "react-router-dom"
+import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useCachedQuery } from "@/stores/useQueryCache"
@@ -32,6 +32,8 @@ import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
 import { Loader2 } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
+import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
+import type { PresenceUser } from "@/hooks/useProjectPresence"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -95,6 +97,7 @@ interface ProjectLayoutHeaderProps {
     breadcrumbs: { label: string; href?: string }[]
     header?: ReactNode
     breadcrumbAddon?: ReactNode
+    rightAddon?: ReactNode
     isSecondarySidebarVisible: boolean
     insetLeft?: number
     insetRight?: number
@@ -105,6 +108,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     breadcrumbs,
     header,
     breadcrumbAddon,
+    rightAddon,
     isSecondarySidebarVisible,
     insetLeft = 0,
     insetRight = 0,
@@ -118,6 +122,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             breadcrumbs={breadcrumbs}
             header={header}
             breadcrumbAddon={breadcrumbAddon}
+            rightAddon={rightAddon}
             leftWindowControlsInset={areAllSidebarsCollapsed}
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
@@ -137,6 +142,7 @@ export function ProjectLayout({
 }: ProjectLayoutProps) {
     const { user, logout, currentOrganization } = useAuth()
     const location = useLocation()
+    const navigate = useNavigate()
     const { slug } = useParams<{ slug: string }>()
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
@@ -441,7 +447,7 @@ export function ProjectLayout({
         : null
 
     // Real-time presence tracking
-    const { activeUsers, otherUsers: presenceUsers } = useProjectPresence({
+    const { otherUsers: presenceUsers } = useProjectPresence({
         projectId: project?._id,
         userId: convexUser?._id,
         userName: convexUser?.firstName || convexUser?.email || null,
@@ -450,6 +456,14 @@ export function ProjectLayout({
         activeFile: presenceActiveFile,
         activeRoute: presenceActiveRoute,
     })
+
+    const handlePresenceUserClick = useCallback(
+        (presenceUser: PresenceUser) => {
+            if (!slug) return
+            navigate(`/projects/${slug}/changes?userId=${encodeURIComponent(presenceUser.userId)}`)
+        },
+        [navigate, slug]
+    )
 
     // File tree ref for refresh functionality
     const fileTreeRef = useRef<FileTreeHandle>(null)
@@ -547,7 +561,22 @@ export function ProjectLayout({
             ) : headerContent,
         [headerContent, isFilesView]
     )
-    const showHeader = breadcrumbs.length > 0 || Boolean(headerSlot) || Boolean(breadcrumbAddon)
+    const rightHeaderAddon = useMemo(
+        () =>
+            presenceUsers.length > 0 ? (
+                <PresenceAvatarGroup
+                    users={presenceUsers}
+                    maxVisible={4}
+                    onUserClick={handlePresenceUserClick}
+                />
+            ) : null,
+        [handlePresenceUserClick, presenceUsers]
+    )
+    const showHeader =
+        breadcrumbs.length > 0 ||
+        Boolean(headerSlot) ||
+        Boolean(breadcrumbAddon) ||
+        Boolean(rightHeaderAddon)
     const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
 
     if (pathRecoveryChoice) {
@@ -582,8 +611,6 @@ export function ProjectLayout({
                         onCreateFolder={handleCreateFolder}
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
-                        presenceUsers={presenceUsers}
-                        presenceCount={Math.max(1, activeUsers.length)}
                     />
                     <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
                         <div
@@ -597,6 +624,7 @@ export function ProjectLayout({
                                 breadcrumbs={breadcrumbs}
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
+                                rightAddon={rightHeaderAddon ?? undefined}
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}

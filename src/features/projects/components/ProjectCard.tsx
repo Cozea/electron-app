@@ -112,6 +112,9 @@ function formatFrameworkTag(framework?: string): string | null {
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
+const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
+const preloadNewProjectPage = () => import('@/pages/NewProject')
+
 export function ProjectCard({ project, userId }: ProjectCardProps) {
     const navigate = useNavigate()
     const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -157,7 +160,17 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
         }
     }, [project.slug, project.status])
 
+    const preloadProjectDestination = useCallback(() => {
+        if (project.status === 'draft') {
+            void preloadNewProjectPage()
+            return
+        }
+        void preloadProjectDetailPage()
+    }, [project.status])
+
     const handleCardClick = useCallback(async () => {
+        preloadProjectDestination()
+
         // Draft projects go straight to wizard
         if (project.status === 'draft') {
             navigate(`/projects/new?resume=${project._id}`)
@@ -241,7 +254,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath])
+    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
 
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return
@@ -291,6 +304,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                     "group relative flex flex-col h-full shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
                     syncState !== 'idle' && "pointer-events-none"
                 )}
+                onMouseEnter={preloadProjectDestination}
+                onFocus={preloadProjectDestination}
+                onPointerDown={preloadProjectDestination}
                 onClick={handleCardClick}
             >
                 {/* Preview Section - Top Half */}
@@ -401,6 +417,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                 <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={(e) => {
                                     e.stopPropagation()
+                                    preloadProjectDetailPage()
                                     navigate(`/projects/${project.slug}`, {
                                         state: {
                                             projectSlug: project.slug,
@@ -470,7 +487,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <FileCode className="h-3 w-3" />
-                                    {project.stats?.fileCount || Math.floor(Math.random() * 20) + 1}
+                                    {project.stats?.fileCount ?? 0}
                                 </div>
                             </div>
                         </div>

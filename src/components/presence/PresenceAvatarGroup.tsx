@@ -1,6 +1,7 @@
 import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Bot, Code2, MessageSquareText } from "lucide-react"
+import { useMemo } from "react"
 import {
   Tooltip,
   TooltipContent,
@@ -64,15 +65,26 @@ export function PresenceAvatarGroup({
   className,
   onUserClick,
 }: PresenceAvatarGroupProps) {
-  if (users.length === 0) return null
+  const sortedUsers = useMemo(() => {
+    if (users.length === 0) return []
 
-  const sortedUsers = [...users].sort(
-    (a, b) =>
-      (b.lastActivityAt ?? b.lastHeartbeat) -
-      (a.lastActivityAt ?? a.lastHeartbeat)
-  )
+    // Keep single-collaborator positioning fully stable.
+    if (users.length <= 1) return users
+
+    return [...users].sort((a, b) => {
+      const activityDelta =
+        (b.lastActivityAt ?? b.lastHeartbeat) -
+        (a.lastActivityAt ?? a.lastHeartbeat)
+      if (activityDelta !== 0) return activityDelta
+
+      // Deterministic tie-breaker prevents jitter when activity timestamps match.
+      return a.userId.localeCompare(b.userId)
+    })
+  }, [users])
+  if (sortedUsers.length === 0) return null
+
   const visibleUsers = sortedUsers.slice(0, maxVisible)
-  const hiddenCount = sortedUsers.length - maxVisible
+  const hiddenCount = Math.max(0, sortedUsers.length - maxVisible)
 
   const getStatusPill = (user: PresenceUser) => {
     if (user.isAgentWorking) {
@@ -107,7 +119,7 @@ export function PresenceAvatarGroup({
             const color = getUserColor(user.userId)
             const statusPill = getStatusPill(user)
             return (
-              <Tooltip key={user.id}>
+              <Tooltip key={user.userId}>
                 <TooltipTrigger asChild>
                   <button
                     type="button"

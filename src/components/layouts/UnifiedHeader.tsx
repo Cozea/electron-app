@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import {
   Breadcrumb,
@@ -24,6 +25,7 @@ interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
   header?: ReactNode
   breadcrumbAddon?: ReactNode
+  rightAddon?: ReactNode
   className?: string
   leftWindowControlsInset?: boolean
   contentInsetLeft?: number
@@ -35,6 +37,7 @@ export function UnifiedHeader({
   breadcrumbs,
   header,
   breadcrumbAddon,
+  rightAddon,
   className,
   leftWindowControlsInset = false,
   contentInsetLeft = 0,
@@ -217,6 +220,12 @@ export function UnifiedHeader({
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             <CommandSearch />
             <LayoutToggles />
+            {rightAddon && (
+              <>
+                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="flex items-center">{rightAddon}</div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -257,10 +266,10 @@ export function UnifiedHeader({
                           <BreadcrumbItem className="min-w-0">
                             {crumb.href && !isLast ? (
                               <BreadcrumbLink
-                                href={crumb.href || "#"}
+                                asChild
                                 className="inline-block max-w-[240px] truncate align-bottom"
                               >
-                                {crumb.label}
+                                <Link to={crumb.href}>{crumb.label}</Link>
                               </BreadcrumbLink>
                             ) : (
                               <BreadcrumbPage className="inline-block max-w-[260px] truncate align-bottom text-muted-foreground/80">
@@ -332,6 +341,12 @@ export function UnifiedHeader({
           <div className="flex items-center gap-0.5">
             <CommandSearch />
             <LayoutToggles />
+            {rightAddon && (
+              <>
+                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div className="flex items-center">{rightAddon}</div>
+              </>
+            )}
           </div>
         </div>
       </div>
