@@ -258,7 +258,7 @@ export function ContextSwitcher() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-2xl"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56"
             align="start"
             side={isMobile ? 'bottom' : 'right'}
             sideOffset={4}

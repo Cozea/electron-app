@@ -1,66 +1,47 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownToLine, Download, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowDownToLine, Download, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Progress } from '@/components/ui/progress'
 import { useAutoUpdater } from '@/hooks/useAutoUpdater'
 import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
 import { cn } from '@/lib/utils'
+import logoLightMode from '@/assets/logos/logo_light_mode.png'
 
 interface UpdateMenuProps {
-  dropdownAlign?: 'start' | 'center' | 'end'
-  dropdownSide?: 'top' | 'right' | 'bottom' | 'left'
-  buttonClassName?: string
   disableAutoUpdaterHook?: boolean
 }
 
-export function UpdateMenu({
-  dropdownAlign = 'end',
-  dropdownSide = 'bottom',
-  buttonClassName,
-  disableAutoUpdaterHook = false,
-}: UpdateMenuProps) {
+function parseChangelogItems(releaseNotes?: string): string[] {
+  if (!releaseNotes) return []
+  return releaseNotes
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.startsWith('#'))
+    .map((line) => line.replace(/^[-*]\s+/, ''))
+    .slice(0, 4)
+}
+
+export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) {
   useAutoUpdater({ enabled: !disableAutoUpdaterHook })
 
   const status = useAutoUpdateStore((s) => s.status)
   const version = useAutoUpdateStore((s) => s.version)
   const progress = useAutoUpdateStore((s) => s.progress)
-  const installMode = useAutoUpdateStore((s) => s.installMode)
+  const releaseNotes = useAutoUpdateStore((s) => s.releaseNotes)
   const setInstallMode = useAutoUpdateStore((s) => s.setInstallMode)
-
-  const [promptOpen, setPromptOpen] = useState(false)
 
   const showButton = status === 'available' || status === 'downloading' || status === 'downloaded'
   const percent = progress?.percent ? Math.round(progress.percent) : 0
 
-  const title = useMemo(() => {
-    if (version) return `Update ${version} available`
-    return 'Update available'
-  }, [version])
+  const changelogItems = useMemo(() => parseChangelogItems(releaseNotes), [releaseNotes])
+  const effectiveVersion = version ?? 'latest'
+  const dismissKey = `${status}:${effectiveVersion}`
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
+  const shouldShow = showButton && dismissedKey !== dismissKey
 
-  useEffect(() => {
-    if (status === 'downloaded' && installMode === 'later') {
-      setPromptOpen(true)
-    }
-  }, [installMode, status])
-
-  if (!showButton) return null
+  if (!shouldShow || typeof document === 'undefined') return null
 
   const handleDownload = async (mode: 'now' | 'later') => {
     if (!window.electronAPI?.updates) return
@@ -70,7 +51,7 @@ export function UpdateMenu({
       if (mode === 'now') {
         void window.electronAPI.updates.install()
       } else {
-        setPromptOpen(true)
+        setDismissedKey(dismissKey)
       }
       return
     }
@@ -83,73 +64,115 @@ export function UpdateMenu({
     void window.electronAPI.updates.install()
   }
 
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'relative h-7 w-7 text-muted-foreground hover:text-foreground',
-              buttonClassName
-            )}
-          >
-            <ArrowDownToLine className="h-4 w-4" />
-            {status === 'available' && (
-              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-            )}
-            <span className="sr-only">Update available</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={dropdownAlign} side={dropdownSide} sideOffset={8} className="w-64">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
-            {title}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
+  return createPortal(
+    <div
+      className={cn(
+        'fixed bottom-4 left-4 z-[120] w-[360px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl',
+        'border border-black/10 bg-white text-zinc-900 shadow-[0_18px_45px_rgba(0,0,0,0.2)]',
+        'animate-in fade-in slide-in-from-bottom-3 duration-300'
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <button
+        type="button"
+        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+        onClick={() => setDismissedKey(dismissKey)}
+        aria-label="Dismiss update card"
+      >
+        <X className="h-4 w-4" />
+      </button>
 
+      <div className="h-24 border-b border-zinc-200 bg-gradient-to-b from-zinc-50 to-white">
+        <div className="flex h-full items-center justify-center">
+          <img src={logoLightMode} alt="Cozea" className="h-11 w-auto object-contain" />
+        </div>
+      </div>
+
+      <div className="space-y-3 px-4 py-4">
+        <div className="space-y-1">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Cozea update</div>
+          <div className="text-2xl font-semibold leading-tight">Version {effectiveVersion}</div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Changelog</div>
+          <div className="space-y-1 text-sm text-zinc-700">
+            {changelogItems.length > 0 ? (
+              changelogItems.map((item, index) => (
+                <p key={`${item}-${index}`} className="line-clamp-2 leading-5">
+                  {item}
+                </p>
+              ))
+            ) : (
+              <p className="leading-5 text-zinc-600">Performance and stability improvements.</p>
+            )}
+          </div>
+        </div>
+
+        {status === 'downloading' && (
+          <div className="space-y-1.5">
+            <div className="text-xs text-zinc-500">Downloading update... {percent}%</div>
+            <Progress value={percent} className="h-1.5 bg-zinc-200 [&_[data-slot=progress-indicator]]:bg-zinc-900" />
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
           {status === 'available' && (
             <>
-              <DropdownMenuItem onClick={() => handleDownload('now')}>
-                <Download className="mr-2 h-4 w-4" />
-                Download & install now
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleDownload('later')}>
-                <ArrowDownToLine className="mr-2 h-4 w-4" />
-                Download, install later
-              </DropdownMenuItem>
+              <Button
+                size="sm"
+                className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-800"
+                onClick={() => handleDownload('now')}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download & restart
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
+                onClick={() => handleDownload('later')}
+              >
+                <ArrowDownToLine className="h-3.5 w-3.5" />
+                Download only
+              </Button>
             </>
           )}
 
           {status === 'downloading' && (
-            <div className="px-3 py-2 space-y-2">
-              <div className="text-xs text-muted-foreground">Downloading update… {percent}%</div>
-              <Progress value={percent} />
-            </div>
+            <Button
+              size="sm"
+              disabled
+              className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-900"
+            >
+              Downloading...
+            </Button>
           )}
 
           {status === 'downloaded' && (
-            <DropdownMenuItem onClick={handleRestart}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Restart to update
-            </DropdownMenuItem>
+            <>
+              <Button
+                size="sm"
+                className="h-8 flex-1 bg-zinc-900 text-white hover:bg-zinc-800"
+                onClick={handleRestart}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Download & restart
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
+                onClick={() => setDismissedKey(dismissKey)}
+              >
+                Later
+              </Button>
+            </>
           )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <AlertDialog open={promptOpen} onOpenChange={setPromptOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Update ready to install</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Later</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRestart}>
-              Restart now
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

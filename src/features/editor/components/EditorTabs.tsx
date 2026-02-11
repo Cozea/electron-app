@@ -33,6 +33,7 @@ export function EditorTabs() {
 
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
     const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
+    const [hoveredPath, setHoveredPath] = useState<string | null>(null)
     const scrollerRef = useRef<HTMLDivElement | null>(null)
     const [showLeftFade, setShowLeftFade] = useState(false)
     const [showRightFade, setShowRightFade] = useState(false)
@@ -185,7 +186,9 @@ export function EditorTabs() {
                             const isNextActive = nextPath
                                 ? (nextPath === activeFile || (activeFile != null && pathsReferToSameFile(nextPath, activeFile)))
                                 : false
-                            const showSeparator = !isActive && !isNextActive && index < openFiles.length - 1
+                            const isHovered = hoveredPath != null && pathsReferToSameFile(path, hoveredPath)
+                            const isNextHovered = nextPath != null && hoveredPath != null && pathsReferToSameFile(nextPath, hoveredPath)
+                            const showSeparator = !isActive && !isNextActive && !isHovered && !isNextHovered && index < openFiles.length - 1
                             const fileName = path.split('/').pop() || 'file'
                             const model = editorModels[path]
                             const isDirty = model?.isDirty ?? false
@@ -193,6 +196,8 @@ export function EditorTabs() {
                                 <div
                                     key={path}
                                     onClick={() => handleTabClick(path)}
+                                    onMouseEnter={() => setHoveredPath(path)}
+                                    onMouseLeave={() => setHoveredPath((current) => (current && pathsReferToSameFile(current, path) ? null : current))}
                                     className={cn(
                                         "relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] shrink-0 text-xs cursor-pointer select-none group",
                                         isActive

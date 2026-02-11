@@ -140,10 +140,14 @@ export function Members() {
     freshInvites
   )
 
-  // Seat limit status
-  const seatStatus = useQuery(
+  // Seat limit status (cached to prevent header badge loading flashes)
+  const freshSeatStatus = useQuery(
     api.organizations.getSeatStatus,
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+  const seatStatus = useCachedQuery(
+    `members-seat-status-${convexOrg?._id}`,
+    freshSeatStatus
   )
 
   // Current user's role in the organization
