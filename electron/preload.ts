@@ -127,6 +127,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   },
+  app: {
+    onNavigate: (callback: (path: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, path: string) => callback(path)
+      ipcRenderer.on('navigate', handler)
+      return () => ipcRenderer.removeListener('navigate', handler)
+    },
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:set', settings),

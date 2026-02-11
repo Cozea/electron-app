@@ -201,8 +201,13 @@ interface SourcePart {
 
 type ChatHookResult = ReturnType<typeof useChat>
 
-// AI Gateway endpoint
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
+// AI Gateway endpoint:
+// - In development, default to local server for easy testing.
+// - In production builds, default to hosted gateway if not explicitly configured.
+const DEFAULT_AI_API_URL = import.meta.env.DEV
+  ? 'http://localhost:3001/ai/chat'
+  : 'https://crosscode-auth-gateway-production.up.railway.app/ai/chat'
+const AI_API_URL = import.meta.env.VITE_AI_API_URL || DEFAULT_AI_API_URL
 const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
