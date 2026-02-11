@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
@@ -16,11 +15,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import {
-  loadModelSettings,
-  saveModelSettings,
-  type StoredModelSettings,
-} from '@/lib/modelSettingsStorage'
 import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
   IconArrowUp,
@@ -65,8 +59,12 @@ import { MessageBubble, type MessageToolMeta } from '@/components/assistant/Mess
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { useConversationSync } from '@/components/assistant/useConversationSync'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
-import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { usePersistedModelPreferences } from '@/lib/ai/usePersistedModelPreferences'
+import { useAiGatewayCatalog } from '@/lib/ai/useAiGatewayCatalog'
+import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
+import { useAccumulatedUsage } from '@/lib/ai/useAccumulatedUsage'
+import type { ToolCallPayload, ToolMetaShape } from '@/lib/ai/toolTypes'
 
 // AI Elements components
 import {
@@ -97,27 +95,6 @@ interface AIConversationProps {
 
 type ToolMeta = ToolMetaShape
 
-interface ModelCapabilities {
-  reasoningType?: 'effort' | 'token' | string
-  supportsEffortParameter?: boolean
-  supportsExtendedThinking?: boolean
-  reasoningRange?: unknown
-}
-
-interface ModelApiModel {
-  id: string
-  displayName: string
-  provider: string
-  tier: string
-  capabilities?: ModelCapabilities
-}
-
-interface ModelApiResponse {
-  models: ModelApiModel[]
-}
-
-type ToolResponse = ToolsApiResponse<ToolMeta>
-
 interface ToolPart {
   type: string
   toolCallId?: string
@@ -127,14 +104,6 @@ interface ToolPart {
   output?: unknown
   errorText?: string
   approval?: { id?: string }
-}
-
-interface UsageData {
-  promptTokens?: number
-  completionTokens?: number
-  totalTokens?: number
-  reasoningTokens?: number
-  cachedInputTokens?: number
 }
 
 // Tool categories for context-based gating
@@ -197,20 +166,38 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Input State
   const [input, setInput] = useState("")
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
   const [model, setModel] = useState<string>('gemini-3-pro')
-  const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<ToolPolicy | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<"Agent" | "Assistant">("Agent")
-  const [selectedPerformance, setSelectedPerformance] = useState<"High" | "Medium" | "Low">("High")
-  const [thinkingEffort, setThinkingEffort] = useState<"low" | "medium" | "high">("medium")
-  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
-    () => loadModelSettings()
-  )
-  const [modelCapabilities, setModelCapabilities] = useState<Record<string, ModelCapabilities>>({})
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [toolsError, setToolsError] = useState<string | null>(null)
+  const organizationId = currentOrganization?.organizationId
+  const {
+    selectedAgent,
+    setSelectedAgent,
+    selectedPerformance,
+    setSelectedPerformance,
+    thinkingEffort,
+    setThinkingEffort,
+  } = usePersistedModelPreferences({
+    model,
+    resolveDefaults: useCallback(() => ({
+      selectedAgent: 'Agent',
+      selectedPerformance: 'High',
+      thinkingEffort: 'medium',
+    }), []),
+  })
+  const {
+    availableModels,
+    availableTools,
+    toolPolicy,
+    modelCapabilities,
+    modelsError,
+    toolsError,
+  } = useAiGatewayCatalog<ToolMeta>({
+    accessToken,
+    organizationId,
+    selectedModelId: model,
+    initialModels: defaultModels,
+    onModelFallback: setModel,
+  })
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
@@ -271,54 +258,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return selectedModelCapabilities.supportsExtendedThinking === true
   }, [selectedModelCapabilities])
 
-  const modelSettingsRef = useRef(modelSettings)
-  useEffect(() => {
-    modelSettingsRef.current = modelSettings
-  }, [modelSettings])
-
-  useEffect(() => {
-    const stored = modelSettingsRef.current[model]
-    if (stored) {
-      setSelectedAgent(stored.selectedAgent ?? "Agent")
-      setSelectedPerformance(stored.selectedPerformance ?? "High")
-      setThinkingEffort(stored.thinkingEffort ?? "medium")
-      return
-    }
-    setSelectedAgent("Agent")
-    setSelectedPerformance("High")
-    setThinkingEffort("medium")
-  }, [model])
-
-  useEffect(() => {
-    const nextSettings: StoredModelSettings = {
-      selectedAgent,
-      selectedPerformance,
-      thinkingEffort,
-    }
-    setModelSettings((prev) => {
-      const updated = { ...prev, [model]: nextSettings }
-      saveModelSettings(updated)
-      return updated
-    })
-  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
-
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = selectedAgent.toLowerCase() === 'agent'
-
-  // Memoize headers to avoid re-creating on every render
-  const headers = useMemo((): Record<string, string> => {
-    if (!accessToken) return {}
-    return {
-      Authorization: `Bearer ${accessToken}`,
-    }
-  }, [accessToken])
-
-  useEffect(() => {
-    if (accessToken && currentOrganization?.organizationId) return
-    setModelsError(null)
-    setToolsError(null)
-  }, [accessToken, currentOrganization?.organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -344,7 +286,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       const capitalized = maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1) as "High" | "Medium" | "Low"
       setSelectedPerformance(capitalized)
     }
-  }, [maxReasoningDepth, selectedPerformance])
+  }, [maxReasoningDepth, selectedPerformance, setSelectedPerformance])
 
   useEffect(() => {
     toolsByNameRef.current = Object.fromEntries(
@@ -353,184 +295,31 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [availableTools])
 
   // Fetch allowed models from AI Gateway
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+  const projectContext = useMemo(() => {
+    if (!projectName || !projectSlug) return null
 
-    const controller = new AbortController()
-
-    fetch(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers,
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Unauthorized. Please sign in again.')
-          }
-          throw new Error('Failed to load models')
-        }
-        return (await res.json()) as ModelApiResponse
-      })
-      .then((data) => {
-        if (!data?.models) return
-        const mapped = data.models.map((m) => ({
-          id: m.id,
-          name: m.displayName,
-          chef: m.provider === 'openai' ? 'OpenAI' : m.provider === 'anthropic' ? 'Anthropic' : 'Google',
-          chefSlug: m.provider,
-          tier: m.tier,
-          providers: [m.provider],
-        }))
-        // Store capabilities by model ID
-        const caps: Record<string, ModelCapabilities> = {}
-        for (const m of data.models) {
-          if (m.capabilities) {
-            caps[m.id] = m.capabilities
-          }
-        }
-        setModelCapabilities(caps)
-        setModelsError(null)
-        if (mapped.length > 0) {
-          setAvailableModels(mapped)
-          if (!mapped.some((item) => item.id === model)) {
-            setModel(mapped[0].id)
-          }
-        }
-      })
-      .catch((err) => {
-        if ((err as { name?: string }).name === 'AbortError') return
-        const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
-        setModelsError(message)
-        console.warn('Failed to fetch models:', err)
-      })
-
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers, model])
-
-  // Fetch enabled tools from AI Gateway
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-
-    const controller = new AbortController()
-
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers,
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Unauthorized. Please sign in again.')
-          }
-          throw new Error('Failed to load tools')
-        }
-        return (await res.json()) as ToolResponse
-      })
-      .then((data) => {
-        if (!data?.tools) return
-        setAvailableTools(data.tools)
-        setToolPolicy(data.policy ?? null)
-        setToolsError(null)
-      })
-      .catch((err) => {
-        if ((err as { name?: string }).name === 'AbortError') return
-        const message = err instanceof Error && err.message ? err.message : 'Failed to load tools'
-        setToolsError(message)
-        console.warn('Failed to fetch tools:', err)
-      })
-
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
-
-  const requestConfigRef = useRef({
-    accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    model,
-    conversationId,
-    actionType: selectedAgent.toLowerCase(),
-    reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    thinkingEffort,
-    // Project context for AI awareness
-    projectContext: projectName && projectSlug ? {
+    return {
       name: projectName,
       slug: projectSlug,
       localPath: projectPath ?? undefined,
-      // Current page context (invisible to user, sent to AI)
       currentPage: currentPage ?? undefined,
-      // Last inspected element context (invisible to user, sent to AI)
       inspectedElement: inspectedElement ?? undefined,
-    } : null,
-  })
-
-  useEffect(() => {
-    requestConfigRef.current = {
-      accessToken,
-      organizationId: currentOrganization?.organizationId || null,
-      model,
-      conversationId,
-      actionType: selectedAgent.toLowerCase(),
-      reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-      thinkingEffort,
-      // Project context for AI awareness
-      projectContext: projectName && projectSlug ? {
-        name: projectName,
-        slug: projectSlug,
-        localPath: projectPath ?? undefined,
-        // Current page context (invisible to user, sent to AI)
-        currentPage: currentPage ?? undefined,
-        // Last inspected element context (invisible to user, sent to AI)
-        inspectedElement: inspectedElement ?? undefined,
-      } : null,
     }
-  }, [
+  }, [projectName, projectSlug, projectPath, currentPage, inspectedElement])
+
+  const chatTransport = useAiChatTransport({
     accessToken,
-    currentOrganization?.organizationId,
+    organizationId,
     model,
     conversationId,
-    selectedAgent,
-    selectedPerformance,
+    feature: 'assistant',
+    actionType: selectedAgent.toLowerCase(),
+    reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
     thinkingEffort,
-    projectName,
-    projectSlug,
-    projectPath,
-    currentPage,
-    inspectedElement,
-  ])
-
-  const chatTransport = useMemo(() => {
-    return new DefaultChatTransport({
-      api: AI_API_URL,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
-      },
-      body: () => ({
-        model: requestConfigRef.current.model,
-        organizationId: requestConfigRef.current.organizationId,
-        conversationId: requestConfigRef.current.conversationId,
-        feature: 'assistant',
-        actionType: requestConfigRef.current.actionType,
-        // Always enable tools and web search - context-based gating happens client-side
-        enableTools: true,
-        enableWebSearch: true,
-        reasoningDepth: requestConfigRef.current.reasoningDepth,
-        thinkingEffort: requestConfigRef.current.thinkingEffort,
-        // Project context for AI awareness
-        projectContext: requestConfigRef.current.projectContext,
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const actionType = requestConfigRef.current.actionType
-        const api = actionType === 'agent' ? `${AI_BASE_URL}/agent` : `${AI_BASE_URL}/chat`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
-    })
-  }, [])
+    enableTools: true,
+    enableWebSearch: true,
+    extraBody: { projectContext },
+  })
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -916,51 +705,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     surfaceErrorMessage && dismissedError !== surfaceErrorMessage
   )
 
-  // Compute accumulated token usage from all messages
-  // This follows the official AI SDK pattern of reading custom data-* parts from the stream
-  const accumulatedUsage = useMemo(() => {
-    let inputTokens = 0
-    let outputTokens = 0
-    let reasoningTokens = 0
-    let cachedInputTokens = 0
-
-    for (const message of uniqueMessages) {
-      for (const part of message.parts) {
-        if (part.type === 'data-usage') {
-          const data = (part as { data?: UsageData }).data
-          if (data) {
-            inputTokens += data.promptTokens ?? 0
-            outputTokens += data.completionTokens ?? 0
-            reasoningTokens += data.reasoningTokens ?? 0
-            cachedInputTokens += data.cachedInputTokens ?? 0
-          }
-        }
-      }
-    }
-
-    const totalTokens = inputTokens + outputTokens
-
-    return {
-      usedTokens: totalTokens,
-      // LanguageModelUsage format for the Context component
-      usage: {
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        reasoningTokens: reasoningTokens || undefined,
-        cachedInputTokens: cachedInputTokens || undefined,
-        inputTokenDetails: {
-          noCacheTokens: inputTokens - cachedInputTokens,
-          cacheReadTokens: cachedInputTokens || undefined,
-          cacheWriteTokens: undefined,
-        },
-        outputTokenDetails: {
-          textTokens: outputTokens - reasoningTokens,
-          reasoningTokens: reasoningTokens || undefined,
-        },
-      },
-    }
-  }, [uniqueMessages])
+  const accumulatedUsage = useAccumulatedUsage(uniqueMessages)
 
   const recordToolApprovalRequest = useCallback(async (params: {
     approvalId: string

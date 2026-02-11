@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
 } from 'ai'
@@ -29,10 +28,6 @@ import {
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
 import { cn } from '@/lib/utils'
-import {
-  loadModelSettings,
-  saveModelSettings,
-} from '@/lib/modelSettingsStorage'
 import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
   IconArrowUp,
@@ -71,11 +66,15 @@ import {
 } from '@/components/ai-elements/context'
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { WizardMessageBubble } from './WizardMessageBubble'
+import { usePlanOptionsExtraction } from './usePlanOptionsExtraction'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
-import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import { usePersistedModelPreferences } from '@/lib/ai/usePersistedModelPreferences'
+import { useAiGatewayCatalog } from '@/lib/ai/useAiGatewayCatalog'
+import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
+import { useAccumulatedUsage } from '@/lib/ai/useAccumulatedUsage'
+import type { ToolCallPayload, ToolMetaShape } from '@/lib/ai/toolTypes'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -92,27 +91,6 @@ interface WizardConversationProps {
 
 type ToolMeta = ToolMetaShape
 
-interface ModelCapabilities {
-  reasoningType?: 'effort' | 'token' | 'budget' | string
-  supportsEffortParameter?: boolean
-  supportsExtendedThinking?: boolean
-  reasoningRange?: unknown
-}
-
-interface ModelApiModel {
-  id: string
-  displayName: string
-  provider: string
-  tier: string
-  capabilities?: ModelCapabilities
-}
-
-interface ModelApiResponse {
-  models: ModelApiModel[]
-}
-
-type ToolResponse = ToolsApiResponse<ToolMeta>
-
 interface ToolPart {
   type: string
   toolCallId?: string
@@ -124,17 +102,6 @@ interface ToolPart {
   args?: unknown
   plans?: unknown
   errorText?: string
-}
-
-interface UsageData {
-  model?: string
-  provider?: string
-  creditsUsed?: number
-  promptTokens?: number
-  completionTokens?: number
-  totalTokens?: number
-  reasoningTokens?: number
-  cachedInputTokens?: number
 }
 
 type ChatHookResult = ReturnType<typeof useChat>
@@ -159,31 +126,52 @@ export function WizardConversation({
 }: WizardConversationProps) {
   const navigate = useNavigate()
   const { accessToken, currentOrganization } = useAuth()
+  const organizationId = currentOrganization?.organizationId
 
   // State
   const [input, setInput] = useState('')
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
   const [model, setModel] = useState(promptSettings.model)
-  const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<ToolPolicy | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<'Agent' | 'Assistant'>(
-    promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant'
-  )
-  const [selectedPerformance, setSelectedPerformance] = useState<'High' | 'Medium' | 'Low'>(
-    (promptSettings.reasoningDepth.charAt(0).toUpperCase() + promptSettings.reasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
-  )
-  const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high'>(
-    promptSettings.thinkingEffort ?? 'medium'
-  )
-  const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
-    () => loadModelSettings()
-  )
-  const [modelCapabilities, setModelCapabilities] = useState<Record<string, ModelCapabilities>>({})
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [toolsError, setToolsError] = useState<string | null>(null)
+  const {
+    selectedAgent,
+    setSelectedAgent,
+    selectedPerformance,
+    setSelectedPerformance,
+    thinkingEffort,
+    setThinkingEffort,
+  } = usePersistedModelPreferences({
+    model,
+    resolveDefaults: useCallback((candidateModel: string) => {
+      if (candidateModel === promptSettings.model) {
+        return {
+          selectedAgent: promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant',
+          selectedPerformance: (promptSettings.reasoningDepth.charAt(0).toUpperCase() + promptSettings.reasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low',
+          thinkingEffort: promptSettings.thinkingEffort ?? 'medium',
+        }
+      }
+
+      return {
+        selectedAgent: 'Agent',
+        selectedPerformance: 'High',
+        thinkingEffort: 'medium',
+      }
+    }, [promptSettings.agentType, promptSettings.model, promptSettings.reasoningDepth, promptSettings.thinkingEffort]),
+  })
+  const {
+    availableModels,
+    availableTools,
+    toolPolicy,
+    modelCapabilities,
+    modelsError,
+    toolsError,
+  } = useAiGatewayCatalog<ToolMeta>({
+    accessToken,
+    organizationId,
+    selectedModelId: model,
+    initialModels: defaultModels,
+    onModelFallback: setModel,
+  })
   const [conversationId] = useState(() => crypto.randomUUID())
-  const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const hasSentInitialMessageRef = useRef(false)
@@ -231,64 +219,8 @@ export function WizardConversation({
     return selectedModelCapabilities.supportsExtendedThinking === true
   }, [selectedModelCapabilities])
 
-  const initialModelDefaults = useMemo(
-    () => ({
-      selectedAgent: promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant',
-      selectedPerformance:
-        promptSettings.reasoningDepth.charAt(0).toUpperCase() +
-        promptSettings.reasoningDepth.slice(1),
-      thinkingEffort: promptSettings.thinkingEffort ?? 'medium',
-    }),
-    [promptSettings]
-  )
-  const fallbackDefaults = useMemo(
-    () => ({
-      selectedAgent: 'Agent' as const,
-      selectedPerformance: 'High' as const,
-      thinkingEffort: 'medium' as const,
-    }),
-    []
-  )
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = selectedAgent.toLowerCase() === 'agent'
-
-  const modelSettingsRef = useRef(modelSettings)
-  useEffect(() => {
-    modelSettingsRef.current = modelSettings
-  }, [modelSettings])
-
-  useEffect(() => {
-    const stored = modelSettingsRef.current[model]
-    const defaults = model === promptSettings.model ? initialModelDefaults : fallbackDefaults
-    const next = stored ?? defaults
-    setSelectedAgent(next.selectedAgent ?? 'Agent')
-    setSelectedPerformance(next.selectedPerformance ?? 'High')
-    setThinkingEffort(next.thinkingEffort ?? 'medium')
-  }, [model, promptSettings.model, initialModelDefaults, fallbackDefaults])
-
-  useEffect(() => {
-    const nextSettings = {
-      selectedAgent,
-      selectedPerformance,
-      thinkingEffort,
-    }
-    setModelSettings((prev) => {
-      const updated = { ...prev, [model]: nextSettings }
-      saveModelSettings(updated)
-      return updated
-    })
-  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
-
-  const headers = useMemo((): Record<string, string> => {
-    if (!accessToken) return {}
-    return { Authorization: `Bearer ${accessToken}` }
-  }, [accessToken])
-
-  useEffect(() => {
-    if (accessToken && currentOrganization?.organizationId) return
-    setModelsError(null)
-    setToolsError(null)
-  }, [accessToken, currentOrganization?.organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -314,7 +246,7 @@ export function WizardConversation({
       const capped = (maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
       setSelectedPerformance(capped)
     }
-  }, [maxReasoningDepth, selectedPerformance])
+  }, [maxReasoningDepth, selectedPerformance, setSelectedPerformance])
 
   // Sync tools
   useEffect(() => {
@@ -322,151 +254,19 @@ export function WizardConversation({
       availableTools.map((tool) => [tool.name, tool])
     )
   }, [availableTools])
-
-  // Fetch models
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-    const controller = new AbortController()
-
-    fetch(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers,
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Unauthorized. Please sign in again.')
-          }
-          throw new Error('Failed to load models')
-        }
-        return res.json()
-      })
-      .then((data: ModelApiResponse) => {
-        if (!data?.models) return
-        const mapped = data.models.map((m) => ({
-          id: m.id,
-          name: m.displayName,
-          chef: m.provider === 'openai' ? 'OpenAI' : m.provider === 'anthropic' ? 'Anthropic' : 'Google',
-          chefSlug: m.provider,
-          tier: m.tier,
-          providers: [m.provider],
-        }))
-        const caps: Record<string, ModelCapabilities> = {}
-        for (const m of data.models) {
-          if (m.capabilities) caps[m.id] = m.capabilities
-        }
-        setModelCapabilities(caps)
-        setModelsError(null)
-        if (mapped.length > 0) {
-          setAvailableModels(mapped)
-          if (!mapped.some((item) => item.id === model)) {
-            setModel(mapped[0].id)
-          }
-        }
-      })
-      .catch((err) => {
-        if ((err as { name?: string }).name === 'AbortError') return
-        const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
-        setModelsError(message)
-        console.warn('Failed to fetch models:', err)
-      })
-
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers, model])
-
-  // Fetch tools
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-    const controller = new AbortController()
-
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers,
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Unauthorized. Please sign in again.')
-          }
-          throw new Error('Failed to load tools')
-        }
-        return res.json()
-      })
-      .then((data: ToolResponse) => {
-        if (!data?.tools) return
-        setAvailableTools(data.tools)
-        setToolPolicy(data.policy ?? null)
-        setToolsError(null)
-      })
-      .catch((err) => {
-        if ((err as { name?: string }).name === 'AbortError') return
-        const message = err instanceof Error && err.message ? err.message : 'Failed to load tools'
-        setToolsError(message)
-        console.warn('Failed to fetch tools:', err)
-      })
-
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
-
-  // Request config ref (projectId is optional - may not exist during planning phase)
-  const requestConfigRef = useRef({
+  const chatTransport = useAiChatTransport({
     accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    projectId: projectId || null,
+    organizationId,
     model,
     conversationId,
+    feature: 'project-wizard',
     actionType: selectedAgent.toLowerCase(),
     reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
     thinkingEffort,
+    enableTools: true,
+    enableWebSearch: true,
+    extraBody: projectId ? { projectId } : undefined,
   })
-
-  useEffect(() => {
-    requestConfigRef.current = {
-      accessToken,
-      organizationId: currentOrganization?.organizationId || null,
-      projectId: projectId || null,
-      model,
-      conversationId,
-      actionType: selectedAgent.toLowerCase(),
-      reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-      thinkingEffort,
-    }
-  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, selectedAgent, selectedPerformance, thinkingEffort])
-
-  // Chat transport (same pattern as AIConversation)
-  const chatTransport = useMemo(() => {
-    return new DefaultChatTransport({
-      api: AI_API_URL,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
-      },
-      body: () => ({
-        model: requestConfigRef.current.model,
-        organizationId: requestConfigRef.current.organizationId,
-        // Only include projectId if it exists (project created when plan selected)
-        ...(requestConfigRef.current.projectId && { projectId: requestConfigRef.current.projectId }),
-        conversationId: requestConfigRef.current.conversationId,
-        feature: 'project-wizard',
-        actionType: requestConfigRef.current.actionType,
-        enableTools: true, // Always enabled - gated client-side based on planning phase
-        enableWebSearch: true, // Always enabled
-        reasoningDepth: requestConfigRef.current.reasoningDepth,
-        thinkingEffort: requestConfigRef.current.thinkingEffort,
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const actionType = requestConfigRef.current.actionType
-        const api = actionType === 'agent' ? `${AI_BASE_URL}/agent` : `${AI_BASE_URL}/chat`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
-    })
-  }, [])
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -651,148 +451,8 @@ export function WizardConversation({
       void sendMessage({ text: initialPrompt })
     }
   }, [initialPrompt, accessToken, sendMessage])
-
-  // Validate and filter plan options
-  const validatePlans = (plans: unknown[]): PlanOption[] => {
-    return plans
-      .filter((plan): plan is PlanOption => {
-        if (!plan || typeof plan !== 'object') return false
-        const p = plan as Record<string, unknown>
-        return (
-          typeof p.tier === 'string' &&
-          typeof p.name === 'string' &&
-          typeof p.description === 'string' &&
-          Array.isArray(p.features)
-        )
-      })
-      .map((plan) => ({
-        ...plan,
-        tier: (plan.tier?.toLowerCase?.() || 'prototype') as 'prototype' | 'beta' | 'mvp',
-        features: plan.features || [],
-        config: plan.config || {},
-      }))
-  }
-
-  // Track how many plans we've extracted (need exactly 3 for complete extraction)
-  const extractedPlanCountRef = useRef(0)
-
-  // Check for plan options in messages (from present_plans tool call)
-  useEffect(() => {
-    // Skip if we already have all 3 plans
-    if (extractedPlanCountRef.current >= 3) return
-
-    for (const message of messages) {
-      if (message.role !== 'assistant') continue
-
-      for (const part of message.parts) {
-        // Check for present_plans tool with output - handle various formats from different providers
-        const partType = part.type as string
-        const toolPart = part as ToolPart
-        const isPresntPlans = partType === 'tool-present_plans' ||
-          partType.includes('present_plans') ||
-          toolPart.toolName === 'present_plans' ||
-          (partType === 'tool-invocation' && toolPart.toolName === 'present_plans') ||
-          (partType === 'tool-result' && toolPart.toolName === 'present_plans')
-
-        if (isPresntPlans) {
-          // Get output from various possible fields (different providers use different formats)
-          const rawOutput = toolPart.output ?? toolPart.result
-          const rawInput = toolPart.input ?? toolPart.args
-
-          // Check if we have output (complete tool result)
-          if ((toolPart.state === 'output-available' || toolPart.state === 'result') && rawOutput) {
-            try {
-              const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
-              if (isRecord(output) && Array.isArray(output.plans)) {
-                const validPlans = validatePlans(output.plans)
-                if (validPlans.length > extractedPlanCountRef.current) {
-                  extractedPlanCountRef.current = validPlans.length
-                  setPlanOptions(validPlans)
-                  if (validPlans.length >= 3) return
-                }
-              }
-            } catch (e) {
-              console.warn('Failed to parse plan output:', e)
-            }
-          }
-          // Also check input/args if output not yet available (streaming or Gemini format)
-          else if (isRecord(rawInput) && Array.isArray(rawInput.plans)) {
-            const validPlans = validatePlans(rawInput.plans)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
-            }
-          }
-          // Direct plans field check (some providers put it at top level)
-          else if (Array.isArray(toolPart.plans)) {
-            const validPlans = validatePlans(toolPart.plans)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
-            }
-          }
-        }
-        // Legacy support for data-plan-options
-        if (part.type === 'data-plan-options') {
-          const data = (part as { data?: unknown }).data
-          if (Array.isArray(data)) {
-            const validPlans = validatePlans(data)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
-            }
-          }
-        }
-      }
-    }
-  }, [messages])
-
-  // Compute token usage
-  const accumulatedUsage = useMemo(() => {
-    let inputTokens = 0
-    let outputTokens = 0
-    let reasoningTokens = 0
-    let cachedInputTokens = 0
-
-    for (const message of messages) {
-      for (const part of message.parts) {
-        if (part.type === 'data-usage') {
-          const data = (part as { data?: UsageData }).data
-          if (data) {
-            inputTokens += data.promptTokens ?? 0
-            outputTokens += data.completionTokens ?? 0
-            reasoningTokens += data.reasoningTokens ?? 0
-            cachedInputTokens += data.cachedInputTokens ?? 0
-          }
-        }
-      }
-    }
-
-    const totalTokens = inputTokens + outputTokens
-
-    return {
-      usedTokens: totalTokens,
-      usage: {
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        reasoningTokens: reasoningTokens || undefined,
-        cachedInputTokens: cachedInputTokens || undefined,
-        inputTokenDetails: {
-          noCacheTokens: inputTokens - cachedInputTokens,
-          cacheReadTokens: cachedInputTokens || undefined,
-          cacheWriteTokens: undefined,
-        },
-        outputTokenDetails: {
-          textTokens: outputTokens - reasoningTokens,
-          reasoningTokens: reasoningTokens || undefined,
-        },
-      },
-    }
-  }, [messages])
+  const planOptions = usePlanOptionsExtraction(messages)
+  const accumulatedUsage = useAccumulatedUsage(messages)
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
