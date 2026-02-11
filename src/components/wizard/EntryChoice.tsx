@@ -51,7 +51,7 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
-import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
+import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 
 export interface PromptSettings {
   model: string
@@ -118,6 +118,18 @@ export function EntryChoice({
     allowCrossProviderSwitching || !activeProvider
       ? defaultModels
       : defaultModels.filter((m) => m.chefSlug === activeProvider)
+  const visibleModelsByChef = useMemo(() => {
+    const grouped = new Map<string, ModelOption[]>()
+    for (const candidate of visibleModels) {
+      const bucket = grouped.get(candidate.chef)
+      if (bucket) {
+        bucket.push(candidate)
+      } else {
+        grouped.set(candidate.chef, [candidate])
+      }
+    }
+    return grouped
+  }, [visibleModels])
   const isOpusModel = model.includes('opus')
   const defaultModelSettings = useMemo(
     () => ({
@@ -273,8 +285,7 @@ export function EntryChoice({
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
                     {visibleChefs.map((chef) => (
                       <ModelSelectorGroup heading={chef} key={chef}>
-                        {visibleModels
-                          .filter((m) => m.chef === chef)
+                        {(visibleModelsByChef.get(chef) ?? [])
                           .map((m) => (
                             <ModelSelectorItem
                               key={m.id}
