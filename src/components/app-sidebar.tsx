@@ -15,7 +15,6 @@ import { IconFolderCode } from "@tabler/icons-react"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
-import { UpdateMenu } from "@/components/updates/UpdateMenu"
 import {
   Sidebar,
   SidebarContent,
@@ -79,7 +78,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
           <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
         </SidebarContent>
         <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
-          <UpdateMenu />
           <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
             <NavUser user={user} onLogout={onLogout} />
           </div>
