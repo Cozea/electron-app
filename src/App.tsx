@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Suspense, lazy, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
@@ -59,15 +59,50 @@ function AppWithOrganization() {
       initialOrganizations={organizations}
       onTokenExpired={refreshToken}
     >
-      <Suspense fallback={null}>
+      <Suspense fallback={<FullscreenLoading />}>
         <AppContent />
       </Suspense>
     </OrganizationProvider>
   )
 }
 
+function ElectronNavigationBridge() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.app?.onNavigate?.((path) => {
+      if (typeof path === 'string' && path.startsWith('/')) {
+        navigate(path)
+      }
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [navigate])
+
+  return null
+}
+
 function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) return
+
+    const warmupTimer = window.setTimeout(() => {
+      void import('./pages/NewProject')
+      void import('./pages/ProjectBuild')
+      void import('./features/projects/pages/ProjectPagesPage')
+      void import('./features/projects/pages/ProjectBackendStudioPage')
+      void import('./features/projects/pages/ChangesPage')
+      void import('./pages/workspace/Billing')
+    }, 1200)
+
+    return () => {
+      window.clearTimeout(warmupTimer)
+    }
+  }, [isAuthenticated, isLoading, needsOnboarding])
 
   if (!isAuthenticated) {
     return <Login />
@@ -82,54 +117,57 @@ function AppContent() {
   }
 
   return (
-    <Routes>
-      {/* Projects (default landing page) */}
-      <Route path="/" element={<Navigate to="/projects" replace />} />
-      <Route path="/projects" element={<Projects />} />
-      <Route path="/projects/new" element={<NewProject />} />
-      <Route path="/projects/:projectId/build" element={<ProjectBuild />} />
+    <>
+      <ElectronNavigationBridge />
+      <Routes>
+        {/* Projects (default landing page) */}
+        <Route path="/" element={<Navigate to="/projects" replace />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/new" element={<NewProject />} />
+        <Route path="/projects/:projectId/build" element={<ProjectBuild />} />
 
-      {/* Project Editor - Nested Routes with ProjectLayout */}
-      <Route path="/projects/:slug" element={<ProjectLayout />}>
-        <Route index element={<ProjectDetailPage />} />
-        <Route path="pages" element={<ProjectPagesPage />} />
-        <Route path="database" element={<ProjectDatabasePage />} />
-        <Route path="dependencies" element={<ProjectDependenciesPage />} />
-        <Route path="backend" element={<ProjectBackendStudioPage />} />
-        <Route path="changes" element={<ChangesPage />} />
-        {/* Redirects for old routes */}
-        <Route path="feed" element={<Navigate to="../changes" replace />} />
-        <Route path="merge-queue" element={<Navigate to="../changes" replace />} />
-        <Route path="version-control" element={<Navigate to="../changes" replace />} />
-        <Route path="tasks" element={<TasksPage />} />
-        <Route path="settings" element={<ProjectSettingsPage />} />
-        <Route path="settings/:section" element={<ProjectSettingsPage />} />
-        <Route path="*" element={<ProjectDetailPage />} />
-      </Route>
+        {/* Project Editor - Nested Routes with ProjectLayout */}
+        <Route path="/projects/:slug" element={<ProjectLayout />}>
+          <Route index element={<ProjectDetailPage />} />
+          <Route path="pages" element={<ProjectPagesPage />} />
+          <Route path="database" element={<ProjectDatabasePage />} />
+          <Route path="dependencies" element={<ProjectDependenciesPage />} />
+          <Route path="backend" element={<ProjectBackendStudioPage />} />
+          <Route path="changes" element={<ChangesPage />} />
+          {/* Redirects for old routes */}
+          <Route path="feed" element={<Navigate to="../changes" replace />} />
+          <Route path="merge-queue" element={<Navigate to="../changes" replace />} />
+          <Route path="version-control" element={<Navigate to="../changes" replace />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="settings" element={<ProjectSettingsPage />} />
+          <Route path="settings/:section" element={<ProjectSettingsPage />} />
+          <Route path="*" element={<ProjectDetailPage />} />
+        </Route>
 
-      {/* Teams */}
-      <Route path="/teams" element={<Members />} />
-      <Route path="/teams/members/:memberId" element={<MemberDetails />} />
-      <Route path="/teams/roles" element={<Roles />} />
+        {/* Teams */}
+        <Route path="/teams" element={<Members />} />
+        <Route path="/teams/members/:memberId" element={<MemberDetails />} />
+        <Route path="/teams/roles" element={<Roles />} />
 
-      {/* Workspace Settings */}
-      <Route path="/workspace/general" element={<General />} />
-      <Route path="/workspace/billing" element={<Billing />} />
-      <Route path="/workspace/ai" element={<AI />} />
-      <Route path="/workspace/integrations" element={<Integrations />} />
-      <Route path="/workspace/sync" element={<Sync />} />
+        {/* Workspace Settings */}
+        <Route path="/workspace/general" element={<General />} />
+        <Route path="/workspace/billing" element={<Billing />} />
+        <Route path="/workspace/ai" element={<AI />} />
+        <Route path="/workspace/integrations" element={<Integrations />} />
+        <Route path="/workspace/sync" element={<Sync />} />
 
-      {/* Personal Settings */}
-      <Route path="/settings/account" element={<Account />} />
-      <Route path="/settings/appearance" element={<Appearance />} />
-      <Route path="/settings/storage" element={<Storage />} />
+        {/* Personal Settings */}
+        <Route path="/settings/account" element={<Account />} />
+        <Route path="/settings/appearance" element={<Appearance />} />
+        <Route path="/settings/storage" element={<Storage />} />
 
-      {/* Invitation */}
-      <Route path="/invite/:token" element={<AcceptInvitation />} />
+        {/* Invitation */}
+        <Route path="/invite/:token" element={<AcceptInvitation />} />
 
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }
 

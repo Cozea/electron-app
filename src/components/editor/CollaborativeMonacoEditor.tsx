@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import Editor, { type OnMount, loader } from '@monaco-editor/react'
+import Editor, { type OnMount } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { MonacoBinding } from 'y-monaco'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
@@ -8,37 +8,9 @@ import { useMonacoTheme } from '@/hooks/useMonacoTheme'
 import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
 import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
 import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
+import { ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
 
-// Import Monaco workers for Vite
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-
-// Configure Monaco environment for web workers (only if not already configured)
-if (!self.MonacoEnvironment) {
-  self.MonacoEnvironment = {
-    getWorker(_, label) {
-      if (label === 'json') {
-        return new jsonWorker()
-      }
-      if (label === 'css' || label === 'scss' || label === 'less') {
-        return new cssWorker()
-      }
-      if (label === 'html' || label === 'handlebars' || label === 'razor') {
-        return new htmlWorker()
-      }
-      if (label === 'typescript' || label === 'javascript') {
-        return new tsWorker()
-      }
-      return new editorWorker()
-    },
-  }
-}
-
-// Configure Monaco loader
-loader.config({ monaco })
+ensureMonacoEnvironment()
 
 interface CollaborativeMonacoEditorProps {
   path: string

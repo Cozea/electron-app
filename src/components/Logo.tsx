@@ -1,4 +1,6 @@
 import { useTheme } from '@/contexts/ThemeContext'
+import logoDarkMode from '@/assets/logos/logo_dark_mode.png'
+import logoLightMode from '@/assets/logos/logo_light_mode.png'
 
 interface LogoProps {
   className?: string
@@ -24,8 +26,8 @@ export function Logo({ className = '', size = 24 }: LogoProps) {
 
   // Use dark logo on light backgrounds, light logo on dark backgrounds
   const logoSrc = isLightTheme
-    ? '/logos/logo_light_mode.png'
-    : '/logos/logo_dark_mode.png'
+    ? logoLightMode
+    : logoDarkMode
 
   return (
     <img

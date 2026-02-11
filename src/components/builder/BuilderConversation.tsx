@@ -25,12 +25,14 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import {
   attachToolDiagnosticsToOutput,
   collectToolDiagnosticsSummary,
   summarizeLintDiagnostics,
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import type { ToolCallPayload } from '@/lib/ai/toolTypes'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -100,14 +102,6 @@ interface ToolMeta extends MessageToolMeta {
   supportsDeferredResults?: boolean
 }
 
-interface ToolCallPayload {
-  toolName: string
-  input: unknown
-  toolCallId: string
-  dynamic?: boolean
-  providerExecuted?: boolean
-}
-
 interface ToolPart {
   type: string
   toolCallId?: string
@@ -142,10 +136,6 @@ interface BuilderConversationProps {
   onBillingError?: (error: BillingErrorData | null) => void
   className?: string
 }
-
-// AI Gateway endpoint
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

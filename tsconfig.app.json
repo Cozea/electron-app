@@ -28,9 +28,10 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
     }
   },
   "include": ["src"],
-  "exclude": ["convex"]
+  "exclude": ["convex", "src/app"]
 }
