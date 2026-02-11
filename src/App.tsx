@@ -59,7 +59,7 @@ function AppWithOrganization() {
       initialOrganizations={organizations}
       onTokenExpired={refreshToken}
     >
-      <Suspense fallback={null}>
+      <Suspense fallback={<FullscreenLoading />}>
         <AppContent />
       </Suspense>
     </OrganizationProvider>
@@ -86,6 +86,23 @@ function ElectronNavigationBridge() {
 
 function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) return
+
+    const warmupTimer = window.setTimeout(() => {
+      void import('./pages/NewProject')
+      void import('./pages/ProjectBuild')
+      void import('./features/projects/pages/ProjectPagesPage')
+      void import('./features/projects/pages/ProjectBackendStudioPage')
+      void import('./features/projects/pages/ChangesPage')
+      void import('./pages/workspace/Billing')
+    }, 1200)
+
+    return () => {
+      window.clearTimeout(warmupTimer)
+    }
+  }, [isAuthenticated, isLoading, needsOnboarding])
 
   if (!isAuthenticated) {
     return <Login />

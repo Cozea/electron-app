@@ -38,9 +38,10 @@ import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { DatabaseService } from './services/DatabaseService'
-import { PerformanceService, type PerfBatch } from './services/PerformanceService'
+import { PerformanceService } from './services/PerformanceService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
+import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import {
   acknowledgeSyncOps,
   enqueueSyncOps,
@@ -534,68 +535,23 @@ DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
 performanceService.start()
 
-// Local tool execution (agent runtime)
-ipcMain.handle('tools:run', async (_event, request: {
-  name: string
-  input: Record<string, unknown>
-  projectPath?: string
-  runId?: string
-  toolCallId?: string
-}) => {
-  return runTool(request)
-})
-
-ipcMain.handle('performance:report', async (_event, payload: PerfBatch) => {
-  return performanceService.reportRendererBatch(payload)
-})
-
-ipcMain.handle('tools:cancel', async (_event, request: { runId: string }) => {
-  return cancelToolRuns(request.runId)
-})
-
-// Auto-updater IPC handlers
-ipcMain.handle('updates:getState', () => updateState)
-
-ipcMain.handle('updates:check', async () => {
-  if (!isAutoUpdateEnabled()) return updateState
-  await checkForUpdates()
-  return updateState
-})
-
-ipcMain.handle('updates:download', async () => {
-  if (!isAutoUpdateEnabled()) return updateState
-  try {
-    await autoUpdater.downloadUpdate()
-  } catch (err) {
+registerCoreHandlers(ipcMain, {
+  runTool,
+  cancelToolRuns,
+  reportPerformance: (payload) => performanceService.reportRendererBatch(payload),
+  getUpdateState: () => updateState,
+  isAutoUpdateEnabled,
+  checkForUpdates,
+  downloadUpdate: () => autoUpdater.downloadUpdate(),
+  installUpdate: () => autoUpdater.quitAndInstall(),
+  setUpdateError: (message) => {
     setUpdateState({
       status: 'error',
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
     })
-  }
-  return updateState
-})
-
-ipcMain.handle('updates:install', async () => {
-  if (!isAutoUpdateEnabled()) {
-    return { success: false, error: 'Updates are disabled in development builds.' }
-  }
-  try {
-    autoUpdater.quitAndInstall()
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
-})
-
-// Open URL in system browser
-ipcMain.handle('shell:openExternal', async (_event, url: string) => {
-  await shell.openExternal(url)
-  return { success: true }
-})
-
-// Window state handlers
-ipcMain.handle('window:isFullScreen', () => {
-  return win?.isFullScreen() ?? false
+  },
+  openExternal: (url) => shell.openExternal(url),
+  isWindowFullScreen: () => win?.isFullScreen() ?? false,
 })
 
 interface PreviewInjectBridgeResult {
@@ -3055,19 +3011,21 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   performanceService.recordMainMetric('app.when_ready', performance.now() - mainStart)
   loadSyncState()
-  const gitHealth = await getGitRuntimeHealth(true)
-  if (!gitHealth.preflightOk) {
-    console.error('[GitRuntime] Preflight failed:', gitHealth.error ?? 'Unknown error')
-  } else {
-    console.log(
-      `[GitRuntime] Ready (${gitHealth.source}): ${gitHealth.gitVersion} @ ${gitHealth.executablePath ?? 'unknown'}`
-    )
-  }
-
   registerAutoUpdater()
   createWindow()
   startUpdateChecks()
+
+  void (async () => {
+    const gitHealth = await getGitRuntimeHealth(true)
+    if (!gitHealth.preflightOk) {
+      console.error('[GitRuntime] Preflight failed:', gitHealth.error ?? 'Unknown error')
+    } else {
+      console.log(
+        `[GitRuntime] Ready (${gitHealth.source}): ${gitHealth.gitVersion} @ ${gitHealth.executablePath ?? 'unknown'}`
+      )
+    }
+  })()
 })
