@@ -500,6 +500,9 @@ export interface ElectronAPI {
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean }>
   }
+  app: {
+    onNavigate: (callback: (path: string) => void) => () => void
+  }
   settings: {
     get: () => Promise<AppSettings>
     set: (settings: Partial<AppSettings>) => Promise<{ success: boolean }>
