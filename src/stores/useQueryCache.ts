@@ -10,6 +10,24 @@ interface QueryCacheState {
 }
 
 const DEFAULT_MAX_AGE = 5 * 60 * 1000 // 5 minutes
+const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
+const MAX_CACHE_ENTRIES = 250
+
+function pruneCache(
+  cache: Record<string, { data: unknown; timestamp: number }>
+): Record<string, { data: unknown; timestamp: number }> {
+  const now = Date.now()
+  const entries = Object.entries(cache).filter(([, entry]) => {
+    return Number.isFinite(entry.timestamp) && now - entry.timestamp <= HARD_MAX_AGE
+  })
+
+  if (entries.length <= MAX_CACHE_ENTRIES) {
+    return Object.fromEntries(entries)
+  }
+
+  entries.sort((a, b) => b[1].timestamp - a[1].timestamp)
+  return Object.fromEntries(entries.slice(0, MAX_CACHE_ENTRIES))
+}
 
 /**
  * Simple query cache for Convex data.
@@ -33,10 +51,10 @@ export const useQueryCache = create<QueryCacheState>()(
 
       set: (key: string, data: unknown) => {
         set((state) => ({
-          cache: {
+          cache: pruneCache({
             ...state.cache,
             [key]: { data, timestamp: Date.now() },
-          },
+          }),
         }))
       },
 
@@ -45,7 +63,8 @@ export const useQueryCache = create<QueryCacheState>()(
         if (!entry) return undefined
 
         // Check if cache is still valid
-        if (Date.now() - entry.timestamp > maxAge) {
+        const effectiveMaxAge = Math.min(maxAge, HARD_MAX_AGE)
+        if (Date.now() - entry.timestamp > effectiveMaxAge) {
           return undefined
         }
 

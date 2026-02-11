@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react'
+import { lazy, Suspense, useRef, useCallback, useState, useEffect } from 'react'
 import { Plus, History } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -6,10 +6,19 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
-import { AIConversation } from './AIConversation'
-import { ChatHistory } from './ChatHistory'
 import { cn } from '@/lib/utils'
 import { CreditDisplay } from './CreditDisplay'
+
+const AIConversation = lazy(() => import('./AIConversation').then((module) => ({ default: module.AIConversation })))
+const ChatHistory = lazy(() => import('./ChatHistory').then((module) => ({ default: module.ChatHistory })))
+
+function PanelLoadingFallback() {
+  return (
+    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+      Preparing assistant...
+    </div>
+  )
+}
 
 interface AssistantPanelProps {
   className?: string
@@ -31,23 +40,34 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const closeHistory = useAssistantPanelStore((state) => state.closeHistory)
 
   const { currentOrganization } = useAuth()
+  const isOpen = mode !== 'closed'
+
+  const [hasMountedConversation, setHasMountedConversation] = useState(isOpen)
+
+  useEffect(() => {
+    if (isOpen) {
+      setHasMountedConversation(true)
+    }
+  }, [isOpen])
 
   // Get project ID for chat history
+  const shouldResolveProjectForHistory = Boolean(
+    !projectId &&
+    (isOpen || isHistoryOpen) &&
+    currentOrganization?.organizationId &&
+    projectSlug
+  )
   const convexOrg = useQuery(
     api.organizations.getByWorkosId,
-    projectId
-      ? 'skip'
-      : currentOrganization?.organizationId
-        ? { workosId: currentOrganization.organizationId }
-        : 'skip'
+    shouldResolveProjectForHistory && currentOrganization?.organizationId
+      ? { workosId: currentOrganization.organizationId }
+      : 'skip'
   )
   const project = useQuery(
     api.projects.getBySlug,
-    projectId
-      ? 'skip'
-      : convexOrg?._id && projectSlug
-        ? { organizationId: convexOrg._id, slug: projectSlug }
-        : 'skip'
+    shouldResolveProjectForHistory && convexOrg?._id && projectSlug
+      ? { organizationId: convexOrg._id, slug: projectSlug }
+      : 'skip'
   )
   const resolvedProjectId = projectId ?? project?._id ?? null
 
@@ -55,7 +75,6 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
 
-  const isOpen = mode !== 'closed'
   const panelWidthValue = `${storedWidth}px`
 
   // Resize handle event handlers
@@ -166,16 +185,29 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
 
         {/* Body - AI Conversation */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <AIConversation className="w-full h-full" projectPath={projectPath} projectName={projectName} projectSlug={projectSlug} />
+          {hasMountedConversation ? (
+            <Suspense fallback={<PanelLoadingFallback />}>
+              <AIConversation
+                className="w-full h-full"
+                projectPath={projectPath}
+                projectName={projectName}
+                projectSlug={projectSlug}
+              />
+            </Suspense>
+          ) : null}
         </div>
       </div>
 
       {/* Chat History Sheet */}
-      <ChatHistory
-        isOpen={isHistoryOpen}
-        onClose={closeHistory}
-        projectId={resolvedProjectId}
-      />
+      {isHistoryOpen ? (
+        <Suspense fallback={null}>
+          <ChatHistory
+            isOpen={isHistoryOpen}
+            onClose={closeHistory}
+            projectId={resolvedProjectId}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }
