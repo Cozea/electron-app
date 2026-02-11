@@ -948,8 +948,19 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [uniqueMessages])
+    const target = messagesEndRef.current
+    if (!target) return
+
+    // During token streaming, avoid repeated smooth-scroll animations.
+    const behavior: ScrollBehavior =
+      status === 'streaming' || status === 'submitted' ? 'auto' : 'smooth'
+
+    const frame = window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior, block: 'end' })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [uniqueMessages, status])
 
   useEffect(() => {
     if (!currentOrganization?.organizationId || !accessToken) return

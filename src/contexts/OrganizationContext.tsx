@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import type { OrganizationMembership } from '../types/electron'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+const STORAGE_KEY_TOKEN = 'auth_token'
 
 interface Organization {
   id: string
@@ -80,40 +81,36 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     }
   }, [initialOrganizations, currentOrganization])
 
-  const getAuthHeaders = useCallback((): Record<string, string> => {
-    if (!accessToken) return {}
-    return { Authorization: `Bearer ${accessToken}` }
-  }, [accessToken])
-
-  // Helper to make authenticated requests with automatic token refresh on 401
-  // TODO: Integrate this into the fetch calls below for automatic token refresh
-  const _fetchWithRefresh = useCallback(async (
+  // Make authenticated requests and retry once after token refresh on 401.
+  const fetchWithRefresh = useCallback(async (
     url: string,
     options: RequestInit = {}
   ): Promise<Response> => {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...options.headers,
-        ...getAuthHeaders(),
-      },
-    })
+    const performRequest = (token: string | null) => {
+      const headers = new Headers(options.headers)
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`)
+      }
+      return fetch(url, {
+        ...options,
+        headers,
+      })
+    }
+
+    const response = await performRequest(accessToken)
 
     // If 401 and we have a refresh callback, try refreshing and retry once
     if (response.status === 401 && onTokenExpired) {
       console.log('Token expired, attempting refresh...')
       const refreshed = await onTokenExpired()
       if (refreshed) {
-        // Retry with new token (need to get fresh headers after refresh)
-        // The accessToken prop will be updated by parent, but we need to wait
-        // For now, just return the failed response - the auto-refresh will fix it
-        console.log('Token refreshed, please retry the operation')
+        const refreshedToken = localStorage.getItem(STORAGE_KEY_TOKEN)
+        return performRequest(refreshedToken)
       }
     }
 
     return response
-  }, [getAuthHeaders, onTokenExpired])
-  void _fetchWithRefresh; // Available for future integration
+  }, [accessToken, onTokenExpired])
 
   const switchOrganization = useCallback((orgId: string) => {
     const org = organizations.find((o) => o.organizationId === orgId)
@@ -127,11 +124,10 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
         },
         body: JSON.stringify({ name }),
       })
@@ -159,18 +155,17 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const updateOrganization = useCallback(async (orgId: string, name: string) => {
     if (!accessToken) return null
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
         },
         body: JSON.stringify({ name }),
       })
@@ -199,16 +194,15 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders, currentOrganization])
+  }, [accessToken, fetchWithRefresh, currentOrganization])
 
   const deleteOrganization = useCallback(async (orgId: string) => {
     if (!accessToken) return false
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
       })
 
       if (!response.ok) {
@@ -229,15 +223,13 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders, currentOrganization, organizations])
+  }, [accessToken, fetchWithRefresh, currentOrganization, organizations])
 
   const getMembers = useCallback(async (orgId: string): Promise<Member[]> => {
     if (!accessToken) return []
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}/members`, {
-        headers: getAuthHeaders(),
-      })
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}/members`)
 
       if (!response.ok) {
         throw new Error('Failed to get members')
@@ -249,18 +241,17 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       console.error('Failed to get members:', err)
       return []
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const inviteMember = useCallback(async (orgId: string, email: string, roleSlug?: string): Promise<{ invitationId: string; error?: string } | null> => {
     if (!accessToken) return null
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}/invitations`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}/invitations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
         },
         body: JSON.stringify({ email, roleSlug }),
       })
@@ -289,16 +280,15 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const removeMember = useCallback(async (orgId: string, membershipId: string) => {
     if (!accessToken) return false
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}/members/${membershipId}`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}/members/${membershipId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
       })
 
       if (!response.ok) {
@@ -312,18 +302,17 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const updateMemberRole = useCallback(async (orgId: string, membershipId: string, roleSlug: string) => {
     if (!accessToken) return false
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}/members/${membershipId}`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}/members/${membershipId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeaders(),
         },
         body: JSON.stringify({ roleSlug }),
       })
@@ -339,15 +328,13 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const getPendingInvitations = useCallback(async (orgId: string): Promise<Invitation[]> => {
     if (!accessToken) return []
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations/${orgId}/invitations`, {
-        headers: getAuthHeaders(),
-      })
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations/${orgId}/invitations`)
 
       if (!response.ok) {
         throw new Error('Failed to get invitations')
@@ -359,15 +346,14 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       console.error('Failed to get invitations:', err)
       return []
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   const revokeInvitation = useCallback(async (invitationId: string) => {
     if (!accessToken) return false
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/invitations/${invitationId}`, {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/invitations/${invitationId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
       })
 
       if (!response.ok) {
@@ -379,7 +365,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       console.error('Failed to revoke invitation:', err)
       return false
     }
-  }, [accessToken, getAuthHeaders])
+  }, [accessToken, fetchWithRefresh])
 
   return (
     <OrganizationContext.Provider

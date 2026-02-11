@@ -48,6 +48,9 @@ import { cn } from '@/lib/utils'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
+const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
+const preloadNewProjectPage = () => import('@/pages/NewProject')
+
 interface ProjectSummary {
     _id: Id<'projects'>
     slug: string
@@ -122,6 +125,14 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         }
     }, [project.slug, project.status])
 
+    const preloadProjectDestination = useCallback(() => {
+        if (project.status === 'draft') {
+            void preloadNewProjectPage()
+            return
+        }
+        void preloadProjectDetailPage()
+    }, [project.status])
+
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return
         setIsDeleting(true)
@@ -145,6 +156,8 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     }
 
     const handleRowClick = useCallback(async () => {
+        preloadProjectDestination()
+
         // Draft projects go straight to wizard
         if (project.status === 'draft') {
             navigate(`/projects/new?resume=${project._id}`)
@@ -227,7 +240,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath])
+    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 
@@ -238,6 +251,9 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                     "group cursor-pointer",
                     syncState !== 'idle' && "pointer-events-none"
                 )}
+                onMouseEnter={preloadProjectDestination}
+                onFocus={preloadProjectDestination}
+                onPointerDown={preloadProjectDestination}
                 onClick={handleRowClick}
             >
                 <TableCell className="min-w-0">
@@ -323,6 +339,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
+                                preloadProjectDetailPage()
                                 navigate(`/projects/${project.slug}`, {
                                     state: {
                                         projectSlug: project.slug,

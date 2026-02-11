@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react"
 import { Link } from "react-router-dom"
 import {
   BadgeCheck,
@@ -43,6 +44,12 @@ interface FormattedUser {
   avatar: string
 }
 
+const settingsRoutePreloaders: Record<string, () => Promise<unknown>> = {
+  "/settings/account": () => import("@/pages/settings/Account"),
+  "/settings/appearance": () => import("@/pages/settings/Appearance"),
+  "/settings/storage": () => import("@/pages/settings/Storage"),
+}
+
 // Helper to format user data
 function formatUserData(user: RawUser | FormattedUser | null | undefined): FormattedUser {
   if (!user) {
@@ -76,6 +83,17 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
   const userData = formatUserData(user)
+  const preloadedRoutesRef = useRef<Set<string>>(new Set())
+  const preloadSettingsRoute = useCallback((route: string) => {
+    const preloader = settingsRoutePreloaders[route]
+    if (!preloader) return
+    if (preloadedRoutesRef.current.has(route)) return
+
+    preloadedRoutesRef.current.add(route)
+    void preloader().catch(() => {
+      preloadedRoutesRef.current.delete(route)
+    })
+  }, [])
 
   return (
     <SidebarMenu>
@@ -122,19 +140,34 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem asChild>
-                <Link to="/settings/account">
+                <Link
+                  to="/settings/account"
+                  onMouseEnter={() => preloadSettingsRoute("/settings/account")}
+                  onFocus={() => preloadSettingsRoute("/settings/account")}
+                  onPointerDown={() => preloadSettingsRoute("/settings/account")}
+                >
                   <BadgeCheck className="mr-2 h-4 w-4" />
                   Account
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link to="/settings/appearance">
+                <Link
+                  to="/settings/appearance"
+                  onMouseEnter={() => preloadSettingsRoute("/settings/appearance")}
+                  onFocus={() => preloadSettingsRoute("/settings/appearance")}
+                  onPointerDown={() => preloadSettingsRoute("/settings/appearance")}
+                >
                   <Palette className="mr-2 h-4 w-4" />
                   Appearance
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link to="/settings/storage">
+                <Link
+                  to="/settings/storage"
+                  onMouseEnter={() => preloadSettingsRoute("/settings/storage")}
+                  onFocus={() => preloadSettingsRoute("/settings/storage")}
+                  onPointerDown={() => preloadSettingsRoute("/settings/storage")}
+                >
                   <HardDrive className="mr-2 h-4 w-4" />
                   Storage
                 </Link>
