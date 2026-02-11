@@ -43,7 +43,7 @@ module.exports = {
   },
   publish: {
     provider: "github",
-    owner: "20023136kelyan",
+    owner: "Cozea",
     repo: "cozea-prod",
     releaseType: "release",
   },

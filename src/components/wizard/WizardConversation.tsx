@@ -94,6 +94,9 @@ import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-di
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -108,29 +111,7 @@ interface WizardConversationProps {
   className?: string
 }
 
-interface ToolMeta {
-  name: string
-  displayName: string
-  description: string
-  inputSchema: Record<string, unknown>
-  requiresApproval: boolean
-  riskLevel: 'safe' | 'moderate' | 'dangerous'
-  executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
-  toolType?: 'function' | 'provider' | 'dynamic'
-  providerToolId?: string
-  providerToolArgs?: Record<string, unknown>
-  supportsDeferredResults?: boolean
-}
-
-interface ModelOption {
-  id: string
-  name: string
-  chef: string
-  chefSlug: string
-  tier: string
-  providers: string[]
-}
+type ToolMeta = ToolMetaShape
 
 interface ModelCapabilities {
   reasoningType?: 'effort' | 'token' | 'budget' | string
@@ -151,24 +132,7 @@ interface ModelApiResponse {
   models: ModelApiModel[]
 }
 
-interface ToolPolicy {
-  allowProviderTools: boolean
-  allowWebSearch: boolean
-  maxReasoningDepth: 'low' | 'medium' | 'high'
-}
-
-interface ToolsApiResponse {
-  tools: ToolMeta[]
-  policy?: ToolPolicy
-}
-
-interface ToolCallPayload {
-  toolName: string
-  input: unknown
-  toolCallId: string
-  dynamic?: boolean
-  providerExecuted?: boolean
-}
+type ToolResponse = ToolsApiResponse<ToolMeta>
 
 interface ToolPart {
   type: string
@@ -208,10 +172,6 @@ interface SourcePart {
 }
 
 type ChatHookResult = ReturnType<typeof useChat>
-
-// AI Gateway endpoint
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -259,15 +219,7 @@ const PLANNING_TOOLS = new Set([
 ])
 
 // Model catalog (same as AIConversation)
-const defaultModels: ModelOption[] = [
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'fast', providers: ['anthropic'] },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', chef: 'Google', chefSlug: 'google', tier: 'fast', providers: ['google'] },
-  { id: 'gpt-5.1', name: 'GPT-5.1', chef: 'OpenAI', chefSlug: 'openai', tier: 'standard', providers: ['openai'] },
-  { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'standard', providers: ['anthropic'] },
-  { id: 'gpt-5.2', name: 'GPT-5.2', chef: 'OpenAI', chefSlug: 'openai', tier: 'powerful', providers: ['openai'] },
-  { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', chef: 'Anthropic', chefSlug: 'anthropic', tier: 'powerful', providers: ['anthropic'] },
-  { id: 'gemini-3-pro', name: 'Gemini 3 Pro', chef: 'Google', chefSlug: 'google', tier: 'powerful', providers: ['google'] },
-]
+const defaultModels: ModelOption[] = DEFAULT_MODELS
 
 export function WizardConversation({
   projectId,
@@ -499,7 +451,7 @@ export function WizardConversation({
         }
         return res.json()
       })
-      .then((data: ToolsApiResponse) => {
+      .then((data: ToolResponse) => {
         if (!data?.tools) return
         setAvailableTools(data.tools)
         setToolPolicy(data.policy ?? null)

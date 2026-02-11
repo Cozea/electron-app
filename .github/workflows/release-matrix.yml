@@ -27,26 +27,9 @@ jobs:
             electron_target: mac
             arch: arm64
             bundle_targets: darwin-arm64
-          - name: macOS x64
-            artifact_name: macos-x64
-            runs_on: macos-13
-            electron_target: mac
-            arch: x64
-            bundle_targets: darwin-x64
-          - name: Windows x64
-            artifact_name: windows-x64
-            runs_on: windows-latest
-            electron_target: win
-            arch: x64
-            bundle_targets: win32-x64
-          - name: Windows arm64
-            artifact_name: windows-arm64
-            runs_on: windows-latest
-            electron_target: win
-            arch: arm64
-            bundle_targets: win32-arm64
     env:
       CI: true
+      NODE_OPTIONS: --max-old-space-size=4096
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
       COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
@@ -59,6 +42,9 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # Vite env vars must be available at build time (GitHub Actions runner env).
+      VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || vars.VITE_CONVEX_URL }}
+      VITE_AI_API_URL: ${{ secrets.VITE_AI_API_URL || vars.VITE_AI_API_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
+          for name in GH_TOKEN APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD VITE_CONVEX_URL VITE_AI_API_URL; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
@@ -99,6 +85,12 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci
+
+      - name: Install macOS build deps (bundled Git)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install autoconf
 
       - name: Prepare Bundled Git
         run: npm run prepare:bundled-git

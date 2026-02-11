@@ -1,35 +1,15 @@
 "use client"
 
 import { useMemo, useRef, useEffect } from 'react'
-import { DiffEditor, type DiffOnMount, loader } from '@monaco-editor/react'
+import { DiffEditor, type DiffOnMount } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { useMonacoTheme, type MonacoThemeVariant } from '@/hooks/useMonacoTheme'
 import { cn } from '@/lib/utils'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+import { ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
 
-// Import Monaco workers for Vite
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-
-// Configure Monaco environment for web workers (if not already configured)
-if (typeof self !== 'undefined' && !self.MonacoEnvironment) {
-  self.MonacoEnvironment = {
-    getWorker(_, label) {
-      if (label === 'json') return new jsonWorker()
-      if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker()
-      if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker()
-      if (label === 'typescript' || label === 'javascript') return new tsWorker()
-      return new editorWorker()
-    },
-  }
-}
-
-// Configure Monaco loader
-loader.config({ monaco })
+ensureMonacoEnvironment()
 
 // Map file extensions to Monaco language IDs
 const EXTENSION_TO_LANGUAGE: Record<string, string> = {

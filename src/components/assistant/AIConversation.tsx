@@ -63,6 +63,9 @@ import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
+import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 // AI Elements components
 import {
@@ -91,29 +94,7 @@ interface AIConversationProps {
   projectSlug?: string | null
 }
 
-interface ToolMeta {
-  name: string
-  displayName: string
-  description: string
-  inputSchema: Record<string, unknown>
-  requiresApproval: boolean
-  riskLevel: 'safe' | 'moderate' | 'dangerous'
-  executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
-  toolType?: 'function' | 'provider' | 'dynamic'
-  providerToolId?: string
-  providerToolArgs?: Record<string, unknown>
-  supportsDeferredResults?: boolean
-}
-
-interface ModelOption {
-  id: string
-  name: string
-  chef: string
-  chefSlug: string
-  tier: string
-  providers: string[]
-}
+type ToolMeta = ToolMetaShape
 
 interface ModelCapabilities {
   reasoningType?: 'effort' | 'token' | string
@@ -134,24 +115,7 @@ interface ModelApiResponse {
   models: ModelApiModel[]
 }
 
-interface ToolPolicy {
-  allowProviderTools: boolean
-  allowWebSearch: boolean
-  maxReasoningDepth: 'low' | 'medium' | 'high'
-}
-
-interface ToolsApiResponse {
-  tools: ToolMeta[]
-  policy?: ToolPolicy
-}
-
-interface ToolCallPayload {
-  toolName: string
-  input: unknown
-  toolCallId: string
-  dynamic?: boolean
-  providerExecuted?: boolean
-}
+type ToolResponse = ToolsApiResponse<ToolMeta>
 
 interface ToolPart {
   type: string
@@ -182,10 +146,6 @@ const WRITE_TOOLS = new Set([
   'multi_replace_string_in_file', 'run_in_terminal', 'get_terminal_output', 'apply_patch'
 ])
 
-// AI Gateway endpoint - Railway server
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'http://localhost:3001/ai/chat'
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -204,73 +164,7 @@ type ChatHookResult = ReturnType<typeof useChat>
 
 // Model catalog per CrossCode Pricing Spec v3
 // Tiers: Fast (1/2 credits), Standard (5/10 credits), Powerful (25/50 credits)
-const defaultModels: ModelOption[] = [
-  // ============================================
-  // FAST TIER - 1 input / 2 output credits per 1K tokens
-  // ============================================
-  {
-    id: 'claude-haiku-4-5',
-    name: 'Claude Haiku 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'fast',
-    providers: ['anthropic'],
-  },
-  {
-    id: 'gemini-3-flash',
-    name: 'Gemini 3 Flash',
-    chef: 'Google',
-    chefSlug: 'google',
-    tier: 'fast',
-    providers: ['google'],
-  },
-  // ============================================
-  // STANDARD TIER - 5 input / 10 output credits per 1K tokens
-  // ============================================
-  {
-    id: 'gpt-5.1',
-    name: 'GPT-5.1',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    tier: 'standard',
-    providers: ['openai'],
-  },
-  {
-    id: 'claude-sonnet-4-5',
-    name: 'Claude Sonnet 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'standard',
-    providers: ['anthropic'],
-  },
-  // ============================================
-  // POWERFUL TIER - 25 input / 50 output credits per 1K tokens
-  // ============================================
-  {
-    id: 'gpt-5.2',
-    name: 'GPT-5.2',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    tier: 'powerful',
-    providers: ['openai'],
-  },
-  {
-    id: 'claude-opus-4-5',
-    name: 'Claude Opus 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'powerful',
-    providers: ['anthropic'],
-  },
-  {
-    id: 'gemini-3-pro',
-    name: 'Gemini 3 Pro',
-    chef: 'Google',
-    chefSlug: 'google',
-    tier: 'powerful',
-    providers: ['google'],
-  },
-]
+const defaultModels: ModelOption[] = DEFAULT_MODELS
 
 export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
   const {
@@ -531,7 +425,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           }
           throw new Error('Failed to load tools')
         }
-        return (await res.json()) as ToolsApiResponse
+        return (await res.json()) as ToolResponse
       })
       .then((data) => {
         if (!data?.tools) return

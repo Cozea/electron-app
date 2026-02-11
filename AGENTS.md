@@ -40,6 +40,72 @@ npm run lint
 npm run build
 ```
 
+## Desktop Releases (GitHub)
+
+Releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
+
+### Source vs Distribution Repos
+
+- Source code repo (this repo): `Cozea/electron-app`
+- Distribution repo (release assets live here): `Cozea/cozea-prod`
+
+### How Releases Are Triggered
+
+- A release build/publish runs automatically **only** when a git tag matching `v*` is pushed (e.g. `v0.0.7`).
+- Normal branch pushes do **not** publish a release.
+- `workflow_dispatch` is enabled but currently resolves publish mode to `never` (build only, no publish).
+
+Workflow file: `.github/workflows/release-matrix.yml`
+
+### How To Cut a Release (Example)
+
+```shell
+# 1) Bump version (updates package.json + lockfile) without creating a tag
+npm version 0.0.8 --no-git-tag-version
+
+# 2) Commit
+git add package.json package-lock.json
+git commit -m "chore: prepare v0.0.8 release"
+
+# 3) Tag + push the tag (this is what triggers the release)
+git tag v0.0.8
+git push origin HEAD
+git push origin v0.0.8
+```
+
+### What Gets Published
+
+`electron-builder` is configured to publish to `cozea-prod` (see `electron-builder.config.cjs`). The release assets typically include:
+
+- `Cozea-X.Y.Z-arm64.dmg` (primary macOS installer)
+- `Cozea-X.Y.Z-arm64-mac.zip` (alternate download)
+- `latest-mac.yml` and blockmaps (auto-updater metadata)
+
+### Required CI Configuration
+
+The release workflow expects these to be set in GitHub Actions for `Cozea/electron-app`:
+
+- `GH_TOKEN`: must be able to create releases in `Cozea/cozea-prod`
+- Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
+- macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID Application certificate)
+- Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
+- Vite build-time env: `VITE_AI_API_URL` (provided via Actions Variables or Secrets; see workflow `env`)
+
+### Local Release (Fallback)
+
+If GitHub Actions is blocked/unavailable, you can publish a release from a macOS machine (arm64) as long as:
+
+- You have a valid **Developer ID Application** signing identity installed in Keychain, and
+- `VITE_CONVEX_URL` is available at build time (e.g. via `.env.local`), and
+- You are authenticated with GitHub CLI (`gh auth login`).
+
+Then run:
+
+```shell
+# Publishes to the distribution repo configured in electron-builder.config.cjs (cozea-prod)
+GH_TOKEN="$(gh auth token)" npm run release
+```
+
 > **IMPORTANT - Convex Deployment**: This project uses **production Convex only**.
 > - Always use `npx convex deploy` to push schema/function changes
 > - **NEVER** use `convex dev` or `npx convex dev --once` - it switches the app to a dev deployment
