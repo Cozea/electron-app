@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { memo } from 'react'
 
 import {
   Message,
@@ -152,7 +153,7 @@ interface WizardMessageBubbleProps {
   status: 'ready' | 'submitted' | 'streaming' | 'error'
 }
 
-export function WizardMessageBubble({ message, toolsByName, status }: WizardMessageBubbleProps) {
+function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
 
@@ -328,3 +329,19 @@ export function WizardMessageBubble({ message, toolsByName, status }: WizardMess
     </Message>
   )
 }
+
+function areWizardMessageBubblePropsEqual(
+  prev: WizardMessageBubbleProps,
+  next: WizardMessageBubbleProps
+): boolean {
+  return (
+    prev.message === next.message &&
+    prev.toolsByName === next.toolsByName &&
+    prev.status === next.status
+  )
+}
+
+export const WizardMessageBubble = memo(
+  WizardMessageBubbleComponent,
+  areWizardMessageBubblePropsEqual
+)

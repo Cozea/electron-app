@@ -30,7 +30,7 @@ import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { AlertCircle, X } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 export interface MessageToolMeta {
   displayName?: string
@@ -133,7 +133,7 @@ function getToolCallId(part: ToolPart, messageId: string, index: number): string
     : `${messageId}-tool-${index}`
 }
 
-export function MessageBubble({
+function MessageBubbleComponent({
   message,
   toolsByName,
   status,
@@ -142,7 +142,7 @@ export function MessageBubble({
   onDenyTool,
   terminalSessions,
   projectPath,
-}: MessageBubbleProps) {
+  }: MessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
   const [dismissedErrors, setDismissedErrors] = useState<Set<number>>(new Set())
@@ -416,6 +416,21 @@ export function MessageBubble({
     </Message>
   )
 }
+
+function areMessageBubblePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
+  return (
+    prev.message === next.message &&
+    prev.toolsByName === next.toolsByName &&
+    prev.status === next.status &&
+    prev.shouldRequireLocalApproval === next.shouldRequireLocalApproval &&
+    prev.onApproveTool === next.onApproveTool &&
+    prev.onDenyTool === next.onDenyTool &&
+    prev.terminalSessions === next.terminalSessions &&
+    prev.projectPath === next.projectPath
+  )
+}
+
+export const MessageBubble = memo(MessageBubbleComponent, areMessageBubblePropsEqual)
 
 function formatToolPayload(value: unknown): string {
   if (typeof value === 'string') return value

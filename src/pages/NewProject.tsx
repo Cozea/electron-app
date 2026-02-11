@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
@@ -18,13 +18,16 @@ import {
   TeamStep,
   ReviewStep,
   PromptInput,
-  WizardConversation,
   RepoSourceStep,
   type PromptSettings,
   type PlanOption,
   type OrgMember,
 } from '../components/wizard'
-import { useWizardState, type CreationPath } from '../hooks/useWizardState'
+import {
+  useWizardState,
+  type CreationPath,
+  type WizardRepoSource,
+} from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { normalizeGeneratedPlan } from '../lib/plan'
@@ -45,6 +48,11 @@ type RepoIntegrationProvider = 'github' | 'gitlab'
 const INSTALL_TIMEOUT_MS = 12 * 60 * 1000
 const UPLOAD_CONCURRENCY = 4
 const SAVE_BATCH_SIZE = 100
+const loadWizardConversation = () =>
+  import('../components/wizard/WizardConversation').then((module) => ({
+    default: module.WizardConversation,
+  }))
+const LazyWizardConversation = lazy(loadWizardConversation)
 const BINARY_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'tif', 'tiff',
   'pdf', 'zip', 'gz', 'tar', 'rar', '7z',
@@ -675,6 +683,7 @@ export function NewProject() {
     console.log('[NewProject] handlePromptSubmit received settings:', settings)
     // Don't create project yet - just start conversation mode
     // Project will be created when user selects a plan
+    void loadWizardConversation()
     setOriginalPrompt(promptText)
     setPendingPromptText(promptText)
     setConversationPromptSettings(settings)
@@ -1019,12 +1028,20 @@ export function NewProject() {
     // Conversation mode for prompt path (project not created yet)
     if (isConversationMode && conversationPromptSettings) {
       return (
-        <WizardConversation
-          initialPrompt={pendingPromptText}
-          promptSettings={conversationPromptSettings}
-          onPlanSelected={handlePlanSelected}
-          className="flex-1 h-full"
-        />
+        <Suspense
+          fallback={(
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          )}
+        >
+          <LazyWizardConversation
+            initialPrompt={pendingPromptText}
+            promptSettings={conversationPromptSettings}
+            onPlanSelected={handlePlanSelected}
+            className="flex-1 h-full"
+          />
+        </Suspense>
       )
     }
 
@@ -1239,8 +1256,14 @@ export function NewProject() {
     )
   }, [isConversationMode, state.step, stepProgressValue])
 
+  useEffect(() => {
+    if (state.path === 'prompt') {
+      void loadWizardConversation()
+    }
+  }, [state.path])
+
   const updateRepoSourcePartial = useCallback(
-    (partial: Partial<NonNullable<typeof state.repoSource>>) => {
+    (partial: Partial<WizardRepoSource>) => {
       const baseRepoSource = state.repoSource ?? {
         provider: 'local',
         repoUrl: '',
