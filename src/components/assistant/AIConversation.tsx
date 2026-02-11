@@ -258,7 +258,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return selectedModelCapabilities.supportsExtendedThinking === true
   }, [selectedModelCapabilities])
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = selectedAgent.toLowerCase() === 'agent'
 
@@ -588,12 +587,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const uniqueMessages = useMemo(() => {
     if (messages.length <= 1) return messages
-    const seen = new Set<string>()
-    return messages.filter((message) => {
+
+    const lastIndexById = new Map<string, number>()
+    for (let index = 0; index < messages.length; index += 1) {
+      const messageId = messages[index]?.id
+      if (!messageId) continue
+      lastIndexById.set(messageId, index)
+    }
+
+    return messages.filter((message, index) => {
       if (!message.id) return true
-      if (seen.has(message.id)) return false
-      seen.add(message.id)
-      return true
+      return lastIndexById.get(message.id) === index
     })
   }, [messages])
 
@@ -946,22 +950,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [uniqueMessages])
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    const target = messagesEndRef.current
-    if (!target) return
-
-    // During token streaming, avoid repeated smooth-scroll animations.
-    const behavior: ScrollBehavior =
-      status === 'streaming' || status === 'submitted' ? 'auto' : 'smooth'
-
-    const frame = window.requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior, block: 'end' })
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [uniqueMessages, status])
-
   useEffect(() => {
     if (!currentOrganization?.organizationId || !accessToken) return
 
@@ -1116,8 +1104,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                 <span className="text-sm">Generating...</span>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
