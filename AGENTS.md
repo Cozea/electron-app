@@ -46,8 +46,8 @@ Releases are built by GitHub Actions and published as GitHub Releases in the **d
 
 ### Source vs Distribution Repos
 
-- Source code repo (this repo): `20023136kelyan/electron-app`
-- Distribution repo (release assets live here): `20023136kelyan/cozea-prod`
+- Source code repo (this repo): `Cozea/electron-app`
+- Distribution repo (release assets live here): `Cozea/cozea-prod`
 
 ### How Releases Are Triggered
 
@@ -83,9 +83,9 @@ git push origin v0.0.8
 
 ### Required CI Configuration
 
-The release workflow expects these to be set in GitHub Actions for `20023136kelyan/electron-app`:
+The release workflow expects these to be set in GitHub Actions for `Cozea/electron-app`:
 
-- `GH_TOKEN`: must be able to create releases in `20023136kelyan/cozea-prod`
+- `GH_TOKEN`: must be able to create releases in `Cozea/cozea-prod`
 - Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID Application certificate)
 - Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
