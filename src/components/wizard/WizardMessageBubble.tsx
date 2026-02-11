@@ -1,11 +1,12 @@
 import type { UIMessage } from 'ai'
-import { memo } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+import { Button } from '@/components/ui/button'
 import {
   Tool,
   ToolStatic,
@@ -23,6 +24,7 @@ import { Sources, SourcesTrigger, SourcesContent, Source } from '@/components/ai
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import type { ToolMetaShape } from '@/lib/ai/toolTypes'
+import { Check, Copy } from 'lucide-react'
 
 interface ToolPart {
   type: string
@@ -156,6 +158,39 @@ interface WizardMessageBubbleProps {
 function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
+  const [isCopied, setIsCopied] = useState(false)
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyableText = useMemo(
+    () => extractCopyableTextFromParts(message.parts),
+    [message.parts]
+  )
+  const canCopy = message.role === 'user' && copyableText.length > 0
+
+  const handleCopyMessage = useCallback(async () => {
+    if (!canCopy) return
+    if (!navigator.clipboard?.writeText) return
+    try {
+      await navigator.clipboard.writeText(copyableText)
+      setIsCopied(true)
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current)
+      }
+      copyResetRef.current = setTimeout(() => {
+        setIsCopied(false)
+        copyResetRef.current = null
+      }, 1400)
+    } catch {
+      // Ignore clipboard errors.
+    }
+  }, [canCopy, copyableText])
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current)
+      }
+    }
+  }, [])
 
   return (
     <Message from={message.role}>
@@ -326,6 +361,20 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
           </div>
         )}
       </MessageContent>
+      {canCopy && (
+        <div className="mt-0.5 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => void handleCopyMessage()}
+            className="h-6 w-6 rounded-md text-muted-foreground opacity-0 pointer-events-none transition-opacity hover:text-foreground group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+            aria-label="Copy message"
+          >
+            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      )}
     </Message>
   )
 }
@@ -345,3 +394,11 @@ export const WizardMessageBubble = memo(
   WizardMessageBubbleComponent,
   areWizardMessageBubblePropsEqual
 )
+
+function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
+  const textParts = parts
+    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter((text) => text.length > 0)
+  return textParts.join('\n\n')
+}

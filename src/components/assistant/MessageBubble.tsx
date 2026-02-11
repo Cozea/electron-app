@@ -4,6 +4,7 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+import { Button } from '@/components/ui/button'
 import {
   Tool,
   ToolStatic,
@@ -29,8 +30,8 @@ import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutpu
 import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
-import { AlertCircle, X } from 'lucide-react'
-import { memo, useState } from 'react'
+import { AlertCircle, Check, Copy, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface MessageToolMeta {
   displayName?: string
@@ -146,6 +147,39 @@ function MessageBubbleComponent({
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
   const [dismissedErrors, setDismissedErrors] = useState<Set<number>>(new Set())
+  const [isCopied, setIsCopied] = useState(false)
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyableText = useMemo(
+    () => extractCopyableTextFromParts(message.parts),
+    [message.parts]
+  )
+  const canCopy = message.role === 'user' && copyableText.length > 0
+
+  const handleCopyMessage = useCallback(async () => {
+    if (!canCopy) return
+    if (!navigator.clipboard?.writeText) return
+    try {
+      await navigator.clipboard.writeText(copyableText)
+      setIsCopied(true)
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current)
+      }
+      copyResetRef.current = setTimeout(() => {
+        setIsCopied(false)
+        copyResetRef.current = null
+      }, 1400)
+    } catch {
+      // Ignore clipboard errors.
+    }
+  }, [canCopy, copyableText])
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current)
+      }
+    }
+  }, [])
 
   return (
     <Message from={message.role}>
@@ -413,6 +447,20 @@ function MessageBubbleComponent({
           </div>
         )}
       </MessageContent>
+      {canCopy && (
+        <div className="mt-0.5 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => void handleCopyMessage()}
+            className="h-6 w-6 rounded-md text-muted-foreground opacity-0 pointer-events-none transition-opacity hover:text-foreground group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+            aria-label="Copy message"
+          >
+            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      )}
     </Message>
   )
 }
@@ -431,6 +479,14 @@ function areMessageBubblePropsEqual(prev: MessageBubbleProps, next: MessageBubbl
 }
 
 export const MessageBubble = memo(MessageBubbleComponent, areMessageBubblePropsEqual)
+
+function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
+  const textParts = parts
+    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter((text) => text.length > 0)
+  return textParts.join('\n\n')
+}
 
 function formatToolPayload(value: unknown): string {
   if (typeof value === 'string') return value
