@@ -36,9 +36,7 @@ export function UpdateMenu({
   buttonClassName,
   disableAutoUpdaterHook = false,
 }: UpdateMenuProps) {
-  if (!disableAutoUpdaterHook) {
-    useAutoUpdater()
-  }
+  useAutoUpdater({ enabled: !disableAutoUpdaterHook })
 
   const status = useAutoUpdateStore((s) => s.status)
   const version = useAutoUpdateStore((s) => s.version)

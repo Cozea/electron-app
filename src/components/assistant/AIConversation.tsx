@@ -64,6 +64,8 @@ import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 // AI Elements components
 import {
@@ -92,20 +94,7 @@ interface AIConversationProps {
   projectSlug?: string | null
 }
 
-interface ToolMeta {
-  name: string
-  displayName: string
-  description: string
-  inputSchema: Record<string, unknown>
-  requiresApproval: boolean
-  riskLevel: 'safe' | 'moderate' | 'dangerous'
-  executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
-  toolType?: 'function' | 'provider' | 'dynamic'
-  providerToolId?: string
-  providerToolArgs?: Record<string, unknown>
-  supportsDeferredResults?: boolean
-}
+type ToolMeta = ToolMetaShape
 
 interface ModelCapabilities {
   reasoningType?: 'effort' | 'token' | string
@@ -126,24 +115,7 @@ interface ModelApiResponse {
   models: ModelApiModel[]
 }
 
-interface ToolPolicy {
-  allowProviderTools: boolean
-  allowWebSearch: boolean
-  maxReasoningDepth: 'low' | 'medium' | 'high'
-}
-
-interface ToolsApiResponse {
-  tools: ToolMeta[]
-  policy?: ToolPolicy
-}
-
-interface ToolCallPayload {
-  toolName: string
-  input: unknown
-  toolCallId: string
-  dynamic?: boolean
-  providerExecuted?: boolean
-}
+type ToolResponse = ToolsApiResponse<ToolMeta>
 
 interface ToolPart {
   type: string
@@ -173,15 +145,6 @@ const WRITE_TOOLS = new Set([
   'create_file', 'create_directory', 'replace_string_in_file',
   'multi_replace_string_in_file', 'run_in_terminal', 'get_terminal_output', 'apply_patch'
 ])
-
-// AI Gateway endpoint:
-// - In development, default to local server for easy testing.
-// - In production builds, default to hosted gateway if not explicitly configured.
-const DEFAULT_AI_API_URL = import.meta.env.DEV
-  ? 'http://localhost:3001/ai/chat'
-  : 'https://crosscode-auth-gateway-production.up.railway.app/ai/chat'
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || DEFAULT_AI_API_URL
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -462,7 +425,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           }
           throw new Error('Failed to load tools')
         }
-        return (await res.json()) as ToolsApiResponse
+        return (await res.json()) as ToolResponse
       })
       .then((data) => {
         if (!data?.tools) return

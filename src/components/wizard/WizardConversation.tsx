@@ -95,6 +95,8 @@ import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -109,20 +111,7 @@ interface WizardConversationProps {
   className?: string
 }
 
-interface ToolMeta {
-  name: string
-  displayName: string
-  description: string
-  inputSchema: Record<string, unknown>
-  requiresApproval: boolean
-  riskLevel: 'safe' | 'moderate' | 'dangerous'
-  executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
-  toolType?: 'function' | 'provider' | 'dynamic'
-  providerToolId?: string
-  providerToolArgs?: Record<string, unknown>
-  supportsDeferredResults?: boolean
-}
+type ToolMeta = ToolMetaShape
 
 interface ModelCapabilities {
   reasoningType?: 'effort' | 'token' | 'budget' | string
@@ -143,24 +132,7 @@ interface ModelApiResponse {
   models: ModelApiModel[]
 }
 
-interface ToolPolicy {
-  allowProviderTools: boolean
-  allowWebSearch: boolean
-  maxReasoningDepth: 'low' | 'medium' | 'high'
-}
-
-interface ToolsApiResponse {
-  tools: ToolMeta[]
-  policy?: ToolPolicy
-}
-
-interface ToolCallPayload {
-  toolName: string
-  input: unknown
-  toolCallId: string
-  dynamic?: boolean
-  providerExecuted?: boolean
-}
+type ToolResponse = ToolsApiResponse<ToolMeta>
 
 interface ToolPart {
   type: string
@@ -200,15 +172,6 @@ interface SourcePart {
 }
 
 type ChatHookResult = ReturnType<typeof useChat>
-
-// AI Gateway endpoint:
-// - In development, default to local server for easy testing.
-// - In production builds, default to hosted gateway if not explicitly configured.
-const DEFAULT_AI_API_URL = import.meta.env.DEV
-  ? 'http://localhost:3001/ai/chat'
-  : 'https://crosscode-auth-gateway-production.up.railway.app/ai/chat'
-const AI_API_URL = import.meta.env.VITE_AI_API_URL || DEFAULT_AI_API_URL
-const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -488,7 +451,7 @@ export function WizardConversation({
         }
         return res.json()
       })
-      .then((data: ToolsApiResponse) => {
+      .then((data: ToolResponse) => {
         if (!data?.tools) return
         setAvailableTools(data.tools)
         setToolPolicy(data.policy ?? null)

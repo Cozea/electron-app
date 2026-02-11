@@ -2,13 +2,19 @@ import { useEffect, useRef } from 'react'
 import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
 import type { UpdateState } from '@/types/electron'
 
-export function useAutoUpdater() {
+interface UseAutoUpdaterOptions {
+  enabled?: boolean
+}
+
+export function useAutoUpdater(options?: UseAutoUpdaterOptions) {
+  const enabled = options?.enabled ?? true
   const applyUpdateState = useAutoUpdateStore((s) => s.applyUpdateState)
   const installMode = useAutoUpdateStore((s) => s.installMode)
   const status = useAutoUpdateStore((s) => s.status)
   const installTriggeredRef = useRef(false)
 
   useEffect(() => {
+    if (!enabled) return
     if (!window.electronAPI?.updates) return
 
     let isMounted = true
@@ -25,9 +31,10 @@ export function useAutoUpdater() {
       isMounted = false
       unsubscribe?.()
     }
-  }, [applyUpdateState])
+  }, [applyUpdateState, enabled])
 
   useEffect(() => {
+    if (!enabled) return
     if (!window.electronAPI?.updates) return
 
     if (status === 'downloaded' && installMode === 'now' && !installTriggeredRef.current) {
@@ -39,5 +46,5 @@ export function useAutoUpdater() {
     if (status !== 'downloaded') {
       installTriggeredRef.current = false
     }
-  }, [installMode, status])
+  }, [enabled, installMode, status])
 }
