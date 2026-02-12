@@ -96,6 +96,7 @@ import { BillingError, parseBillingError, type BillingErrorData } from '@/compon
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { validateWebOnlyPlanConfig } from '@/lib/plan'
 import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 interface WizardConversationProps {
@@ -730,6 +731,7 @@ export function WizardConversation({
         features: plan.features || [],
         config: plan.config || {},
       }))
+      .filter((plan) => validateWebOnlyPlanConfig(plan.config).valid)
   }
 
   // Track how many plans we've extracted (need exactly 3 for complete extraction)

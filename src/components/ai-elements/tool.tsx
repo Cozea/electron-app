@@ -49,6 +49,9 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   // Terminal/Code
   run_in_terminal: TerminalIcon,
   get_terminal_output: TerminalIcon,
+  install_dependencies: TerminalIcon,
+  verify_build: TerminalIcon,
+  start_dev_server: TerminalIcon,
   apply_patch: GitCompareIcon,
   // Web
   web_search: GlobeIcon,
@@ -73,6 +76,9 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   multi_replace_string_in_file: { present: "Editing", past: "Edited" },
   run_in_terminal: { present: "Running", past: "Ran" },
   get_terminal_output: { present: "Getting output", past: "Got output" },
+  install_dependencies: { present: "Installing", past: "Installed" },
+  verify_build: { present: "Verifying", past: "Verified" },
+  start_dev_server: { present: "Starting", past: "Started" },
   apply_patch: { present: "Applying patch", past: "Applied patch" },
   web_search: { present: "Searching", past: "Searched" },
   google_search: { present: "Searching", past: "Searched" },
@@ -127,9 +133,16 @@ const getToolTarget = (
         value: String(input.query || input.pattern || ""),
       };
     case "run_in_terminal":
+    case "verify_build":
+    case "start_dev_server":
       return {
         type: "command",
         value: String(input.command || ""),
+      };
+    case "install_dependencies":
+      return {
+        type: "command",
+        value: String(input.packageManager || "auto"),
       };
     case "web_search":
     case "google_search":

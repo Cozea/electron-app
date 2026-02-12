@@ -26,6 +26,7 @@ import { parseBillingError, type BillingErrorData } from '@/components/assistant
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
   collectToolDiagnosticsSummary,
@@ -44,6 +45,9 @@ const BUILDER_LOCAL_TOOLS = new Set([
   'list_dir',
   'run_in_terminal',
   'get_terminal_output',
+  'install_dependencies',
+  'verify_build',
+  'start_dev_server',
   'replace_string_in_file',
   'multi_replace_string_in_file',
 ])
@@ -53,6 +57,17 @@ interface Project {
   _id: Id<'projects'>
   name: string
   slug: string
+  targetPlatform?: string
+  buildContract?: {
+    previewMode?: string
+    frameworkClass?: string
+    toolchain?: Record<string, unknown>
+    commands?: Record<string, unknown>
+    constraints?: Record<string, unknown>
+    fallbackPolicy?: Record<string, unknown>
+    successCriteria?: Record<string, unknown>
+    telemetryHints?: Record<string, unknown>
+  }
   template?: string
   stack?: {
     backend?: string
@@ -142,6 +157,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
+const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
+  /\belectron\b/i,
+  /\belectron-builder\b/i,
+  /\breact-native\b/i,
+  /\bexpo\b/i,
+  /\bxcodebuild\b/i,
+  /\bfastlane\b/i,
+  /\bandroid\b/i,
+  /\bgradle\b/i,
+  /\bflutter\b/i,
+  /\bswift\b/i,
+]
+
+function detectUnsupportedNativeBuildCommand(command: string): string | null {
+  const normalized = command.trim()
+  if (!normalized) return null
+
+  for (const pattern of NATIVE_BUILD_COMMAND_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return 'Current builder supports web projects only. Native desktop/mobile commands are not supported in this release.'
+    }
+  }
+
+  return null
+}
 
 const truncateTerminalOutput = (output: string) => {
   if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
@@ -252,6 +292,45 @@ export function BuilderConversation({
   const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
+  const preflightDiagnostic = useMemo(() => {
+    const expected = {
+      targetPlatform: 'web',
+      buildContract: {
+        previewMode: 'web',
+        frameworkClass: 'web-framework',
+      },
+    }
+
+    if (project.targetPlatform !== 'web') {
+      return {
+        code: 'BUILD_PRECHECK_TARGET_PLATFORM_MISMATCH',
+        message: 'Current builder supports web projects only.',
+        detail: undefined,
+        expected,
+        actual: {
+          targetPlatform: project.targetPlatform,
+          buildContract: project.buildContract ?? null,
+        },
+      }
+    }
+
+    const contractValidation = validateWebOnlyBuildContract(project.buildContract)
+    if (!contractValidation.valid) {
+      return {
+        code: 'BUILD_PRECHECK_CONTRACT_INVALID',
+        message: 'Current builder supports web projects only.',
+        detail: contractValidation.error,
+        expected,
+        actual: {
+          targetPlatform: project.targetPlatform,
+          buildContract: project.buildContract ?? null,
+        },
+      }
+    }
+
+    return null
+  }, [project.buildContract, project.targetPlatform])
+  const preflightFailedRef = useRef(false)
   const promptSettings = project.promptSettings
   console.log('[Builder] Project promptSettings:', promptSettings)
   console.log('[Builder] Using model:', promptSettings?.model ?? 'gemini-3-pro (default)')
@@ -928,6 +1007,16 @@ Now begin by defining your task list with build_tasks, then start working throug
         if (!command) {
           throw new Error('run_in_terminal requires command')
         }
+        const unsupportedNativeMessage = detectUnsupportedNativeBuildCommand(command)
+        if (unsupportedNativeMessage) {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: unsupportedNativeMessage,
+          })
+          return
+        }
         const isBackground = Boolean(toolInput?.isBackground)
         const timeout = typeof toolInput?.timeout === 'number' ? toolInput.timeout : 120000 // 2 min default
 
@@ -1369,11 +1458,23 @@ Now begin by defining your task list with build_tasks, then start working throug
 
   // Send initial message on mount
   useEffect(() => {
+    if (preflightDiagnostic) return
     if (!hasSentInitialMessageRef.current && accessToken && project._id) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [accessToken, project._id, initialPrompt, sendMessage])
+  }, [accessToken, initialPrompt, preflightDiagnostic, project._id, sendMessage])
+
+  useEffect(() => {
+    if (!preflightDiagnostic || preflightFailedRef.current) return
+    preflightFailedRef.current = true
+    completedRef.current = true
+    console.error('[Builder] Build preflight failed', preflightDiagnostic)
+    onError(
+      `Build preflight failed (${preflightDiagnostic.code}): ${preflightDiagnostic.message}` +
+      (preflightDiagnostic.detail ? ` ${preflightDiagnostic.detail}` : '')
+    )
+  }, [onError, preflightDiagnostic])
 
   // Track error state - only propagate if recovery isn't possible
   useEffect(() => {
@@ -1519,6 +1620,10 @@ Now begin by defining your task list with build_tasks, then start working throug
       continuationSentRef.current = false
       return
     }
+    if (preflightDiagnostic) {
+      continuationSentRef.current = false
+      return
+    }
 
     // Only check when not loading and not completed
     if (status === 'streaming' || status === 'submitted' || completedRef.current) {
@@ -1569,7 +1674,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         }, 500)
       }
     }
-  }, [status, messages, sendMessage])
+  }, [messages, preflightDiagnostic, sendMessage, status])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()

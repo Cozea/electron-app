@@ -7,6 +7,7 @@ import type {
   MergeCacheRecord,
   OrganizationMembership,
   PerfBatch,
+  RuntimeKind,
   Session,
   SyncOp,
   SyncWriteFile,
@@ -182,6 +183,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:preflightImportSource', options),
     watchStart: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStart', options),
     watchStop: (options: { projectPath: string }) => ipcRenderer.invoke('project:watchStop', options),
+  },
+  runtime: {
+    getProjectCapabilities: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('runtime:getProjectCapabilities', options),
+    resolveCommand: (options: { projectPath: string; command: string }) =>
+      ipcRenderer.invoke('runtime:resolveCommand', options),
+    ensureCommandRuntime: (options: { projectPath: string; command: string }) =>
+      ipcRenderer.invoke('runtime:ensureCommandRuntime', options),
+    detectProjectRuntime: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('runtime:detectProjectRuntime', options),
+    ensureForCommand: (options: { projectPath: string; command: string }) =>
+      ipcRenderer.invoke('runtime:ensureForCommand', options),
+    ensureRuntime: (options: { runtime: RuntimeKind; target?: string }) =>
+      ipcRenderer.invoke('runtime:ensureRuntime', options),
+    getRuntimeStatus: (options?: { projectPath?: string }) =>
+      ipcRenderer.invoke('runtime:getRuntimeStatus', options ?? {}),
   },
   fs: {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),

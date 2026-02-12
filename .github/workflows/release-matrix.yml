@@ -27,14 +27,30 @@ jobs:
             electron_target: mac
             arch: arm64
             bundle_targets: darwin-arm64
+          - name: macOS x64
+            artifact_name: macos-x64
+            runs_on: macos-13
+            electron_target: mac
+            arch: x64
+            bundle_targets: darwin-x64
     env:
       CI: true
       NODE_OPTIONS: --max-old-space-size=4096
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
+      COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
+      COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
+      COZEA_RUNTIME_RELEASE_TAG: ${{ github.ref_name }}
+      COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
+      COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ github.ref_name }}
       COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
       COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
       COZEA_GIT_BUNDLE_URL_WIN32_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_ARM64 }}
+      COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64 }}
+      COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64 }}
+      COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
+      COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH }}
+      COZEA_RUNTIME_SIGNING_PUBLIC_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PUBLIC_KEY }}
       GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -98,11 +114,89 @@ jobs:
       - name: Verify Bundled Git
         run: npm run prepare:bundled-git:check
 
+      - name: Build Git Bundle Archives
+        run: npm run build:git-bundle-archives
+
+      - name: Prepare Bundled Runtimes
+        run: npm run prepare:bundled-runtimes
+
+      - name: Verify Bundled Runtimes
+        run: npm run prepare:bundled-runtimes:check
+
+      - name: Prepare Runtime Pack Sources
+        run: npm run prepare:runtime-pack-sources
+
+      - name: Verify Runtime Pack Sources
+        run: npm run prepare:runtime-pack-sources:check
+
+      - name: Build Runtime Packs
+        run: npm run build:runtime-packs
+
+      - name: Sign Runtime Manifest and Catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY:-}" || -n "${COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+            npm run sign:runtime-manifest
+          else
+            echo "::warning::Runtime signing key not configured; runtime pack signatures were not generated."
+          fi
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Build and Package
         run: npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }}
+
+      - name: Upload Runtime Assets to Release
+        if: steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="Cozea/cozea-prod"
+          tag="${GITHUB_REF_NAME}"
+          target="${{ matrix.bundle_targets }}"
+          tmp_dir="$(mktemp -d)"
+          assets=()
+
+          if [[ -f "build/runtime/manifest.json" ]]; then
+            cp "build/runtime/manifest.json" "${tmp_dir}/runtime-manifest-${target}.json"
+            assets+=("${tmp_dir}/runtime-manifest-${target}.json")
+          fi
+
+          if [[ -f "build/runtime/runtime-manifest.sig" ]]; then
+            cp "build/runtime/runtime-manifest.sig" "${tmp_dir}/runtime-manifest-${target}.sig"
+            assets+=("${tmp_dir}/runtime-manifest-${target}.sig")
+          fi
+
+          if [[ -f "build/runtime/capability-catalog.json" ]]; then
+            cp "build/runtime/capability-catalog.json" "${tmp_dir}/capability-catalog-${target}.json"
+            assets+=("${tmp_dir}/capability-catalog-${target}.json")
+          fi
+
+          if [[ -f "build/runtime/capability-catalog.sig" ]]; then
+            cp "build/runtime/capability-catalog.sig" "${tmp_dir}/capability-catalog-${target}.sig"
+            assets+=("${tmp_dir}/capability-catalog-${target}.sig")
+          fi
+
+          if [[ -f "build/runtime/runtime-public-key.pem" ]]; then
+            cp "build/runtime/runtime-public-key.pem" "${tmp_dir}/runtime-public-key-${target}.pem"
+            assets+=("${tmp_dir}/runtime-public-key-${target}.pem")
+          fi
+
+          while IFS= read -r file; do
+            assets+=("$file")
+          done < <(find build/runtime/packs -type f 2>/dev/null | sort)
+
+          while IFS= read -r file; do
+            assets+=("$file")
+          done < <(find build/git/packs -type f 2>/dev/null | sort)
+
+          if [[ ${#assets[@]} -gt 0 ]]; then
+            gh release upload "${tag}" "${assets[@]}" --repo "${repo}" --clobber
+          else
+            echo "::warning::No runtime assets found to upload."
+          fi
 
       - name: Upload Dist Artifacts
         if: always()

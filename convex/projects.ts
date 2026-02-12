@@ -59,6 +59,20 @@ export const create = mutation({
 
     // Template
     template: v.optional(v.string()),
+    // Current release supports web only.
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
 
     // Stack - all fields optional to match schema
     stack: v.optional(
@@ -147,6 +161,11 @@ export const create = mutation({
       audience: args.audience,
       targetLaunchDate: args.targetLaunchDate,
       template: args.template,
+      targetPlatform: args.targetPlatform ?? "web",
+      buildContract: args.buildContract ?? {
+        previewMode: "web",
+        frameworkClass: "web-framework",
+      },
       stack: args.stack,
       sourceControl: args.sourceControl,
       visuals: args.visuals,
@@ -306,6 +325,19 @@ export const update = mutation({
     audience: v.optional(v.string()),
     targetLaunchDate: v.optional(v.number()),
     template: v.optional(v.string()),
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()),
@@ -383,6 +415,8 @@ export const update = mutation({
     if (args.audience !== undefined) updates.audience = args.audience
     if (args.targetLaunchDate !== undefined) updates.targetLaunchDate = args.targetLaunchDate
     if (args.template !== undefined) updates.template = args.template
+    if (args.targetPlatform !== undefined) updates.targetPlatform = args.targetPlatform
+    if (args.buildContract !== undefined) updates.buildContract = args.buildContract
     if (args.stack !== undefined) updates.stack = { ...project.stack, ...args.stack }
     if (args.sourceControl !== undefined) updates.sourceControl = { ...project.sourceControl, ...args.sourceControl }
     if (args.visuals !== undefined) updates.visuals = { ...project.visuals, ...args.visuals }
@@ -598,6 +632,19 @@ export const saveGeneratedPlan = mutation({
     selectedPlanTier: v.optional(
       v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
     ),
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
@@ -611,6 +658,12 @@ export const saveGeneratedPlan = mutation({
 
     if (args.selectedPlanTier !== undefined) {
       updates.selectedPlanTier = args.selectedPlanTier
+    }
+    if (args.targetPlatform !== undefined) {
+      updates.targetPlatform = args.targetPlatform
+    }
+    if (args.buildContract !== undefined) {
+      updates.buildContract = args.buildContract
     }
 
     await ctx.db.patch(args.projectId, updates)

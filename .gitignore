@@ -36,6 +36,9 @@ build/git/**
 !build/git/win32-x64/
 !build/git/win32-x64/cmd/
 !build/git/win32-x64/cmd/.gitkeep
+build/runtime/**
+!build/runtime/
+!build/runtime/README.md
 
 # Server (separate repo)
 server/

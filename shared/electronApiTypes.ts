@@ -50,6 +50,21 @@ export interface LocalProject {
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
+// Current release supports web target only.
+// Reserved for future use (not yet enabled): 'desktop' | 'mobile'.
+export type TargetPlatform = 'web'
+
+export interface BuildContract {
+  previewMode: 'web'
+  frameworkClass: 'web-framework'
+  toolchain?: Record<string, unknown>
+  commands?: Record<string, unknown>
+  constraints?: Record<string, unknown>
+  fallbackPolicy?: Record<string, unknown>
+  successCriteria?: Record<string, unknown>
+  telemetryHints?: Record<string, unknown>
+}
+
 export type DependencyType =
   | 'dependency'
   | 'devDependency'
@@ -82,6 +97,79 @@ export interface DependencyJobPayload {
   finishedAt?: number
   stdout?: string
   stderr?: string
+  error?: string
+}
+
+export type RuntimeKind =
+  | 'node'
+  | 'npm'
+  | 'corepack'
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'python'
+  | 'rust'
+  | 'go'
+
+export type RuntimeSource = 'override' | 'bundled' | 'runtime-pack' | 'system' | 'missing'
+export type RuntimeTarget = `${NodeJS.Platform}-${NodeJS.Architecture}` | string
+
+export interface RuntimeHealth {
+  runtime: RuntimeKind
+  target: RuntimeTarget
+  source: RuntimeSource
+  available: boolean
+  executablePath?: string
+  version?: string
+  error?: string
+}
+
+export interface RuntimeEnsureResult {
+  success: boolean
+  runtime: RuntimeKind
+  target: RuntimeTarget
+  source: RuntimeSource
+  executablePath?: string
+  installed?: boolean
+  error?: string
+}
+
+export interface DevCommandSuggestion {
+  command: string
+  runtime: RuntimeKind | 'unknown'
+  confidence: number
+  reason: string
+}
+
+export interface DevServerConfig {
+  suggestions: DevCommandSuggestion[]
+  selectedCommand?: string
+  requiresUserSelection: boolean
+}
+
+export interface ProjectRuntimeProfile {
+  runtimes: RuntimeHealth[]
+  devServer: DevServerConfig
+  evidence: {
+    files: string[]
+    scripts: string[]
+    lockfiles: string[]
+  }
+}
+
+export interface RuntimeResolveCommandResult {
+  success: boolean
+  command: string
+  resolvedCommand?: string
+  runtime?: RuntimeKind
+  source?: RuntimeSource
+  executablePath?: string
+  status?: 'completed' | 'failed' | 'needs_user_approval'
+  approvalPayload?: {
+    command: string
+    reason: string
+    alternatives: string[]
+  }
   error?: string
 }
 
@@ -545,6 +633,15 @@ export interface ElectronAPI {
     preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
+  }
+  runtime: {
+    getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
+    resolveCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeResolveCommandResult>
+    ensureCommandRuntime: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    detectProjectRuntime: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
+    ensureForCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    ensureRuntime: (options: { runtime: RuntimeKind; target?: string }) => Promise<RuntimeEnsureResult>
+    getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>

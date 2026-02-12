@@ -12,6 +12,7 @@ at runtime. They must be signed/notarized as required for release.
 Automation:
 - `npm run prepare:bundled-git` hydrates required runtime(s) before release packaging.
 - `npm run prepare:bundled-git:check` validates required runtime(s) only.
+- `npm run build:git-bundle-archives` packages prepared bundles into `build/git/packs/git-bundle-<target>.tar.gz`.
 - `npm run dist` now runs `predist` automatically, which calls `prepare:bundled-git`.
 - Default target selection is host-native only.
 
@@ -26,6 +27,7 @@ Behavior:
 - If a required Windows bundle is missing and no env var is set, the script auto-downloads MinGit from the latest Git for Windows release feed.
 - If a required native macOS bundle is missing and no env var is set, the script auto-builds Git from the latest `git/git` source release.
 - Non-native macOS bundles (for example building `darwin-x64` from an `arm64` Mac) still require `COZEA_GIT_BUNDLE_URL_*`.
+- If no archive override is configured, the script also checks GitHub release assets in `COZEA_GIT_BUNDLE_RELEASE_REPO` (default `Cozea/cozea-prod`) for `git-bundle-<target>.tar.gz`.
 - Set `COZEA_GIT_BUNDLE_REQUIRE=all` to enforce all four platform bundles in one run.
 - Set `COZEA_GIT_BUNDLE_TARGETS` (comma-separated) to prepare/check an explicit subset.
   Example: `COZEA_GIT_BUNDLE_TARGETS=win32-x64,win32-arm64 npm run prepare:bundled-git`

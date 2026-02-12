@@ -122,29 +122,48 @@ Convex:
    - `npm run prepare:bundled-git:all` (all macOS/Windows targets)
    - `npm run prepare:bundled-git:check:all` (validate all macOS/Windows targets)
    - `COZEA_GIT_BUNDLE_TARGETS=win32-x64,win32-arm64 npm run prepare:bundled-git` (explicit subset)
+   - `npm run build:git-bundle-archives` (packages prepared bundles into `build/git/packs/git-bundle-<target>.tar.gz`)
    - Configure macOS archive URLs when cross-building non-native macOS bundles:
      - `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`
      - `COZEA_GIT_BUNDLE_URL_DARWIN_X64`
    - Env values may be remote archive URLs or absolute local archive paths.
+   - If no `COZEA_GIT_BUNDLE_URL_*` override is set, the script also looks for release assets named:
+     - `git-bundle-darwin-arm64.tar.gz`
+     - `git-bundle-darwin-x64.tar.gz`
+     - `git-bundle-win32-x64.tar.gz`
+     - `git-bundle-win32-arm64.tar.gz`
    - On native macOS target, missing bundles auto-build from latest `git/git` source.
-3) Set release env vars:
+   - Native macOS source builds require Xcode Command Line Tools and `autoconf` (`brew install autoconf`).
+3) Prepare bundled JS runtimes and runtime-pack manifest:
+   - `npm run prepare:bundled-runtimes` (host target)
+   - `npm run prepare:bundled-runtimes:check` (host target validation only)
+   - `npm run prepare:runtime-pack-sources` (hydrates `build/runtime/packs-src/<target>/{python,rust,go}` from upstream toolchains)
+   - `npm run prepare:runtime-pack-sources:check` (runtime pack source validation only)
+   - `npm run build:runtime-packs` (packages optional Python/Rust/Go packs from `build/runtime/packs-src/<target>/<runtime>`)
+   - Optional (when signing key is configured): `npm run sign:runtime-manifest`
+4) Set release env vars:
    - `GH_TOKEN` (repo scope)
    - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` (mac notarization)
-4) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
-5) Users receive updates automatically (checks on launch and every 6 hours).
+   - Optional runtime signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` (or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`)
+5) Run `npm run release` (publishes installers + update metadata to GitHub Releases).
+6) Users receive updates automatically (checks on launch and every 6 hours).
 
 ### Local distributable builds
 - Use dynamic Electron Builder config (`electron-builder.config.cjs`) so mac binary signing only includes bundled Git binaries that actually exist locally.
 - Fast local package validation (no publish, ad-hoc signing):
   - `npm run dist:local -- --mac --arm64 --dir`
+  - `npm run dist:local -- --mac --x64 --dir`
 - Local signed distributable build (DMG + ZIP, no publish):
   - `npm run dist -- --mac --arm64 --publish never`
+  - `npm run dist -- --mac --x64 --publish never`
 - Windows distributable build (run on Windows host, no publish):
   - `npm run dist -- --win --x64 --publish never`
 
 ## Dev test for bundled Git runtime
 - `npm run dev:bundled-git` runs a bundled-Git preflight check first, then starts dev with bundled-Git lookup forced.
 - `npm run prepare:bundled-git:check` validates the required bundle for the current host without launching the app.
+- `npm run prepare:bundled-runtimes:check` validates bundled JS runtimes (`node`, `npm`, `corepack`, `pnpm`, `yarn`, `bun`) for the current host.
+- `npm run prepare:runtime-pack-sources:check` validates runtime pack sources (`python`, `rust`, `go`) for the current host target.
 - If you see `ERR_CONNECTION_REFUSED` for `localhost`, start the app with `npm run dev` (or `npm run dev:bundled-git`) instead of launching Electron directly.
 
 ## CI Release Matrix
@@ -154,6 +173,8 @@ Convex:
   - Required for publish: `GH_TOKEN`
   - Required for macOS sign/notarize: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `CSC_LINK`, `CSC_KEY_PASSWORD`
   - Optional bundled Git archives (override auto-fetch/build): `COZEA_GIT_BUNDLE_URL_DARWIN_ARM64`, `COZEA_GIT_BUNDLE_URL_DARWIN_X64`, `COZEA_GIT_BUNDLE_URL_WIN32_X64`, `COZEA_GIT_BUNDLE_URL_WIN32_ARM64`
+  - Optional bundled JS runtime archives: `COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_ARM64`, `COZEA_JS_RUNTIME_BUNDLE_URL_DARWIN_X64`
+  - Optional runtime signing keys: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY`, `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`, `COZEA_RUNTIME_SIGNING_PUBLIC_KEY`
 
 ### GitHub Actions release flow
 1) Create GitHub repository secrets:

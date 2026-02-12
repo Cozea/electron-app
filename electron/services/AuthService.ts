@@ -34,7 +34,9 @@ export class AuthService {
 
     private constructor() {
         this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
-        this.isProduction = !process.env['VITE_DEV_SERVER_URL']
+        // In electron-vite dev, ELECTRON_RENDERER_URL is set; VITE_DEV_SERVER_URL may be absent.
+        const devServerUrl = process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
+        this.isProduction = !devServerUrl
         this.protocol = process.env.COZEA_PROTOCOL || (this.isProduction ? 'cozea' : 'cozea-dev')
     }
 

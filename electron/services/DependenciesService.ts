@@ -2,6 +2,9 @@ import { BrowserWindow, ipcMain } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRuntimeEnv } from '../runtime/runtimeEnv'
+import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
+import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 
 type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
@@ -95,9 +98,10 @@ function clampSearchSize(size: number): number {
 
 function detectYarnMajor(projectPath: string): number | null {
   try {
+    const env = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
     const result = spawnSync('yarn', ['--version'], {
       cwd: projectPath,
-      env: process.env,
+      env,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -116,8 +120,22 @@ async function runCommand(
   cwd: string,
   options?: { allowNonZero?: boolean }
 ): Promise<{ stdout: string; stderr: string; code: number | null; error?: string }> {
+  const commandText = [cmd, ...args].join(' ').trim()
+  const resolution = resolveCommandWithRuntime(commandText)
+  if (resolution.status === 'failed') {
+    return { stdout: '', stderr: '', code: null, error: resolution.error || 'Command is unsupported in this release.' }
+  }
+  if (resolution.status === 'completed' && resolution.runtime) {
+    const ensured = await ensureRuntimeInstalled(resolution.runtime)
+    if (!ensured.success) {
+      return { stdout: '', stderr: '', code: null, error: ensured.error || `Runtime ${resolution.runtime} is unavailable.` }
+    }
+  }
+
+  const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, env: process.env })
+    const child = spawn(cmd, args, { cwd, env: runtimeEnv })
     let stdout = ''
     let stderr = ''
     let resolved = false
@@ -490,7 +508,7 @@ export class DependenciesService {
     return { success: true, results: result }
   }
 
-  private runJob(options: {
+  private async runJob(options: {
     projectPath: string
     action: 'add' | 'update' | 'remove'
     packageName: string
@@ -525,7 +543,54 @@ export class DependenciesService {
       return { success: false, error: payload.error }
     }
 
-    const child = spawn(cmd, args, { cwd: options.projectPath, env: process.env })
+    const resolution = resolveCommandWithRuntime([cmd, ...args].join(' '))
+    if (resolution.status === 'failed') {
+      const payload: DependencyJobPayload = {
+        id: jobId,
+        action: options.action,
+        packageName: options.packageName,
+        status: 'error',
+        startedAt,
+        finishedAt: Date.now(),
+        error: resolution.error || 'Unsupported dependency command.',
+      }
+      sendToRenderers('dependencies:job-status', { projectPath: options.projectPath, job: payload })
+      return { success: false, error: payload.error }
+    }
+
+    if (resolution.status === 'needs_user_approval') {
+      const payload: DependencyJobPayload = {
+        id: jobId,
+        action: options.action,
+        packageName: options.packageName,
+        status: 'error',
+        startedAt,
+        finishedAt: Date.now(),
+        error: resolution.approvalPayload?.reason || resolution.error || 'Dependency command requires manual approval.',
+      }
+      sendToRenderers('dependencies:job-status', { projectPath: options.projectPath, job: payload })
+      return { success: false, error: payload.error }
+    }
+
+    if (resolution.runtime) {
+      const ensured = await ensureRuntimeInstalled(resolution.runtime)
+      if (!ensured.success) {
+        const payload: DependencyJobPayload = {
+          id: jobId,
+          action: options.action,
+          packageName: options.packageName,
+          status: 'error',
+          startedAt,
+          finishedAt: Date.now(),
+          error: ensured.error || `Runtime ${resolution.runtime} is unavailable.`,
+        }
+        sendToRenderers('dependencies:job-status', { projectPath: options.projectPath, job: payload })
+        return { success: false, error: payload.error }
+      }
+    }
+
+    const env = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+    const child = spawn(cmd, args, { cwd: options.projectPath, env })
     const basePayload = {
       id: jobId,
       action: options.action,

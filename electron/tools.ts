@@ -5,6 +5,11 @@ import { rgPath } from '@vscode/ripgrep'
 import { notifyFileChanged } from './yjsNotify'
 import { markInternalFsChange } from './projectWatcher'
 import { TerminalService } from './services/TerminalService'
+import { loadCapabilityCatalog } from './runtime/capabilityCatalog'
+import { collectProjectEvidence } from './runtime/projectEvidence'
+import { createRuntimeEnv } from './runtime/runtimeEnv'
+import { ensureRuntimeInstalled } from './runtime/runtimeInstaller'
+import { getRuntimePathPrefixes, resolveCommandWithRuntime } from './runtime/runtimeResolver'
 
 export interface ToolRequest {
   name: string
@@ -77,6 +82,22 @@ interface GetTerminalOutputInput {
   id: string
 }
 
+interface InstallDependenciesInput {
+  packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun'
+  timeout?: number
+}
+
+interface VerifyBuildInput {
+  command?: string
+  timeout?: number
+}
+
+interface StartDevServerInput {
+  command?: string
+  isBackground?: boolean
+  timeout?: number
+}
+
 const WORKSPACE_ROOT = path.resolve(
   process.env.COZEA_WORKSPACE_ROOT || process.env.APP_ROOT || process.cwd()
 )
@@ -85,6 +106,18 @@ const MAX_OUTPUT_LENGTH = 60_000
 const TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 1000
+const UNSUPPORTED_NATIVE_COMMAND_PATTERNS: RegExp[] = [
+  /\belectron\b/i,
+  /\belectron-builder\b/i,
+  /\breact-native\b/i,
+  /\bexpo\b/i,
+  /\bxcodebuild\b/i,
+  /\bfastlane\b/i,
+  /\bandroid\b/i,
+  /\bgradle\b/i,
+  /\bflutter\b/i,
+  /\bswift\b/i,
+]
 
 interface BackgroundProcess {
   id: string
@@ -262,6 +295,93 @@ function resolveToolPath(inputPath: string, workingDir: string): string {
     throw new Error('Path is outside of the workspace')
   }
   return resolved
+}
+
+type SupportedPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+function readWorkspacePackageJson(workingDir: string): { scripts?: Record<string, string> } | null {
+  const packageJsonPath = path.join(workingDir, 'package.json')
+  if (!fs.existsSync(packageJsonPath)) return null
+  try {
+    const raw = fs.readFileSync(packageJsonPath, 'utf-8')
+    return JSON.parse(raw) as { scripts?: Record<string, string> }
+  } catch {
+    return null
+  }
+}
+
+function detectWorkspacePackageManager(workingDir: string): SupportedPackageManager {
+  const checks: Array<{ file: string; manager: SupportedPackageManager }> = [
+    { file: 'bun.lockb', manager: 'bun' },
+    { file: 'pnpm-lock.yaml', manager: 'pnpm' },
+    { file: 'yarn.lock', manager: 'yarn' },
+    { file: 'package-lock.json', manager: 'npm' },
+  ]
+
+  for (const check of checks) {
+    if (fs.existsSync(path.join(workingDir, check.file))) {
+      return check.manager
+    }
+  }
+  return 'npm'
+}
+
+function getInstallCommandForPackageManager(pm: SupportedPackageManager): string {
+  if (pm === 'bun') return 'bun install'
+  if (pm === 'pnpm') return 'pnpm install'
+  if (pm === 'yarn') return 'yarn install'
+  return 'npm install'
+}
+
+function getRunScriptCommand(pm: SupportedPackageManager, scriptName: string): string {
+  if (pm === 'bun') return `bun run ${scriptName}`
+  if (pm === 'pnpm') return `pnpm run ${scriptName}`
+  if (pm === 'yarn') return `yarn ${scriptName}`
+  return `npm run ${scriptName}`
+}
+
+function getBuildVerificationCommand(workingDir: string): string {
+  const packageJson = readWorkspacePackageJson(workingDir)
+  if (packageJson?.scripts?.build) {
+    return getRunScriptCommand(detectWorkspacePackageManager(workingDir), 'build')
+  }
+
+  const evidence = collectProjectEvidence(workingDir)
+  if (evidence.files.includes('Cargo.toml')) return 'cargo build'
+  if (evidence.files.includes('go.mod')) return 'go build ./...'
+  if (evidence.files.includes('pyproject.toml') || evidence.files.includes('requirements.txt')) {
+    return 'python -m compileall .'
+  }
+
+  return getRunScriptCommand(detectWorkspacePackageManager(workingDir), 'build')
+}
+
+function getDevServerStartCommand(workingDir: string): string {
+  const packageJson = readWorkspacePackageJson(workingDir)
+  const packageManager = detectWorkspacePackageManager(workingDir)
+  if (packageJson?.scripts?.dev) {
+    return getRunScriptCommand(packageManager, 'dev')
+  }
+  if (packageJson?.scripts?.start) {
+    return getRunScriptCommand(packageManager, 'start')
+  }
+
+  const evidence = collectProjectEvidence(workingDir)
+  const catalog = loadCapabilityCatalog()
+  const suggestions: Array<{ command: string; confidence: number }> = []
+
+  for (const rule of catalog.rules) {
+    const fileMatch = (rule.matchAnyFile ?? []).some((candidate) => evidence.files.includes(candidate))
+    const scriptMatch = (rule.matchAnyScript ?? []).some((script) => evidence.scripts.includes(script))
+    if (!fileMatch && !scriptMatch) continue
+
+    for (const suggestion of rule.suggestedCommands) {
+      suggestions.push({ command: suggestion.command, confidence: suggestion.confidence })
+    }
+  }
+
+  suggestions.sort((a, b) => b.confidence - a.confidence)
+  return suggestions[0]?.command ?? getRunScriptCommand(packageManager, 'dev')
 }
 
 async function runRipgrep(
@@ -600,18 +720,96 @@ async function runInTerminal(input: {
     throw new Error('command is required')
   }
 
+  const normalizedCommand = input.command.trim()
+  const blockedCommand = UNSUPPORTED_NATIVE_COMMAND_PATTERNS.some((pattern) =>
+    pattern.test(normalizedCommand)
+  )
+  if (blockedCommand) {
+    return {
+      id: `term_blocked_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      command: input.command,
+      stdout: '',
+      stderr: 'Current builder supports web projects only. Native desktop/mobile commands are not supported in this release.',
+      exitCode: -1,
+      running: false,
+      timedOut: false,
+      cancelled: false,
+      success: false,
+      status: 'failed',
+      error: 'Unsupported native command for this release.',
+    }
+  }
+
+  const runtimeResolution = resolveCommandWithRuntime(normalizedCommand)
+  if (runtimeResolution.status === 'failed') {
+    return {
+      id: `term_blocked_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      command: input.command,
+      stdout: '',
+      stderr: runtimeResolution.error ?? 'Command is unsupported in this release.',
+      exitCode: -1,
+      running: false,
+      timedOut: false,
+      cancelled: false,
+      success: false,
+      status: 'failed',
+      error: runtimeResolution.error ?? 'Command is unsupported in this release.',
+    }
+  }
+
+  if (runtimeResolution.status === 'needs_user_approval') {
+    return {
+      id: `term_needs_approval_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      command: input.command,
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      running: false,
+      timedOut: false,
+      cancelled: false,
+      success: false,
+      status: 'needs_user_approval',
+      approvalPayload: runtimeResolution.approvalPayload ?? {
+        command: input.command,
+        reason: runtimeResolution.error || 'Command token is unknown.',
+        alternatives: [],
+      },
+      error: runtimeResolution.error ?? 'Command requires user approval.',
+    }
+  }
+
+  if (runtimeResolution.runtime) {
+    const ensured = await ensureRuntimeInstalled(runtimeResolution.runtime)
+    if (!ensured.success) {
+      return {
+        id: `term_runtime_missing_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        command: input.command,
+        stdout: '',
+        stderr: ensured.error ?? `Runtime ${runtimeResolution.runtime} is unavailable.`,
+        exitCode: -1,
+        running: false,
+        timedOut: false,
+        cancelled: false,
+        success: false,
+        status: 'failed',
+        error: ensured.error ?? `Runtime ${runtimeResolution.runtime} is unavailable.`,
+      }
+    }
+  }
+
   const isBackground = Boolean(input.isBackground)
   const timeoutMs = typeof input.timeout === 'number'
     ? Math.max(0, input.timeout)
     : isBackground
       ? 0
       : 120_000
+  const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
 
   const shouldDetach = process.platform !== 'win32'
   const child = spawn(input.command, {
     cwd: workingDir,
     shell: true,
-    env: process.env,
+    env: runtimeEnv,
     detached: shouldDetach,
   })
   if (shouldDetach) {
@@ -724,6 +922,49 @@ async function runInTerminal(input: {
   })
 }
 
+async function installDependencies(
+  input: InstallDependenciesInput,
+  workingDir: string,
+  context?: { runId?: string }
+) {
+  const packageManager = input.packageManager ?? detectWorkspacePackageManager(workingDir)
+  const command = getInstallCommandForPackageManager(packageManager)
+  return runInTerminal({
+    command,
+    explanation: 'Install project dependencies using the detected package manager.',
+    isBackground: false,
+    timeout: typeof input.timeout === 'number' ? input.timeout : 120_000,
+  }, workingDir, context)
+}
+
+async function verifyBuild(
+  input: VerifyBuildInput,
+  workingDir: string,
+  context?: { runId?: string }
+) {
+  const command = input.command?.trim() || getBuildVerificationCommand(workingDir)
+  return runInTerminal({
+    command,
+    explanation: 'Verify the project build succeeds.',
+    isBackground: false,
+    timeout: typeof input.timeout === 'number' ? input.timeout : 120_000,
+  }, workingDir, context)
+}
+
+async function startDevServer(
+  input: StartDevServerInput,
+  workingDir: string,
+  context?: { runId?: string }
+) {
+  const command = input.command?.trim() || getDevServerStartCommand(workingDir)
+  return runInTerminal({
+    command,
+    explanation: 'Start the project development server.',
+    isBackground: input.isBackground ?? true,
+    timeout: typeof input.timeout === 'number' ? input.timeout : 0,
+  }, workingDir, context)
+}
+
 async function getTerminalOutput(input: { id: string }) {
   if (!input.id || typeof input.id !== 'string') {
     throw new Error('id is required')
@@ -832,6 +1073,27 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
         return {
           success: true,
           output: await runInTerminal(request.input as RunInTerminalInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
+      case 'install_dependencies':
+        return {
+          success: true,
+          output: await installDependencies(request.input as InstallDependenciesInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
+      case 'verify_build':
+        return {
+          success: true,
+          output: await verifyBuild(request.input as VerifyBuildInput, workingDir, {
+            runId: request.runId,
+          }),
+        }
+      case 'start_dev_server':
+        return {
+          success: true,
+          output: await startDevServer(request.input as StartDevServerInput, workingDir, {
             runId: request.runId,
           }),
         }

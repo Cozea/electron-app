@@ -2,14 +2,19 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
 import { Check, Zap, Rocket, Crown, Loader2, Expand, ChevronLeft } from 'lucide-react'
+import type { BuildContract, TargetPlatform } from '@/lib/plan'
+import { validateWebOnlyPlanConfig } from '@/lib/plan'
 
 export interface PlanConfig {
   name?: string
   description?: string
   audience?: string
   template?: string
+  targetPlatform?: TargetPlatform
+  buildContract?: BuildContract
   stack?: {
     backend: string
     hosting: string
@@ -89,11 +94,12 @@ const tierConfig = {
 interface CompactPlanCardProps {
   plan: PlanOption
   isSelected: boolean
+  isSelectable: boolean
   onSelect: () => void
   onExpand: () => void
 }
 
-function CompactPlanCard({ plan, isSelected, onSelect, onExpand }: CompactPlanCardProps) {
+function CompactPlanCard({ plan, isSelected, isSelectable, onSelect, onExpand }: CompactPlanCardProps) {
   const normalizedTier = (plan.tier?.toLowerCase?.() || 'prototype') as keyof typeof tierConfig
   const tierInfo = tierConfig[normalizedTier] || tierConfig.prototype
   const Icon = tierInfo.icon
@@ -104,6 +110,7 @@ function CompactPlanCard({ plan, isSelected, onSelect, onExpand }: CompactPlanCa
         'relative aspect-square cursor-pointer transition-all duration-200',
         'hover:shadow-lg hover:scale-[1.02]',
         isSelected && 'ring-2 ring-primary shadow-lg',
+        !isSelectable && 'opacity-65',
       )}
       onClick={onSelect}
     >
@@ -154,13 +161,14 @@ function CompactPlanCard({ plan, isSelected, onSelect, onExpand }: CompactPlanCa
 interface ExpandedPlanCardProps {
   plan: PlanOption
   isSelected: boolean
+  isSelectable: boolean
   onSelect: () => void
   onCollapse: () => void
   onConfirm: () => void
   isConfirming: boolean
 }
 
-function ExpandedPlanCard({ plan, isSelected, onSelect, onCollapse, onConfirm, isConfirming }: ExpandedPlanCardProps) {
+function ExpandedPlanCard({ plan, isSelected, isSelectable, onSelect, onCollapse, onConfirm, isConfirming }: ExpandedPlanCardProps) {
   const normalizedTier = (plan.tier?.toLowerCase?.() || 'prototype') as keyof typeof tierConfig
   const tierInfo = tierConfig[normalizedTier] || tierConfig.prototype
   const Icon = tierInfo.icon
@@ -248,6 +256,7 @@ function ExpandedPlanCard({ plan, isSelected, onSelect, onCollapse, onConfirm, i
         <Button
           variant={isSelected ? 'default' : 'outline'}
           className="flex-1"
+          disabled={!isSelectable}
           onClick={onSelect}
         >
           {isSelected ? (
@@ -262,7 +271,7 @@ function ExpandedPlanCard({ plan, isSelected, onSelect, onCollapse, onConfirm, i
         {isSelected && (
           <Button
             onClick={onConfirm}
-            disabled={isConfirming}
+            disabled={isConfirming || !isSelectable}
             className="flex-1"
           >
             {isConfirming ? (
@@ -287,11 +296,12 @@ function ExpandedPlanCard({ plan, isSelected, onSelect, onCollapse, onConfirm, i
 interface PlanCardProps {
   plan: PlanOption
   isSelected: boolean
+  isSelectable?: boolean
   onSelect: () => void
   className?: string
 }
 
-export function PlanCard({ plan, isSelected, onSelect, className }: PlanCardProps) {
+export function PlanCard({ plan, isSelected, isSelectable = true, onSelect, className }: PlanCardProps) {
   const normalizedTier = (plan.tier?.toLowerCase?.() || 'prototype') as keyof typeof tierConfig
   const tierInfo = tierConfig[normalizedTier] || tierConfig.prototype
   const Icon = tierInfo.icon
@@ -302,6 +312,7 @@ export function PlanCard({ plan, isSelected, onSelect, className }: PlanCardProp
         'relative cursor-pointer transition-all duration-200',
         'hover:shadow-lg hover:scale-[1.02]',
         isSelected && 'ring-2 ring-primary shadow-lg',
+        !isSelectable && 'opacity-65',
         className
       )}
       onClick={onSelect}
@@ -368,6 +379,7 @@ export function PlanCard({ plan, isSelected, onSelect, className }: PlanCardProp
         <Button
           variant={isSelected ? 'default' : 'outline'}
           className="w-full"
+          disabled={!isSelectable}
           onClick={(e) => {
             e.stopPropagation()
             onSelect()
@@ -397,6 +409,7 @@ export function PlanSelector({ plans, onSelect, className }: PlanSelectorProps) 
   const [selectedTier, setSelectedTier] = useState<TierType | null>(null)
   const [expandedTier, setExpandedTier] = useState<TierType | null>(null)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [selectionError, setSelectionError] = useState<string | null>(null)
 
   // Sort plans by tier order (handle invalid tiers gracefully)
   const sortedPlans = [...plans].sort((a, b) => {
@@ -411,12 +424,19 @@ export function PlanSelector({ plans, onSelect, className }: PlanSelectorProps) 
     return pTier === selectedTier
   })
 
+  const isPlanSelectable = (plan: PlanOption) => validateWebOnlyPlanConfig(plan.config).valid
+
   const expandedPlan = expandedTier
     ? plans.find((p) => p.tier?.toLowerCase?.() === expandedTier)
     : null
 
   const handleConfirm = async () => {
     if (!selectedPlan) return
+    const validation = validateWebOnlyPlanConfig(selectedPlan.config)
+    if (!validation.valid) {
+      setSelectionError(validation.error ?? 'Current builder supports web projects only.')
+      return
+    }
     setIsConfirming(true)
     try {
       await onSelect(selectedPlan)
@@ -427,8 +447,27 @@ export function PlanSelector({ plans, onSelect, className }: PlanSelectorProps) 
 
   const handleSelectInExpanded = () => {
     if (expandedTier) {
+      const target = plans.find((p) => p.tier?.toLowerCase?.() === expandedTier)
+      if (!target) return
+      const validation = validateWebOnlyPlanConfig(target.config)
+      if (!validation.valid) {
+        setSelectionError(validation.error ?? 'Current builder supports web projects only.')
+        return
+      }
+      setSelectionError(null)
       setSelectedTier(expandedTier)
     }
+  }
+
+  const handleSelectPlan = (plan: PlanOption, normalizedTier: TierType) => {
+    const validation = validateWebOnlyPlanConfig(plan.config)
+    if (!validation.valid) {
+      setSelectionError(validation.error ?? 'Current builder supports web projects only.')
+      return
+    }
+
+    setSelectionError(null)
+    setSelectedTier(normalizedTier)
   }
 
   return (
@@ -441,11 +480,24 @@ export function PlanSelector({ plans, onSelect, className }: PlanSelectorProps) 
         </p>
       </div>
 
+      <Alert>
+        <AlertDescription>
+          Current builder supports web projects only. Native desktop/mobile support will come in a future update.
+        </AlertDescription>
+      </Alert>
+
+      {selectionError && (
+        <Alert variant="destructive">
+          <AlertDescription>{selectionError}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Expanded view - single full-width card */}
       {expandedPlan ? (
         <ExpandedPlanCard
           plan={expandedPlan}
           isSelected={selectedTier === expandedTier}
+          isSelectable={isPlanSelectable(expandedPlan)}
           onSelect={handleSelectInExpanded}
           onCollapse={() => setExpandedTier(null)}
           onConfirm={handleConfirm}
@@ -462,7 +514,8 @@ export function PlanSelector({ plans, onSelect, className }: PlanSelectorProps) 
                   key={`${normalizedTier}-${index}`}
                   plan={plan}
                   isSelected={selectedTier === normalizedTier}
-                  onSelect={() => setSelectedTier(normalizedTier)}
+                  isSelectable={isPlanSelectable(plan)}
+                  onSelect={() => handleSelectPlan(plan, normalizedTier)}
                   onExpand={() => setExpandedTier(normalizedTier)}
                 />
               )
