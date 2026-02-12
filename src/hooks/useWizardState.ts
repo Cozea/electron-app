@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { normalizeGeneratedPlan } from '../lib/plan'
+import { getDefaultWebBuildContract, normalizeGeneratedPlan, type BuildContract, type TargetPlatform } from '../lib/plan'
 import type { Id } from '../../convex/_generated/dataModel'
 import {
   Sparkles,
@@ -130,6 +130,8 @@ export interface WizardState {
 
   // Generated plan
   generatedPlan?: WizardGeneratedPlan
+  targetPlatform: TargetPlatform
+  buildContract: BuildContract
 
   // Build state
   isSaving: boolean
@@ -216,6 +218,8 @@ const DEFAULT_STATE: WizardState = {
   sourceControl: DEFAULT_SOURCE_CONTROL,
   visuals: DEFAULT_VISUALS,
   team: [],
+  targetPlatform: 'web',
+  buildContract: getDefaultWebBuildContract(),
   isSaving: false,
   isGenerating: false,
   isBuilding: false,
@@ -398,6 +402,8 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
           stack: state.stack,
           sourceControl: state.sourceControl,
           visuals: state.visuals,
+          targetPlatform: state.targetPlatform,
+          buildContract: state.buildContract,
           originalPrompt: effectivePrompt,
           promptSettings: effectiveSettings,
         })
@@ -413,6 +419,8 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
           audience: state.intent.audience || undefined,
           targetLaunchDate: state.intent.targetLaunchDate,
           template: state.template || undefined,
+          targetPlatform: state.targetPlatform,
+          buildContract: state.buildContract,
           stack: state.stack,
           sourceControl: state.sourceControl,
           visuals: state.visuals,
@@ -437,6 +445,8 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
     state.path,
     state.intent,
     state.template,
+    state.targetPlatform,
+    state.buildContract,
     state.stack,
     state.sourceControl,
     state.visuals,

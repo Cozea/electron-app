@@ -1,6 +1,10 @@
 import { ipcMain } from 'electron'
 import * as pty from 'node-pty'
 import * as fs from 'node:fs'
+import path from 'node:path'
+import { createRuntimeEnv } from '../runtime/runtimeEnv'
+import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
+import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
 
 export interface TerminalProfile {
     id: string
@@ -51,6 +55,40 @@ const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 500
+const SPAWN_HELPER_EXEC_MODE = 0o755
+
+const spawnHelperFixCache = new Map<string, boolean>()
+
+function getNodePtySpawnHelperCandidates(): string[] {
+    const target = `${process.platform}-${process.arch}`
+    const appRoot = process.env.APP_ROOT || process.cwd()
+    return [
+        path.join(appRoot, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+        path.join(process.resourcesPath, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+    ]
+}
+
+function ensureNodePtySpawnHelperExecutable(): void {
+    if (process.platform === 'win32') return
+    const cacheKey = `${process.platform}-${process.arch}`
+    if (spawnHelperFixCache.get(cacheKey)) return
+
+    for (const candidate of getNodePtySpawnHelperCandidates()) {
+        try {
+            if (!fs.existsSync(candidate)) continue
+            const stat = fs.statSync(candidate)
+            const hasExecBit = (stat.mode & 0o111) !== 0
+            if (!hasExecBit) {
+                fs.chmodSync(candidate, SPAWN_HELPER_EXEC_MODE)
+            }
+            spawnHelperFixCache.set(cacheKey, true)
+            return
+        } catch {
+            // Continue trying other candidate paths.
+        }
+    }
+}
 
 function truncateTerminalOutput(output: string): string {
     if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
@@ -191,13 +229,29 @@ export class TerminalService {
                 const cols = options.cols || 80
                 const rows = options.rows || 24
                 const cwd = options.cwd || options.projectPath
+                if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+                    return { success: false, error: `Terminal working directory does not exist: ${cwd || '(empty)'}` }
+                }
+
+                ensureNodePtySpawnHelperExecutable()
+                const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+
+                if (profile.id === 'node') {
+                    const ensured = await ensureRuntimeInstalled('node')
+                    if (!ensured.success) {
+                        return { success: false, error: ensured.error ?? 'Node runtime is unavailable.' }
+                    }
+                }
 
                 const ptyProcess = pty.spawn(profile.path, profile.args || [], {
                     name: 'xterm-256color',
                     cols,
                     rows,
                     cwd,
-                    env: process.env as Record<string, string>,
+                    env: {
+                        ...runtimeEnv,
+                        ...(profile.env ?? {}),
+                    } as Record<string, string>,
                 })
 
                 const terminalId = Math.random().toString(36).substring(2, 15)
@@ -240,7 +294,8 @@ export class TerminalService {
 
                 return { success: true, terminalId }
             } catch (err) {
-                return { success: false, error: err instanceof Error ? err.message : 'Failed to create terminal' }
+                const detail = err instanceof Error ? err.message : 'Failed to create terminal'
+                return { success: false, error: `Failed to create terminal (profile=${options.profileId ?? 'default'}, path=${options.cwd || options.projectPath}): ${detail}` }
             }
         })
 

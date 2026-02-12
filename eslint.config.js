@@ -11,6 +11,8 @@ export default defineConfig([
     'dist-ssr',
     'out',
     'node_modules',
+    'build/runtime/packs-src',
+    'build/runtime/packs',
     'convex/_generated',
     'server/dist',
     '**/* 2.ts',

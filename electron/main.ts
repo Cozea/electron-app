@@ -24,6 +24,7 @@ import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
+import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
 import { loadSyncState } from './services/syncReplicaStore'
@@ -503,6 +504,8 @@ registerSettingsStorageHandlers(ipcMain, {
 registerProjectHandlers(ipcMain, {
   loadSettings,
 })
+
+registerRuntimeHandlers(ipcMain)
 
 registerSyncHandlers(ipcMain)
 

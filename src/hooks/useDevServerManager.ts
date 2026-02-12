@@ -70,6 +70,9 @@ export function useDevServerManager({
     try {
       // Get dev server config (command and port)
       const config = await getDevServerConfig(projectPath)
+      if (config.requiresUserSelection) {
+        throw new Error('Dev server command selection is required. Open Project Pages and choose a command first.')
+      }
       expectedPortRef.current = config.port
 
       console.log('[DevServer] Starting with config:', config)

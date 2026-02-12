@@ -689,6 +689,21 @@ export default defineSchema({
 
     // Template & Stack
     template: v.optional(v.string()),
+    // Current release supports web only.
+    // Reserved for future use (not yet enabled): desktop, mobile.
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()), // supabase, convex, firebase, postgres
@@ -995,6 +1010,19 @@ export default defineSchema({
             name: v.optional(v.string()),
             description: v.optional(v.string()),
             audience: v.optional(v.string()),
+            targetPlatform: v.optional(v.union(v.literal("web"))),
+            buildContract: v.optional(
+              v.object({
+                previewMode: v.union(v.literal("web")),
+                frameworkClass: v.union(v.literal("web-framework")),
+                toolchain: v.optional(v.any()),
+                commands: v.optional(v.any()),
+                constraints: v.optional(v.any()),
+                fallbackPolicy: v.optional(v.any()),
+                successCriteria: v.optional(v.any()),
+                telemetryHints: v.optional(v.any()),
+              })
+            ),
             template: v.optional(v.string()),
             stack: v.optional(
               v.object({

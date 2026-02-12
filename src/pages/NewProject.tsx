@@ -27,7 +27,7 @@ import {
 import { useWizardState, type CreationPath } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { normalizeGeneratedPlan } from '../lib/plan'
+import { getDefaultWebBuildContract, normalizeGeneratedPlan, validateWebOnlyPlanConfig } from '../lib/plan'
 import {
   detectFramework,
   detectPackageManager,
@@ -688,6 +688,12 @@ export function NewProject() {
       return
     }
 
+    const webOnlyValidation = validateWebOnlyPlanConfig(plan.config)
+    if (!webOnlyValidation.valid) {
+      alert(`Current builder supports web projects only. ${webOnlyValidation.error ?? ''}`.trim())
+      return
+    }
+
     console.log('[NewProject] Creating project with promptSettings:', conversationPromptSettings)
 
     try {
@@ -700,6 +706,8 @@ export function NewProject() {
         description: plan.config.description,
         audience: plan.config.audience,
         template: plan.config.template,
+        targetPlatform: plan.config.targetPlatform,
+        buildContract: plan.config.buildContract ?? getDefaultWebBuildContract(),
         stack: plan.config.stack,
         sourceControl: plan.config.sourceControl,
         visuals: plan.config.visuals,
@@ -721,6 +729,8 @@ export function NewProject() {
         projectId: result.projectId,
         plan: generatedPlan,
         selectedPlanTier: plan.tier,
+        targetPlatform: plan.config.targetPlatform,
+        buildContract: plan.config.buildContract ?? getDefaultWebBuildContract(),
       })
 
       // Navigate to build page with the new project
@@ -1248,7 +1258,7 @@ export function NewProject() {
       }
       setRepoSource({ ...baseRepoSource, ...partial })
     },
-    [setRepoSource, state.repoSource]
+    [setRepoSource, state]
   )
 
   const browseLocalRepoFolder = useCallback(async () => {

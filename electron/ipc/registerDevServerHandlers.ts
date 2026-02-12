@@ -1,5 +1,8 @@
 import type { BrowserWindow, IpcMain } from 'electron'
 import * as pty from 'node-pty'
+import { createRuntimeEnv } from '../runtime/runtimeEnv'
+import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
+import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 
 interface RegisterDevServerHandlersDeps {
   devServerProcesses: Map<string, pty.IPty>
@@ -34,20 +37,41 @@ export function registerDevServerHandlers(
       }
 
       try {
+        const resolved = resolveCommandWithRuntime(command)
+        if (resolved.status === 'failed') {
+          return { success: false, error: resolved.error || 'Command is not supported in this release.' }
+        }
+        if (resolved.status === 'needs_user_approval') {
+          return {
+            success: false,
+            error: resolved.approvalPayload?.reason || resolved.error || 'Command requires user approval before execution.',
+          }
+        }
+        if (resolved.runtime) {
+          const ensured = await ensureRuntimeInstalled(resolved.runtime)
+          if (!ensured.success) {
+            return { success: false, error: ensured.error || `Runtime ${resolved.runtime} is unavailable.` }
+          }
+        }
+
         console.log(`[DevServer] Starting PTY: ${command} in ${projectPath} (${cols}x${rows})`)
         const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
+        const runtimeEnv = createRuntimeEnv(
+          getRuntimePathPrefixes(),
+          {
+            ...process.env,
+            PORT: String(port),
+            FORCE_COLOR: '1',
+            TERM: 'xterm-256color',
+          }
+        )
 
         const ptyProcess = pty.spawn(shell, ['-c', command], {
           name: 'xterm-256color',
           cols,
           rows,
           cwd: projectPath,
-          env: {
-            ...process.env,
-            PORT: String(port),
-            FORCE_COLOR: '1',
-            TERM: 'xterm-256color',
-          } as Record<string, string>,
+          env: runtimeEnv as Record<string, string>,
         })
 
         deps.devServerProcesses.set(projectPath, ptyProcess)

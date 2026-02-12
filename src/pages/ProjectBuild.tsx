@@ -176,23 +176,21 @@ export function ProjectBuild() {
   // Preview panel state
   const [showPreview, setShowPreview] = useState(true)
 
-  // Detect when npm install completes by checking build tasks
-  const npmInstallComplete = useMemo(() => {
+  // Detect when dependency installation completes by checking build tasks.
+  const dependencyInstallComplete = useMemo(() => {
     if (buildTasks.length === 0) return false
-    // Look for completed install dependency tasks
     return buildTasks.some(
       (task) =>
         task.status === 'completed' &&
         (task.content.toLowerCase().includes('install') ||
-          task.content.toLowerCase().includes('dependencies') ||
-          task.content.toLowerCase().includes('npm'))
+          task.content.toLowerCase().includes('dependencies'))
     )
   }, [buildTasks])
 
-  // Dev server manager - starts automatically when npm install completes
+  // Dev server manager starts after dependency installation completes.
   const devServer = useDevServerManager({
-    projectPath: npmInstallComplete ? localPath : null,
-    autoStart: npmInstallComplete && isAIGenerating,
+    projectPath: dependencyInstallComplete ? localPath : null,
+    autoStart: dependencyInstallComplete && isAIGenerating,
   })
 
   useEffect(() => {

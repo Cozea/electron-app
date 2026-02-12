@@ -5,6 +5,8 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
+import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+
 export type Framework =
   | 'nextjs'
   | 'remix'
@@ -324,20 +326,63 @@ export async function getDevServerConfig(
   projectPath: string,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
-): Promise<{ command: string; port: number; label: string }> {
+): Promise<{
+  command: string
+  port: number
+  label: string
+  suggestions: DevCommandSuggestion[]
+  requiresUserSelection: boolean
+}> {
+  let suggestions: DevCommandSuggestion[] = []
+  let requiresUserSelection = false
+
+  try {
+    const profile = await window.electronAPI.runtime.getProjectCapabilities({ projectPath })
+    suggestions = profile?.devServer?.suggestions ?? []
+    requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
+  } catch {
+    suggestions = []
+    requiresUserSelection = false
+  }
+
+  const inferPortFromCommand = (command: string, fallbackPort: number): number => {
+    const match = command.match(/--port[=\s]+(\d+)|-p[=\s]+(\d+)|localhost:(\d+)/i)
+    const parsed = Number.parseInt(match?.[1] || match?.[2] || match?.[3] || '', 10)
+    return Number.isFinite(parsed) ? parsed : fallbackPort
+  }
+
   if (storedDevCommand && storedDevPort) {
     return {
       command: storedDevCommand,
       port: storedDevPort,
       label: inferDevServerLabelFromCommand(storedDevCommand),
+      suggestions,
+      requiresUserSelection: false,
+    }
+  }
+
+  const selectedSuggestion = suggestions.find((suggestion) => suggestion.confidence >= 0.8)
+  if (selectedSuggestion) {
+    const fallbackPort = 3000
+    return {
+      command: selectedSuggestion.command,
+      port: inferPortFromCommand(selectedSuggestion.command, fallbackPort),
+      label: inferDevServerLabelFromCommand(selectedSuggestion.command),
+      suggestions,
+      requiresUserSelection: false,
     }
   }
 
   const info = await detectFramework(projectPath)
+  const fallbackCommand = suggestions[0]?.command ?? info.devCommand
+  const fallbackPort = inferPortFromCommand(fallbackCommand, info.devPort)
+
   return {
-    command: info.devCommand,
-    port: info.devPort,
+    command: fallbackCommand,
+    port: fallbackPort,
     label: info.displayName === 'Unknown' ? 'Dev Server' : `${info.displayName} Dev`,
+    suggestions,
+    requiresUserSelection,
   }
 }
 

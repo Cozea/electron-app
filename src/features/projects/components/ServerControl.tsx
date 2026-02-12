@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
+import type { DevCommandSuggestion } from "@shared/electronApiTypes"
 import {
     getDevServerConfig,
     detectPackageManager,
@@ -12,6 +13,7 @@ import {
     hasPackageJson,
 } from "@/utils/projectDetector"
 import { useProblemsStore, type ProblemSeverity } from "@/stores/useProblemsStore"
+import { DevCommandPickerDialog } from "./DevCommandPickerDialog"
 
 const stripAnsi = (input: string) =>
     // eslint-disable-next-line no-control-regex
@@ -38,6 +40,17 @@ const isProblemHeader = (line: string) =>
 const formatTerminalTabTitle = (label: string, port: number | null | undefined) =>
     port ? `${label} · localhost:${port}` : label
 
+const getPersistedDevCommand = (projectPath: string): string | null => {
+    const key = `dev-command:${encodeURIComponent(projectPath)}`
+    const raw = localStorage.getItem(key)
+    return raw?.trim() || null
+}
+
+const persistDevCommand = (projectPath: string, command: string) => {
+    const key = `dev-command:${encodeURIComponent(projectPath)}`
+    localStorage.setItem(key, command.trim())
+}
+
 interface ServerControlProps {
     projectPath?: string | null
     // Optional stored framework info from Convex (uses detection as fallback)
@@ -51,6 +64,10 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const terminals = useTerminalStore((state) => state.terminals)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
+    const [showCommandPicker, setShowCommandPicker] = useState(false)
+    const [commandSuggestions, setCommandSuggestions] = useState<DevCommandSuggestion[]>([])
+    const [commandPickerDefault, setCommandPickerDefault] = useState<string | undefined>(undefined)
+    const pendingCommandSelectionRef = useRef<{ label: string; port: number } | null>(null)
 
     // Track the dev server terminal ID
     const devServerTerminalIdRef = useRef<string | null>(null)
@@ -295,6 +312,75 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
     }, [actions, clearReadyTimeout, updateTerminalDisplay, updateTerminalStatus, reportProblemsFromOutput])
 
+    const launchDevServerTerminal = useCallback(async (
+        projectPathValue: string,
+        baseCommand: string,
+        config: { label: string; port: number }
+    ) => {
+        // Check if we need to install dependencies first
+        let command = baseCommand
+        const hasPackage = await hasPackageJson(projectPathValue)
+        if (hasPackage) {
+            const pm = await detectPackageManager(projectPathValue)
+            const depsInstalled = await checkDependenciesInstalled(projectPathValue, pm)
+            if (!depsInstalled) {
+                const installCmd = getInstallCommand(pm)
+                command = `${installCmd} && ${baseCommand}`
+                console.log(`[DevServer] Dependencies missing, will run: ${command}`)
+            }
+        }
+
+        const result = await window.electronAPI.terminal.create({
+            projectPath: projectPathValue,
+            cols: 80,
+            rows: 24,
+        })
+
+        if (!result.success || !result.terminalId) {
+            throw new Error(result.error || 'Failed to create dev server terminal')
+        }
+
+        devServerTerminalIdRef.current = result.terminalId
+        devServerProjectPathRef.current = projectPathValue
+
+        devServerLabelRef.current = config.label
+        addTerminal({
+            id: result.terminalId,
+            profileId: 'dev-server',
+            profileName: config.label,
+            projectPath: projectPathValue,
+            label: config.label,
+            kind: 'dev-server',
+            command,
+            port: config.port,
+            nameSource: 'auto',
+            title: formatTerminalTabTitle(config.label, config.port),
+            status: 'starting',
+            hasOutput: false,
+        })
+
+        setPanelOpen(true)
+
+        setTimeout(() => {
+            void window.electronAPI.terminal.input({
+                terminalId: result.terminalId!,
+                data: `${command}\r`
+            })
+        }, 100)
+
+        actions.setServerPort(config.port)
+
+        const timeout = command.includes('install') ? 120000 : 15000
+        clearReadyTimeout()
+        readyTimeoutRef.current = setTimeout(() => {
+            const currentStatus = useProjectPagesStore.getState().serverStatus
+            if (currentStatus === 'starting') {
+                console.log('[DevServer] Timeout: assuming server is ready')
+                actions.setServerStatus('running')
+            }
+        }, timeout)
+    }, [actions, addTerminal, clearReadyTimeout, setPanelOpen])
+
     const handleStart = useCallback(async () => {
         if (!projectPath) return
 
@@ -303,80 +389,23 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             actions.setServerStatus('starting')
             actions.clearServerOutput()
 
-            // Get dev server config (uses stored values or detects from package.json)
             const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
+            const persistedCommand = getPersistedDevCommand(projectPath)
+            const selectedCommand = persistedCommand || config.command
 
-            // Check if we need to install dependencies first
-            let command = config.command
-            const hasPackage = await hasPackageJson(projectPath)
-            if (hasPackage) {
-                const pm = await detectPackageManager(projectPath)
-                const depsInstalled = await checkDependenciesInstalled(projectPath, pm)
-                if (!depsInstalled) {
-                    // Chain install + dev command so both run in the same terminal
-                    const installCmd = getInstallCommand(pm)
-                    command = `${installCmd} && ${config.command}`
-                    console.log(`[DevServer] Dependencies missing, will run: ${command}`)
-                }
+            if (!persistedCommand && config.requiresUserSelection) {
+                pendingCommandSelectionRef.current = { label: config.label, port: config.port }
+                setCommandSuggestions(config.suggestions)
+                setCommandPickerDefault(selectedCommand)
+                setShowCommandPicker(true)
+                actions.setServerStatus('stopped')
+                return
             }
 
-            // Create a terminal for the dev server
-            const result = await window.electronAPI.terminal.create({
-                projectPath,
-                cols: 80,
-                rows: 24,
+            await launchDevServerTerminal(projectPath, selectedCommand, {
+                label: config.label,
+                port: config.port,
             })
-
-            if (result.success && result.terminalId) {
-                devServerTerminalIdRef.current = result.terminalId
-                devServerProjectPathRef.current = projectPath
-
-                // Add terminal to store with dev server title
-                devServerLabelRef.current = config.label
-                addTerminal({
-                    id: result.terminalId,
-                    profileId: 'dev-server',
-                    profileName: config.label,
-                    projectPath,
-                    label: config.label,
-                    kind: 'dev-server',
-                    command,
-                    port: config.port,
-                    nameSource: 'auto',
-                    title: formatTerminalTabTitle(config.label, config.port),
-                    status: 'starting',
-                    hasOutput: false,
-                })
-
-                // Open the terminal panel
-                setPanelOpen(true)
-
-                // Send the command to the terminal
-                // Small delay to ensure terminal is ready
-                setTimeout(() => {
-                    window.electronAPI.terminal.input({
-                        terminalId: result.terminalId!,
-                        data: `${command}\r`
-                    })
-                }, 100)
-
-                actions.setServerPort(config.port)
-
-                // Set a timeout fallback in case ready patterns don't match
-                // Use longer timeout if installing dependencies
-                const timeout = command.includes('install') ? 120000 : 15000
-                clearReadyTimeout()
-                readyTimeoutRef.current = setTimeout(() => {
-                    const currentStatus = useProjectPagesStore.getState().serverStatus
-                    if (currentStatus === 'starting') {
-                        console.log('[DevServer] Timeout: assuming server is ready')
-                        actions.setServerStatus('running')
-                    }
-                }, timeout)
-            } else {
-                actions.setServerStatus('error')
-                actions.addServerOutput(`Error: ${result.error}\n`)
-            }
         } catch (e) {
             console.error(e)
             actions.setServerStatus('error')
@@ -384,7 +413,35 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         } finally {
             setIsUpdating(false)
         }
-    }, [projectPath, storedDevCommand, storedDevPort, actions, clearReadyTimeout, addTerminal, setPanelOpen])
+    }, [
+        actions,
+        launchDevServerTerminal,
+        projectPath,
+        storedDevCommand,
+        storedDevPort,
+    ])
+
+    const handleCommandPickerConfirm = useCallback(async (command: string) => {
+        if (!projectPath) return
+        const pending = pendingCommandSelectionRef.current
+        if (!pending) return
+
+        try {
+            setShowCommandPicker(false)
+            setIsUpdating(true)
+            actions.setServerStatus('starting')
+            actions.clearServerOutput()
+            persistDevCommand(projectPath, command)
+            await launchDevServerTerminal(projectPath, command, pending)
+        } catch (e) {
+            console.error(e)
+            actions.setServerStatus('error')
+            actions.addServerOutput(`Error: ${e instanceof Error ? e.message : 'Failed to start server'}\n`)
+        } finally {
+            pendingCommandSelectionRef.current = null
+            setIsUpdating(false)
+        }
+    }, [actions, launchDevServerTerminal, projectPath])
 
     // Auto-start dev server when entering the pages page (runs after handleStart is defined)
     const hasAutoStartedRef = useRef(false)
@@ -427,40 +484,57 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     }, [actions, clearReadyTimeout, removeTerminal])
 
     return (
-        <div className="flex items-center gap-2">
-            {serverStatus === 'stopped' || serverStatus === 'error' || serverStatus === 'starting' ? (
-                <Tooltip>
-                    <TooltipTrigger asChild>
+        <>
+            <DevCommandPickerDialog
+                open={showCommandPicker}
+                defaultCommand={commandPickerDefault}
+                suggestions={commandSuggestions}
+                onOpenChange={(open) => {
+                    setShowCommandPicker(open)
+                    if (!open) {
+                        pendingCommandSelectionRef.current = null
+                    }
+                }}
+                onConfirm={(command) => {
+                    void handleCommandPickerConfirm(command)
+                }}
+            />
+
+            <div className="flex items-center gap-2">
+                {serverStatus === 'stopped' || serverStatus === 'error' || serverStatus === 'starting' ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
+                                onClick={handleStart}
+                                disabled={isUpdating || !projectPath}
+                            >
+                                {isUpdating || serverStatus === 'starting' ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Play className="h-4 w-4 ml-0.5 fill-current" />
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Start Dev Server</TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <div className="flex items-center">
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
-                            onClick={handleStart}
-                            disabled={isUpdating || !projectPath}
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
+                            onClick={handleStop}
+                            title="Stop server"
+                            disabled={isUpdating}
                         >
-                            {isUpdating || serverStatus === 'starting' ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Play className="h-4 w-4 ml-0.5 fill-current" />
-                            )}
+                            <Square className="h-3.5 w-3.5 fill-current" />
                         </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Start Dev Server</TooltipContent>
-                </Tooltip>
-            ) : (
-                <div className="flex items-center">
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
-                        onClick={handleStop}
-                        title="Stop server"
-                        disabled={isUpdating}
-                    >
-                        <Square className="h-3.5 w-3.5 fill-current" />
-                    </Button>
-                </div>
-            )}
-        </div>
+                    </div>
+                )}
+            </div>
+        </>
     )
 }
