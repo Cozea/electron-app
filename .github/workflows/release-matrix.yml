@@ -29,7 +29,7 @@ jobs:
             bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
-            runs_on: macos-13
+            runs_on: macos-15-intel
             electron_target: mac
             arch: x64
             bundle_targets: darwin-x64
