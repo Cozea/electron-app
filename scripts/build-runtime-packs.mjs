@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -148,6 +149,38 @@ async function buildArchiveFromDirectory(sourceDir, archivePath, rootName) {
   }
 }
 
+async function pruneNamedDirectories(rootDir, directoryName) {
+  if (!(await exists(rootDir))) return
+  const entries = await readdir(rootDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const entryPath = path.join(rootDir, entry.name)
+    if (entry.name === directoryName) {
+      await rm(entryPath, { recursive: true, force: true })
+      continue
+    }
+    await pruneNamedDirectories(entryPath, directoryName)
+  }
+}
+
+async function prepareArchiveSource(runtime, runtimeSourceDir) {
+  if (runtime !== 'go') {
+    return {
+      sourceDir: runtimeSourceDir,
+      cleanup: async () => {},
+    }
+  }
+
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'cozea-go-pack-'))
+  const stagedDir = path.join(tempDir, path.basename(runtimeSourceDir))
+  await cp(runtimeSourceDir, stagedDir, { recursive: true, force: true, dereference: true })
+  await pruneNamedDirectories(path.join(stagedDir, 'src'), 'testdata')
+  return {
+    sourceDir: stagedDir,
+    cleanup: async () => rm(tempDir, { recursive: true, force: true }),
+  }
+}
+
 async function main() {
   parseRequestedTargets()
   const selectedTargets = getRequestedTargets()
@@ -182,7 +215,16 @@ async function main() {
 
       const archiveName = `runtime-pack-${runtime}-${target.id}.tar.gz`
       const archivePath = path.join(targetArchiveRoot, archiveName)
-      await buildArchiveFromDirectory(runtimeSourceDir, archivePath, path.basename(runtimeSourceDir))
+      const archiveSource = await prepareArchiveSource(runtime, runtimeSourceDir)
+      try {
+        await buildArchiveFromDirectory(
+          archiveSource.sourceDir,
+          archivePath,
+          path.basename(archiveSource.sourceDir)
+        )
+      } finally {
+        await archiveSource.cleanup()
+      }
 
       const archivePayload = await readFile(archivePath)
       const entry = {

@@ -42,7 +42,7 @@ module.exports = {
     {
       from: "build/runtime",
       to: "runtime",
-      filter: ["**/*"],
+      filter: ["**/*", "!packs-src/**/*"],
     },
   ],
   mac: {

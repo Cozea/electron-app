@@ -5,6 +5,7 @@ import {
   LogOut,
   Palette,
   HardDrive,
+  Terminal,
 } from "lucide-react"
 
 import {
@@ -137,6 +138,12 @@ export function NavUser({
                 <Link to="/settings/storage">
                   <HardDrive className="mr-2 h-4 w-4" />
                   Storage
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/settings/tooling">
+                  <Terminal className="mr-2 h-4 w-4" />
+                  Tooling
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>

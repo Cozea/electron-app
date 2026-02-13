@@ -33,6 +33,7 @@ const Sync = lazy(() => import('./pages/workspace/Sync').then(m => ({ default: m
 const Account = lazy(() => import('./pages/settings/Account').then(m => ({ default: m.Account })))
 const Appearance = lazy(() => import('./pages/settings/Appearance').then(m => ({ default: m.Appearance })))
 const Storage = lazy(() => import('./pages/settings/Storage').then(m => ({ default: m.Storage })))
+const Tooling = lazy(() => import('./pages/settings/Tooling').then(m => ({ default: m.Tooling })))
 const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })))
 const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })))
 import { TooltipProvider } from './components/ui/tooltip'
@@ -159,6 +160,7 @@ function AppContent() {
         {/* Personal Settings */}
         <Route path="/settings/account" element={<Account />} />
         <Route path="/settings/appearance" element={<Appearance />} />
+        <Route path="/settings/tooling" element={<Tooling />} />
         <Route path="/settings/storage" element={<Storage />} />
 
         {/* Invitation */}

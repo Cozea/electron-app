@@ -195,7 +195,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('runtime:detectProjectRuntime', options),
     ensureForCommand: (options: { projectPath: string; command: string }) =>
       ipcRenderer.invoke('runtime:ensureForCommand', options),
-    ensureRuntime: (options: { runtime: RuntimeKind; target?: string }) =>
+    ensureRuntime: (options: {
+      runtime: RuntimeKind
+      target?: string
+      cleanBrokenLocalFiles?: boolean
+      forceReinstall?: boolean
+    }) =>
       ipcRenderer.invoke('runtime:ensureRuntime', options),
     getRuntimeStatus: (options?: { projectPath?: string }) =>
       ipcRenderer.invoke('runtime:getRuntimeStatus', options ?? {}),

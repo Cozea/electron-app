@@ -91,9 +91,23 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     return ensureRuntimeInstalled(intent.runtime)
   })
 
-  ipcMain.handle('runtime:ensureRuntime', async (_event, options: { runtime: RuntimeKind; target?: string }) => {
-    return ensureRuntimeInstalled(options.runtime, options.target ?? getRuntimeTarget())
-  })
+  ipcMain.handle(
+    'runtime:ensureRuntime',
+    async (
+      _event,
+      options: {
+        runtime: RuntimeKind
+        target?: string
+        cleanBrokenLocalFiles?: boolean
+        forceReinstall?: boolean
+      }
+    ) => {
+      return ensureRuntimeInstalled(options.runtime, options.target ?? getRuntimeTarget(), {
+        cleanBrokenLocalFiles: options.cleanBrokenLocalFiles,
+        forceReinstall: options.forceReinstall,
+      })
+    }
+  )
 
   ipcMain.handle('runtime:getRuntimeStatus', async (_event, _options?: { projectPath?: string }) => {
     return {
@@ -102,4 +116,3 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
     }
   })
 }
-
