@@ -15,19 +15,7 @@ interface QueuedUpdate {
   attempts: number
 }
 
-/**
- * Queued file deletion waiting to be sent to Convex.
- */
-interface QueuedDelete {
-  id: string
-  projectId: string
-  filePaths: string[]
-  timestamp: number
-  attempts: number
-}
-
 const UPDATE_STORAGE_KEY = 'cozea:yjs-update-queue'
-const DELETE_STORAGE_KEY = 'cozea:yjs-delete-queue'
 const MAX_RETRIES = 5
 const BASE_DELAY_MS = 1000
 
@@ -71,23 +59,6 @@ export class YjsOfflineQueue {
   }
 
   /**
-   * Add file deletions to the queue.
-   * Called when a Convex mutation for deletion fails.
-   */
-  enqueueDelete(filePaths: string[]): void {
-    const queue = this.loadDeleteQueue()
-    queue.push({
-      id: crypto.randomUUID(),
-      projectId: this.projectId,
-      filePaths,
-      timestamp: Date.now(),
-      attempts: 0,
-    })
-    this.saveDeleteQueue(queue)
-    console.log(`[OfflineQueue] Queued delete for ${filePaths.length} files`)
-  }
-
-  /**
    * Process all queued updates, retrying failed mutations.
    * Should be called when connection is restored.
    */
@@ -97,7 +68,6 @@ export class YjsOfflineQueue {
 
     try {
       await this.processUpdateQueue()
-      await this.processDeleteQueue()
     } finally {
       this.isProcessing = false
     }
@@ -150,66 +120,12 @@ export class YjsOfflineQueue {
     this.saveUpdateQueue(remaining)
   }
 
-  private async processDeleteQueue(): Promise<void> {
-    const queue = this.loadDeleteQueue()
-    const remaining: QueuedDelete[] = []
-
-    for (const item of queue) {
-      if (item.projectId !== this.projectId) {
-        remaining.push(item)
-        continue
-      }
-
-      try {
-        await this.convex.mutation(api.projectFiles.markFilesDeleted, {
-          projectId: item.projectId as Id<'projects'>,
-          filePaths: item.filePaths,
-        })
-
-        console.log(`[OfflineQueue] Sent queued delete for ${item.filePaths.length} files`)
-
-        // Create tombstones for conflict detection
-        for (const filePath of item.filePaths) {
-          try {
-            await this.convex.mutation(api.fileTombstones.createTombstone, {
-              projectId: item.projectId as Id<'projects'>,
-              filePath,
-            })
-          } catch (tombstoneErr) {
-            // Tombstone creation is best-effort
-            console.warn(`[OfflineQueue] Failed to create tombstone for ${filePath}:`, tombstoneErr)
-          }
-        }
-      } catch (err) {
-        item.attempts++
-        if (item.attempts < MAX_RETRIES) {
-          remaining.push(item)
-          console.warn(
-            `[OfflineQueue] Retry ${item.attempts}/${MAX_RETRIES} for delete:`,
-            err
-          )
-          await this.delay(BASE_DELAY_MS * Math.pow(2, item.attempts))
-        } else {
-          console.error(
-            `[OfflineQueue] Dropping delete ${item.id} after ${MAX_RETRIES} retries`
-          )
-        }
-      }
-    }
-
-    this.saveDeleteQueue(remaining)
-  }
-
   /**
    * Get the number of pending updates for this project.
    */
   getPendingCount(): number {
     const updateQueue = this.loadUpdateQueue()
-    const deleteQueue = this.loadDeleteQueue()
-    return (
-      updateQueue.filter((q) => q.projectId === this.projectId).length +
-      deleteQueue.filter((q) => q.projectId === this.projectId).length
-    )
+    return updateQueue.filter((q) => q.projectId === this.projectId).length
   }
 
   /**
@@ -235,23 +151,6 @@ export class YjsOfflineQueue {
       localStorage.setItem(UPDATE_STORAGE_KEY, JSON.stringify(queue))
     } catch (err) {
       console.error('[OfflineQueue] Failed to save update queue:', err)
-    }
-  }
-
-  private loadDeleteQueue(): QueuedDelete[] {
-    try {
-      const raw = localStorage.getItem(DELETE_STORAGE_KEY)
-      return raw ? JSON.parse(raw) : []
-    } catch {
-      return []
-    }
-  }
-
-  private saveDeleteQueue(queue: QueuedDelete[]): void {
-    try {
-      localStorage.setItem(DELETE_STORAGE_KEY, JSON.stringify(queue))
-    } catch (err) {
-      console.error('[OfflineQueue] Failed to save delete queue:', err)
     }
   }
 

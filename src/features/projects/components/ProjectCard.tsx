@@ -124,12 +124,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [localPath, setLocalPath] = useState<string | null>(null)
 
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
-
     // Get preview image URL
     const previewImageUrl = useQuery(
         api.projects.getPreviewImageUrl,
@@ -198,23 +192,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
-                    projectPath: effectiveLocalPath,
-                    debugSource: `project-card:${project._id}`,
-                })
-
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
-                    setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
-                    // Let the actual sync happen after navigation
-                }
-            }
-
             // Navigate to project
             setSyncState('ready')
             setSyncMessage('Opening project...')
@@ -241,7 +218,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath])
+    }, [project, userId, navigate, updateMemberLocalPath])
 
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return

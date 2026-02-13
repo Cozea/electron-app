@@ -2,6 +2,7 @@ import { cronJobs } from "convex/server"
 import { internal } from "./_generated/api"
 
 const crons = cronJobs()
+const internalAny = internal as unknown as Record<string, Record<string, unknown>>
 
 // Clean up expired invitations every hour
 crons.interval(
@@ -44,6 +45,22 @@ crons.cron(
   "cleanup expired tombstones",
   "0 5 * * *",
   internal.fileTombstones.cleanupAllExpiredTombstones
+)
+
+// Cleanup stale Git replica session/lock metadata (daily at 5:30 AM UTC)
+crons.cron(
+  "cleanup replica metadata",
+  "30 5 * * *",
+  internalAny.projectReplicaGit
+    .cleanupReplicaMetadata as Parameters<typeof crons.cron>[2]
+)
+
+// Cleanup stale LFS metadata records with missing backing blobs (daily at 6:00 AM UTC)
+crons.cron(
+  "cleanup replica lfs metadata",
+  "0 6 * * *",
+  internalAny.projectReplicaLfs
+    .cleanupStaleLfsMetadata as Parameters<typeof crons.cron>[2]
 )
 
 // ============================================

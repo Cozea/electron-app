@@ -34,6 +34,7 @@ import {
   type SyncHistoryPayload,
   type SyncOpRecord,
 } from '../services/syncReplicaStore'
+import { GitReplicaService } from '../services/gitReplicaService'
 import { getManifestFromWorker, getManifestFromWorkerIncremental } from '../workers/fileOpsManager'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
@@ -66,6 +67,8 @@ function getConflictResolutionPath(): string {
 }
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
+  const gitReplicaService = GitReplicaService.getInstance()
+
   ipcMain.handle(
     'sync:hashFile',
     async (_event, { filePath }: { filePath: string }): Promise<{ hash: string; size: number }> => {
@@ -738,6 +741,93 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         lastSyncAt: Number(lastSyncAt) || Date.now(),
         cloudPaths: Array.isArray(cloudPaths) ? cloudPaths : [],
       })
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitReplicaBootstrap',
+    async (
+      _event,
+      options: {
+        projectId: string
+        projectPath: string
+        sessionId?: string
+      }
+    ) => {
+      return gitReplicaService.bootstrap(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitReplicaPlan',
+    async (
+      _event,
+      options: {
+        projectId: string
+        projectPath: string
+        sessionId?: string
+      }
+    ) => {
+      return gitReplicaService.plan(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitReplicaExecute',
+    async (
+      _event,
+      options: {
+        projectId: string
+        projectPath: string
+        sessionId: string
+        conflictDecisions?: Record<string, 'local' | 'cloud'>
+      }
+    ) => {
+      return gitReplicaService.execute(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitReplicaStatus',
+    async (_event, options: { projectId: string }) => {
+      return gitReplicaService.status(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitReplicaEnqueueSnapshot',
+    async (
+      _event,
+      options: {
+        projectId: string
+        projectPath: string
+        source: 'agent' | 'user' | 'external' | 'remote' | 'system'
+        reason: string
+      }
+    ) => {
+      return gitReplicaService.enqueueSnapshot(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitLfsPutObject',
+    async (
+      _event,
+      options: {
+        projectId: string
+        oid: string
+        size: number
+        contentBase64: string
+      }
+    ) => {
+      return gitReplicaService.putLfsObject(options)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:gitLfsGetObject',
+    async (_event, options: { projectId: string; oid: string }) => {
+      return gitReplicaService.getLfsObject(options)
     }
   )
 }

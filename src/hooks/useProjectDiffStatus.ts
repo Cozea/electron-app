@@ -1,9 +1,5 @@
 import { useEffect } from "react"
-import { useQuery } from "convex/react"
-import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { computeSyncPlan } from "@/lib/sync/syncEngine"
-import type { CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
 import {
   useProjectDiffStore,
   type ProjectDiffStatus,
@@ -31,13 +27,9 @@ export function useProjectDiffStatus({
   const { diffs, setDiffStatus, setChecking } = useProjectDiffStore()
   const diffStatus = diffs[projectSlug]
 
-  const cloudManifest = useQuery(api.projectFiles.getManifestForProject, {
-    projectId,
-  })
-
   useEffect(() => {
     async function checkDiff() {
-      if (!localPath || cloudManifest === undefined) return
+      if (!localPath) return
 
       if (diffStatus?.isChecking) return
       const lastChecked = diffStatus?.lastChecked ?? 0
@@ -49,30 +41,28 @@ export function useProjectDiffStatus({
         const exists = await window.electronAPI.project.pathExists(localPath)
         if (!exists) {
           setDiffStatus(projectSlug, {
-            downloads: cloudManifest.length,
+            downloads: 0,
             uploads: 0,
             conflicts: 0,
           })
           return
         }
 
-        const localResult = await window.electronAPI.sync.getLocalManifest({
+        const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+          projectId: String(projectId),
           projectPath: localPath,
-          debugSource: `project-diff-status:${projectSlug}`,
         })
+        if (!bootstrap.success) {
+          throw new Error(bootstrap.error || "Failed to bootstrap replica")
+        }
 
-        const localFiles: LocalFileEntry[] = localResult.manifest
-        const cloudFiles: CloudFileEntry[] = cloudManifest.map((entry) => ({
-          _id: entry._id,
-          path: entry.path,
-          hash: entry.hash,
-          size: entry.size,
-          version: entry.version,
-          storageId: entry.storageId,
-          uploadedAt: entry.uploadedAt,
-        }))
-
-        const plan = computeSyncPlan(localFiles, cloudFiles, lastSyncAt)
+        const plan = await window.electronAPI.sync.gitReplicaPlan({
+          projectId: String(projectId),
+          projectPath: localPath,
+        })
+        if (!plan.success) {
+          throw new Error(plan.error || "Failed to compute replica plan")
+        }
         setDiffStatus(projectSlug, {
           downloads: plan.downloads.length,
           uploads: plan.uploads.length + plan.cloudDeletes.length,
@@ -87,7 +77,7 @@ export function useProjectDiffStatus({
     }
 
     void checkDiff()
-  }, [cloudManifest, localPath, projectSlug, lastSyncAt, diffStatus?.isChecking, diffStatus?.lastChecked, setChecking, setDiffStatus])
+  }, [localPath, projectId, projectSlug, lastSyncAt, diffStatus?.isChecking, diffStatus?.lastChecked, setChecking, setDiffStatus])
 
   return diffStatus
 }

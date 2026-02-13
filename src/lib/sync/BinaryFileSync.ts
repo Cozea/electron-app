@@ -1,26 +1,16 @@
-import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { SyncCoordinator } from './SyncCoordinator'
 
 /**
- * Binary file extensions that should be synced via Convex storage
- * instead of Yjs text-based CRDT.
+ * Binary file extensions that should be synced via LFS-like blob storage
+ * instead of text-based Yjs CRDT.
  */
 const BINARY_EXTENSIONS = new Set([
-  // Images
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff',
-  // Video
   'mp4', 'webm', 'mov', 'avi', 'mkv',
-  // Audio
   'mp3', 'wav', 'ogg', 'flac', 'm4a',
-  // Documents
   'pdf',
-  // Archives
   'zip', 'tar', 'gz', '7z', 'rar',
-  // Fonts
   'woff', 'woff2', 'ttf', 'otf', 'eot',
-  // Other binary
   'wasm', 'exe', 'dll', 'so', 'dylib',
 ])
 
@@ -30,43 +20,6 @@ const BINARY_EXTENSIONS = new Set([
 export function isBinaryFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   return BINARY_EXTENSIONS.has(ext)
-}
-
-/**
- * Get MIME type for a file path.
- */
-function getMimeType(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
-  const mimeTypes: Record<string, string> = {
-    // Images
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    svg: 'image/svg+xml',
-    ico: 'image/x-icon',
-    bmp: 'image/bmp',
-    // Video
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    mov: 'video/quicktime',
-    // Audio
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    // Documents
-    pdf: 'application/pdf',
-    // Archives
-    zip: 'application/zip',
-    // Fonts
-    woff: 'font/woff',
-    woff2: 'font/woff2',
-    ttf: 'font/ttf',
-    otf: 'font/otf',
-    // Default
-  }
-  return mimeTypes[ext] ?? 'application/octet-stream'
 }
 
 async function sha256FromBytes(bytes: Uint8Array): Promise<string> {
@@ -91,178 +44,67 @@ const UPLOAD_QUEUE_KEY = 'cozea:binary-upload-queue'
 const MAX_RETRIES = 3
 
 /**
- * BinaryFileSync - Syncs binary files (images, videos, etc.) via Convex storage.
- *
- * Binary files are excluded from Yjs text-based sync because:
- * 1. They can't be meaningfully merged as CRDTs
- * 2. They're often large and would bloat the Y.Doc
- * 3. They don't benefit from character-level conflict resolution
- *
- * Instead, we upload them directly to Convex storage and sync metadata.
+ * BinaryFileSync - Syncs binary files through Git replica LFS/object APIs.
  */
 export class BinaryFileSync {
   private projectId: Id<'projects'>
   private projectPath: string
-  private convex: ConvexReactClient
-  private userId: Id<'users'>
-  private syncCoordinator: SyncCoordinator
 
-  constructor(
-    projectId: Id<'projects'>,
-    projectPath: string,
-    convex: ConvexReactClient,
-    userId: Id<'users'>
-  ) {
+  constructor(projectId: Id<'projects'>, projectPath: string) {
     this.projectId = projectId
     this.projectPath = projectPath
-    this.convex = convex
-    this.userId = userId
-    this.syncCoordinator = new SyncCoordinator({
-      projectId,
-      actorId: String(userId),
-      actorType: 'user',
-      source: 'watcher',
-    })
   }
 
   /**
-   * Upload a binary file to Convex storage.
-   * Returns the storage ID for reference.
+   * Upload a binary file as an LFS-like object and enqueue a replica snapshot.
    */
   async uploadBinaryFile(relativePath: string): Promise<string | null> {
     try {
-      // Read the file as base64 from Electron
-      const result = await window.electronAPI.project.readFileBase64({
+      const readResult = await window.electronAPI.project.readFileBase64({
         projectPath: this.projectPath,
         filePath: relativePath,
       })
 
-      if (!result.success || !result.base64) {
+      if (!readResult.success || !readResult.base64) {
         console.error(`[BinaryFileSync] Failed to read file: ${relativePath}`)
         return null
       }
 
-      // Convert base64 to Blob
-      const byteString = atob(result.base64)
+      const byteString = atob(readResult.base64)
       const bytes = new Uint8Array(byteString.length)
       for (let i = 0; i < byteString.length; i++) {
         bytes[i] = byteString.charCodeAt(i)
       }
-      const blob = new Blob([bytes], { type: getMimeType(relativePath) })
-      const checksum = await sha256FromBytes(bytes)
-      await this.syncCoordinator.enqueueOp({
-        kind: 'upsert',
-        path: relativePath,
-        source: 'watcher',
-        actorType: 'user',
-        actorId: String(this.userId),
-        newHash: checksum,
-        isBinary: true,
-        size: blob.size,
+
+      const oid = await sha256FromBytes(bytes)
+      const putResult = await window.electronAPI.sync.gitLfsPutObject({
+        projectId: String(this.projectId),
+        oid,
+        size: bytes.byteLength,
+        contentBase64: readResult.base64,
       })
 
-      // Get upload URL from Convex
-      const uploadUrl = await this.convex.mutation(
-        api.projectFiles.generateUploadUrl,
-        { projectId: this.projectId }
-      )
-
-      // Upload the file
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': blob.type },
-        body: blob,
-      })
-
-      if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`)
+      if (!putResult.success) {
+        throw new Error(putResult.error || 'LFS object upload failed')
       }
 
-      const { storageId } = (await response.json()) as { storageId: Id<'_storage'> }
-
-      // Save metadata to projectFiles
-      await this.convex.mutation(api.projectFiles.saveFile, {
-        projectId: this.projectId,
-        userId: this.userId,
-        storageId,
-        fileName: relativePath.split('/').pop() || relativePath,
-        filePath: relativePath,
-        fileType: blob.type,
-        sizeBytes: blob.size,
-        checksum,
+      const enqueueResult = await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
+        projectId: String(this.projectId),
+        projectPath: this.projectPath,
+        source: 'external',
+        reason: `binary:${relativePath}`,
       })
 
-      console.log(`[BinaryFileSync] Uploaded: ${relativePath}`)
-      return storageId
+      if (!enqueueResult.success) {
+        throw new Error('Failed to enqueue replica snapshot for binary update')
+      }
+
+      console.log(`[BinaryFileSync] Uploaded + enqueued: ${relativePath}`)
+      return oid
     } catch (err) {
       console.error(`[BinaryFileSync] Upload failed for ${relativePath}:`, err)
-      // Queue for retry
       this.enqueueUpload(relativePath)
       return null
-    }
-  }
-
-  /**
-   * Download a binary file from Convex storage to local disk.
-   */
-  async downloadBinaryFile(
-    relativePath: string,
-    storageId: Id<'_storage'>
-  ): Promise<boolean> {
-    try {
-      // Get download URL
-      const url = await this.convex.query(api.projectFiles.getFileUrl, {
-        storageId,
-      })
-
-      if (!url) {
-        console.error(`[BinaryFileSync] No URL for storage ID: ${storageId}`)
-        return false
-      }
-
-      // Download the file
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Download failed with status ${response.status}`)
-      }
-
-      const arrayBuffer = await response.arrayBuffer()
-      const base64 = btoa(
-        String.fromCharCode(...new Uint8Array(arrayBuffer))
-      )
-
-      // Write binary content through sync writer (base64-safe path)
-      const writeResult = await window.electronAPI.sync.writeFiles({
-        projectPath: this.projectPath,
-        files: [
-          {
-            path: relativePath,
-            content: base64,
-            encoding: 'base64',
-          },
-        ],
-      })
-
-      if (writeResult.successCount !== 1) {
-        const failed = writeResult.results.find((entry) => !entry.success)
-        throw new Error(failed?.error ?? 'Write failed')
-      }
-
-      await this.syncCoordinator.enqueueOp({
-        kind: 'upsert',
-        path: relativePath,
-        source: 'remote',
-        actorType: 'system',
-        actorId: 'remote',
-        isBinary: true,
-        size: arrayBuffer.byteLength,
-      })
-
-      console.log(`[BinaryFileSync] Downloaded: ${relativePath}`)
-      return true
-    } catch (err) {
-      console.error(`[BinaryFileSync] Download failed for ${relativePath}:`, err)
-      return false
     }
   }
 
@@ -271,15 +113,15 @@ export class BinaryFileSync {
    */
   private enqueueUpload(filePath: string): void {
     const queue = this.loadUploadQueue()
+    const projectId = String(this.projectId)
 
-    // Don't add duplicates
-    if (queue.some((q) => q.filePath === filePath && q.projectId === this.projectId)) {
+    if (queue.some((q) => q.filePath === filePath && q.projectId === projectId)) {
       return
     }
 
     queue.push({
       id: crypto.randomUUID(),
-      projectId: this.projectId,
+      projectId,
       filePath,
       timestamp: Date.now(),
       attempts: 0,
@@ -295,17 +137,17 @@ export class BinaryFileSync {
   async processQueue(): Promise<void> {
     const queue = this.loadUploadQueue()
     const remaining: QueuedBinaryUpload[] = []
+    const projectId = String(this.projectId)
 
     for (const item of queue) {
-      // Only process items for this project
-      if (item.projectId !== this.projectId) {
+      if (item.projectId !== projectId) {
         remaining.push(item)
         continue
       }
 
       const result = await this.uploadBinaryFile(item.filePath)
       if (!result) {
-        item.attempts++
+        item.attempts += 1
         if (item.attempts < MAX_RETRIES) {
           remaining.push(item)
         } else {
@@ -324,7 +166,8 @@ export class BinaryFileSync {
    */
   getPendingCount(): number {
     const queue = this.loadUploadQueue()
-    return queue.filter((q) => q.projectId === this.projectId).length
+    const projectId = String(this.projectId)
+    return queue.filter((q) => q.projectId === projectId).length
   }
 
   private loadUploadQueue(): QueuedBinaryUpload[] {

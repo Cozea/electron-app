@@ -1,6 +1,17 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
+const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+
+function assertGatewaySecret(secret: string | undefined) {
+  if (!AI_GATEWAY_SECRET) {
+    throw new Error("AI_GATEWAY_SECRET is not configured")
+  }
+  if (secret !== AI_GATEWAY_SECRET) {
+    throw new Error("Unauthorized")
+  }
+}
+
 // Project roles and their permissions
 const ROLE_PERMISSIONS = {
   project_manager: ["manage_members", "edit", "view", "delete"],
@@ -82,6 +93,25 @@ export const isMember = query({
       )
       .first()
 
+    return !!membership
+  },
+})
+
+// Server-only membership check for authenticated gateway routes.
+export const isProjectMemberForServer = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
     return !!membership
   },
 })

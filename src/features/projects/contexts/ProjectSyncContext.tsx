@@ -6,23 +6,10 @@ import {
   useCallback,
   type ReactNode,
 } from "react"
-import { useQuery, useMutation, useConvex } from "convex/react"
+import { useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import {
-  classifyProjectReconciliation,
-  computeSyncPlanWithMerge,
-  hasSyncOperations,
-} from "@/lib/sync/syncEngine"
-import { executeSyncPlan } from "@/lib/sync/syncExecutor"
-import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
-import {
-  inspectLocalSyncHistory,
-  loadLocalSyncHistory,
-  saveLocalSyncHistory,
-} from "@/lib/sync/syncHistory"
-import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
-import { normalizeCloudEntries, normalizeRelativePath } from "@/lib/sync/pathNormalization"
+import type { SyncProgress, SyncPlan, SyncOperation } from "@/lib/sync/types"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
@@ -31,108 +18,137 @@ import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
+import type {
+  GitReplicaConflictDecision,
+  GitReplicaPlanResult,
+} from "@shared/electronApiTypes"
 
-const MANIFEST_LOG_SAMPLE_LIMIT = 12
-
-function shortHash(hash?: string): string {
-  if (!hash) return "missing"
-  return hash.slice(0, 12)
+function createLocalPlaceholder(pathValue: string): SyncOperation["localEntry"] {
+  return {
+    path: pathValue,
+    hash: "",
+    size: 0,
+    mtime: Date.now(),
+  }
 }
 
-function formatTimestamp(value: number | undefined): string {
-  if (!value || Number.isNaN(value)) return "n/a"
-  return new Date(value).toISOString()
+function createCloudPlaceholder(pathValue: string): SyncOperation["cloudEntry"] {
+  return {
+    _id: "placeholder" as Id<"projectFiles">,
+    path: pathValue,
+    hash: "",
+    size: 0,
+    version: 1,
+    storageId: "placeholder" as Id<"_storage">,
+    uploadedAt: Date.now(),
+  }
 }
 
-function buildManifestComparisonLogs(
-  localFiles: LocalFileEntry[],
-  cloudFiles: CloudFileEntry[]
-): string[] {
-  const normalizedLocal = localFiles
-    .map((file) => ({ entry: file, normalizedPath: normalizeRelativePath(file.path) }))
-    .filter((item) => item.normalizedPath.length > 0)
-  const normalizedCloud = normalizeCloudEntries(cloudFiles)
-
-  const localByPath = new Map<string, LocalFileEntry>()
-  for (const file of normalizedLocal) {
-    localByPath.set(file.normalizedPath, file.entry)
+function toSyncPlanFromReplicaPlan(replicaPlan: GitReplicaPlanResult): SyncPlan {
+  return {
+    downloads: replicaPlan.downloads.map((entry) => ({
+      type: "download",
+      path: entry.path,
+      reason: entry.reason,
+      cloudEntry: createCloudPlaceholder(entry.path),
+    })),
+    uploads: replicaPlan.uploads.map((entry) => ({
+      type: "upload",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+    })),
+    localDeletes: replicaPlan.localDeletes.map((entry) => ({
+      type: "delete-local",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+    })),
+    cloudDeletes: replicaPlan.cloudDeletes.map((entry) => ({
+      type: "delete-cloud",
+      path: entry.path,
+      reason: entry.reason,
+      cloudEntry: createCloudPlaceholder(entry.path),
+    })),
+    autoMerged: replicaPlan.autoMerged.map((entry) => ({
+      type: "auto-merged",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+      cloudEntry: createCloudPlaceholder(entry.path),
+      mergeDetails: {
+        localChanges: 0,
+        cloudChanges: 0,
+        mergedContent: "",
+      },
+    })),
+    conflicts: replicaPlan.conflicts.map((entry) => ({
+      type: "conflict",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: entry.localExists ? createLocalPlaceholder(entry.path) : undefined,
+      cloudEntry: entry.remoteExists ? createCloudPlaceholder(entry.path) : undefined,
+    })),
+    noChange: replicaPlan.noChange,
   }
+}
 
-  const cloudByPath = new Map<string, CloudFileEntry>()
-  for (const file of normalizedCloud) {
-    cloudByPath.set(file.normalizedPath, file.entry)
-  }
+function deriveConflictDecisions(
+  originalPlan: SyncPlan,
+  resolvedPlan: SyncPlan
+): Record<string, GitReplicaConflictDecision> {
+  const decisions: Record<string, GitReplicaConflictDecision> = {}
+  const addedUploads = new Set(
+    resolvedPlan.uploads
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.uploads.some((item) => item.path === pathValue))
+  )
+  const addedDownloads = new Set(
+    resolvedPlan.downloads
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.downloads.some((item) => item.path === pathValue))
+  )
+  const addedLocalDeletes = new Set(
+    resolvedPlan.localDeletes
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.localDeletes.some((item) => item.path === pathValue))
+  )
+  const addedCloudDeletes = new Set(
+    resolvedPlan.cloudDeletes
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.cloudDeletes.some((item) => item.path === pathValue))
+  )
 
-  const allPaths = new Set<string>([
-    ...normalizedLocal.map((item) => item.normalizedPath),
-    ...normalizedCloud.map((item) => item.normalizedPath),
-  ])
-
-  const mismatches: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
-  const localOnly: Array<{ path: string; local: LocalFileEntry }> = []
-  const cloudOnly: Array<{ path: string; cloud: CloudFileEntry }> = []
-  const cloudMissingHash: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
-  let identicalCount = 0
-
-  for (const path of Array.from(allPaths).sort()) {
-    const local = localByPath.get(path)
-    const cloud = cloudByPath.get(path)
-
-    if (local && cloud) {
-      if (!cloud.hash) {
-        cloudMissingHash.push({ path, local, cloud })
-      } else if (local.hash === cloud.hash) {
-        identicalCount += 1
-      } else {
-        mismatches.push({ path, local, cloud })
-      }
+  for (const conflict of originalPlan.conflicts) {
+    const pathValue = conflict.path
+    if (conflict.localEntry && conflict.cloudEntry) {
+      if (addedUploads.has(pathValue)) decisions[pathValue] = "local"
+      if (addedDownloads.has(pathValue)) decisions[pathValue] = "cloud"
       continue
     }
-
-    if (local && !cloud) {
-      localOnly.push({ path, local })
+    if (conflict.localEntry && !conflict.cloudEntry) {
+      if (addedUploads.has(pathValue)) decisions[pathValue] = "local"
+      if (addedLocalDeletes.has(pathValue)) decisions[pathValue] = "cloud"
       continue
     }
-
-    if (!local && cloud) {
-      cloudOnly.push({ path, cloud })
+    if (!conflict.localEntry && conflict.cloudEntry) {
+      if (addedCloudDeletes.has(pathValue)) decisions[pathValue] = "local"
+      if (addedDownloads.has(pathValue)) decisions[pathValue] = "cloud"
     }
   }
 
-  const logs: string[] = [
-    `Manifest compare (normalized): local=${normalizedLocal.length}, cloud=${normalizedCloud.length}, union=${allPaths.size}`,
-    `Manifest summary: same=${identicalCount}, mismatch=${mismatches.length}, localOnly=${localOnly.length}, cloudOnly=${cloudOnly.length}, cloudHashMissing=${cloudMissingHash.length}`,
-  ]
+  return decisions
+}
 
-  const appendSample = <T,>(
-    title: string,
-    rows: T[],
-    formatter: (row: T) => string
-  ) => {
-    if (rows.length === 0) return
-    logs.push(`${title} (${rows.length}):`)
-    for (const row of rows.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
-      logs.push(`  ${formatter(row)}`)
-    }
-    if (rows.length > MANIFEST_LOG_SAMPLE_LIMIT) {
-      logs.push(`  ... +${rows.length - MANIFEST_LOG_SAMPLE_LIMIT} more`)
-    }
-  }
-
-  appendSample("Hash mismatches", mismatches, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
-  ))
-  appendSample("Local-only paths", localOnly, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)}`
-  ))
-  appendSample("Cloud-only paths", cloudOnly, (row) => (
-    `${row.path} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
-  ))
-  appendSample("Cloud paths missing hash", cloudMissingHash, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} cloud=missing`
-  ))
-
-  return logs
+function hasSyncOperations(plan: SyncPlan): boolean {
+  return (
+    plan.downloads.length > 0 ||
+    plan.uploads.length > 0 ||
+    plan.localDeletes.length > 0 ||
+    plan.cloudDeletes.length > 0 ||
+    plan.autoMerged.length > 0 ||
+    plan.conflicts.length > 0
+  )
 }
 
 interface ProjectSyncContextValue {
@@ -183,7 +199,6 @@ function AgentFileSyncBridge({
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
-  const convex = useConvex()
 
   // Watch local filesystem for edits that bypass Electron IPC (terminal, external editor, etc.)
   useEffect(() => {
@@ -206,7 +221,7 @@ function AgentFileSyncBridge({
   // Bridge local agent file writes to Yjs (local → Yjs → remote)
   useAgentFileSync(yjsDoc, projectPath, projectId, userId)
   // Sync binary files via shared file-op pipeline.
-  useBinaryFileSync(projectId, projectPath, userId, convex)
+  useBinaryFileSync(projectId, projectPath, userId)
   // Write remote Yjs changes back to local disk (remote → Yjs → local)
   useYjsFileWriteback(yjsDoc, projectPath, projectId)
   return <>{children}</>
@@ -245,26 +260,20 @@ export function ProjectSyncProvider({
   // Diff store - to clear badges when sync completes
   const clearDiff = useProjectDiffStore((state) => state.clearDiff)
 
-  // Convex queries
-  const cloudManifest = useQuery(api.projectFiles.getManifestForProject, {
-    projectId,
-  })
+  const [replicaPlan, setReplicaPlan] = useState<GitReplicaPlanResult | null>(null)
 
-  // Query that includes download URLs
-  const filesWithUrls = useQuery(api.projectFiles.listForProject, { projectId })
-
-  // Convex mutations
-  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
-  const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
-  const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   // Use per-user local path (stored in projectMembers, not projects)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   /**
-   * Execute sync plan.
+   * Execute Git replica sync plan.
    */
-  const executeSync = useCallback(async (projectPath: string, syncPlan: SyncPlan) => {
+  const executeSync = useCallback(async (
+    projectPath: string,
+    syncPlan: SyncPlan,
+    overrideConflictDecisions?: Record<string, GitReplicaConflictDecision>
+  ) => {
     setIsSyncRunning(true)
 
     if (!hasSyncOperations(syncPlan)) {
@@ -281,18 +290,15 @@ export function ProjectSyncProvider({
       console.error("[Sync] Failed to update status:", err)
     }
 
-    const result = await executeSyncPlan(syncPlan, {
-      projectId,
-      userId,
+    const sessionId = replicaPlan?.sessionId ?? crypto.randomUUID()
+    const conflictDecisions = overrideConflictDecisions ??
+      (plan ? deriveConflictDecisions(plan, syncPlan) : {})
+
+    const result = await window.electronAPI.sync.gitReplicaExecute({
+      projectId: String(projectId),
       projectPath,
-      onProgress: setProgress,
-      generateUploadUrl: () => generateUploadUrl({ projectId }),
-      saveFiles: (args) => saveFilesMutation(args),
-      markFilesDeleted: (args) => markFilesDeletedMutation(args),
-      getStorageUrl: async (storageId) => {
-        const file = filesWithUrls?.find((f) => f.storageId === storageId)
-        return file?.url ?? null
-      },
+      sessionId,
+      conflictDecisions,
     })
 
     // Update final status
@@ -300,79 +306,35 @@ export function ProjectSyncProvider({
       await updateSyncStatus({
         projectId,
         userId,
-        status: result.success ? "synced" : "error",
+        status: result.success && result.applied ? "synced" : "error",
         errorMessage: result.error,
       })
     } catch (err) {
       console.error("[Sync] Failed to update final status:", err)
     }
 
-    if (result.success) {
+    if (result.success && result.applied) {
       const now = Date.now()
-      const cloudPaths = new Set(
-        normalizeCloudEntries(
-          (cloudManifest ?? []).map((file) => ({
-            path: file.path,
-            uploadedAt: file.uploadedAt,
-            version: file.version,
-          }))
-        ).map((entry) => entry.normalizedPath)
-      )
-      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
-      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
-      // Include auto-merged files in cloud paths
-      for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
-      await saveLocalSyncHistory(projectId, {
-        lastSyncAt: now,
-        cloudPathsAtLastSync: cloudPaths,
-      })
-
-      // Save file checkpoints for future 3-way merges
-      try {
-        const checkpointFiles = new Map<string, { content: string; hash: string }>()
-
-        // Read all synced files and save as checkpoints
-        const filesToCheckpoint = [
-          ...syncPlan.downloads.map((op) => op.path),
-          ...syncPlan.uploads.map((op) => op.path),
-          ...(syncPlan.autoMerged ?? []).map((op) => op.path),
-        ]
-
-        for (const filePath of filesToCheckpoint) {
-          try {
-            const readResult = await window.electronAPI.project.readFile({
-              projectPath,
-              filePath,
-            })
-            if (readResult.success && readResult.content !== undefined) {
-              // Compute hash
-              const encoder = new TextEncoder()
-              const data = encoder.encode(readResult.content)
-              const hashBuffer = await crypto.subtle.digest("SHA-256", data)
-              const hashArray = Array.from(new Uint8Array(hashBuffer))
-              const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-
-              checkpointFiles.set(filePath, { content: readResult.content, hash })
-            }
-          } catch {
-            // Skip files that can't be read (binary, etc.)
-          }
-        }
-
-        if (checkpointFiles.size > 0) {
-          await syncCheckpointStore.saveCheckpoint(projectId, checkpointFiles)
-        }
-      } catch (err) {
-        console.warn("[Sync] Failed to save checkpoints:", err)
-        // Non-fatal - sync still succeeded
-      }
-
       setIsSynced(true)
       setLastSyncAt(now)
       setShowSyncScreen(false)
       // Clear the diff badge for this project
       clearDiff(projectSlug)
       onFilesChanged?.()
+      setProgress({
+        status: "complete",
+        message: "Sync complete",
+        current: 0,
+        total: 0,
+        logs: [],
+      })
+    } else if (result.requiresConflictResolution) {
+      setShowSyncScreen(true)
+      setProgress((prev) => ({
+        ...prev,
+        status: "planning",
+        message: "Conflict resolution required",
+      }))
     } else {
       // Surface failures in the sync screen so users can retry instead of
       // continuing with a silently partial local/cloud state.
@@ -383,14 +345,11 @@ export function ProjectSyncProvider({
     setIsSyncRunning(false)
   }, [
     clearDiff,
-    cloudManifest,
-    filesWithUrls,
-    generateUploadUrl,
-    markFilesDeletedMutation,
     onFilesChanged,
+    plan,
     projectId,
     projectSlug,
-    saveFilesMutation,
+    replicaPlan,
     updateSyncStatus,
     userId,
   ])
@@ -399,11 +358,6 @@ export function ProjectSyncProvider({
    * Run initial sync check when component mounts.
    */
   useEffect(() => {
-    if (cloudManifest === undefined || filesWithUrls === undefined) {
-      // Still loading from Convex
-      return
-    }
-
     // Prevent re-running if already synced or sync in progress
     if (hasRunInitialSync || isSyncRunning) {
       return
@@ -486,104 +440,36 @@ export function ProjectSyncProvider({
           throw new Error("Local project directory no longer exists")
         }
 
-        // Get local manifest
-        const localResult = await window.electronAPI.sync.getLocalManifest({
-          projectPath: effectiveLocalPath,
-          debugSource: `project-sync-context:${projectSlug}`,
-        })
-
-        // Convert manifests
-        const localFiles: LocalFileEntry[] = localResult.manifest
-        const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-          _id: f._id,
-          path: f.path,
-          hash: f.hash,
-          size: f.size,
-          version: f.version,
-          storageId: f.storageId,
-          uploadedAt: f.uploadedAt,
+        setProgress((prev) => ({
+          ...prev,
+          status: "planning",
+          message: "Bootstrapping Git replica...",
         }))
-        const manifestComparisonLogs = buildManifestComparisonLogs(localFiles, cloudFiles)
 
-        console.groupCollapsed(`[Sync][Manifest] ${projectSlug}`)
-        for (const line of manifestComparisonLogs) {
-          console.log(line)
+        const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+          projectId: String(projectId),
+          projectPath: effectiveLocalPath,
+        })
+        if (!bootstrap.success) {
+          throw new Error(bootstrap.error || "Failed to bootstrap replica")
         }
-        console.groupEnd()
 
         setProgress((prev) => ({
           ...prev,
           status: "planning",
-          message: "Comparing files...",
-          logs: [
-            ...prev.logs,
-            ...manifestComparisonLogs,
-          ],
+          message: "Planning replica merge...",
         }))
 
-        const historyInspection = await inspectLocalSyncHistory(projectId)
-        const localHistory = await loadLocalSyncHistory(projectId)
-
-        const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
-
-        // Compute sync plan with 3-way merge support
-        const syncPlan = await computeSyncPlanWithMerge(
-          localFiles,
-          cloudFiles,
-          localHistory.lastSyncAt ?? undefined,
-          localHistory.cloudPathsAtLastSync,
-          {
-            projectId,
-            checkpointMap,
-            maxMergeBytes: 2 * 1024 * 1024,
-            readLocalFile: async (path: string) => {
-              const result = await window.electronAPI.project.readFile({
-                projectPath: effectiveLocalPath,
-                filePath: path,
-              })
-              return result.success ? result.content ?? null : null
-            },
-            fetchCloudFile: async (storageId: string) => {
-              const file = filesWithUrls?.find((f) => f.storageId === storageId)
-              if (!file?.url) return null
-              try {
-                const response = await fetch(file.url)
-                return response.ok ? await response.text() : null
-              } catch {
-                return null
-              }
-            },
-          }
-        )
-        setPlan(syncPlan)
-        const planLogs: string[] = [
-          `Plan summary: ↓${syncPlan.downloads.length} ↑${syncPlan.uploads.length} ✕local ${syncPlan.localDeletes.length} ✕cloud ${syncPlan.cloudDeletes.length} ⚠${syncPlan.conflicts.length} ⊕${syncPlan.autoMerged.length} =${syncPlan.noChange}`,
-        ]
-        if (syncPlan.conflicts.length > 0) {
-          for (const conflict of syncPlan.conflicts.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
-            planLogs.push(`  ⚠ conflict ${conflict.path} (${conflict.reason})`)
-          }
-          if (syncPlan.conflicts.length > MANIFEST_LOG_SAMPLE_LIMIT) {
-            planLogs.push(`  ... +${syncPlan.conflicts.length - MANIFEST_LOG_SAMPLE_LIMIT} more conflicts`)
-          }
-        }
-
-        const reconciliation = classifyProjectReconciliation(syncPlan, {
-          pathExists: localPathExists,
-          journalCorrupt: historyInspection.corrupted,
+        const replicaSyncPlan = await window.electronAPI.sync.gitReplicaPlan({
+          projectId: String(projectId),
+          projectPath: effectiveLocalPath,
         })
-        setProgress((prev) => ({
-          ...prev,
-          logs: [
-            ...prev.logs,
-            ...planLogs,
-            `Reconciliation state: ${reconciliation.state}`,
-            reconciliation.reason,
-            ...(historyInspection.corrupted
-              ? ["Detected corrupted local sync history; continuing with safe reconciliation defaults"]
-              : []),
-          ],
-        }))
+        if (!replicaSyncPlan.success) {
+          throw new Error(replicaSyncPlan.error || "Failed to create replica sync plan")
+        }
+        setReplicaPlan(replicaSyncPlan)
+        const syncPlan = toSyncPlanFromReplicaPlan(replicaSyncPlan)
+        setPlan(syncPlan)
 
         const totalChanges =
           syncPlan.downloads.length +
@@ -595,10 +481,6 @@ export function ProjectSyncProvider({
         if (totalChanges === 0) {
           // Already synced - no screen needed
           const now = Date.now()
-          await saveLocalSyncHistory(projectId, {
-            lastSyncAt: now,
-            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
-          })
           setLastSyncAt(now)
           setProgress({
             status: "complete",
@@ -651,8 +533,6 @@ export function ProjectSyncProvider({
 
     runInitialSync()
   }, [
-    cloudManifest,
-    filesWithUrls,
     hasRunInitialSync,
     isSyncRunning,
     currentLocalPath,
@@ -709,7 +589,8 @@ export function ProjectSyncProvider({
       logs: [],
     }))
 
-    await executeSync(currentLocalPath, resolvedPlan)
+    const decisions = plan ? deriveConflictDecisions(plan, resolvedPlan) : {}
+    await executeSync(currentLocalPath, resolvedPlan, decisions)
   }
 
   // Conflicts/errors must be handled before entering the workspace.
@@ -739,6 +620,7 @@ export function ProjectSyncProvider({
         projectId={projectId}
         userId={userId}
         userName={userName}
+        projectPath={currentLocalPath}
       >
         <DeleteConflictDialog />
         <AgentFileSyncBridge

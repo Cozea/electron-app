@@ -68,6 +68,7 @@ interface YjsProjectProviderProps {
   projectId: Id<"projects">
   userId: Id<"users">
   userName: string
+  projectPath: string | null
   children: ReactNode
 }
 
@@ -81,6 +82,7 @@ export function YjsProjectProvider({
   projectId,
   userId,
   userName,
+  projectPath,
   children,
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
@@ -151,6 +153,7 @@ export function YjsProjectProvider({
       persistenceRef.current = new ProjectFilesPersistence(
         doc.files,
         projectId,
+        projectPath,
         convex,
         userId,
         userName
@@ -171,7 +174,7 @@ export function YjsProjectProvider({
       persistenceRef.current?.destroy()
       indexedDBProviderRef.current?.destroy()
     }
-  }, [projectId, userId, userName, convex])
+  }, [projectId, userId, userName, projectPath, convex])
 
   // Apply remote updates when they arrive from Convex
   useEffect(() => {

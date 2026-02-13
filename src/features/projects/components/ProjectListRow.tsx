@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -97,12 +97,6 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     const [showMenu, setShowMenu] = useState(false)
     const [localPath, setLocalPath] = useState<string | null>(null)
 
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
-
     useEffect(() => {
         let cancelled = false
 
@@ -185,22 +179,6 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
-                    projectPath: effectiveLocalPath,
-                    debugSource: `project-list-row:${project._id}`,
-                })
-
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
-                    setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
-                }
-            }
-
             // Navigate to project
             setSyncState('ready')
             setSyncMessage('Opening project...')
@@ -227,7 +205,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath])
+    }, [project, userId, navigate, updateMemberLocalPath])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 

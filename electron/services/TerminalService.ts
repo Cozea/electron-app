@@ -100,6 +100,20 @@ function appendTerminalOutput(current: string, chunk: string): string {
     return truncateTerminalOutput(current + chunk)
 }
 
+function toPtyEnv(env: NodeJS.ProcessEnv, extra?: Record<string, string>): Record<string, string> {
+    const merged: NodeJS.ProcessEnv = {
+        ...env,
+        ...(extra ?? {}),
+    }
+    const normalized: Record<string, string> = {}
+    for (const [key, value] of Object.entries(merged)) {
+        if (typeof value === 'string') {
+            normalized[key] = value
+        }
+    }
+    return normalized
+}
+
 export class TerminalService {
     private static instance: TerminalService
     private terminals = new Map<string, ManagedTerminal>()
@@ -151,6 +165,19 @@ export class TerminalService {
         }
         // Default to first available profile (usually zsh or bash)
         return profiles[0] || { id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' }
+    }
+
+    private getTerminalProfileCandidates(primary: TerminalProfile): TerminalProfile[] {
+        const allProfiles = this.detectTerminalProfiles()
+        const candidates: TerminalProfile[] = [primary]
+        if (primary.id === 'node') return candidates
+
+        for (const fallback of allProfiles) {
+            if (fallback.id === primary.id) continue
+            if (fallback.id === 'node') continue
+            candidates.push(fallback)
+        }
+        return candidates
     }
 
     private removeProjectTerminal(projectPath: string, terminalId: string) {
@@ -226,6 +253,7 @@ export class TerminalService {
         }) => {
             try {
                 const profile = this.getTerminalProfile(options.profileId)
+                const profileCandidates = this.getTerminalProfileCandidates(profile)
                 const cols = options.cols || 80
                 const rows = options.rows || 24
                 const cwd = options.cwd || options.projectPath
@@ -243,24 +271,39 @@ export class TerminalService {
                     }
                 }
 
-                const ptyProcess = pty.spawn(profile.path, profile.args || [], {
-                    name: 'xterm-256color',
-                    cols,
-                    rows,
-                    cwd,
-                    env: {
-                        ...runtimeEnv,
-                        ...(profile.env ?? {}),
-                    } as Record<string, string>,
-                })
+                let spawnError: unknown = null
+                let selectedProfile = profile
+                let ptyProcess: pty.IPty | null = null
+
+                for (const candidate of profileCandidates) {
+                    try {
+                        ptyProcess = pty.spawn(candidate.path, candidate.args || [], {
+                            name: 'xterm-256color',
+                            cols,
+                            rows,
+                            cwd,
+                            env: toPtyEnv(runtimeEnv, candidate.env),
+                        })
+                        selectedProfile = candidate
+                        break
+                    } catch (error) {
+                        spawnError = error
+                    }
+                }
+
+                if (!ptyProcess) {
+                    throw spawnError instanceof Error
+                        ? spawnError
+                        : new Error('Unable to spawn terminal process')
+                }
 
                 const terminalId = Math.random().toString(36).substring(2, 15)
                 const terminal: ManagedTerminal = {
                     id: terminalId,
                     projectPath: options.projectPath,
                     ptyProcess,
-                    profile,
-                    title: profile.name,
+                    profile: selectedProfile,
+                    title: selectedProfile.name,
                     startedAt: Date.now(),
                     output: '',
                 }
