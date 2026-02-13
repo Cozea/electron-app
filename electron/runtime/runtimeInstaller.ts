@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import fs from 'node:fs'
-import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -17,6 +17,11 @@ const RUNTIME_MANIFEST_SIGNATURE_FILENAME = 'runtime-manifest.sig'
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000
 const DEFAULT_INSTALL_RETRIES = 2
 const DEFAULT_RELEASE_REPOSITORY = 'Cozea/cozea-prod'
+
+export interface RuntimeInstallOptions {
+  cleanBrokenLocalFiles?: boolean
+  forceReinstall?: boolean
+}
 
 let manifestCache: {
   value: RuntimeManifest
@@ -106,6 +111,24 @@ function getExecutableName(runtime: RuntimeKind): string {
 
 function getDefaultExecutableRelativePath(runtime: RuntimeKind): string {
   return path.join('bin', getExecutableName(runtime))
+}
+
+function getRuntimeInstallDir(runtime: RuntimeKind, target: RuntimeTarget): string {
+  return path.join(getRuntimeCacheRoot(), target, runtime)
+}
+
+async function removeRuntimeInstallArtifacts(runtime: RuntimeKind, target: RuntimeTarget): Promise<void> {
+  const runtimeDir = getRuntimeInstallDir(runtime, target)
+  await rm(runtimeDir, { recursive: true, force: true })
+
+  const runtimeParentDir = path.dirname(runtimeDir)
+  if (!(await exists(runtimeParentDir))) return
+  const entries = await readdir(runtimeParentDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    if (!entry.name.startsWith(`${runtime}.bak-`)) continue
+    await rm(path.join(runtimeParentDir, entry.name), { recursive: true, force: true })
+  }
 }
 
 function decodeSignatureBuffer(input: Buffer): Buffer {
@@ -538,10 +561,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function ensureRuntimeInstalled(runtime: RuntimeKind, target = getRuntimeTarget()): Promise<RuntimeEnsureResult> {
+export async function ensureRuntimeInstalled(
+  runtime: RuntimeKind,
+  target = getRuntimeTarget(),
+  options: RuntimeInstallOptions = {}
+): Promise<RuntimeEnsureResult> {
   return runtimeLocks.withLock(`${runtime}:${target}`, async () => {
+    if (options.cleanBrokenLocalFiles || options.forceReinstall) {
+      await removeRuntimeInstallArtifacts(runtime, target)
+    }
+
     const existing = resolveRuntimeHealth(runtime, target)
-    if (existing.available) {
+    if (existing.available && !options.forceReinstall) {
+      return {
+        success: true,
+        runtime,
+        target,
+        source: existing.source,
+        executablePath: existing.executablePath,
+        installed: false,
+      }
+    }
+
+    if (existing.available && options.forceReinstall && existing.source !== 'runtime-pack') {
       return {
         success: true,
         runtime,
@@ -609,7 +651,7 @@ export async function ensureRuntimeInstalled(runtime: RuntimeKind, target = getR
             })
           }
 
-          const runtimeDir = path.join(getRuntimeCacheRoot(), target, runtime)
+          const runtimeDir = getRuntimeInstallDir(runtime, target)
           await installExtractedRuntime(stagingRoot, runtimeDir)
         } finally {
           await rm(tempDir, { recursive: true, force: true })

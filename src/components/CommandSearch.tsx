@@ -46,6 +46,7 @@ const navigationItems = [
   { href: '/teams', label: 'Team Members', icon: Users, keywords: ['team', 'members', 'organization'] },
   { href: '/workspace/general', label: 'Workspace Settings', icon: Settings, keywords: ['workspace', 'settings', 'general'] },
   { href: '/settings/account', label: 'Account Settings', icon: Settings, keywords: ['account', 'profile', 'settings'] },
+  { href: '/settings/tooling', label: 'Tooling Settings', icon: Terminal, keywords: ['tooling', 'runtime', 'framework', 'settings'] },
 ]
 
 const actionItems = [

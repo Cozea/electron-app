@@ -640,7 +640,12 @@ export interface ElectronAPI {
     ensureCommandRuntime: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
     detectProjectRuntime: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
     ensureForCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
-    ensureRuntime: (options: { runtime: RuntimeKind; target?: string }) => Promise<RuntimeEnsureResult>
+    ensureRuntime: (options: {
+      runtime: RuntimeKind
+      target?: string
+      cleanBrokenLocalFiles?: boolean
+      forceReinstall?: boolean
+    }) => Promise<RuntimeEnsureResult>
     getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   fs: {

@@ -85,11 +85,17 @@ export class ProjectFilesPersistence {
   }
 
   private handleFilesChange = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
-    // Skip changes from remote sources or snapshot loading
+    // Skip non-user-edit transactions (remote sync, snapshot/state-vector hydration, local init hydration).
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"
     const origin = transaction.origin
-    if (origin === 'remote' || origin === 'snapshot' || origin === 'sync') {
+    if (
+      origin === 'remote' ||
+      origin === 'snapshot' ||
+      origin === 'sync' ||
+      origin === 'state-vector' ||
+      origin === 'init'
+    ) {
       return
     }
 
@@ -126,8 +132,11 @@ export class ProjectFilesPersistence {
           const previousContent = this.previousContents.get(path) || ''
           const previousLineCount = this.countLines(previousContent)
 
+          const nextContent = event.target.toString()
+          if (nextContent === previousContent) continue
+
           this.pendingChanges.set(path, {
-            content: event.target.toString(),
+            content: nextContent,
             previousContent: previousContent,
             origin: changeOrigin,
             previousLineCount,
@@ -287,6 +296,9 @@ export class ProjectFilesPersistence {
       if (deletes.has(path)) continue
 
       const { content, previousContent, origin, previousLineCount } = change
+      // Ignore no-op writes to avoid noisy feed events and redundant uploads.
+      if (content === previousContent) continue
+
       const checksum = await this.computeHash(content)
       const currentLineCount = this.countLines(content)
       await this.enqueueUpsertOp(path, origin, previousContent, content, checksum)
