@@ -1,5 +1,7 @@
 import type { BrowserWindow, IpcMain } from 'electron'
 import * as pty from 'node-pty'
+import * as fs from 'node:fs'
+import path from 'node:path'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
@@ -7,6 +9,75 @@ import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/ru
 interface RegisterDevServerHandlersDeps {
   devServerProcesses: Map<string, pty.IPty>
   getMainWindow: () => BrowserWindow | null
+}
+
+const SPAWN_HELPER_EXEC_MODE = 0o755
+const spawnHelperFixCache = new Map<string, boolean>()
+
+function getNodePtySpawnHelperCandidates(): string[] {
+  const target = `${process.platform}-${process.arch}`
+  const appRoot = process.env.APP_ROOT || process.cwd()
+  return [
+    path.join(appRoot, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+    path.join(process.resourcesPath, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+  ]
+}
+
+function ensureNodePtySpawnHelperExecutable(): void {
+  if (process.platform === 'win32') return
+  const cacheKey = `${process.platform}-${process.arch}`
+  if (spawnHelperFixCache.get(cacheKey)) return
+
+  for (const candidate of getNodePtySpawnHelperCandidates()) {
+    try {
+      if (!fs.existsSync(candidate)) continue
+      const stat = fs.statSync(candidate)
+      const hasExecBit = (stat.mode & 0o111) !== 0
+      if (!hasExecBit) {
+        fs.chmodSync(candidate, SPAWN_HELPER_EXEC_MODE)
+      }
+      spawnHelperFixCache.set(cacheKey, true)
+      return
+    } catch {
+      // Continue trying other candidate paths.
+    }
+  }
+}
+
+function resolvePtyShell(): string {
+  if (process.platform === 'win32') return 'powershell.exe'
+
+  const envShell = process.env.SHELL?.trim()
+  const candidates = [
+    envShell,
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+  ].filter((value): value is string => Boolean(value))
+
+  for (const candidate of candidates) {
+    if (candidate.startsWith('/')) {
+      if (fs.existsSync(candidate)) return candidate
+      continue
+    }
+
+    const normalized = candidate.replace(/^.*\//, '')
+    const binCandidate = `/bin/${normalized}`
+    if (fs.existsSync(binCandidate)) return binCandidate
+  }
+
+  return '/bin/sh'
+}
+
+function toPtyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const normalized: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === 'string') {
+      normalized[key] = value
+    }
+  }
+  return normalized
 }
 
 // Start, stop, and manage per-project dev servers using PTY-backed terminals.
@@ -55,7 +126,8 @@ export function registerDevServerHandlers(
         }
 
         console.log(`[DevServer] Starting PTY: ${command} in ${projectPath} (${cols}x${rows})`)
-        const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash'
+        ensureNodePtySpawnHelperExecutable()
+        const shell = resolvePtyShell()
         const runtimeEnv = createRuntimeEnv(
           getRuntimePathPrefixes(),
           {
@@ -71,7 +143,7 @@ export function registerDevServerHandlers(
           cols,
           rows,
           cwd: projectPath,
-          env: runtimeEnv as Record<string, string>,
+          env: toPtyEnv(runtimeEnv),
         })
 
         deps.devServerProcesses.set(projectPath, ptyProcess)

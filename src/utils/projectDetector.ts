@@ -37,6 +37,44 @@ export interface FrameworkInfo {
   startCommand: string
 }
 
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+
+function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager): string {
+  if (pm === 'npm') return command
+  const trimmed = command.trim()
+
+  const runMatch = trimmed.match(/^npm\s+run\s+([^\s]+)([\s\S]*)$/i)
+  if (runMatch) {
+    return `${pm} run ${runMatch[1]}${runMatch[2] ?? ''}`.trim()
+  }
+
+  const simpleScriptMatch = trimmed.match(/^npm\s+(start|test)([\s\S]*)$/i)
+  if (simpleScriptMatch) {
+    return `${pm} ${simpleScriptMatch[1]}${simpleScriptMatch[2] ?? ''}`.trim()
+  }
+
+  const installMatch = trimmed.match(/^npm\s+install([\s\S]*)$/i)
+  if (installMatch) {
+    return `${pm} install${installMatch[1] ?? ''}`.trim()
+  }
+
+  return command
+}
+
+async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
+  try {
+    const entries = await window.electronAPI.fs.readDir(projectPath)
+    const names = new Set(entries.map((entry) => entry.name))
+    if (names.has('bun.lockb')) return 'bun'
+    if (names.has('pnpm-lock.yaml')) return 'pnpm'
+    if (names.has('yarn.lock')) return 'yarn'
+    if (names.has('package-lock.json')) return 'npm'
+  } catch {
+    // Fall through to npm.
+  }
+  return 'npm'
+}
+
 function inferDevServerLabelFromCommand(command: string): string {
   const normalized = command.trim().toLowerCase()
   if (!normalized) return 'Dev Server'
@@ -283,11 +321,14 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
       }
     }
 
+    const packageManager = await detectPackageManagerFromRoot(projectPath)
     return {
       framework,
       ...config,
-      devCommand,
+      devCommand: rewriteNpmCommandForPackageManager(devCommand, packageManager),
       devPort,
+      buildCommand: rewriteNpmCommandForPackageManager(config.buildCommand, packageManager),
+      startCommand: rewriteNpmCommandForPackageManager(config.startCommand, packageManager),
     }
   } catch (error) {
     console.error('Failed to detect framework:', error)
@@ -307,11 +348,14 @@ export async function getFrameworkInfo(
   // If we have stored metadata, use it
   if (storedFramework && storedFramework !== 'unknown') {
     const config = FRAMEWORK_CONFIGS[storedFramework]
+    const packageManager = await detectPackageManagerFromRoot(projectPath)
     return {
       framework: storedFramework,
       ...config,
-      devCommand: storedDevCommand || config.devCommand,
+      devCommand: storedDevCommand || rewriteNpmCommandForPackageManager(config.devCommand, packageManager),
       devPort: storedDevPort || config.devPort,
+      buildCommand: rewriteNpmCommandForPackageManager(config.buildCommand, packageManager),
+      startCommand: rewriteNpmCommandForPackageManager(config.startCommand, packageManager),
     }
   }
 
@@ -386,26 +430,11 @@ export async function getDevServerConfig(
   }
 }
 
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
-
 /**
  * Detect which package manager is used in the project
  */
 export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
-  const lockFiles: { file: string; manager: PackageManager }[] = [
-    { file: 'bun.lockb', manager: 'bun' },
-    { file: 'pnpm-lock.yaml', manager: 'pnpm' },
-    { file: 'yarn.lock', manager: 'yarn' },
-    { file: 'package-lock.json', manager: 'npm' },
-  ]
-
-  for (const { file, manager } of lockFiles) {
-    try {
-      const result = await window.electronAPI.project.readFile({ projectPath, filePath: file })
-      if (result.success) return manager
-    } catch { /* continue */ }
-  }
-  return 'npm'
+  return detectPackageManagerFromRoot(projectPath)
 }
 
 /**

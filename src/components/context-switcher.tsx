@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
-import { useQuery, useMutation, useConvex } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import {
@@ -44,7 +44,6 @@ export function ContextSwitcher() {
   const location = useLocation()
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization, user } = useAuth()
-  const convex = useConvex()
 
   const [open, setOpen] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
@@ -154,32 +153,6 @@ export function ContextSwitcher() {
         })
       }
 
-      if (effectiveLocalPath) {
-        setSyncMessage('Checking files...')
-        let cloudManifest: Array<unknown> | null = null
-
-        try {
-          cloudManifest = await convex.query(api.projectFiles.getManifestForProject, {
-            projectId: project._id,
-          })
-        } catch {
-          cloudManifest = null
-        }
-
-        if (cloudManifest) {
-          const localResult = await window.electronAPI.sync.getLocalManifest({
-            projectPath: effectiveLocalPath,
-            debugSource: `context-switcher:${project._id}`,
-          })
-
-          const hasChanges = localResult.totalFiles !== cloudManifest.length
-          if (hasChanges) {
-            setSyncState('syncing')
-            setSyncMessage('Syncing files...')
-          }
-        }
-      }
-
       setSyncState('ready')
       setSyncMessage('Opening project...')
 
@@ -203,7 +176,7 @@ export function ContextSwitcher() {
         resetSyncState()
       }, 2000)
     }
-  }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = () => {
     navigate('/projects')
