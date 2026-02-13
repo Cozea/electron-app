@@ -197,3 +197,8 @@ Convex:
    - Push a version tag, e.g. `git tag v1.2.3 && git push origin v1.2.3`
 5) Verify output:
    - GitHub Release contains DMG/ZIP (mac) + NSIS artifacts (win) and update metadata files.
+
+## Sync Improvement Backlog
+- Git replica conflict resolution for text files is currently resolved with file-level local/cloud winner choices when auto-merge cannot complete.
+- Planned update: move text conflict resolution to hunk-level (chunk/line granularity) so users do not lose unrelated edits in the same file during manual resolution.
+- Binary conflicts remain file-level by design.

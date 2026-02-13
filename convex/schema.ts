@@ -1200,6 +1200,7 @@ export default defineSchema({
     headCommit: v.optional(v.string()),
     bundleStorageId: v.optional(v.id("_storage")),
     bundleChecksum: v.optional(v.string()),
+    bundleSizeBytes: v.optional(v.number()),
     version: v.number(),
     updatedAt: v.number(),
     updatedBy: v.id("users"),

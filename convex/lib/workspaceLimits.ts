@@ -139,12 +139,12 @@ export function getPlanStorageLimitGB(plan: string): number {
 }
 
 export interface StorageBreakdown {
-  sourceAndConfig: number // projectFiles (active)
+  sourceAndConfig: number // replica bundle + replica LFS (fallback: projectFiles active)
   collaborationData: number // yjsUpdates
   aiHistory: number // aiConversations
   buildCache: number // builderRuns logs
   snapshots: number // yjsDocuments
-  gitHistory: number // projectFiles (superseded)
+  gitHistory: number // legacy projectFiles (superseded)
   databaseBackups: number // reserved
   assets: number // projectAssets
 }
@@ -195,23 +195,40 @@ export async function estimateStorageBreakdown(
   const projectIds = projects.map((p) => p._id)
 
   for (const projectId of projectIds) {
-    // Source & Config: sum of projectFiles.sizeBytes (active)
-    const activeFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "active")
-      )
-      .collect()
-    breakdown.sourceAndConfig += activeFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+    const replica = await ctx.db
+      .query("projectReplicaGit")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .first()
 
-    // Git History: sum of projectFiles.sizeBytes (superseded)
-    const supersededFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "superseded")
-      )
+    const lfsObjects = await ctx.db
+      .query("projectReplicaLfsObjects")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect()
-    breakdown.gitHistory += supersededFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+
+    const lfsBytes = lfsObjects.reduce((sum, entry) => sum + Math.max(0, entry.size), 0)
+    const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+    const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
+
+    if (useReplicaAccounting) {
+      breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
+    } else {
+      // Fallback for projects that have not written replica bundle size yet.
+      const activeFiles = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project_and_status", (q) =>
+          q.eq("projectId", projectId).eq("status", "active")
+        )
+        .collect()
+      breakdown.sourceAndConfig += activeFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+
+      const supersededFiles = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project_and_status", (q) =>
+          q.eq("projectId", projectId).eq("status", "superseded")
+        )
+        .collect()
+      breakdown.gitHistory += supersededFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+    }
 
     // Assets: sum of projectAssets.size
     const assets = await ctx.db
