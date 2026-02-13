@@ -36,6 +36,7 @@ export const upsertReplicaForServer = mutation({
     headCommit: v.optional(v.string()),
     bundleStorageId: v.optional(v.id("_storage")),
     bundleChecksum: v.optional(v.string()),
+    bundleSizeBytes: v.optional(v.number()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -56,6 +57,7 @@ export const upsertReplicaForServer = mutation({
         headCommit: args.headCommit ?? existing.headCommit,
         bundleStorageId: nextBundleStorageId,
         bundleChecksum: args.bundleChecksum ?? existing.bundleChecksum,
+        bundleSizeBytes: args.bundleSizeBytes ?? existing.bundleSizeBytes,
         version: existing.version + 1,
         updatedAt: now,
         updatedBy: args.userId,
@@ -81,6 +83,7 @@ export const upsertReplicaForServer = mutation({
       headCommit: args.headCommit,
       bundleStorageId: args.bundleStorageId,
       bundleChecksum: args.bundleChecksum,
+      bundleSizeBytes: args.bundleSizeBytes,
       version: 1,
       updatedAt: now,
       updatedBy: args.userId,

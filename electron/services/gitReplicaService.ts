@@ -46,6 +46,8 @@ const SNAPSHOT_RETRY_MAX_MS = 60_000
 const MAX_SNAPSHOT_FILE_BYTES = 8 * 1024 * 1024
 const MAX_SNAPSHOT_TOTAL_BYTES = 60 * 1024 * 1024
 const LFS_POINTER_VERSION = 'version https://git-lfs.github.com/spec/v1'
+const REPLICA_LOCK_TIMEOUT_ERROR = 'Timed out waiting for replica lock'
+const LOCK_TIMEOUT_RETRY_DELAYS_MS = [400, 1_200, 2_400]
 
 function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').trim()
@@ -85,6 +87,10 @@ function parseLfsPointerBuffer(bytes: Buffer): { oid: string; size: number } | n
     oid: oidMatch[1],
     size,
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export class GitReplicaService {
@@ -190,6 +196,11 @@ export class GitReplicaService {
     return session.accessToken
   }
 
+  private isLockTimeoutMessage(message: string | undefined): boolean {
+    if (!message) return false
+    return message.toLowerCase().includes(REPLICA_LOCK_TIMEOUT_ERROR.toLowerCase())
+  }
+
   private async postReplica<T>(route: string, body: Record<string, unknown>): Promise<T> {
     const token = this.getAccessToken()
     const response = await fetch(`${this.apiBase}/replica-git${route}`, {
@@ -207,6 +218,55 @@ export class GitReplicaService {
     }
 
     return await response.json() as T
+  }
+
+  private async postReplicaWithLockRetry<T extends { success: boolean; error?: string }>(
+    route: string,
+    body: Record<string, unknown>
+  ): Promise<T> {
+    const totalAttempts = LOCK_TIMEOUT_RETRY_DELAYS_MS.length + 1
+
+    for (let attemptIndex = 0; attemptIndex < totalAttempts; attemptIndex += 1) {
+      try {
+        const response = await this.postReplica<T>(route, body)
+        const shouldRetry =
+          !response.success &&
+          this.isLockTimeoutMessage(response.error) &&
+          attemptIndex < LOCK_TIMEOUT_RETRY_DELAYS_MS.length
+
+        if (!shouldRetry) {
+          return response
+        }
+
+        const retryDelayMs = LOCK_TIMEOUT_RETRY_DELAYS_MS[attemptIndex]
+        console.warn('[GitReplica] Replica lock contention, retrying request', {
+          route,
+          attempt: attemptIndex + 1,
+          totalAttempts,
+          retryDelayMs,
+        })
+        await delay(retryDelayMs)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const shouldRetry =
+          this.isLockTimeoutMessage(message) &&
+          attemptIndex < LOCK_TIMEOUT_RETRY_DELAYS_MS.length
+        if (!shouldRetry) {
+          throw error
+        }
+
+        const retryDelayMs = LOCK_TIMEOUT_RETRY_DELAYS_MS[attemptIndex]
+        console.warn('[GitReplica] Replica lock contention (request failed), retrying', {
+          route,
+          attempt: attemptIndex + 1,
+          totalAttempts,
+          retryDelayMs,
+        })
+        await delay(retryDelayMs)
+      }
+    }
+
+    throw new Error(`Replica API ${route} failed after retry attempts`)
   }
 
   private collectSnapshot(projectPath: string): GitReplicaSnapshotFile[] {
@@ -299,11 +359,13 @@ export class GitReplicaService {
   }): Promise<GitReplicaBootstrapResult> {
     try {
       const localSnapshot = this.collectSnapshot(options.projectPath)
-      const response = await this.postReplica<GitReplicaBootstrapResult>('/bootstrap', {
+      const response = await this.postReplicaWithLockRetry<GitReplicaBootstrapResult>('/bootstrap', {
         projectId: options.projectId,
         localSnapshot,
       })
-      if (!response.success) {
+      if (response.success) {
+        this.updateProjectState(options.projectId, { lastError: undefined })
+      } else {
         this.updateProjectState(options.projectId, { lastError: response.error || 'Bootstrap failed' })
       }
       return response
@@ -326,14 +388,16 @@ export class GitReplicaService {
     try {
       const projectState = this.getProjectState(options.projectId)
       const localSnapshot = this.collectSnapshot(options.projectPath)
-      const response = await this.postReplica<GitReplicaPlanResult>('/plan', {
+      const response = await this.postReplicaWithLockRetry<GitReplicaPlanResult>('/plan', {
         projectId: options.projectId,
         sessionId,
         baseCommit: projectState.baseCommit,
         localSnapshot,
         deviceId: process.env.HOSTNAME || process.env.COMPUTERNAME || process.platform,
       })
-      if (!response.success) {
+      if (response.success) {
+        this.updateProjectState(options.projectId, { lastError: undefined })
+      } else {
         this.updateProjectState(options.projectId, { lastError: response.error || 'Plan failed' })
       }
       return response
@@ -364,7 +428,7 @@ export class GitReplicaService {
     try {
       const projectState = this.getProjectState(options.projectId)
       const localSnapshot = this.collectSnapshot(options.projectPath)
-      const response = await this.postReplica<GitReplicaExecuteResult>('/apply', {
+      const response = await this.postReplicaWithLockRetry<GitReplicaExecuteResult>('/apply', {
         projectId: options.projectId,
         sessionId: options.sessionId,
         baseCommit: projectState.baseCommit,
