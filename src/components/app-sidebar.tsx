@@ -15,7 +15,6 @@ import { IconFolderCode } from "@tabler/icons-react"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
-import { UpdateMenu } from "@/components/updates/UpdateMenu"
 import {
   Sidebar,
   SidebarContent,
@@ -25,8 +24,6 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
-import { useAutoUpdateStore } from "@/stores/useAutoUpdateStore"
-import { useAutoUpdater } from "@/hooks/useAutoUpdater"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -42,37 +39,25 @@ const PLATFORM_ITEMS: NavMainItem[] = [
   { title: "Projects", url: "/projects", icon: IconFolderCode },
 ]
 
+const preloadRolesPage = () => import("@/pages/teams/Roles")
+const preloadGeneralPage = () => import("@/pages/workspace/General")
+const preloadBillingPage = () => import("@/pages/workspace/Billing")
+const preloadAiPage = () => import("@/pages/workspace/AI")
+const preloadIntegrationsPage = () => import("@/pages/workspace/Integrations")
+const preloadSyncPage = () => import("@/pages/workspace/Sync")
+
 const TEAM_ITEMS: NavMainItem[] = [
   { title: "Members", url: "/teams", icon: Users },
-  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true },
+  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true, preload: preloadRolesPage },
 ]
 
 const WORKSPACE_ITEMS: NavMainItem[] = [
-  { title: "General", url: "/workspace/general", icon: Settings },
-  { title: "Billing", url: "/workspace/billing", icon: CreditCard },
-  { title: "AI", url: "/workspace/ai", icon: Bot },
-  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
-  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
+  { title: "General", url: "/workspace/general", icon: Settings, preload: preloadGeneralPage },
+  { title: "Billing", url: "/workspace/billing", icon: CreditCard, preload: preloadBillingPage },
+  { title: "AI", url: "/workspace/ai", icon: Bot, preload: preloadAiPage },
+  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal, preload: preloadIntegrationsPage },
+  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true, preload: preloadSyncPage },
 ]
-
-function SidebarUpdate() {
-  useAutoUpdater()
-  const status = useAutoUpdateStore((s) => s.status)
-
-  const show = status === "available" || status === "downloading" || status === "downloaded"
-  if (!show) return null
-
-  return (
-    <div className="px-2 pb-2 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:pb-3">
-      <div className="flex items-center justify-between rounded-md border bg-background/40 px-2 py-1 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center">
-        <div className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          Update
-        </div>
-        <UpdateMenu disableAutoUpdaterHook dropdownAlign="start" dropdownSide="right" />
-      </div>
-    </div>
-  )
-}
 
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
   return (
@@ -93,7 +78,6 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
           <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
         </SidebarContent>
         <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
-          <SidebarUpdate />
           <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
             <NavUser user={user} onLogout={onLogout} />
           </div>

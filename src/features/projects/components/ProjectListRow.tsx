@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -47,6 +47,9 @@ import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
+
+const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
+const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 interface ProjectSummary {
     _id: Id<'projects'>
@@ -97,6 +100,12 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     const [showMenu, setShowMenu] = useState(false)
     const [localPath, setLocalPath] = useState<string | null>(null)
 
+    // Get cloud manifest for sync check
+    const cloudManifest = useQuery(
+        api.projectFiles.getManifestForProject,
+        project.status !== 'draft' ? { projectId: project._id } : 'skip'
+    )
+
     useEffect(() => {
         let cancelled = false
 
@@ -115,6 +124,14 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
             cancelled = true
         }
     }, [project.slug, project.status])
+
+    const preloadProjectDestination = useCallback(() => {
+        if (project.status === 'draft') {
+            void preloadNewProjectPage()
+            return
+        }
+        void preloadProjectDetailPage()
+    }, [project.status])
 
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return
@@ -139,6 +156,8 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     }
 
     const handleRowClick = useCallback(async () => {
+        preloadProjectDestination()
+
         // Draft projects go straight to wizard
         if (project.status === 'draft') {
             navigate(`/projects/new?resume=${project._id}`)
@@ -179,6 +198,22 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 })
             }
 
+            // Quick check if sync is needed
+            if (effectiveLocalPath && cloudManifest) {
+                setSyncMessage('Checking files...')
+                const localResult = await window.electronAPI.sync.getLocalManifest({
+                    projectPath: effectiveLocalPath,
+                    debugSource: `project-list-row:${project._id}`,
+                })
+
+                const hasChanges = localResult.totalFiles !== cloudManifest.length
+
+                if (hasChanges) {
+                    setSyncState('syncing')
+                    setSyncMessage('Syncing files...')
+                }
+            }
+
             // Navigate to project
             setSyncState('ready')
             setSyncMessage('Opening project...')
@@ -205,7 +240,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, navigate, updateMemberLocalPath])
+    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 
@@ -216,6 +251,9 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                     "group cursor-pointer",
                     syncState !== 'idle' && "pointer-events-none"
                 )}
+                onMouseEnter={preloadProjectDestination}
+                onFocus={preloadProjectDestination}
+                onPointerDown={preloadProjectDestination}
                 onClick={handleRowClick}
             >
                 <TableCell className="min-w-0">
@@ -301,6 +339,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
+                                preloadProjectDetailPage()
                                 navigate(`/projects/${project.slug}`, {
                                     state: {
                                         projectSlug: project.slug,

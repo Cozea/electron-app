@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { UpdateMenu } from './components/updates/UpdateMenu'
 // Eager load core pages for instant startup (VS Code style)
 import { Projects } from './pages/Projects'
 import { ProjectLayout } from './features/projects/layouts/ProjectLayout'
@@ -120,6 +121,7 @@ function AppContent() {
   return (
     <>
       <ElectronNavigationBridge />
+      <UpdateMenu />
       <Routes>
         {/* Projects (default landing page) */}
         <Route path="/" element={<Navigate to="/projects" replace />} />

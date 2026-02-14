@@ -425,9 +425,9 @@ body {
     user-select: text;
   }
 
-  /* Re-enable pointer cursor for links and buttons using a dedicated class or specific elements */
-  a, button, [role="button"], .cursor-pointer {
-    cursor: pointer;
+  /* Keep default cursor for chrome interactions (native desktop feel). */
+  a, button, [role="button"] {
+    cursor: default;
   }
 
   body {
@@ -463,6 +463,7 @@ body {
   .app-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+    scrollbar-gutter: stable;
   }
 
   .app-scrollbar::-webkit-scrollbar {
@@ -918,4 +919,13 @@ body {
 .bdry-divider-x,
 .bdry-divider-y {
   background: transparent;
+}
+
+/* Native cursor policy: avoid web-style hand cursors in app chrome. */
+a,
+button,
+[role="button"],
+.cursor-pointer,
+.cursor-not-allowed {
+  cursor: default !important;
 }

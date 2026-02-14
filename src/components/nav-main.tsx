@@ -1,4 +1,4 @@
-import { memo, type ComponentType } from "react"
+import { memo, type ComponentType, useCallback, useRef } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 import {
@@ -15,6 +15,7 @@ export interface NavMainItem {
   url: string
   icon?: ComponentType<{ className?: string }>
   alpha?: boolean
+  preload?: () => Promise<unknown>
 }
 
 interface NavMainProps {
@@ -28,6 +29,7 @@ export const NavMain = memo(function NavMain({
 }: NavMainProps) {
   const location = useLocation()
   const currentPath = location.pathname
+  const preloadedUrlsRef = useRef<Set<string>>(new Set())
 
   const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/"
   const normalizedCurrentPath = normalizePath(currentPath)
@@ -54,6 +56,15 @@ export const NavMain = memo(function NavMain({
     return !hasMoreSpecificMatch
   }
 
+  const preloadItem = useCallback((item: NavMainItem) => {
+    if (!item.preload) return
+    if (preloadedUrlsRef.current.has(item.url)) return
+    preloadedUrlsRef.current.add(item.url)
+    void item.preload().catch(() => {
+      preloadedUrlsRef.current.delete(item.url)
+    })
+  }, [])
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
@@ -65,7 +76,12 @@ export const NavMain = memo(function NavMain({
               isActive={isItemActive(item)}
               asChild
             >
-              <Link to={item.url}>
+              <Link
+                to={item.url}
+                onMouseEnter={() => preloadItem(item)}
+                onFocus={() => preloadItem(item)}
+                onPointerDown={() => preloadItem(item)}
+              >
                 {item.icon && <item.icon className="opacity-60" />}
                 <span>{item.title}</span>
                 {item.alpha && (

@@ -24,7 +24,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 
 import {
     Sidebar,
@@ -43,7 +42,6 @@ import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { ProjectSyncIndicator } from "./ProjectSyncIndicator"
-import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
 
 // Placeholders / Components
@@ -65,7 +63,8 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
     onCreateFolder?: () => void
     onSecondaryVisibilityChange?: (isVisible: boolean) => void
     projectId?: Id<"projects"> | null
-    presenceUsers?: PresenceUser[]
+    // Backward-compat sink: prevent leaking legacy props to DOM through `...props`.
+    presenceUsers?: unknown[]
     presenceCount?: number
 }
 
@@ -82,6 +81,17 @@ const routeMap: Record<string, string> = {
     "Backend Studio": "backend",
     // Settings
     "Settings": "settings",
+}
+
+const projectRoutePreloaders: Record<string, () => Promise<unknown>> = {
+    "Tasks": () => import("@/features/projects/pages/TasksPage"),
+    "Pages": () => import("@/features/projects/pages/ProjectPagesPage"),
+    "Files": () => import("@/features/projects/pages/ProjectDetailPage"),
+    "Sync Feed": () => import("@/features/projects/pages/ChangesPage"),
+    "Dependencies": () => import("@/features/projects/pages/ProjectDependenciesPage"),
+    "Database": () => import("@/features/projects/pages/ProjectDatabasePage"),
+    "Backend Studio": () => import("@/features/projects/pages/ProjectBackendStudioPage"),
+    "Settings": () => import("@/features/projects/pages/ProjectSettingsPage"),
 }
 
 // Default and constraints for secondary sidebar width
@@ -130,8 +140,8 @@ export function ProjectSidebar({
     onCreateFolder,
     onSecondaryVisibilityChange,
     projectId: providedProjectId,
-    presenceUsers = [],
-    presenceCount,
+    presenceUsers: _presenceUsers,
+    presenceCount: _presenceCount,
     className,
     ...props
 }: ProjectSidebarProps) {
@@ -141,18 +151,22 @@ export function ProjectSidebar({
     const { currentOrganization, convexUserId } = useAuth()
     const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
-    const totalPresenceCount = Math.max(1, presenceCount ?? (presenceUsers.length + 1))
-    const handlePresenceUserClick = React.useCallback(
-        (user: PresenceUser) => {
-            if (!slug) return
-            navigate(`/projects/${slug}/changes?userId=${encodeURIComponent(user.userId)}`)
-        },
-        [navigate, slug]
-    )
+    const preloadedTabsRef = React.useRef<Set<string>>(new Set())
 
     const isFilesRoute = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
     const isPagesRoute = Boolean(slug && location.pathname === `/projects/${slug}/pages`)
     const isSettingsRoute = Boolean(slug && location.pathname.startsWith(`/projects/${slug}/settings`))
+
+    const preloadProjectTab = React.useCallback((tabTitle: string) => {
+        const preloader = projectRoutePreloaders[tabTitle]
+        if (!preloader) return
+        if (preloadedTabsRef.current.has(tabTitle)) return
+
+        preloadedTabsRef.current.add(tabTitle)
+        void preloader().catch(() => {
+            preloadedTabsRef.current.delete(tabTitle)
+        })
+    }, [])
 
     // Top-level active selection (e.g. "Files", "Tasks")
     const [activeTab, setActiveTab] = React.useState<string | null>(() => {
@@ -397,7 +411,12 @@ export function ProjectSidebar({
                                                     <SidebarMenuButton
                                                         tooltip={item.title}
                                                         isActive={isActive}
+                                                        onMouseEnter={() => preloadProjectTab(item.title)}
+                                                        onFocus={() => preloadProjectTab(item.title)}
+                                                        onPointerDown={() => preloadProjectTab(item.title)}
                                                         onClick={() => {
+                                                            preloadProjectTab(item.title)
+
                                                             // Navigate to the route
                                                             const route = routeMap[item.title]
                                                             if (route !== undefined && slug) {
@@ -456,28 +475,9 @@ export function ProjectSidebar({
                     <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
                         <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
                             <ProjectSyncIndicator variant="sidebar" />
-                            <div className="mt-2 flex items-center justify-between px-1 py-1">
-                                <p className="text-[11px] text-muted-foreground">
-                                    {totalPresenceCount} online
-                                </p>
-                                {presenceUsers.length > 0 && (
-                                    <PresenceAvatarGroup
-                                        users={presenceUsers}
-                                        maxVisible={3}
-                                        onUserClick={handlePresenceUserClick}
-                                    />
-                                )}
-                            </div>
                         </div>
                         <div className="hidden pb-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1.5">
                             <ProjectSyncIndicator variant="compact" />
-                            <Badge
-                                variant="secondary"
-                                className="h-6 min-w-6 px-2 text-[10px] font-medium tabular-nums"
-                                title={`${totalPresenceCount} active in this project`}
-                            >
-                                {totalPresenceCount}
-                            </Badge>
                         </div>
                         <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                             <NavUser user={user} onLogout={onLogout} />
