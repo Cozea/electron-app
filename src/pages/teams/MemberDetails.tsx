@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useQuery } from 'convex/react'
@@ -9,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
   Mail,
   Calendar,
-  GitCommit,
+  Activity,
   Zap,
   FolderKanban,
   Users,
@@ -20,10 +21,11 @@ import {
 function ContributionGraph({ data }: { data: number[][] }) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const days = ['', 'Mon', '', 'Wed', '', 'Fri', '']
+  const cellStep = 14
 
   const getColor = (count: number) => {
-    if (count === 0) return 'bg-muted'
-    if (count <= 2) return 'bg-emerald-200 dark:bg-emerald-900'
+    if (count === 0) return 'bg-muted/70'
+    if (count <= 2) return 'bg-emerald-300/80 dark:bg-emerald-900'
     if (count <= 5) return 'bg-emerald-400 dark:bg-emerald-700'
     if (count <= 8) return 'bg-emerald-500 dark:bg-emerald-500'
     return 'bg-emerald-600 dark:bg-emerald-400'
@@ -51,61 +53,59 @@ function ContributionGraph({ data }: { data: number[][] }) {
   const monthLabels = getMonthLabels()
 
   return (
-    <div className="app-scrollbar overflow-x-auto">
-      <div className="inline-block min-w-full">
-        {/* Month labels */}
-        <div className="flex mb-1 ml-8">
-          {monthLabels.map((label, i) => (
-            <span
-              key={i}
-              className="text-xs text-muted-foreground"
-              style={{
-                position: 'relative',
-                left: `${label.col * 12}px`,
-                marginRight: i < monthLabels.length - 1
-                  ? `${(monthLabels[i + 1]?.col - label.col) * 12 - 24}px`
-                  : '0'
-              }}
-            >
-              {label.month}
-            </span>
-          ))}
-        </div>
-
-        <div className="flex gap-0.5">
-          {/* Day labels */}
-          <div className="flex flex-col gap-0.5 mr-1">
-            {days.map((day, i) => (
-              <span key={i} className="text-[10px] text-muted-foreground h-[10px] leading-[10px]">
-                {day}
+    <div className="space-y-3">
+      <div className="app-scrollbar overflow-x-auto pb-1">
+        <div className="min-w-[760px]">
+          {/* Month labels */}
+          <div className="relative ml-8 h-4">
+            {monthLabels.map((label, i) => (
+              <span
+                key={i}
+                className="absolute text-[11px] text-muted-foreground"
+                style={{ left: `${label.col * cellStep}px` }}
+              >
+                {label.month}
               </span>
             ))}
           </div>
 
-          {/* Contribution cells */}
-          {data.map((week, weekIndex) => (
-            <div key={weekIndex} className="flex flex-col gap-0.5">
-              {week.map((count, dayIndex) => (
-                <div
-                  key={dayIndex}
-                  className={`w-[10px] h-[10px] rounded-sm ${getColor(count)} transition-colors`}
-                  title={`${count} contributions`}
-                />
+          <div className="mt-1 flex gap-1.5">
+            {/* Day labels */}
+            <div className="mr-1 flex flex-col gap-[3px] pt-[1px]">
+              {days.map((day, i) => (
+                <span key={i} className="h-[11px] w-6 text-[10px] leading-[11px] text-muted-foreground">
+                  {day}
+                </span>
               ))}
             </div>
-          ))}
-        </div>
 
-        {/* Legend */}
-        <div className="flex items-center justify-end gap-1 mt-2">
-          <span className="text-xs text-muted-foreground mr-1">Less</span>
-          <div className="w-[10px] h-[10px] rounded-sm bg-muted" />
-          <div className="w-[10px] h-[10px] rounded-sm bg-emerald-200 dark:bg-emerald-900" />
-          <div className="w-[10px] h-[10px] rounded-sm bg-emerald-400 dark:bg-emerald-700" />
-          <div className="w-[10px] h-[10px] rounded-sm bg-emerald-500 dark:bg-emerald-500" />
-          <div className="w-[10px] h-[10px] rounded-sm bg-emerald-600 dark:bg-emerald-400" />
-          <span className="text-xs text-muted-foreground ml-1">More</span>
+            {/* Contribution cells */}
+            <div className="flex gap-[3px]">
+              {data.map((week, weekIndex) => (
+                <div key={weekIndex} className="flex flex-col gap-[3px]">
+                  {week.map((count, dayIndex) => (
+                    <div
+                      key={dayIndex}
+                      className={`h-[11px] w-[11px] rounded-[3px] ${getColor(count)} transition-colors`}
+                      title={`${count} requests`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <span>No activity</span>
+        <div className="h-[11px] w-[11px] rounded-[3px] bg-muted/70" />
+        <div className="h-[11px] w-[11px] rounded-[3px] bg-emerald-300/80 dark:bg-emerald-900" />
+        <div className="h-[11px] w-[11px] rounded-[3px] bg-emerald-400 dark:bg-emerald-700" />
+        <div className="h-[11px] w-[11px] rounded-[3px] bg-emerald-500 dark:bg-emerald-500" />
+        <div className="h-[11px] w-[11px] rounded-[3px] bg-emerald-600 dark:bg-emerald-400" />
+        <span>High activity</span>
       </div>
     </div>
   )
@@ -119,7 +119,7 @@ function StatCard({ icon: Icon, label, value, subtext }: {
   subtext?: string
 }) {
   return (
-    <div className="flex items-center gap-3 p-4 rounded-lg border bg-card">
+    <div className="flex items-center gap-3 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
       <div className="p-2 rounded-md bg-muted">
         <Icon className="h-5 w-5 text-muted-foreground" />
       </div>
@@ -130,6 +130,59 @@ function StatCard({ icon: Icon, label, value, subtext }: {
       </div>
     </div>
   )
+}
+
+function buildWeeklyActivity(timestamps: number[]): number[][] {
+  const totalDays = 52 * 7
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const startDate = new Date(today)
+  startDate.setDate(startDate.getDate() - (totalDays - 1))
+
+  const countsByDay = new Map<string, number>()
+  for (const timestamp of timestamps) {
+    const date = new Date(timestamp)
+    date.setHours(0, 0, 0, 0)
+    if (date < startDate || date > today) continue
+    const dayKey = date.toISOString().slice(0, 10)
+    countsByDay.set(dayKey, (countsByDay.get(dayKey) ?? 0) + 1)
+  }
+
+  const data: number[][] = []
+  for (let week = 0; week < 52; week++) {
+    const weekData: number[] = []
+    for (let day = 0; day < 7; day++) {
+      const date = new Date(startDate)
+      date.setDate(startDate.getDate() + week * 7 + day)
+      const dayKey = date.toISOString().slice(0, 10)
+      weekData.push(countsByDay.get(dayKey) ?? 0)
+    }
+    data.push(weekData)
+  }
+
+  return data
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const diff = Date.now() - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return `${days}d ago`
+}
+
+function formatRole(role: string | undefined): string {
+  if (!role) return 'Member'
+  return role.replace(/_/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined
 }
 
 export function MemberDetails() {
@@ -148,34 +201,65 @@ export function MemberDetails() {
     convexOrg?._id && memberId ? { orgId: convexOrg._id, memberId: memberId as Id<'members'> } : 'skip'
   )
 
+  const usageRecords = useQuery(
+    api.aiUsage.getRecentForUser,
+    member?.user?.id ? { userId: member.user.id, limit: 500 } : 'skip'
+  )
+  const memberProjects = useQuery(
+    api.projects.listForUser,
+    member?.user?.id ? { userId: member.user.id } : 'skip'
+  )
+  const organizationMembers = useQuery(
+    api.organizations.getMembers,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+  )
+
   const isLoading = member === undefined
 
-  // Generate mock contribution data (52 weeks x 7 days)
-  // In production, this would come from actual commit data
-  const generateContributionData = (): number[][] => {
-    const data: number[][] = []
-    for (let week = 0; week < 52; week++) {
-      const weekData: number[] = []
-      for (let day = 0; day < 7; day++) {
-        // Generate somewhat realistic patterns (more activity on weekdays)
-        const isWeekend = day === 0 || day === 6
-        const baseChance = isWeekend ? 0.2 : 0.6
-        const hasActivity = Math.random() < baseChance
-        weekData.push(hasActivity ? Math.floor(Math.random() * 12) : 0)
+  const scopedProjects = useMemo(() => {
+    if (!memberProjects) return []
+
+    return memberProjects
+      .filter(isPresent)
+      .filter((project) => !convexOrg?._id || project.organizationId === convexOrg._id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [memberProjects, convexOrg?._id])
+
+  const usageSummary = useMemo(() => {
+    const records = usageRecords ?? []
+    const monthStart = new Date()
+    monthStart.setDate(1)
+    monthStart.setHours(0, 0, 0, 0)
+    const monthStartMs = monthStart.getTime()
+
+    let totalTokens = 0
+    let thisMonthTokens = 0
+    const timestamps: number[] = []
+
+    for (const usage of records) {
+      const tokens = usage.totalTokens ?? 0
+      totalTokens += tokens
+      if (usage.timestamp >= monthStartMs) {
+        thisMonthTokens += tokens
       }
-      data.push(weekData)
+      timestamps.push(usage.timestamp)
     }
-    return data
-  }
 
-  const contributionData = generateContributionData()
-  const totalContributions = contributionData.flat().reduce((a, b) => a + b, 0)
+    return { totalTokens, thisMonthTokens, timestamps }
+  }, [usageRecords])
 
-  // Mock data for token usage (would come from actual usage tracking)
-  const tokenUsage = {
-    total: 1234567,
-    thisMonth: 45678,
-  }
+  const contributionData = useMemo(
+    () => buildWeeklyActivity(usageSummary.timestamps),
+    [usageSummary.timestamps]
+  )
+  const totalContributions = useMemo(
+    () => contributionData.flat().reduce((sum, count) => sum + count, 0),
+    [contributionData]
+  )
+  const activeProjectsCount = useMemo(
+    () => scopedProjects.filter((project) => project.status !== 'archived').length,
+    [scopedProjects]
+  )
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
@@ -233,118 +317,122 @@ export function MemberDetails() {
         { label: memberName },
       ]}
     >
-      <div className="max-w-4xl">
+      <div className="space-y-4">
         {/* Profile header */}
-        <div className="flex flex-col sm:flex-row gap-6 mb-8">
-          <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
-            <AvatarImage src={member.user?.profileImageUrl || undefined} />
-            <AvatarFallback className="text-3xl">
-              {memberName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-            </AvatarFallback>
-          </Avatar>
+        <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
+          <div className="flex flex-col gap-6 sm:flex-row">
+            <Avatar className="h-28 w-28 border-4 border-background shadow-lg">
+              <AvatarImage src={member.user?.profileImageUrl || undefined} />
+              <AvatarFallback className="text-3xl">
+                {memberName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+              </AvatarFallback>
+            </Avatar>
 
-          <div className="flex-1">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-2xl font-bold">{memberName}</h1>
-                <p className="text-muted-foreground">{member.user?.email}</p>
-              </div>
-              <Badge variant="outline" className="text-sm">
-                {member.role?.charAt(0).toUpperCase() + member.role?.slice(1)}
-              </Badge>
-            </div>
-
-            <div className="flex flex-wrap gap-4 mt-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                <span>Joined {formatDate(member.joinedAt)}</span>
-              </div>
-              {member.user?.email && (
-                <div className="flex items-center gap-1.5">
-                  <Mail className="h-4 w-4" />
-                  <span>{member.user.email}</span>
+            <div className="flex-1">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold">{memberName}</h1>
+                  <p className="text-muted-foreground">{member.user?.email}</p>
                 </div>
-              )}
+                <Badge variant="secondary" className="text-sm">
+                  {formatRole(member.role)}
+                </Badge>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  <span>Joined {formatDate(member.joinedAt)}</span>
+                </div>
+                {member.user?.email && (
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-4 w-4" />
+                    <span>{member.user.email}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatCard
-            icon={GitCommit}
-            label="Contributions"
+            icon={Activity}
+            label="AI Requests"
             value={totalContributions}
             subtext="in the last year"
           />
           <StatCard
             icon={Zap}
             label="Tokens Used"
-            value={formatNumber(tokenUsage.total)}
-            subtext={`${formatNumber(tokenUsage.thisMonth)} this month`}
+            value={formatNumber(usageSummary.totalTokens)}
+            subtext={`${formatNumber(usageSummary.thisMonthTokens)} this month`}
           />
           <StatCard
             icon={FolderKanban}
             label="Active Projects"
-            value={3}
-            subtext="across 2 teams"
+            value={activeProjectsCount}
+            subtext="in this workspace"
           />
         </div>
 
         {/* Contribution graph */}
-        <div className="border rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-semibold mb-4">{totalContributions} contributions in the last year</h2>
+        <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
+          <h2 className="mb-4 text-lg font-semibold">{totalContributions} AI requests in the last year</h2>
           <ContributionGraph data={contributionData} />
         </div>
 
         {/* Projects and Teams sections */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Projects */}
-          <div className="border rounded-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
+          <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
+            <div className="mb-4 flex items-center gap-2">
               <FolderKanban className="h-5 w-5 text-muted-foreground" />
               <h2 className="text-lg font-semibold">Projects</h2>
             </div>
             <div className="space-y-3">
-              {/* Placeholder projects */}
-              {[
-                { name: 'Frontend App', role: 'Lead', activity: '2 days ago' },
-                { name: 'API Gateway', role: 'Contributor', activity: '1 week ago' },
-                { name: 'Mobile App', role: 'Contributor', activity: '2 weeks ago' },
-              ].map((project, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div>
-                    <p className="font-medium">{project.name}</p>
-                    <p className="text-xs text-muted-foreground">{project.role}</p>
+              {scopedProjects.length > 0 ? (
+                scopedProjects.slice(0, 5).map((project) => (
+                  <div key={project._id} className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
+                    <div>
+                      <p className="font-medium">{project.name}</p>
+                      <p className="text-xs text-muted-foreground">{formatRole(project.role)}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatRelativeTime(project.updatedAt)}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{project.activity}</span>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground py-2">No projects found for this member.</p>
+              )}
             </div>
           </div>
 
           {/* Teams */}
-          <div className="border rounded-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
+          <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
+            <div className="mb-4 flex items-center gap-2">
               <Users className="h-5 w-5 text-muted-foreground" />
               <h2 className="text-lg font-semibold">Teams</h2>
             </div>
             <div className="space-y-3">
-              {/* Placeholder teams */}
-              {[
-                { name: 'Engineering', members: 12 },
-                { name: 'Product', members: 8 },
-              ].map((team, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
+              {currentOrganization ? (
+                <div className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center">
                       <Users className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <p className="font-medium">{team.name}</p>
+                    <div>
+                      <p className="font-medium">{currentOrganization.organizationName}</p>
+                      <p className="text-xs text-muted-foreground">{formatRole(member.role)}</p>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">{team.members} members</span>
+                  <span className="text-xs text-muted-foreground">
+                    {organizationMembers ? `${organizationMembers.length} members` : 'Loading...'}
+                  </span>
                 </div>
-              ))}
+              ) : (
+                <p className="text-sm text-muted-foreground py-2">No team information available.</p>
+              )}
             </div>
           </div>
         </div>

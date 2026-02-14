@@ -6,6 +6,21 @@ import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
 
+function shellBasename(shellPath: string): string {
+    const name = shellPath.split('/').pop()
+    return (name && name.length > 0 ? name : shellPath).toLowerCase()
+}
+
+function getLoginShellArgs(shellPath: string): string[] | undefined {
+    // Finder-launched Electron apps often miss PATH entries from shell startup files.
+    // Launch known shells as login shells so ~/.zprofile, ~/.bash_profile, etc. are loaded.
+    const base = shellBasename(shellPath)
+    if (base === 'zsh' || base === 'bash' || base === 'fish') {
+        return ['-l']
+    }
+    return undefined
+}
+
 export interface TerminalProfile {
     id: string
     name: string
@@ -131,17 +146,35 @@ export class TerminalService {
 
     private detectTerminalProfiles(): TerminalProfile[] {
         const profiles: TerminalProfile[] = []
+        const seenPaths = new Set<string>()
+        const addProfile = (profile: TerminalProfile) => {
+            if (seenPaths.has(profile.path)) return
+            seenPaths.add(profile.path)
+            profiles.push(profile)
+        }
 
         // macOS/Linux shells
         if (process.platform !== 'win32') {
+            const defaultShell = process.env.SHELL
+            if (defaultShell && fs.existsSync(defaultShell)) {
+                const base = shellBasename(defaultShell)
+                addProfile({
+                    id: 'default',
+                    name: base,
+                    path: defaultShell,
+                    args: getLoginShellArgs(defaultShell),
+                    icon: 'terminal',
+                })
+            }
+
             if (fs.existsSync('/bin/zsh')) {
-                profiles.push({ id: 'zsh', name: 'zsh', path: '/bin/zsh', icon: 'terminal' })
+                addProfile({ id: 'zsh', name: 'zsh', path: '/bin/zsh', args: getLoginShellArgs('/bin/zsh'), icon: 'terminal' })
             }
             if (fs.existsSync('/bin/bash')) {
-                profiles.push({ id: 'bash', name: 'bash', path: '/bin/bash', icon: 'terminal' })
+                addProfile({ id: 'bash', name: 'bash', path: '/bin/bash', args: getLoginShellArgs('/bin/bash'), icon: 'terminal' })
             }
             if (fs.existsSync('/bin/sh')) {
-                profiles.push({ id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' })
+                addProfile({ id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' })
             }
         }
 
