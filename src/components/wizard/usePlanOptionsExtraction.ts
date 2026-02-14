@@ -51,11 +51,11 @@ export function usePlanOptionsExtraction(messages: UIMessage[]): PlanOption[] | 
         const partType = part.type as string
         const toolPart = part as ToolPart
         const isPresentPlans =
-          partType === 'tool-present_plans' ||
-          partType.includes('present_plans') ||
-          toolPart.toolName === 'present_plans' ||
-          (partType === 'tool-invocation' && toolPart.toolName === 'present_plans') ||
-          (partType === 'tool-result' && toolPart.toolName === 'present_plans')
+          partType === 'tool-plan_write' ||
+          partType.includes('plan_write') ||
+          toolPart.toolName === 'plan_write' ||
+          (partType === 'tool-invocation' && toolPart.toolName === 'plan_write') ||
+          (partType === 'tool-result' && toolPart.toolName === 'plan_write')
 
         if (isPresentPlans) {
           const rawOutput = toolPart.output ?? toolPart.result

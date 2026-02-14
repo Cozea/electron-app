@@ -40,18 +40,18 @@ import type { ToolCallPayload } from '@/lib/ai/toolTypes'
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
 const BUILDER_LOCAL_TOOLS = new Set([
-  'build_tasks',
-  'mark_complete',
-  'create_file',
-  'read_file',
-  'list_dir',
-  'run_in_terminal',
+  'todowrite',
+  'build_complete',
+  'write',
+  'read',
+  'list',
+  'bash',
   'get_terminal_output',
   'install_dependencies',
   'verify_build',
   'start_dev_server',
-  'replace_string_in_file',
-  'multi_replace_string_in_file',
+  'edit',
+  'multiedit',
 ])
 
 const FALLBACK_MODEL_BY_PROVIDER: Record<'anthropic' | 'openai' | 'google', string> = {
@@ -424,8 +424,15 @@ export function BuilderConversation({
   useEffect(() => {
     if (!accessToken || !currentOrganization?.organizationId) return
     const controller = new AbortController()
+    const query = new URLSearchParams({
+      organizationId: currentOrganization.organizationId,
+      model,
+      agentId: 'build',
+      surface: 'builder',
+      hasProjectContext: localPath ? '1' : '0',
+    })
 
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
     })
@@ -443,7 +450,7 @@ export function BuilderConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
+  }, [accessToken, currentOrganization?.organizationId, headers, localPath, model])
 
   // Request config ref
   const requestConfigRef = useRef({
@@ -489,16 +496,16 @@ Entities/Data models:
 ${JSON.stringify(planContext.entities, null, 2)}
 
 IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
-1. First call build_tasks to define your task list with all tasks set to status: "pending"
-2. Before starting each task, call build_tasks with that task's status changed to "in_progress"
-3. After completing each task, call build_tasks with that task's status changed to "completed"
+1. First call todowrite to define your task list with all tasks set to status: "pending"
+2. Before starting each task, call todowrite with that task's status changed to "in_progress"
+3. After completing each task, call todowrite with that task's status changed to "completed"
 4. Repeat steps 2-3 for each task until all tasks are "completed"
 
-This updates the progress UI so the user can track your work in real-time. The user sees your progress through the build_tasks tool calls, so call it frequently!
+This updates the progress UI so the user can track your work in real-time. The user sees your progress through the todowrite tool calls, so call it frequently!
 
 Note: If the tool schema expects tasks_json, it MUST be a strict JSON array string with double quotes, not a JS object literal.
 
-Now begin by defining your task list with build_tasks, then start working through them one by one, updating statuses as you go.`
+Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
   // Chat transport
@@ -520,7 +527,6 @@ Now begin by defining your task list with build_tasks, then start working throug
       body: () => ({
         model,
         organizationId: requestConfigRef.current.organizationId,
-        projectId: requestConfigRef.current.projectId,
         projectContext: {
           name: project.name,
           slug: project.slug,
@@ -571,11 +577,11 @@ Now begin by defining your task list with build_tasks, then start working throug
 
   const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null): string[] => {
     if (!input) return []
-    if (toolName === 'create_file' || toolName === 'replace_string_in_file') {
+    if (toolName === 'write' || toolName === 'edit') {
       const filePath = input.filePath
       return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
     }
-    if (toolName === 'multi_replace_string_in_file') {
+    if (toolName === 'multiedit') {
       const replacements = Array.isArray(input.replacements) ? input.replacements : []
       return replacements
         .filter(isRecord)
@@ -722,7 +728,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     }
 
     try {
-      if (toolName === 'build_tasks') {
+      if (toolName === 'todowrite') {
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
         let tasks: BuildTask[] | null = null
 
@@ -731,7 +737,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'build_tasks failed: input must be an object.',
+            errorText: 'todowrite failed: input must be an object.',
           })
           return
         }
@@ -747,7 +753,7 @@ Now begin by defining your task list with build_tasks, then start working throug
               state: 'output-error',
               tool: toolName,
               toolCallId,
-              errorText: 'build_tasks failed: tasks_json must be a valid JSON array string. Re-read the tool schema and retry with strict JSON.',
+              errorText: 'todowrite failed: tasks_json must be a valid JSON array string. Re-read the tool schema and retry with strict JSON.',
             })
             return
           }
@@ -756,7 +762,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'build_tasks failed: missing tasks or tasks_json input.',
+            errorText: 'todowrite failed: missing tasks or tasks_json input.',
           })
           return
         }
@@ -798,9 +804,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'mark_complete') {
+      if (toolName === 'build_complete') {
         const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
-        console.log('[Builder] mark_complete called with summary:', summary)
+        console.log('[Builder] build_complete called with summary:', summary)
         const finalDiagnostics = await getFinalDiagnosticsSummary()
         if (!completedRef.current) {
           completedRef.current = true
@@ -828,9 +834,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'create_file') {
+      if (toolName === 'write') {
         if (!toolInput || typeof toolInput.filePath !== 'string' || typeof toolInput.content !== 'string') {
-          throw new Error('create_file requires filePath and content')
+          throw new Error('write requires filePath and content')
         }
         const filePath = toolInput.filePath
         const content = toolInput.content
@@ -860,9 +866,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'read_file') {
+      if (toolName === 'read') {
         if (!toolInput || typeof toolInput.filePath !== 'string') {
-          throw new Error('read_file requires filePath')
+          throw new Error('read requires filePath')
         }
         const result = await window.electronAPI.project.readFile({
           projectPath: localPath,
@@ -885,7 +891,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'list_dir') {
+      if (toolName === 'list') {
         const targetPath = normalizeProjectPath(
           typeof toolInput?.path === 'string' ? toolInput.path : ''
         )
@@ -898,14 +904,14 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'replace_string_in_file') {
+      if (toolName === 'edit') {
         if (
           !toolInput ||
           typeof toolInput.filePath !== 'string' ||
           typeof toolInput.oldString !== 'string' ||
           typeof toolInput.newString !== 'string'
         ) {
-          throw new Error('replace_string_in_file requires filePath, oldString, and newString')
+          throw new Error('edit requires filePath, oldString, and newString')
         }
         const filePath = toolInput.filePath
         const oldString = toolInput.oldString
@@ -949,7 +955,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'multi_replace_string_in_file') {
+      if (toolName === 'multiedit') {
         interface ReplacementInput {
           filePath: string
           oldString: string
@@ -1072,10 +1078,10 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'run_in_terminal' && localPath) {
+      if (toolName === 'bash' && localPath) {
         const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
         if (!command) {
-          throw new Error('run_in_terminal requires command')
+          throw new Error('bash requires command')
         }
         const unsupportedNativeMessage = detectUnsupportedNativeBuildCommand(command)
         if (unsupportedNativeMessage) {
@@ -1370,7 +1376,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     })
   }, [])
 
-  // Handle tool calls - intercept build_tasks and file operations
+  // Handle tool calls - intercept todowrite and file operations
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
@@ -1591,7 +1597,7 @@ Now begin by defining your task list with build_tasks, then start working throug
     }
   }, [status])
 
-  // Fallback: extract build_tasks updates directly from streamed messages
+  // Fallback: extract todowrite updates directly from streamed messages
   useEffect(() => {
     let latestTasks: BuildTask[] | null = null
 
@@ -1606,7 +1612,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         const toolName = part.type === 'dynamic-tool'
           ? toolPart.toolName
           : part.type.replace(/^tool-/, '')
-        if (toolName !== 'build_tasks') continue
+        if (toolName !== 'todowrite') continue
 
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
         if (toolPart.input?.tasks) {
@@ -1676,7 +1682,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
         const toolPart = part as ToolPart
         const toolName = part.type === 'dynamic-tool' ? toolPart.toolName : part.type.replace(/^tool-/, '')
-        if (toolName !== 'build_tasks') continue
+        if (toolName !== 'todowrite') continue
         // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
         if (toolPart.input?.tasks) {
           latestTasksRef.current = toolPart.input.tasks as BuildTask[]
@@ -1746,7 +1752,7 @@ Now begin by defining your task list with build_tasks, then start working throug
 
         const prompt = hasOnlyReasoning
           ? 'You stopped mid-thought. Continue and use tools to complete the current task.'
-          : 'Continue with the next task. Use tools to create files and update build_tasks.'
+          : 'Continue with the next task. Use tools to create files and update todowrite.'
 
         setTimeout(() => {
           void sendMessage({ text: prompt })

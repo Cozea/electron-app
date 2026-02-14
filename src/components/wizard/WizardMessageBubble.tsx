@@ -226,8 +226,8 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
             if (!toolName) return null
             const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
 
-            // Skip present_plans tool - it's rendered as PlanSelector below messages
-            if (toolName === 'present_plans') {
+            // Skip plan_write tool - it's rendered as PlanSelector below messages
+            if (toolName === 'plan_write') {
               return null
             }
 
@@ -242,7 +242,7 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
               toolName === 'bing_search'
 
             // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read_file'
+            const isStaticTool = toolName === 'read'
 
             // Render static (non-expandable) tools
             if (isStaticTool) {
@@ -274,12 +274,12 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
                       maxHeight={300}
                     />
                   )}
-                  {/* For non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                  {/* For non-edit/non-list/non-web_search tools, show raw input */}
+                  {!isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
                     <ToolInput input={formatToolPayload(toolInput)} />
                   )}
                   {toolPart.state === 'output-available' && (
-                    toolName === 'todo_list'
+                    toolName === 'todowrite'
                       ? (() => {
                         const tasks = extractTasksFromToolOutput(toolPart.output)
                         if (tasks.length === 0) {

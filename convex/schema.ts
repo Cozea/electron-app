@@ -951,7 +951,7 @@ export default defineSchema({
     conversationId: v.optional(v.string()),
     localPath: v.optional(v.string()),
 
-    // Latest task state (from build_tasks tool)
+    // Latest task state (from todowrite tool)
     tasks: v.optional(
       v.array(
         v.object({

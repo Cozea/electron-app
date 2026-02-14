@@ -132,10 +132,10 @@ const KNOWN_VARIANTS: VariantId[] = [
 ]
 
 const READ_LOCAL_TOOLS = new Set([
-  'read_file',
-  'list_dir',
-  'file_search',
-  'grep_search',
+  'read',
+  'list',
+  'glob',
+  'grep',
 ])
 
 const REVIEW_DIAGNOSTIC_TOOLS = new Set([
@@ -242,11 +242,11 @@ export function getAvailableAgentsForSurface(
   if (surface === 'builder') return ['build']
 
   if (surface === 'assistant_project') {
-    return ['assistant_project', 'explore', 'review', 'build', 'plan']
+    return ['assistant_project', 'explore', 'review', 'build']
   }
 
   if (hasProjectContext) {
-    return ['assistant_project', 'explore', 'review', 'build', 'plan']
+    return ['assistant_project', 'explore', 'review', 'build']
   }
   return ['assistant_general']
 }

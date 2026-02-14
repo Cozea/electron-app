@@ -223,7 +223,7 @@ function getToolState(state: string | undefined): ToolState {
 // Local tools allowed during planning.
 // Web search is executed server/provider-side and does not run through local runtime.
 const PLANNING_TOOLS = new Set([
-  'present_plans'
+  'plan_write'
 ])
 
 // Model catalog (same as AIConversation)
@@ -478,8 +478,15 @@ export function WizardConversation({
   useEffect(() => {
     if (!accessToken || !currentOrganization?.organizationId) return
     const controller = new AbortController()
+    const query = new URLSearchParams({
+      organizationId: currentOrganization.organizationId,
+      model,
+      agentId: 'plan',
+      surface: 'wizard',
+      hasProjectContext: '0',
+    })
 
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
     })
@@ -505,7 +512,7 @@ export function WizardConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
+  }, [accessToken, currentOrganization?.organizationId, headers, model])
 
   // Request config ref (projectId is optional - may not exist during planning phase)
   const requestConfigRef = useRef({
@@ -553,8 +560,6 @@ export function WizardConversation({
       body: () => ({
         model: requestConfigRef.current.model,
         organizationId: requestConfigRef.current.organizationId,
-        // Only include projectId if it exists (project created when plan selected)
-        ...(requestConfigRef.current.projectId && { projectId: requestConfigRef.current.projectId }),
         conversationId: requestConfigRef.current.conversationId,
         agentId: requestConfigRef.current.agentId,
         surface: requestConfigRef.current.surface,
@@ -594,7 +599,7 @@ export function WizardConversation({
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    // Planning-phase gating: local runtime only allows present_plans.
+    // Planning-phase gating: local runtime only allows plan_write.
     if (!PLANNING_TOOLS.has(toolCall.toolName)) {
       void addToolOutput({
         state: 'output-error',
@@ -792,7 +797,7 @@ export function WizardConversation({
   // Track how many plans we've extracted (need exactly 3 for complete extraction)
   const extractedPlanCountRef = useRef(0)
 
-  // Check for plan options in messages (from present_plans tool call)
+  // Check for plan options in messages (from plan_write tool call)
   useEffect(() => {
     // Skip if we already have all 3 plans
     if (extractedPlanCountRef.current >= 3) return
@@ -801,14 +806,14 @@ export function WizardConversation({
       if (message.role !== 'assistant') continue
 
       for (const part of message.parts) {
-        // Check for present_plans tool with output - handle various formats from different providers
+        // Check for plan_write tool with output - handle various formats from different providers
         const partType = part.type as string
         const toolPart = part as ToolPart
-        const isPresntPlans = partType === 'tool-present_plans' ||
-          partType.includes('present_plans') ||
-          toolPart.toolName === 'present_plans' ||
-          (partType === 'tool-invocation' && toolPart.toolName === 'present_plans') ||
-          (partType === 'tool-result' && toolPart.toolName === 'present_plans')
+        const isPresntPlans = partType === 'tool-plan_write' ||
+          partType.includes('plan_write') ||
+          toolPart.toolName === 'plan_write' ||
+          (partType === 'tool-invocation' && toolPart.toolName === 'plan_write') ||
+          (partType === 'tool-result' && toolPart.toolName === 'plan_write')
 
         if (isPresntPlans) {
           // Get output from various possible fields (different providers use different formats)
@@ -1257,8 +1262,8 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
             if (!toolName) return null
             const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
 
-            // Skip present_plans tool - it's rendered as PlanSelector below messages
-            if (toolName === 'present_plans') {
+            // Skip plan_write tool - it's rendered as PlanSelector below messages
+            if (toolName === 'plan_write') {
               return null
             }
 
@@ -1273,7 +1278,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
               toolName === 'bing_search'
 
             // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read_file'
+            const isStaticTool = toolName === 'read'
 
             // Render static (non-expandable) tools
             if (isStaticTool) {
@@ -1305,12 +1310,12 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
                       maxHeight={300}
                     />
                   )}
-                  {/* For non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                  {/* For non-edit/non-list/non-web_search tools, show raw input */}
+                  {!isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
                     <ToolInput input={formatToolPayload(toolInput)} />
                   )}
                   {toolPart.state === 'output-available' && (
-                    toolName === 'todo_list'
+                    toolName === 'todowrite'
                       ? (() => {
                         const tasks = extractTasksFromToolOutput(toolPart.output)
                         if (tasks.length === 0) {

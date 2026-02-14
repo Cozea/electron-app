@@ -46,7 +46,7 @@ function extractDiffData(
   input: Record<string, unknown>
 ): ToolDiffData | ToolDiffData[] | null {
   switch (toolName) {
-    case 'replace_string_in_file': {
+    case 'edit': {
       const filePath = String(input.filePath || input.file_path || '')
       const oldString = String(input.oldString || input.old_string || '')
       const newString = String(input.newString || input.new_string || '')
@@ -60,7 +60,7 @@ function extractDiffData(
       }
     }
 
-    case 'multi_replace_string_in_file': {
+    case 'multiedit': {
       const replacements = input.replacements as Array<{
         filePath?: string
         file_path?: string
@@ -79,7 +79,7 @@ function extractDiffData(
       })).filter((d) => d.filePath && d.original)
     }
 
-    case 'create_file': {
+    case 'write': {
       const filePath = String(input.filePath || input.file_path || '')
       const content = String(input.content || '')
 
@@ -234,9 +234,9 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
  */
 export function isFileEditTool(toolName: string): boolean {
   return [
-    'replace_string_in_file',
-    'multi_replace_string_in_file',
-    'create_file',
+    'edit',
+    'multiedit',
+    'write',
   ].includes(toolName)
 }
 

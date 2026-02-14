@@ -26,10 +26,9 @@ export function normalizeToolInput(toolName: string, rawInput: unknown): unknown
   const next: Record<string, unknown> = { ...input }
 
   // Common arg-name mixups across tools:
-  // - list_dir expects `path` (NOT `dirPath`)
-  // - create_directory expects `dirPath` (NOT `path`)
+  // - list expects `path` (NOT `dirPath`)
   // - file tools expect `filePath` (NOT `path`)
-  if (toolName === 'list_dir') {
+  if (toolName === 'list') {
     if (typeof next.path !== 'string' || !next.path.trim()) {
       const candidate = next.dirPath ?? next.directoryPath
       if (typeof candidate === 'string') {
@@ -39,17 +38,7 @@ export function normalizeToolInput(toolName: string, rawInput: unknown): unknown
     return next
   }
 
-  if (toolName === 'create_directory') {
-    if (typeof next.dirPath !== 'string' || !next.dirPath.trim()) {
-      const candidate = next.path
-      if (typeof candidate === 'string') {
-        next.dirPath = candidate
-      }
-    }
-    return next
-  }
-
-  if (toolName === 'read_file' || toolName === 'create_file' || toolName === 'replace_string_in_file') {
+  if (toolName === 'read' || toolName === 'write' || toolName === 'edit') {
     if (typeof next.filePath !== 'string' || !next.filePath.trim()) {
       const candidate = next.path
       if (typeof candidate === 'string') {
@@ -61,4 +50,3 @@ export function normalizeToolInput(toolName: string, rawInput: unknown): unknown
 
   return next
 }
-

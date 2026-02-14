@@ -20,7 +20,6 @@ import {
   SearchIcon,
   FileSearch2Icon,
   FilePlusIcon,
-  FolderPlusIcon,
   PencilIcon,
   FilesIcon,
   TerminalIcon,
@@ -37,17 +36,16 @@ import { CodeBlock } from "./code-block";
 // Tool name to icon mapping (matching VS Code Codicons)
 const TOOL_ICONS: Record<string, LucideIcon> = {
   // Filesystem - read operations
-  read_file: FileTextIcon,
-  list_dir: FolderOpenIcon,
-  file_search: SearchIcon,
-  grep_search: FileSearch2Icon,
+  read: FileTextIcon,
+  list: FolderOpenIcon,
+  glob: SearchIcon,
+  grep: FileSearch2Icon,
   // Filesystem - write operations
-  create_file: FilePlusIcon,
-  create_directory: FolderPlusIcon,
-  replace_string_in_file: PencilIcon,
-  multi_replace_string_in_file: FilesIcon,
+  write: FilePlusIcon,
+  edit: PencilIcon,
+  multiedit: FilesIcon,
   // Terminal/Code
-  run_in_terminal: TerminalIcon,
+  bash: TerminalIcon,
   get_terminal_output: TerminalIcon,
   install_dependencies: TerminalIcon,
   verify_build: TerminalIcon,
@@ -56,8 +54,10 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   // Web
   web_search: GlobeIcon,
   google_search: GlobeIcon,
-  // Custom
-  todo_list: ListChecksIcon,
+  // Workflow
+  plan_write: ListChecksIcon,
+  todowrite: ListChecksIcon,
+  build_complete: CheckIcon,
 };
 
 export const getToolIcon = (toolName: string): LucideIcon => {
@@ -66,15 +66,14 @@ export const getToolIcon = (toolName: string): LucideIcon => {
 
 // Tool message templates for present and past tense
 const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
-  read_file: { present: "Reading", past: "Read" },
-  list_dir: { present: "Listing", past: "Listed" },
-  file_search: { present: "Searching", past: "Searched" },
-  grep_search: { present: "Searching in", past: "Searched in" },
-  create_file: { present: "Creating", past: "Created" },
-  create_directory: { present: "Creating", past: "Created" },
-  replace_string_in_file: { present: "Editing", past: "Edited" },
-  multi_replace_string_in_file: { present: "Editing", past: "Edited" },
-  run_in_terminal: { present: "Running", past: "Ran" },
+  read: { present: "Reading", past: "Read" },
+  list: { present: "Listing", past: "Listed" },
+  glob: { present: "Searching", past: "Searched" },
+  grep: { present: "Searching in", past: "Searched in" },
+  write: { present: "Creating", past: "Created" },
+  edit: { present: "Editing", past: "Edited" },
+  multiedit: { present: "Editing", past: "Edited" },
+  bash: { present: "Running", past: "Ran" },
   get_terminal_output: { present: "Getting output", past: "Got output" },
   install_dependencies: { present: "Installing", past: "Installed" },
   verify_build: { present: "Verifying", past: "Verified" },
@@ -82,12 +81,15 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   apply_patch: { present: "Applying patch", past: "Applied patch" },
   web_search: { present: "Searching", past: "Searched" },
   google_search: { present: "Searching", past: "Searched" },
+  plan_write: { present: "Writing plans", past: "Wrote plans" },
+  todowrite: { present: "Updating tasks", past: "Updated tasks" },
+  build_complete: { present: "Finalizing build", past: "Finalized build" },
 };
 
 const FILE_WRITE_TOOLS = new Set([
-  "create_file",
-  "replace_string_in_file",
-  "multi_replace_string_in_file",
+  "write",
+  "edit",
+  "multiedit",
   "apply_patch",
 ]);
 
@@ -113,26 +115,25 @@ const getToolTarget = (
   if (!input) return { type: null, value: "" };
 
   switch (toolName) {
-    case "read_file":
-    case "create_file":
-    case "replace_string_in_file":
+    case "read":
+    case "write":
+    case "edit":
       return {
         type: "file",
         value: getFileName(String(input.filePath || input.file_path || "")),
       };
-    case "list_dir":
-    case "create_directory":
+    case "list":
       return {
         type: "folder",
         value: getFolderName(String(input.path || input.dirPath || input.dir_path || "")),
       };
-    case "file_search":
-    case "grep_search":
+    case "glob":
+    case "grep":
       return {
         type: "query",
         value: String(input.query || input.pattern || ""),
       };
-    case "run_in_terminal":
+    case "bash":
     case "verify_build":
     case "start_dev_server":
       return {
@@ -150,7 +151,7 @@ const getToolTarget = (
         type: "query",
         value: String(input.query || ""),
       };
-    case "multi_replace_string_in_file": {
+    case "multiedit": {
       const replacements = input.replacements as Array<{ filePath?: string }> | undefined;
       if (replacements && replacements.length > 0) {
         const fileCount = new Set(replacements.map(r => r.filePath)).size;
@@ -207,7 +208,7 @@ function getDiffStatsForTool(
 ) : DiffStats | null {
   if (!toolName || !input) return null;
 
-  if (toolName === "create_file" || toolName === "replace_string_in_file") {
+  if (toolName === "write" || toolName === "edit") {
     const filePath = input.filePath || input.file_path;
     if (typeof filePath !== "string" || !filePath.trim()) return null;
     const oldString = String(input.oldString || input.old_string || "");
@@ -217,7 +218,7 @@ function getDiffStatsForTool(
     return added > 0 || removed > 0 ? { added, removed } : null;
   }
 
-  if (toolName === "multi_replace_string_in_file") {
+  if (toolName === "multiedit") {
     const replacements = Array.isArray(input.replacements) ? input.replacements : [];
     let added = 0;
     let removed = 0;
@@ -268,7 +269,7 @@ export const Tool = ({ className, ...props }: ToolProps) => (
   />
 );
 
-// Non-expandable tool display (for tools like read_file where output isn't useful to show)
+// Non-expandable tool display (for tools like read where output isn't useful to show)
 export type ToolStaticProps = ComponentProps<"div"> & {
   title?: string;
   toolName?: string;
@@ -566,7 +567,7 @@ const ListDirOutput = ({ entries }: { entries: DirEntry[] }) => {
   );
 };
 
-// Parse list_dir output into structured entries
+// Parse list output into structured entries
 const parseListDirOutput = (output: unknown): DirEntry[] | null => {
   try {
     let data = output;
@@ -621,8 +622,8 @@ export const ToolOutput = ({
     return null;
   }
 
-  // Check for list_dir special rendering
-  const listDirEntries = toolName === "list_dir" ? parseListDirOutput(output) : null;
+  // Check for list special rendering
+  const listDirEntries = toolName === "list" ? parseListDirOutput(output) : null;
 
   let Output = <div>{output as ReactNode}</div>;
 
