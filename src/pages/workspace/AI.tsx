@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -6,8 +6,6 @@ import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import { Label } from '../../components/ui/label'
 import { Badge } from '../../components/ui/badge'
 import { Switch } from '../../components/ui/switch'
 import {
@@ -36,6 +34,7 @@ import {
 import {
   Key,
   AlertCircle,
+  CheckCircle2,
   Sparkles,
   Loader2,
   History,
@@ -45,23 +44,31 @@ import {
 
 type Provider = 'anthropic' | 'openai' | 'google'
 
-const providerInfo: Record<Provider, { name: string; description: string; placeholder: string; models: number }> = {
+interface LocalProviderStatus {
+  provider: Provider
+  connected: boolean
+  expiresAt?: number
+  accountId?: string
+  googleMode?: 'vertex' | 'gemini'
+  googleProjectId?: string
+  googleLocation?: string
+  lastError?: string
+}
+
+const providerInfo: Record<Provider, { name: string; description: string; models: number }> = {
   anthropic: {
     name: 'Anthropic',
-    description: 'Claude 4.5 Opus, Sonnet, Haiku',
-    placeholder: 'sk-ant-...',
+    description: 'Claude Pro/Max local OAuth',
     models: 3,
   },
   openai: {
     name: 'OpenAI',
-    description: 'GPT-5.1, GPT-5.2',
-    placeholder: 'sk-...',
+    description: 'ChatGPT Plus/Pro local OAuth',
     models: 2,
   },
   google: {
     name: 'Google AI',
-    description: 'Gemini 3 Pro, Flash',
-    placeholder: 'AIza...',
+    description: 'Vertex local token source or Gemini OAuth',
     models: 2,
   },
 }
@@ -119,12 +126,6 @@ export function AI() {
     freshOrg
   )
 
-  // Get AI credentials status
-  const credentialsStatus = useQuery(
-    api.organizations.getAiCredentialsStatus,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-
   // Get usage summary
   const usageSummary = useQuery(
     api.organizations.getUsageSummary,
@@ -138,15 +139,21 @@ export function AI() {
   )
 
   // Mutations
-  const updateAiCredentials = useMutation(api.organizations.updateAiCredentials)
   const updateAiSettings = useMutation(api.organizations.updateAiSettings)
 
-  // Dialog state for adding/updating keys
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
+  // Dialog state for provider connection
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
-  const [keyInput, setKeyInput] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [googleMethod, setGoogleMethod] = useState<'vertex' | 'gemini'>('gemini')
+  const [manualCode, setManualCode] = useState('')
+  const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState<Provider | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [providerStatuses, setProviderStatuses] = useState<Record<Provider, LocalProviderStatus>>({
+    anthropic: { provider: 'anthropic', connected: false },
+    openai: { provider: 'openai', connected: false },
+    google: { provider: 'google', connected: false },
+  })
 
   // Settings state
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false)
@@ -155,63 +162,89 @@ export function AI() {
   const [usagePage, setUsagePage] = useState(0)
   const usagePageSize = 5
 
-  const handleOpenKeyDialog = (provider: Provider) => {
+  const refreshProviderStatuses = async () => {
+    if (!window.electronAPI?.providerAuth) return
+    try {
+      const statuses = await window.electronAPI.providerAuth.getStatus()
+      const next: Record<Provider, LocalProviderStatus> = {
+        anthropic: { provider: 'anthropic', connected: false },
+        openai: { provider: 'openai', connected: false },
+        google: { provider: 'google', connected: false },
+      }
+      for (const status of statuses) {
+        if (status.provider in next) {
+          next[status.provider as Provider] = status as LocalProviderStatus
+        }
+      }
+      setProviderStatuses(next)
+    } catch (err) {
+      console.error('Failed to load provider status:', err)
+    }
+  }
+
+  useEffect(() => {
+    void refreshProviderStatuses()
+  }, [])
+
+  const handleOpenConnectDialog = (provider: Provider) => {
     setSelectedProvider(provider)
-    setKeyInput('')
+    setGoogleMethod('gemini')
+    setManualCode('')
+    setManualAuthUrl(null)
     setSaveError(null)
-    setKeyDialogOpen(true)
+    setConnectDialogOpen(true)
   }
 
-  const handleSaveKey = async () => {
-    if (!convexOrg || !convexUserId || !selectedProvider) return
-
-    setIsSaving(true)
+  const connectProvider = async (
+    provider: Provider,
+    method?: 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini',
+    authorizationCode?: string
+  ) => {
+    if (!window.electronAPI?.providerAuth) return
+    setIsSaving(provider)
     setSaveError(null)
-
     try {
-      await updateAiCredentials({
-        orgId: convexOrg._id,
-        userId: convexUserId,
-        [selectedProvider === 'anthropic' ? 'anthropicKey' : selectedProvider === 'openai' ? 'openaiKey' : 'googleKey']: keyInput || undefined,
+      const result = await window.electronAPI.providerAuth.connect({
+        provider,
+        method,
+        authorizationCode,
       })
-      setKeyDialogOpen(false)
-      setKeyInput('')
+      if (!result.success) {
+        setManualAuthUrl(result.authorizationUrl || null)
+        throw new Error(result.error || 'Provider connection failed')
+      }
+      await refreshProviderStatuses()
+      setConnectDialogOpen(false)
+      setManualCode('')
+      setManualAuthUrl(null)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save API key')
+      setSaveError(err instanceof Error ? err.message : 'Failed to connect provider')
     } finally {
-      setIsSaving(false)
+      setIsSaving(null)
     }
   }
 
-  const handleRemoveKey = async (provider: Provider) => {
-    if (!convexOrg || !convexUserId) return
-
-    setIsSaving(true)
+  const handleDisconnect = async (provider: Provider) => {
+    if (!window.electronAPI?.providerAuth) return
+    setIsSaving(provider)
+    setSaveError(null)
     try {
-      await updateAiCredentials({
-        orgId: convexOrg._id,
-        userId: convexUserId,
-        [provider === 'anthropic' ? 'anthropicKey' : provider === 'openai' ? 'openaiKey' : 'googleKey']: '',
-      })
+      await window.electronAPI.providerAuth.disconnect(provider)
+      await refreshProviderStatuses()
     } catch (err) {
-      console.error('Failed to remove key:', err)
+      setSaveError(err instanceof Error ? err.message : 'Failed to disconnect provider')
     } finally {
-      setIsSaving(false)
+      setIsSaving(null)
     }
   }
-
-  // Calculate credit usage
-  const credits = convexOrg?.credits
-  const subscription = convexOrg?.subscription
-  const totalCredits = credits?.subscriptionCreditsTotal || 0
-  const remainingCredits = credits?.subscriptionCreditsRemaining || 0
-  const usedCredits = totalCredits - remainingCredits
-  const usagePercent = totalCredits > 0 ? (usedCredits / totalCredits) * 100 : 0
 
   // Get aggregate usage data
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
-  const totalCreditsUsed = aggregate?.totalCreditsUsed || 0
+  const totalTrackedUnits = aggregate?.totalTrackedUnits ?? 0
+  const connectedProviders = (Object.keys(providerInfo) as Provider[]).reduce((count, provider) => {
+    return count + (providerStatuses[provider]?.connected ? 1 : 0)
+  }, 0)
 
   return (
     <DashboardLayout
@@ -220,28 +253,6 @@ export function AI() {
       breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
     >
       <div className="space-y-6">
-        {/* Subscription Status Banner */}
-        {subscription?.plan === 'free' && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">Free Plan</p>
-                    <p className="text-sm text-muted-foreground">
-                      Add your own API keys to use AI features, or upgrade for included credits.
-                    </p>
-                  </div>
-                </div>
-                <Button variant="default" size="sm" onClick={() => window.location.href = '/workspace/billing'}>
-                  Upgrade to Pro
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Usage Overview */}
         <div className="px-4">
           <div className="flex flex-wrap md:flex-nowrap divide-x divide-border w-full">
@@ -261,54 +272,35 @@ export function AI() {
               </p>
             </div>
 
-            {/* Estimated Cost MTD */}
+            {/* Tracked Cost MTD */}
             <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
-              <p className="text-sm text-muted-foreground mb-1">Cost (MTD)</p>
-              <p className="text-2xl font-semibold">
-                {totalCreditsUsed.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">cr</span>
-              </p>
-            </div>
+                <p className="text-sm text-muted-foreground mb-1">Tracked Cost (MTD)</p>
+                <p className="text-2xl font-semibold">
+                {totalTrackedUnits.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">units</span>
+                </p>
+              </div>
 
-            {/* Budget Usage */}
+            {/* Connected Providers */}
             <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
               <div className="flex items-center gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Budget</p>
-                  <p className="text-2xl font-semibold">{Math.round(usagePercent)}%</p>
-                </div>
-                {/* Circular Progress */}
-                <div className="relative h-10 w-10">
-                  <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      className="stroke-muted"
-                      strokeWidth="3"
-                    />
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      className="stroke-primary"
-                      strokeWidth="3"
-                      strokeDasharray={`${usagePercent} 100`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
+                  <p className="text-sm text-muted-foreground mb-1">Connected Providers</p>
+                  <p className="text-2xl font-semibold">{connectedProviders}/{Object.keys(providerInfo).length}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* API Keys */}
+        {/* Provider Credentials */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5" />
-              API Keys
+              Local Provider Connections
             </CardTitle>
             <CardDescription>
-              Connect your AI provider accounts. Keys are encrypted at rest.
+              Provider auth is stored only on this device. No provider secrets are saved to workspace/server storage.
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
@@ -325,7 +317,7 @@ export function AI() {
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                   {(Object.keys(providerInfo) as Provider[]).map((provider) => {
                     const info = providerInfo[provider]
-                    const status = credentialsStatus?.[provider]
+                    const status = providerStatuses[provider]
                     const isConnected = status?.connected || false
                     const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
 
@@ -340,10 +332,10 @@ export function AI() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {isConnected ? (
                               <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                                <span className="h-2 w-2 rounded-full bg-green-500" />
+                                <CheckCircle2 className="h-3.5 w-3.5" />
                                 Connected
                               </span>
                             ) : (
@@ -357,31 +349,44 @@ export function AI() {
                                 Disabled
                               </Badge>
                             )}
+                            {provider === 'google' && status?.googleMode && (
+                              <Badge variant="outline" className="ml-1">
+                                {status.googleMode === 'vertex' ? 'Vertex' : 'Gemini'}
+                              </Badge>
+                            )}
                           </div>
+                          {status?.lastError && (
+                            <p className="text-xs text-amber-500 mt-1">{status.lastError}</p>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <span className="text-muted-foreground">{info.models} models</span>
+                          <div className="text-muted-foreground">
+                            <p>{info.models} models</p>
+                            <p className="text-xs">{info.description}</p>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {isConnected && (
+                            {isConnected ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
-                                onClick={() => handleRemoveKey(provider)}
-                                disabled={isSaving}
+                                onClick={() => void handleDisconnect(provider)}
+                                disabled={isSaving === provider}
                               >
-                                Remove
+                                Disconnect
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleOpenConnectDialog(provider)}
+                                disabled={isSaving === provider}
+                              >
+                                Connect
                               </Button>
                             )}
-                            <Button
-                              variant={isConnected ? 'outline' : 'default'}
-                              size="sm"
-                              onClick={() => handleOpenKeyDialog(provider)}
-                            >
-                              {isConnected ? 'Update' : 'Connect'}
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -415,7 +420,7 @@ export function AI() {
                       <TableHead className="w-[30%]">Model</TableHead>
                       <TableHead className="w-[13%] text-right">Requests</TableHead>
                       <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                      <TableHead className="w-[14%] text-right">Cost</TableHead>
+                      <TableHead className="w-[14%] text-right">Tracked Cost</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -443,14 +448,16 @@ export function AI() {
                         <TableHead className="w-[30%]">Model</TableHead>
                         <TableHead className="w-[13%] text-right">Requests</TableHead>
                         <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                        <TableHead className="w-[14%] text-right">Cost</TableHead>
+                        <TableHead className="w-[14%] text-right">Tracked Cost</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                       {recentUsage
                         .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
-                        .map((usage) => (
-                          <TableRow key={usage._id}>
+                        .map((usage) => {
+                          const trackedUnits = usage.trackedUnits ?? 0
+                          return (
+                            <TableRow key={usage._id}>
                             <TableCell className="text-muted-foreground">
                               {new Date(usage.timestamp).toLocaleDateString('en-US', {
                                 month: 'short',
@@ -475,11 +482,12 @@ export function AI() {
                             </TableCell>
                             <TableCell className="text-right">
                               <span className="text-muted-foreground">
-                                {(usage.creditsUsed || 0).toFixed(2)} cr
+                                {trackedUnits.toFixed(2)} units
                               </span>
                             </TableCell>
-                          </TableRow>
-                        ))}
+                            </TableRow>
+                          )
+                        })}
                     </TableBody>
                   </Table>
                 </div>
@@ -549,7 +557,6 @@ export function AI() {
                         aiSettings: {
                           ...convexOrg.aiSettings,
                           allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
                           allowWebSearch: checked,
                         },
                       })
@@ -579,7 +586,6 @@ export function AI() {
                         aiSettings: {
                           ...convexOrg.aiSettings,
                           allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
                           allowProviderTools: checked,
                         },
                       })
@@ -609,7 +615,6 @@ export function AI() {
                         aiSettings: {
                           ...convexOrg.aiSettings,
                           allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
                           maxReasoningDepth: value as 'low' | 'medium' | 'high',
                         },
                       })
@@ -633,49 +638,108 @@ export function AI() {
         )}
       </div>
 
-      {/* API Key Dialog */}
-      <Dialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen}>
+      {/* Provider Connection Dialog */}
+      <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedProvider && credentialsStatus?.[selectedProvider]?.connected
-                ? `Update ${providerInfo[selectedProvider]?.name} API Key`
-                : `Connect ${selectedProvider ? providerInfo[selectedProvider]?.name : ''}`}
+              Connect {selectedProvider ? providerInfo[selectedProvider]?.name : 'Provider'}
             </DialogTitle>
             <DialogDescription>
-              Enter your API key. It will be encrypted and stored securely.
+              Auth is stored locally on this device using OS-backed encryption.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                placeholder={selectedProvider ? providerInfo[selectedProvider].placeholder : ''}
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-              />
-            </div>
+            {selectedProvider === 'google' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Google source</p>
+                <Select value={googleMethod} onValueChange={(value) => setGoogleMethod(value as 'vertex' | 'gemini')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gemini">Gemini OAuth (Google account)</SelectItem>
+                    <SelectItem value="vertex">Vertex local token source</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(selectedProvider === 'anthropic' || selectedProvider === 'google') && manualAuthUrl && (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">Manual code fallback</p>
+                <p className="text-xs text-muted-foreground">
+                  Automatic callback failed. Open the auth page, then paste the authorization code.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void window.electronAPI.shell.openExternal(manualAuthUrl)}
+                >
+                  Open {selectedProvider === 'google' ? 'Google' : 'Anthropic'} Auth Page
+                </Button>
+                <input
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  placeholder="Paste authorization code"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                />
+              </div>
+            )}
             {saveError && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                {saveError}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  {saveError}
+                </div>
+                {selectedProvider === 'openai' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void connectProvider('openai', 'device')}
+                    disabled={isSaving === 'openai'}
+                  >
+                    Try OpenAI Device Auth
+                  </Button>
+                )}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setKeyDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setConnectDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveKey} disabled={!keyInput || isSaving}>
-              {isSaving ? (
+            <Button
+              onClick={() => {
+                if (!selectedProvider) return
+                if (selectedProvider === 'google') {
+                  if (manualAuthUrl && manualCode.trim()) {
+                    void connectProvider('google', 'gemini', manualCode.trim())
+                    return
+                  }
+                  void connectProvider('google', googleMethod)
+                  return
+                }
+                if (selectedProvider === 'anthropic' && manualAuthUrl && manualCode.trim()) {
+                  void connectProvider('anthropic', 'manual_code', manualCode.trim())
+                  return
+                }
+                void connectProvider(selectedProvider, 'oauth')
+              }}
+              disabled={
+                !selectedProvider ||
+                isSaving === selectedProvider ||
+                ((selectedProvider === 'anthropic' || selectedProvider === 'google') &&
+                  !!manualAuthUrl &&
+                  manualCode.trim().length === 0)
+              }
+            >
+              {isSaving === selectedProvider ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  Connecting...
                 </>
               ) : (
-                'Save'
+                'Connect'
               )}
             </Button>
           </DialogFooter>

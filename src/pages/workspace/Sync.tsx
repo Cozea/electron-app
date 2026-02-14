@@ -38,6 +38,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 
 interface StorageCategory {
   id: string
@@ -220,13 +221,14 @@ export function Sync() {
   const getUpgradeMessage = (plan: string) => {
     switch (plan) {
       case 'free':
-        return 'Upgrade to Pro for 10 GB storage.'
+        return 'Upgrade to Power Duo for 5 GB storage and shared sync.'
       case 'pro':
-        return 'Upgrade to Max for 20 GB storage.'
+        return 'Upgrade to Winning Team for 30 GB storage and larger project limits.'
       case 'max':
-        return 'Upgrade to Team for 30 GB storage.'
+        return 'Need more than 30 GB? Contact sales for a custom workspace plan.'
       case 'team':
-        return 'Contact sales for Enterprise with unlimited storage.'
+      case 'enterprise':
+        return 'Custom workspace plan active.'
       default:
         return ''
     }
@@ -252,7 +254,7 @@ export function Sync() {
                       / {isUnlimited ? '∞' : totalLimit} GB
                     </span>
                     <Badge variant="secondary" className="mb-1.5">
-                      {usageLimits?.planDisplayName ?? 'Free'}
+                      {getWorkspacePlanLabel(usageLimits?.plan)}
                     </Badge>
                   </div>
                   <span className="text-sm text-muted-foreground">

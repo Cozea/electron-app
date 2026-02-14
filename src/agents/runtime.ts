@@ -8,11 +8,11 @@ export interface AgentRunRequest {
   conversationId: string
   organizationId: string
   model: string
-  feature?: string
-  actionType?: string
+  agentId?: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+  surface?: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+  variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   enableTools?: boolean
   enableWebSearch?: boolean
-  reasoningDepth?: 'low' | 'medium' | 'high'
   messages: UIMessage[]
 }
 

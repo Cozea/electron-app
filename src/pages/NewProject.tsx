@@ -553,11 +553,11 @@ export function NewProject() {
         originalPrompt: pendingPromptText,
         promptSettings: conversationPromptSettings ? {
           model: conversationPromptSettings.model,
-          agentType: conversationPromptSettings.agentType,
-          reasoningDepth: conversationPromptSettings.reasoningDepth,
+          agentId: conversationPromptSettings.agentId,
+          surface: conversationPromptSettings.surface,
+          variantId: conversationPromptSettings.variantId,
           toolsEnabled: true,
           webSearchEnabled: true,
-          thinkingEffort: conversationPromptSettings.thinkingEffort,
         } : undefined,
       })
 

@@ -1,5 +1,8 @@
 import { internalMutation, mutation, query } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
+import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
+import { canConsumeStorage } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_SESSION_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
@@ -14,6 +17,31 @@ function assertGatewaySecret(secret: string | undefined) {
   }
 }
 
+type SyncCtx = QueryCtx | MutationCtx
+
+async function assertPaidSyncAccess(
+  ctx: SyncCtx,
+  projectId: Id<"projects">
+) {
+  const project = await ctx.db.get(projectId)
+  if (!project) {
+    throw new Error("Project not found")
+  }
+
+  const organization = await ctx.db.get(project.organizationId)
+  if (!organization) {
+    throw new Error("Organization not found")
+  }
+
+  if (organization.subscription.plan === "free") {
+    throw new Error(
+      "Realtime sync and auto-git are not available on the Free plan. Upgrade your workspace to enable collaborative infrastructure."
+    )
+  }
+
+  return { project, organization }
+}
+
 export const getReplicaForServer = query({
   args: {
     projectId: v.id("projects"),
@@ -21,6 +49,7 @@ export const getReplicaForServer = query({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
+    await assertPaidSyncAccess(ctx, args.projectId)
     return await ctx.db
       .query("projectReplicaGit")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -41,12 +70,23 @@ export const upsertReplicaForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
+    const { project } = await assertPaidSyncAccess(ctx, args.projectId)
     const now = Date.now()
 
     const existing = await ctx.db
       .query("projectReplicaGit")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .first()
+
+    const previousBundleSize = existing?.bundleSizeBytes ?? 0
+    const nextBundleSize = args.bundleSizeBytes ?? existing?.bundleSizeBytes ?? 0
+    const additionalBytes = Math.max(0, nextBundleSize - previousBundleSize)
+    if (additionalBytes > 0) {
+      const capacity = await canConsumeStorage(ctx, project.organizationId, additionalBytes)
+      if (!capacity.allowed) {
+        throw new Error(capacity.message || "Storage limit reached")
+      }
+    }
 
     if (existing) {
       const previousBundleStorageId = existing.bundleStorageId
@@ -114,6 +154,7 @@ export const createSessionForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
+    await assertPaidSyncAccess(ctx, args.projectId)
     const now = Date.now()
 
     const existing = await ctx.db
@@ -175,6 +216,7 @@ export const updateSessionForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
+    await assertPaidSyncAccess(ctx, args.projectId)
     const now = Date.now()
     const existing = await ctx.db
       .query("projectReplicaGitSessions")
@@ -208,10 +250,7 @@ export const generateBundleUploadUrlForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    const project = await ctx.db.get(args.projectId)
-    if (!project) {
-      throw new Error("Project not found")
-    }
+    await assertPaidSyncAccess(ctx, args.projectId)
     return await ctx.storage.generateUploadUrl()
   },
 })

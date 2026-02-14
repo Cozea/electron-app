@@ -19,8 +19,6 @@ export interface BillingErrorData {
   hint?: string
   details?: {
     totalAvailable?: number
-    subscriptionCreditsRemaining?: number
-    purchasedCreditsRemaining?: number
     plan?: string
   }
 }
@@ -33,20 +31,22 @@ interface BillingErrorProps {
 
 const errorIcons: Record<string, typeof AlertCircle> = {
   SUBSCRIPTION_REQUIRED: CreditCard,
-  INSUFFICIENT_CREDITS: CreditCard,
   SUBSCRIPTION_INACTIVE: AlertTriangle,
   TIER_NOT_AVAILABLE: Ban,
   MODEL_RESTRICTED: Ban,
   PROVIDER_RESTRICTED: Ban,
+  PROVIDER_AUTH_REQUIRED: AlertCircle,
+  ENTITLEMENT_REQUIRED: CreditCard,
 }
 
 const errorColors: Record<string, string> = {
   SUBSCRIPTION_REQUIRED: 'text-primary bg-primary/10 border-primary/20',
-  INSUFFICIENT_CREDITS: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
   SUBSCRIPTION_INACTIVE: 'text-red-500 bg-red-500/10 border-red-500/20',
   TIER_NOT_AVAILABLE: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
   MODEL_RESTRICTED: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
   PROVIDER_RESTRICTED: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
+  PROVIDER_AUTH_REQUIRED: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+  ENTITLEMENT_REQUIRED: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
 }
 
 export function BillingError({ error, onAction, className }: BillingErrorProps) {
@@ -93,11 +93,9 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
               <p className="font-medium leading-tight text-sm">
                 {error.title || 'Error'}
               </p>
-              {code !== 'INSUFFICIENT_CREDITS' && (
-                <p className="text-sm opacity-90 leading-snug">
-                  {error.message}
-                </p>
-              )}
+              <p className="text-sm opacity-90 leading-snug">
+                {error.message}
+              </p>
             </div>
             {error.action && (
               <div className="shrink-0 flex items-center gap-2">
@@ -117,7 +115,7 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
                   className="h-7 text-xs gap-1.5 px-3"
                   onClick={handleAction}
                 >
-                  Billing
+                  {error.action.label}
                   <ArrowRight className="h-3 w-3" />
                 </Button>
               </div>
@@ -148,10 +146,6 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
     try {
       const parsed = JSON.parse(err.message)
       if (parsed.code || parsed.title || parsed.error) {
-        // Fix incorrect billing URL
-        if (parsed.action?.href === '/workspace/billing/credits') {
-          parsed.action.href = '/workspace/billing'
-        }
         return parsed as BillingErrorData
       }
     } catch {
@@ -165,12 +159,20 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
           message: message,
         }
       }
-      if (message.includes('credit') || message.includes('insufficient')) {
+      if (message.includes('provider_auth_required') || message.includes('provider account required')) {
         return {
-          error: 'insufficient_credits',
-          code: 'INSUFFICIENT_CREDITS',
-          title: 'Insufficient Credits',
+          error: 'provider_auth_required',
+          code: 'PROVIDER_AUTH_REQUIRED',
+          title: 'Provider Account Required',
           message: message,
+        }
+      }
+      if (message.includes('entitlement') || message.includes('plan limit')) {
+        return {
+          error: 'entitlement_required',
+          code: 'ENTITLEMENT_REQUIRED',
+          title: 'Plan Upgrade Required',
+          message,
         }
       }
     }
@@ -188,7 +190,7 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
 }
 
 /**
- * Check if an error is a billing/credit related error
+ * Check if an error is billing/provider-auth related
  */
 export function isBillingError(err: unknown): boolean {
   const parsed = parseBillingError(err)
@@ -196,11 +198,12 @@ export function isBillingError(err: unknown): boolean {
 
   const billingCodes = [
     'SUBSCRIPTION_REQUIRED',
-    'INSUFFICIENT_CREDITS',
     'SUBSCRIPTION_INACTIVE',
     'TIER_NOT_AVAILABLE',
     'MODEL_RESTRICTED',
     'PROVIDER_RESTRICTED',
+    'PROVIDER_AUTH_REQUIRED',
+    'ENTITLEMENT_REQUIRED',
   ]
 
   return billingCodes.includes(parsed.code || '')

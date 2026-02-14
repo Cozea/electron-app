@@ -581,6 +581,60 @@ export interface IntegrationToolResult {
   error?: string
 }
 
+export type ProviderAuthProvider = 'openai' | 'anthropic' | 'google'
+export type ProviderAuthMethod = 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini'
+export type ProviderAuthGoogleMode = 'vertex' | 'gemini'
+export type ProviderAuthType = 'oauth' | 'local_token'
+
+export interface ProviderAuthRequestEnvelope {
+  provider: ProviderAuthProvider
+  authType: ProviderAuthType
+  accessToken: string
+  organizationId?: string
+  expiresAt?: number
+  accountId?: string
+  google?: {
+    mode: ProviderAuthGoogleMode
+    projectId?: string
+    location?: string
+  }
+  headers?: Record<string, string>
+  baseUrl?: string
+}
+
+export interface ProviderAuthStatus {
+  provider: ProviderAuthProvider
+  connected: boolean
+  authType?: ProviderAuthType
+  expiresAt?: number
+  accountId?: string
+  googleMode?: ProviderAuthGoogleMode
+  googleProjectId?: string
+  googleLocation?: string
+  lastError?: string
+  updatedAt?: number
+}
+
+export interface ProviderAuthConnectResult {
+  success: boolean
+  status?: ProviderAuthStatus
+  authorizationUrl?: string
+  requiresManualCode?: boolean
+  error?: string
+}
+
+export interface ProviderAuthDisconnectResult {
+  success: boolean
+  error?: string
+}
+
+export interface ProviderAuthRequestAuthResult {
+  success: boolean
+  envelope?: ProviderAuthRequestEnvelope
+  error?: string
+  code?: 'not_connected' | 'expired' | 'invalid' | 'refresh_failed'
+}
+
 export interface DbSupabaseSelectResult {
   success: boolean
   rows?: unknown[]
@@ -637,6 +691,25 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
+  }
+  providerAuth: {
+    listProviders: () => Promise<Array<{
+      provider: ProviderAuthProvider
+      methods: ProviderAuthMethod[]
+    }>>
+    getStatus: (provider?: ProviderAuthProvider) => Promise<ProviderAuthStatus[]>
+    connect: (options: {
+      provider: ProviderAuthProvider
+      method?: ProviderAuthMethod
+      authorizationCode?: string
+      credentialPath?: string
+    }) => Promise<ProviderAuthConnectResult>
+    disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
+    getRequestAuth: (options: {
+      provider: ProviderAuthProvider
+      modelId: string
+      organizationId: string
+    }) => Promise<ProviderAuthRequestAuthResult>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>

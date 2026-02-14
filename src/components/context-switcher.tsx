@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
+import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -100,10 +101,7 @@ export function ContextSwitcher() {
   // Organization info
   const organization = {
     name: currentOrganization?.organizationName || 'My Workspace',
-    // Get plan from Convex org subscription, capitalize it
-    plan: convexOrg?.subscription?.plan
-      ? convexOrg.subscription.plan.charAt(0).toUpperCase() + convexOrg.subscription.plan.slice(1)
-      : 'Free',
+    plan: getWorkspacePlanLabel(convexOrg?.subscription?.plan),
   }
 
   const resetSyncState = useCallback(() => {

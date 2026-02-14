@@ -12,11 +12,6 @@ export default defineSchema({
     profileImageUrl: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
 
-    // BYOK (Bring Your Own Keys) - encrypted in production
-    byokAnthropicKey: v.optional(v.string()),
-    byokOpenaiKey: v.optional(v.string()),
-    byokGoogleKey: v.optional(v.string()),
-
     // User preferences
     preferences: v.optional(
       v.object({
@@ -43,23 +38,6 @@ export default defineSchema({
     description: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
 
-    // Org-level AI credentials (encrypted with AES-256-GCM)
-    aiCredentials: v.optional(
-      v.object({
-        anthropicKey: v.optional(v.string()),
-        openaiKey: v.optional(v.string()),
-        googleKey: v.optional(v.string()),
-        xaiKey: v.optional(v.string()),
-      })
-    ),
-
-    // Legacy settings (kept for backward compatibility)
-    settings: v.object({
-      allowByok: v.boolean(), // Allow members to use their own keys
-      defaultModel: v.optional(v.string()),
-      monthlyCreditsLimit: v.optional(v.number()),
-    }),
-
     // AI-specific settings (new - per pricing spec)
     aiSettings: v.optional(
       v.object({
@@ -74,12 +52,6 @@ export default defineSchema({
         ),
         // Optional model allowlist (if set, only these model IDs are allowed)
         allowedModels: v.optional(v.array(v.string())),
-        // BYOK policy: required (free), optional (pro/max), disabled (enterprise)
-        byokPolicy: v.union(
-          v.literal("required"),
-          v.literal("optional"),
-          v.literal("disabled")
-        ),
         // Provider tools policy
         allowProviderTools: v.optional(v.boolean()),
         allowWebSearch: v.optional(v.boolean()),
@@ -92,19 +64,17 @@ export default defineSchema({
         defaultModelTier: v.optional(
           v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))
         ),
-        // Whether overage is enabled (paid plans only)
-        overageEnabled: v.optional(v.boolean()),
       })
     ),
 
-    // Subscription & billing (expanded for pricing spec)
+    // Subscription & billing (workspace infrastructure tiers)
     subscription: v.object({
       plan: v.union(
-        v.literal("free"),       // $0, BYOK only, 0 credits
-        v.literal("pro"),        // $20/mo, 5,000 credits
-        v.literal("max"),        // $50/mo, 15,000 credits
-        v.literal("team"),       // $40/seat/mo, 10,000/seat pooled
-        v.literal("enterprise")  // Custom pricing
+        v.literal("free"),       // Free
+        v.literal("pro"),        // Power Duo
+        v.literal("max"),        // Winning Team
+        v.literal("team"),       // Custom (legacy id)
+        v.literal("enterprise")  // Custom
       ),
       status: v.union(
         v.literal("active"),
@@ -120,23 +90,6 @@ export default defineSchema({
       seatCount: v.optional(v.number()),
       // Billing catalog version (for migrations)
       catalogVersion: v.optional(v.string()),
-    }),
-
-    // Credits system (expanded per pricing spec)
-    credits: v.object({
-      // Subscription credits (expire at billing period end)
-      subscriptionCreditsRemaining: v.optional(v.number()),
-      subscriptionCreditsTotal: v.optional(v.number()),
-      // Overage tracking
-      overageCreditsUsed: v.optional(v.number()),
-      overageAmountCents: v.optional(v.number()),
-      // Billing period bounds
-      currentPeriodStart: v.optional(v.number()),
-      currentPeriodEnd: v.optional(v.number()),
-      // Legacy fields (for backward compat during migration)
-      balance: v.optional(v.number()),
-      monthlyAllocation: v.optional(v.number()),
-      lastResetAt: v.optional(v.number()),
     }),
 
     // Storage usage tracking
@@ -173,13 +126,6 @@ export default defineSchema({
       v.literal("admin"),
       v.literal("member"),
       v.literal("viewer")
-    ),
-
-    // Member-specific settings
-    settings: v.optional(
-      v.object({
-        useByok: v.boolean(), // Use personal keys instead of org keys
-      })
     ),
 
     // Timestamps
@@ -337,7 +283,7 @@ export default defineSchema({
     requestId: v.optional(v.string()),
 
     // Request details
-    model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.1"
+    model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.3-codex"
     modelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
     provider: v.union(
       v.literal("anthropic"),
@@ -360,16 +306,8 @@ export default defineSchema({
       })
     ),
 
-    // Cost tracking
-    creditsUsed: v.number(), // Normalized cost in credits
-    // Credit source breakdown (how credits were deducted)
-    creditSourceBreakdown: v.optional(
-      v.object({
-        fromSubscription: v.number(),
-        fromPurchased: v.number(),
-        fromOverage: v.number(),
-      })
-    ),
+    // Cost tracking (visibility only)
+    trackedUnits: v.number(),
 
     // Context
     feature: v.optional(v.string()), // e.g., "code-generation", "chat", "review"
@@ -392,7 +330,7 @@ export default defineSchema({
     rawFinishReason: v.optional(v.string()), // Provider-specific finish reason
 
     // Key source
-    keySource: v.union(v.literal("organization"), v.literal("byok")),
+    keySource: v.union(v.literal("organization"), v.literal("provider_auth")),
 
     timestamp: v.number(),
   })
@@ -412,7 +350,7 @@ export default defineSchema({
     totalPromptTokens: v.number(),
     totalCompletionTokens: v.number(),
     totalTokens: v.number(),
-    totalCreditsUsed: v.number(),
+    totalTrackedUnits: v.number(),
     requestCount: v.number(),
 
     // Breakdown by model (stored as JSON)
@@ -439,106 +377,6 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
     .index("by_user", ["userId"]),
-
-  // ============================================
-  // BILLING TABLES (per pricing spec v3)
-  // ============================================
-
-  // Purchased credit packs (12-month expiration)
-  creditLots: defineTable({
-    organizationId: v.id("organizations"),
-
-    // Pack type determines credits and price
-    packType: v.union(
-      v.literal("starter"),  // 1,000 credits, $12
-      v.literal("plus"),     // 5,000 credits, $50
-      v.literal("pro"),      // 15,000 credits, $120
-      v.literal("max")       // 50,000 credits, $350
-    ),
-
-    // Credit amounts
-    originalCredits: v.number(),
-    remainingCredits: v.number(),
-
-    // Stripe tracking
-    stripePaymentIntentId: v.optional(v.string()),
-    stripeCheckoutSessionId: v.optional(v.string()),
-    amountPaidCents: v.number(),
-
-    // Lifecycle
-    purchasedAt: v.number(),
-    expiresAt: v.number(), // 12 months from purchase
-    status: v.union(
-      v.literal("active"),
-      v.literal("exhausted"),
-      v.literal("expired"),
-      v.literal("refunded")
-    ),
-
-    // Metadata
-    purchasedBy: v.optional(v.id("users")),
-    notes: v.optional(v.string()),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_expiration", ["expiresAt"])
-    .index("by_stripe_payment", ["stripePaymentIntentId"]),
-
-  // Invoices for overage billing
-  invoices: defineTable({
-    organizationId: v.id("organizations"),
-
-    // Billing period
-    periodStart: v.number(),
-    periodEnd: v.number(),
-
-    // Amounts breakdown (all in cents)
-    subscriptionAmountCents: v.number(),
-    overageAmountCents: v.number(),
-    creditPackAmountCents: v.number(),
-    taxAmountCents: v.optional(v.number()),
-    totalAmountCents: v.number(),
-
-    // Overage details
-    overageCreditsUsed: v.optional(v.number()),
-    overageRateCentsPerCredit: v.optional(v.number()),
-
-    // Stripe tracking
-    stripeInvoiceId: v.optional(v.string()),
-    stripePaymentIntentId: v.optional(v.string()),
-    stripeHostedInvoiceUrl: v.optional(v.string()),
-    stripePdfUrl: v.optional(v.string()),
-
-    // Status
-    status: v.union(
-      v.literal("draft"),
-      v.literal("open"),
-      v.literal("paid"),
-      v.literal("void"),
-      v.literal("uncollectible")
-    ),
-
-    // Line items (for detailed breakdown)
-    lineItems: v.optional(
-      v.array(
-        v.object({
-          description: v.string(),
-          quantity: v.number(),
-          unitAmountCents: v.number(),
-          totalCents: v.number(),
-        })
-      )
-    ),
-
-    // Timestamps
-    createdAt: v.number(),
-    paidAt: v.optional(v.number()),
-    dueAt: v.optional(v.number()),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_stripe_invoice", ["stripeInvoiceId"])
-    .index("by_period", ["periodStart", "periodEnd"]),
 
   // Tool registry for agent capabilities
   tools: defineTable({
@@ -653,13 +491,7 @@ export default defineSchema({
     subscriptionPrices: v.object({
       pro: v.object({ productId: v.string(), priceId: v.string() }),
       max: v.object({ productId: v.string(), priceId: v.string() }),
-      team: v.object({ productId: v.string(), priceId: v.string() }),
-    }),
-    creditPackPrices: v.object({
-      starter: v.object({ productId: v.string(), priceId: v.string() }),
-      plus: v.object({ productId: v.string(), priceId: v.string() }),
-      pro: v.object({ productId: v.string(), priceId: v.string() }),
-      max: v.object({ productId: v.string(), priceId: v.string() }),
+      team: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
     }),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -708,7 +540,7 @@ export default defineSchema({
       v.object({
         backend: v.optional(v.string()), // supabase, convex, firebase, postgres
         hosting: v.optional(v.string()), // vercel, netlify, railway, aws
-        aiProvider: v.optional(v.string()), // openai, anthropic, byok, none
+        aiProvider: v.optional(v.string()), // openai, anthropic, google, none
       })
     ),
 
@@ -788,11 +620,33 @@ export default defineSchema({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()), // Provider-specific tool options
       })
     ),
