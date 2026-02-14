@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
-import { CreditDisplay } from './CreditDisplay'
 
 const AIConversation = lazy(() => import('./AIConversation').then((module) => ({ default: module.AIConversation })))
 const ChatHistory = lazy(() => import('./ChatHistory').then((module) => ({ default: module.ChatHistory })))
@@ -157,7 +156,6 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
         <div className="flex items-center h-9 px-4 shrink-0 gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
-            <CreditDisplay className="shrink-0" />
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button

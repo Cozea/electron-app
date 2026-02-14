@@ -417,10 +417,9 @@ export function AI() {
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="w-[12%]">Date</TableHead>
                       <TableHead className="w-[18%]">Provider</TableHead>
-                      <TableHead className="w-[30%]">Model</TableHead>
-                      <TableHead className="w-[13%] text-right">Requests</TableHead>
-                      <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                      <TableHead className="w-[14%] text-right">Tracked Cost</TableHead>
+                      <TableHead className="w-[44%]">Model</TableHead>
+                      <TableHead className="w-[14%] text-right">Requests</TableHead>
+                      <TableHead className="w-[14%] text-right">Tokens</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -431,7 +430,6 @@ export function AI() {
                         <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
                         <TableCell className="text-right"><div className="h-4 w-8 bg-muted rounded animate-pulse ml-auto" /></TableCell>
                         <TableCell className="text-right"><div className="h-4 w-12 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                        <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded animate-pulse ml-auto" /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -445,17 +443,15 @@ export function AI() {
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="w-[12%]">Date</TableHead>
                         <TableHead className="w-[18%]">Provider</TableHead>
-                        <TableHead className="w-[30%]">Model</TableHead>
-                        <TableHead className="w-[13%] text-right">Requests</TableHead>
-                        <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                        <TableHead className="w-[14%] text-right">Tracked Cost</TableHead>
+                        <TableHead className="w-[44%]">Model</TableHead>
+                        <TableHead className="w-[14%] text-right">Requests</TableHead>
+                        <TableHead className="w-[14%] text-right">Tokens</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                       {recentUsage
                         .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
                         .map((usage) => {
-                          const trackedUnits = usage.trackedUnits ?? 0
                           return (
                             <TableRow key={usage._id}>
                             <TableCell className="text-muted-foreground">
@@ -479,11 +475,6 @@ export function AI() {
                             <TableCell className="text-right">1</TableCell>
                             <TableCell className="text-right">
                               {(usage.totalTokens || 0).toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <span className="text-muted-foreground">
-                                {trackedUnits.toFixed(2)} units
-                              </span>
                             </TableCell>
                             </TableRow>
                           )

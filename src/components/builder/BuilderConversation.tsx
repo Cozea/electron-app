@@ -28,7 +28,6 @@ import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
-import { useConnectedProviders } from '@/hooks/useConnectedProviders'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
@@ -37,7 +36,6 @@ import {
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
-import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -116,6 +114,9 @@ interface Project {
     agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
     surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
     variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    toolsEnabled?: boolean
+    webSearchEnabled?: boolean
+    providerOptions?: Record<string, unknown>
   }
 }
 
@@ -258,7 +259,6 @@ export function BuilderConversation({
   className,
 }: BuilderConversationProps) {
   const { accessToken, currentOrganization, convexUserId } = useAuth()
-  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
 
   const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
   const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
@@ -266,6 +266,7 @@ export function BuilderConversation({
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
+  const [providerAuthResolved, setProviderAuthResolved] = useState(false)
   const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
@@ -346,37 +347,19 @@ export function BuilderConversation({
   }, [project.buildContract, project.targetPlatform])
   const preflightFailedRef = useRef(false)
   const promptSettings = project.promptSettings
-  const globalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
   const fallbackModel = resolveFallbackModel(project.stack?.aiProvider)
-  const requestedModel = globalModelSettings.model ?? promptSettings?.model ?? fallbackModel
-  const requestedProvider = inferProviderFromModelId(requestedModel)
-  const connectedModelFallback = useMemo(() => {
-    if (!providerAuthAvailable || !providerStatusLoaded) return null
-    if (connectedProviders.length === 0) return null
-    return resolveFallbackModel(connectedProviders[0])
-  }, [connectedProviders, providerAuthAvailable, providerStatusLoaded])
-  const model = useMemo(() => {
-    if (!providerAuthAvailable || !providerStatusLoaded) return requestedModel
-    if (connectedProviders.length === 0) return requestedModel
-    if (requestedProvider && connectedProviders.includes(requestedProvider)) {
-      return requestedModel
-    }
-    return connectedModelFallback ?? requestedModel
-  }, [
-    connectedModelFallback,
-    connectedProviders,
-    providerAuthAvailable,
-    providerStatusLoaded,
-    requestedModel,
-    requestedProvider,
-  ])
+  const requestedModel =
+    typeof promptSettings?.model === 'string' && promptSettings.model.trim().length > 0
+      ? promptSettings.model
+      : fallbackModel
+  const model = requestedModel
   console.log('[Builder] Project promptSettings:', promptSettings)
   console.log('[Builder] Using model:', model)
-  // Builder always needs tools to create files and track progress
-  const enableTools = true
-  // Web search always enabled for builder
-  const enableWebSearch = true
-  const variantId = globalModelSettings.variantId ?? promptSettings?.variantId
+  // Builder execution is pinned to the project prompt settings.
+  const enableTools = promptSettings?.toolsEnabled ?? true
+  const enableWebSearch = promptSettings?.webSearchEnabled ?? true
+  const variantId = promptSettings?.variantId ?? 'medium'
+  const providerOptions = promptSettings?.providerOptions
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
@@ -388,23 +371,41 @@ export function BuilderConversation({
     const organizationId = currentOrganization?.organizationId
     if (!organizationId) {
       setProviderAuthHeader(null)
+      setProviderAuthResolved(false)
       return
     }
 
     const provider = inferProviderFromModelId(model)
     if (!provider) {
       setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
       return
     }
 
+    setProviderAuthResolved(false)
     void (async () => {
-      const result = await buildEncodedProviderAuthHeader({
-        provider,
-        modelId: model,
-        organizationId,
-      })
+      const maxAttempts = 4
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const result = await buildEncodedProviderAuthHeader({
+          provider,
+          modelId: model,
+          organizationId,
+        })
+        if (cancelled) return
+        if (result.header) {
+          setProviderAuthHeader(result.header)
+          setProviderAuthResolved(true)
+          return
+        }
+
+        setProviderAuthHeader(null)
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+        }
+      }
+
       if (cancelled) return
-      setProviderAuthHeader(result.header || null)
+      setProviderAuthResolved(true)
     })()
 
     return () => {
@@ -520,15 +521,23 @@ Now begin by defining your task list with build_tasks, then start working throug
         model,
         organizationId: requestConfigRef.current.organizationId,
         projectId: requestConfigRef.current.projectId,
+        projectContext: {
+          name: project.name,
+          slug: project.slug,
+          localPath: localPath || undefined,
+          currentPage: null,
+          inspectedElement: null,
+        },
         conversationId: requestConfigRef.current.conversationId,
         agentId: 'build',
         surface: 'builder',
         variantId,
         enableTools,
         enableWebSearch,
+        ...(providerOptions ? { providerOptions } : {}),
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/agent`
+        const api = `${AI_BASE_URL}/chat`
         const requestBody = body ?? {}
         const nextBody = {
           ...requestBody,
@@ -538,7 +547,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         return { api, body: nextBody }
       },
     })
-  }, [model, enableTools, enableWebSearch, variantId])
+  }, [model, enableTools, enableWebSearch, variantId, providerOptions, project.name, project.slug, localPath])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -1520,11 +1529,20 @@ Now begin by defining your task list with build_tasks, then start working throug
   // Send initial message on mount
   useEffect(() => {
     if (preflightDiagnostic) return
-    if (!hasSentInitialMessageRef.current && accessToken && project._id) {
+    if (!providerAuthResolved) return
+    if (!hasSentInitialMessageRef.current && accessToken && currentOrganization?.organizationId && project._id) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [accessToken, initialPrompt, preflightDiagnostic, project._id, sendMessage])
+  }, [
+    accessToken,
+    currentOrganization?.organizationId,
+    initialPrompt,
+    preflightDiagnostic,
+    project._id,
+    providerAuthResolved,
+    sendMessage,
+  ])
 
   useEffect(() => {
     if (!preflightDiagnostic || preflightFailedRef.current) return

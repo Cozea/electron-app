@@ -28,6 +28,7 @@ const macRuntimeBinaries = macRuntimeTargets
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
+  afterSign: "scripts/electron-builder-after-sign.cjs",
   directories: {
     buildResources: "build",
     output: "dist",
