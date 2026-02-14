@@ -249,6 +249,8 @@ export function WizardConversation({
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
+  const [providerAuthLoading, setProviderAuthLoading] = useState(false)
+  const [providerAuthError, setProviderAuthError] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(
     initialGlobalModelSettings.variantId ?? promptSettings.variantId ?? 'medium'
@@ -363,6 +365,8 @@ export function WizardConversation({
     let cancelled = false
     const organizationId = currentOrganization?.organizationId
     if (!organizationId) {
+      setProviderAuthLoading(false)
+      setProviderAuthError(null)
       setProviderAuthHeader(null)
       return
     }
@@ -372,9 +376,15 @@ export function WizardConversation({
       ? selectedProvider
       : inferProviderFromModelId(model)
     if (!provider) {
+      setProviderAuthLoading(false)
+      setProviderAuthError('Unable to determine provider auth for the selected model.')
       setProviderAuthHeader(null)
       return
     }
+
+    setProviderAuthLoading(true)
+    setProviderAuthError(null)
+    setProviderAuthHeader(null)
 
     void (async () => {
       const result = await buildEncodedProviderAuthHeader({
@@ -383,7 +393,15 @@ export function WizardConversation({
         organizationId,
       })
       if (cancelled) return
-      setProviderAuthHeader(result.header || null)
+      setProviderAuthLoading(false)
+      if (result.header) {
+        setProviderAuthHeader(result.header)
+        setProviderAuthError(null)
+        return
+      }
+
+      setProviderAuthHeader(null)
+      setProviderAuthError(result.error || 'Provider authentication is not ready on this device.')
     })()
 
     return () => {
@@ -713,7 +731,7 @@ export function WizardConversation({
     return 'Something went wrong'
   }, [error])
 
-  const serviceErrorMessage = modelsError || toolsError
+  const serviceErrorMessage = modelsError || toolsError || providerAuthError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
 
   const genericErrorRef = useRef<string | null>(null)
@@ -733,13 +751,21 @@ export function WizardConversation({
     surfaceErrorMessage && dismissedError !== surfaceErrorMessage
   )
 
+  const canSendMessage = Boolean(
+    accessToken &&
+    currentOrganization?.organizationId &&
+    hasSelectableModel &&
+    providerAuthHeader &&
+    !providerAuthLoading
+  )
+
   // Send initial message on mount (use ref to prevent duplicate sends)
   useEffect(() => {
-    if (!hasSentInitialMessageRef.current && initialPrompt && accessToken && hasSelectableModel) {
+    if (!hasSentInitialMessageRef.current && initialPrompt && canSendMessage) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [initialPrompt, accessToken, hasSelectableModel, sendMessage])
+  }, [initialPrompt, canSendMessage, sendMessage])
 
   // Validate and filter plan options
   const validatePlans = (plans: unknown[]): PlanOption[] => {
@@ -888,7 +914,7 @@ export function WizardConversation({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!hasSelectableModel) return
+    if (!canSendMessage) return
     if (!input.trim()) return
 
     const messageText = input
@@ -934,7 +960,7 @@ export function WizardConversation({
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Thinking...</span>
+                <span className="text-sm">Generating...</span>
               </div>
             )}
             {/* Plan selector when AI generates plans */}
@@ -1080,7 +1106,7 @@ export function WizardConversation({
 
             <Button
               type="submit"
-              disabled={(!hasSelectableModel || !input.trim()) && !isLoading}
+              disabled={(!canSendMessage || !input.trim()) && !isLoading}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
             >
@@ -1095,6 +1121,11 @@ export function WizardConversation({
         {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
           <p className="pt-2 text-xs text-amber-600">
             Connect an AI provider in Workspace AI settings to continue planning.
+          </p>
+        )}
+        {hasSelectableModel && providerAuthLoading && (
+          <p className="pt-2 text-xs text-muted-foreground">
+            Preparing provider authentication...
           </p>
         )}
 
@@ -1217,39 +1248,7 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
             )
           }
 
-          if (part.type === 'data-usage') {
-            const usage = (part as { data?: UsageData }).data
-
-            if (!usage) return null
-
-            const stats: string[] = []
-            const trackedUnits = usage.trackedUnits
-            if (trackedUnits !== undefined) {
-              stats.push(`${trackedUnits} units`)
-            }
-            if (usage.totalTokens !== undefined) {
-              stats.push(`${usage.totalTokens} tokens`)
-            } else if (
-              usage.promptTokens !== undefined &&
-              usage.completionTokens !== undefined
-            ) {
-              stats.push(`${usage.promptTokens + usage.completionTokens} tokens`)
-            }
-            if (usage.model) {
-              stats.push(usage.model)
-            }
-
-            if (stats.length === 0) return null
-
-            return (
-              <div
-                key={`${message.id}-usage-${index}`}
-                className="rounded-md bg-background/70 px-2 py-1 text-[11px] text-muted-foreground"
-              >
-                Usage: {stats.join(' · ')}
-              </div>
-            )
-          }
+          if (part.type === 'data-usage') return null
 
           // Tool calls
           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {

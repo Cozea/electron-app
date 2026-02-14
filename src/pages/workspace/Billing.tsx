@@ -58,40 +58,34 @@ const plans: PlanInfo[] = [
   {
     id: 'free',
     name: 'Free',
-    price: '$0',
-    period: '/month',
+    price: '',
+    period: '',
     description: 'Solo usage with your own connected AI provider accounts.',
     features: [
-      '1 member',
-      '1 GB cloud storage',
-      '1 project',
-      'Realtime collaboration + auto-sync not included',
+      '1 member, 1 GB cloud storage, 1 project.',
+      'Realtime collaboration and auto-sync not included.',
     ],
   },
   {
     id: 'pro',
     name: 'Power Duo',
     price: '$15',
-    period: '/workspace/month',
+    period: '/month',
     description: 'Infrastructure plan for a 2-person workspace.',
     features: [
-      'Up to 2 members',
-      '5 GB cloud storage',
-      'Up to 5 projects',
-      'Unlimited realtime collaboration + auto sync (Git engine)',
+      'Up to 2 members, 5 GB cloud storage, up to 5 projects.',
+      'Unlimited realtime collaboration and auto sync (Git engine).',
     ],
   },
   {
     id: 'max',
     name: 'Winning Team',
     price: '$49',
-    period: '/workspace/month',
+    period: '/month',
     description: 'Scaled collaborative workspace for teams up to 10.',
     features: [
-      'Up to 10 members',
-      '30 GB cloud storage',
-      'Up to 20 projects',
-      'Unlimited realtime collaboration + auto sync + premium support',
+      'Up to 10 members, 30 GB cloud storage, up to 20 projects.',
+      'Unlimited realtime collaboration, auto sync, and premium support.',
     ],
   },
   {
@@ -101,10 +95,8 @@ const plans: PlanInfo[] = [
     period: '',
     description: 'Custom limits and infrastructure terms for larger workspaces.',
     features: [
-      'Custom member limits',
-      'Custom storage limits',
-      'Custom project limits',
-      'Priority onboarding and support SLA',
+      'Custom member, storage, and project limits.',
+      'Priority onboarding and support SLA.',
     ],
   },
 ]
@@ -418,10 +410,12 @@ export function Billing() {
 
             <p className="text-sm text-muted-foreground">{planInfo.description}</p>
 
-            <div>
-              <span className="text-3xl font-bold">{planInfo.price}</span>
-              {planInfo.period && <span className="text-muted-foreground">{planInfo.period}</span>}
-            </div>
+            {(planInfo.price || planInfo.period) && (
+              <div>
+                <span className="text-3xl font-bold">{planInfo.price}</span>
+                {planInfo.period && <span className="text-muted-foreground">{planInfo.period}</span>}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
@@ -515,23 +509,22 @@ export function Billing() {
                           transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(plans.length - 1 - index) * 50}ms`,
                         }}
                       >
-                        {isCurrent && (
-                          <Badge className="absolute top-3 right-3">Current</Badge>
-                        )}
                         <div className="flex items-baseline gap-2 mb-3">
                           <span className="text-lg font-semibold">{plan.name}</span>
-                          <span className="text-muted-foreground">
-                            {plan.price}{plan.period}
-                          </span>
+                          {(plan.price || plan.period) && (
+                            <span className="text-muted-foreground">
+                              {plan.price}{plan.period}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mb-3">
                           {plan.description}
                         </p>
-                        <ul className="text-xs text-muted-foreground space-y-1 mb-4 flex-1">
+                        <div className="text-xs text-muted-foreground space-y-1.5 mb-4 flex-1">
                           {plan.features.map((feature) => (
-                            <li key={feature}>- {feature}</li>
+                            <p key={feature}>{feature}</p>
                           ))}
-                        </ul>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"

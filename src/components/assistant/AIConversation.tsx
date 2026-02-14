@@ -880,12 +880,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const uniqueMessages = useMemo(() => {
     if (messages.length <= 1) return messages
-    const seen = new Set<string>()
-    return messages.filter((message) => {
+
+    const lastIndexById = new Map<string, number>()
+    for (let index = 0; index < messages.length; index += 1) {
+      const messageId = messages[index]?.id
+      if (!messageId) continue
+      lastIndexById.set(messageId, index)
+    }
+
+    return messages.filter((message, index) => {
       if (!message.id) return true
-      if (seen.has(message.id)) return false
-      seen.add(message.id)
-      return true
+      return lastIndexById.get(message.id) === index
     })
   }, [messages])
 

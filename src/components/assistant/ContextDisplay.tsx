@@ -47,11 +47,6 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // Google - Gemini 3 series (1M context)
   "gemini-3-flash": 1_000_000,
   "gemini-3-pro": 1_000_000,
-  // Google - Legacy models
-  "gemini-2.0-flash-exp": 1_048_576,
-  "gemini-2.0-flash": 1_048_576,
-  "gemini-1.5-pro": 2_097_152,
-  "gemini-1.5-flash": 1_048_576,
   // DeepSeek
   "deepseek-chat": 64_000,
   "deepseek-reasoner": 64_000,

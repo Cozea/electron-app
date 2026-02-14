@@ -108,8 +108,9 @@ function CompactPlanCard({ plan, isSelected, isSelectable, onSelect, onExpand }:
     <Card
       className={cn(
         'relative aspect-square cursor-pointer transition-all duration-200',
-        'hover:shadow-lg hover:scale-[1.02]',
-        isSelected && 'ring-2 ring-primary shadow-lg',
+        'rounded-[1.75rem] bg-muted/45 dark:bg-muted/25 shadow-none border-0',
+        'hover:scale-[1.01] hover:bg-muted/55 dark:hover:bg-muted/30',
+        isSelected && 'bg-muted/65 dark:bg-muted/35',
         !isSelectable && 'opacity-65',
       )}
       onClick={onSelect}
@@ -174,7 +175,7 @@ function ExpandedPlanCard({ plan, isSelected, isSelectable, onSelect, onCollapse
   const Icon = tierInfo.icon
 
   return (
-    <Card className="w-full">
+    <Card className="w-full rounded-[1.75rem] bg-muted/45 dark:bg-muted/25 shadow-none border-0">
       {/* Header with back button */}
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="space-y-2">
@@ -310,8 +311,9 @@ export function PlanCard({ plan, isSelected, isSelectable = true, onSelect, clas
     <Card
       className={cn(
         'relative cursor-pointer transition-all duration-200',
-        'hover:shadow-lg hover:scale-[1.02]',
-        isSelected && 'ring-2 ring-primary shadow-lg',
+        'rounded-[1.75rem] bg-muted/45 dark:bg-muted/25 shadow-none border-0',
+        'hover:scale-[1.01] hover:bg-muted/55 dark:hover:bg-muted/30',
+        isSelected && 'bg-muted/65 dark:bg-muted/35',
         !isSelectable && 'opacity-65',
         className
       )}

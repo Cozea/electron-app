@@ -41,15 +41,6 @@ interface ReasoningPart {
   text?: string
 }
 
-interface UsageData {
-  model?: string
-  provider?: string
-  creditsUsed?: number
-  promptTokens?: number
-  completionTokens?: number
-  totalTokens?: number
-}
-
 interface SourcePart {
   url?: string
   uri?: string
@@ -226,38 +217,7 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
             )
           }
 
-          if (part.type === 'data-usage') {
-            const usage = (part as { data?: UsageData }).data
-
-            if (!usage) return null
-
-            const stats: string[] = []
-            if (usage.creditsUsed !== undefined) {
-              stats.push(`${usage.creditsUsed} credits`)
-            }
-            if (usage.totalTokens !== undefined) {
-              stats.push(`${usage.totalTokens} tokens`)
-            } else if (
-              usage.promptTokens !== undefined &&
-              usage.completionTokens !== undefined
-            ) {
-              stats.push(`${usage.promptTokens + usage.completionTokens} tokens`)
-            }
-            if (usage.model) {
-              stats.push(usage.model)
-            }
-
-            if (stats.length === 0) return null
-
-            return (
-              <div
-                key={`${message.id}-usage-${index}`}
-                className="rounded-md bg-background/70 px-2 py-1 text-[11px] text-muted-foreground"
-              >
-                Usage: {stats.join(' · ')}
-              </div>
-            )
-          }
+          if (part.type === 'data-usage') return null
 
           // Tool calls
           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
