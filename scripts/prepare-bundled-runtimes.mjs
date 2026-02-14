@@ -122,17 +122,22 @@ function getRequiredTargets() {
   return native ? [native] : []
 }
 
-async function downloadFile(url, destinationPath) {
+function githubHeaders(accept = 'application/vnd.github+json,application/octet-stream') {
   const headers = {
-    Accept: 'application/vnd.github+json,application/octet-stream',
+    Accept: accept,
     'User-Agent': 'cozea-runtime-bootstrap',
   }
   const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
+  return headers
+}
 
-  const response = await fetch(url, { headers })
+async function downloadFile(url, destinationPath) {
+  const response = await fetch(url, {
+    headers: githubHeaders('application/vnd.github+json,application/octet-stream'),
+  })
   if (!response.ok || !response.body) {
     throw new Error(`Download failed (${response.status}) for ${url}`)
   }
@@ -366,10 +371,7 @@ async function resolveLatestNodeVersion() {
 
 async function resolveLatestBunAssetName(target) {
   const response = await fetch('https://api.github.com/repos/oven-sh/bun/releases/latest', {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'cozea-runtime-bootstrap',
-    },
+    headers: githubHeaders('application/vnd.github+json'),
   })
   if (!response.ok) {
     throw new Error(`Failed to fetch Bun release metadata (${response.status})`)
