@@ -262,15 +262,15 @@ function MessageBubbleComponent({
             const toolState = getToolState(toolPart.state)
 
             // Special handling for task-based tools (like Claude Code's TodoWrite)
-            const isTaskTool = toolName === 'todo_list' || toolName === 'build_tasks'
+            const isTaskTool = toolName === 'todowrite'
             const hasTaskInput = Array.isArray(toolInput?.tasks) || typeof toolInput?.tasks_json === 'string'
 
-            // Skip rendering build_tasks entirely - it's shown in the controls pill
-            if (toolName === 'build_tasks') {
+            // Skip rendering todowrite entirely - it's shown in the controls pill
+            if (toolName === 'todowrite') {
               return null
             }
             // Special handling for terminal tools
-            const isTerminalTool = toolName === 'run_in_terminal' || toolName === 'get_terminal_output'
+            const isTerminalTool = toolName === 'bash' || toolName === 'get_terminal_output'
             // Special handling for file edit tools (show Monaco diff)
             const isEditTool = isFileEditTool(toolName)
             // Special handling for web search tools (show only sources)
@@ -281,7 +281,7 @@ function MessageBubbleComponent({
               toolName === 'bing_search'
 
             // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read_file'
+            const isStaticTool = toolName === 'read'
 
             // Render static (non-expandable) tools
             if (isStaticTool) {
@@ -346,8 +346,8 @@ function MessageBubbleComponent({
                     />
                   )}
 
-                  {/* For non-task/non-terminal/non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                  {/* For non-task/non-terminal/non-edit/non-list/non-web_search tools, show raw input */}
+                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
                     <ToolInput input={formatToolPayload(toolInput)} />
                   )}
 

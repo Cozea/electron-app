@@ -57,11 +57,6 @@ interface CreateFileInput {
   content: string
 }
 
-interface CreateDirectoryInput {
-  dirPath?: string
-  path?: string
-}
-
 interface ReplaceStringInput {
   filePath: string
   oldString: string
@@ -128,21 +123,20 @@ const UNSUPPORTED_NATIVE_COMMAND_PATTERNS: RegExp[] = [
 ]
 
 const TOOLS_REQUIRING_PROJECT_CONTEXT = new Set<string>([
-  'create_file',
-  'create_directory',
-  'replace_string_in_file',
-  'multi_replace_string_in_file',
-  'run_in_terminal',
+  'write',
+  'edit',
+  'multiedit',
+  'bash',
   'get_terminal_output',
   'install_dependencies',
   'verify_build',
   'start_dev_server',
 ])
 const READ_ONLY_TOOLS_WITHOUT_PROJECT = new Set<string>([
-  'read_file',
-  'list_dir',
-  'file_search',
-  'grep_search',
+  'read',
+  'list',
+  'glob',
+  'grep',
 ])
 
 interface BackgroundProcess {
@@ -681,16 +675,6 @@ async function createFile(
   return { filePath }
 }
 
-async function createDirectory(input: { dirPath?: string; path?: string }, workingDir: string) {
-  const targetPath = input.dirPath ?? input.path
-  if (!targetPath) {
-    throw new Error('dirPath is required')
-  }
-  const dirPath = resolveToolPath(targetPath, workingDir)
-  fs.mkdirSync(dirPath, { recursive: true })
-  return { dirPath }
-}
-
 function replaceStringInFile(
   input: { filePath: string; oldString: string; newString: string },
   workingDir: string,
@@ -1090,39 +1074,37 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
 
   try {
     switch (request.name) {
-      case 'read_file':
+      case 'read':
         return { success: true, output: await readFile(request.input as ReadFileInput, workingDir) }
-      case 'list_dir':
+      case 'list':
         return { success: true, output: await listDir(request.input as ListDirInput, workingDir) }
-      case 'file_search':
+      case 'glob':
         return {
           success: true,
           output: await findFiles(request.input as FindFilesInput, workingDir, {
             runId: request.runId,
           }),
         }
-      case 'grep_search':
+      case 'grep':
         return {
           success: true,
           output: await grepSearch(request.input as GrepSearchInput, workingDir, {
             runId: request.runId,
           }),
         }
-      case 'create_file':
+      case 'write':
         return { success: true, output: await createFile(request.input as CreateFileInput, workingDir, { notify: shouldNotify }) }
-      case 'create_directory':
-        return { success: true, output: await createDirectory(request.input as CreateDirectoryInput, workingDir) }
-      case 'replace_string_in_file':
+      case 'edit':
         return {
           success: true,
           output: replaceStringInFile(request.input as ReplaceStringInput, workingDir, { notify: shouldNotify }),
         }
-      case 'multi_replace_string_in_file':
+      case 'multiedit':
         return {
           success: true,
           output: multiReplaceString(request.input as MultiReplaceInput, workingDir, { notify: shouldNotify }),
         }
-      case 'run_in_terminal':
+      case 'bash':
         return {
           success: true,
           output: await runInTerminal(request.input as RunInTerminalInput, workingDir, {

@@ -31,6 +31,7 @@ import {
   DEFAULT_AGENT_BY_SURFACE,
   VARIANT_DEFINITIONS,
   getAvailableAgentsForSurface,
+  isLocalToolAllowedForAgent,
   getSupportedVariantsForModel,
   normalizeAgentForSurface,
   normalizeVariantForModel,
@@ -149,8 +150,8 @@ interface UsageData {
 
 // Tool categories for diagnostics + file locking.
 const WRITE_TOOLS = new Set([
-  'create_file', 'create_directory', 'replace_string_in_file',
-  'multi_replace_string_in_file', 'run_in_terminal', 'get_terminal_output', 'apply_patch',
+  'write', 'edit',
+  'multiedit', 'bash', 'get_terminal_output', 'apply_patch',
   'install_dependencies', 'verify_build', 'start_dev_server',
 ])
 
@@ -244,7 +245,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const addToolApprovalResponseRef = useRef<ChatHookResult['addToolApprovalResponse'] | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
-  const recordedApprovalIdsRef = useRef<Set<string>>(new Set())
   const conversationInitializedRef = useRef<string | null>(null)
   const isSavingRef = useRef(false)
   const lastProjectSlugRef = useRef<string | null>(null)
@@ -486,8 +486,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (!accessToken || !currentOrganization?.organizationId) return
 
     const controller = new AbortController()
+    const query = new URLSearchParams({
+      organizationId: currentOrganization.organizationId,
+      model,
+      agentId: normalizedAgentId,
+      surface,
+      hasProjectContext: hasProjectContext ? '1' : '0',
+    })
 
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
     })
@@ -513,7 +520,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
+  }, [
+    accessToken,
+    currentOrganization?.organizationId,
+    headers,
+    model,
+    normalizedAgentId,
+    surface,
+    hasProjectContext,
+  ])
 
   const normalizedProjectSlug = useMemo(() => {
     const source = (projectSlug || projectName || 'active-project').trim().toLowerCase()
@@ -634,12 +649,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null | undefined): string[] => {
     if (!input) return []
 
-    if (toolName === 'create_file' || toolName === 'replace_string_in_file' || toolName === 'read_file') {
+    if (toolName === 'write' || toolName === 'edit' || toolName === 'read') {
       const filePath = input.filePath
       return typeof filePath === 'string' && filePath.trim() ? [filePath] : []
     }
 
-    if (toolName === 'multi_replace_string_in_file') {
+    if (toolName === 'multiedit') {
       const replacements = Array.isArray(input.replacements) ? input.replacements : []
       return replacements
         .filter(isRecord)
@@ -735,11 +750,13 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   ])
 
   // Check if a tool is allowed in the current context
-  const isToolAllowedInContext = useCallback((_toolName: string) => {
-    // All local execution tools are project-scoped for assistant.
-    if (hasProjectContext) return true
-    return false
-  }, [hasProjectContext])
+  const isToolAllowedInContext = useCallback((toolName: string) => {
+    return isLocalToolAllowedForAgent({
+      agentId: normalizedAgentId,
+      toolName,
+      hasProjectContext,
+    })
+  }, [hasProjectContext, normalizedAgentId])
 
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
@@ -1157,57 +1174,28 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [uniqueMessages])
 
-  const recordToolApprovalRequest = useCallback(async (params: {
-    approvalId: string
-    toolName: string
-    toolInput: unknown
-    messageId: string
-  }) => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-
-    try {
-      await fetch(`${AI_BASE_URL}/tools/request`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          organizationId: currentOrganization.organizationId,
-          toolName: params.toolName,
-          toolInput: params.toolInput,
-          approvalId: params.approvalId,
-          conversationId,
-          messageId: params.messageId,
-        }),
-      })
-    } catch (err) {
-      console.warn('Failed to record tool approval request:', err)
-    }
-  }, [accessToken, currentOrganization?.organizationId, conversationId])
-
-  const persistToolApproval = useCallback(async (
-    approvalId: string,
-    approved: boolean,
-    rejectionReason?: string
+  const replyPermissionRequest = useCallback(async (
+    requestId: string,
+    reply: 'once' | 'always' | 'reject',
+    message?: string
   ) => {
     if (!accessToken) return
 
     try {
-      await fetch(`${AI_BASE_URL}/tools/approve`, {
+      await fetch(`${AI_BASE_URL}/permissions/reply`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          approvalId,
-          approved,
-          rejectionReason,
+          requestId,
+          reply,
+          ...(message ? { message } : {}),
         }),
       })
     } catch (err) {
-      console.warn('Failed to persist tool approval:', err)
+      console.warn('Failed to reply to permission request:', err)
     }
   }, [accessToken])
 
@@ -1319,7 +1307,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
       if (approvalId && addToolApprovalResponseRef.current && !isLocal) {
         await addToolApprovalResponseRef.current({ id: approvalId, approved: true })
-        void persistToolApproval(approvalId, true)
+        void replyPermissionRequest(approvalId, 'once')
       }
 
       if (isLocal) {
@@ -1333,7 +1321,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         errorText: err instanceof Error ? err.message : 'Tool failed',
       })
     }
-  }, [addToolOutput, persistToolApproval, runLocalTool])
+  }, [addToolOutput, replyPermissionRequest, runLocalTool])
 
   const handleDeniedTool = useCallback(async (
     toolName: string,
@@ -1345,7 +1333,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
     if (approvalId && addToolApprovalResponseRef.current && !isLocal) {
       await addToolApprovalResponseRef.current({ id: approvalId, approved: false })
-      void persistToolApproval(approvalId, false)
+      void replyPermissionRequest(approvalId, 'reject')
       return
     }
 
@@ -1355,7 +1343,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       toolCallId,
       errorText: 'User denied tool execution',
     })
-  }, [addToolOutput, persistToolApproval])
+  }, [addToolOutput, replyPermissionRequest])
 
   const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
   const pingAiTyping = useCollaborationActivityStore(
@@ -1400,57 +1388,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [uniqueMessages])
-
-  useEffect(() => {
-    if (!currentOrganization?.organizationId || !accessToken) return
-
-    const pendingApprovals: Array<{
-      approvalId: string
-      toolName: string
-      toolInput: unknown
-      messageId: string
-    }> = []
-
-    for (const message of uniqueMessages) {
-      if (message.role !== 'assistant') continue
-
-      for (const part of message.parts) {
-        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
-          continue
-        }
-
-        const toolPart = part as ToolPart
-        if (toolPart.state !== 'approval-requested') {
-          continue
-        }
-
-        const approvalId = toolPart.approval?.id
-        if (!approvalId || recordedApprovalIdsRef.current.has(approvalId)) {
-          continue
-        }
-
-        recordedApprovalIdsRef.current.add(approvalId)
-        const derivedToolName = part.type === 'dynamic-tool'
-          ? toolPart.toolName
-          : part.type.replace(/^tool-/, '')
-        if (!derivedToolName) {
-          continue
-        }
-        pendingApprovals.push({
-          approvalId,
-          toolName: derivedToolName,
-          toolInput: toolPart.input,
-          messageId: message.id,
-        })
-      }
-    }
-
-    if (!pendingApprovals.length) return
-
-    for (const approval of pendingApprovals) {
-      void recordToolApprovalRequest(approval)
-    }
-  }, [uniqueMessages, accessToken, currentOrganization?.organizationId, recordToolApprovalRequest])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();

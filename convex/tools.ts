@@ -33,7 +33,7 @@ function assertGatewaySecret(secret: string | undefined) {
 
 const BUILTIN_TOOLS: BuiltinTool[] = [
   {
-    name: "read_file",
+    name: "read",
     displayName: "Read File",
     description: "Read the contents of a file. Line numbers are 1-indexed. This tool will truncate its output at 2000 lines and may be called repeatedly with offset and limit parameters to read larger files in chunks.",
     category: "filesystem",
@@ -71,7 +71,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "list_dir",
+    name: "list",
     displayName: "List Directory",
     description: "List the contents of a directory. Result will have the name of the child. If the name ends in /, it's a folder, otherwise a file",
     category: "filesystem",
@@ -93,7 +93,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "file_search",
+    name: "glob",
     displayName: "Find Files",
     description: "Search for files in the workspace by glob pattern. This only returns the paths of matching files. Use this tool when you know the exact filename pattern of the files you're searching for. Glob patterns match from the root of the workspace folder. Examples:\n- **/*.{js,ts} to match all js/ts files in the workspace.\n- src/** to match all files under the top-level src folder.\n- **/foo/**/*.js to match all js files under any foo folder in the workspace.",
     category: "filesystem",
@@ -119,9 +119,9 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "grep_search",
+    name: "grep",
     displayName: "Find Text in Files",
-    description: "Do a fast text search in the workspace. Use this tool when you want to search with an exact string or regex. If you are not sure what words will appear in the workspace, prefer using regex patterns with alternation (|) or character classes to search for multiple potential words at once instead of making separate searches. For example, use 'function|method|procedure' to look for all of those words at once. Use includePattern to search within files matching a specific pattern, or in a specific file, using a relative path. Use 'includeIgnoredFiles' to include files normally ignored by .gitignore, other ignore files, and `files.exclude` and `search.exclude` settings. Warning: using this may cause the search to be slower, only set it when you want to search in ignored folders like node_modules or build outputs. Use this tool when you want to see an overview of a particular file, instead of using read_file many times to look for code within a file.",
+    description: "Do a fast text search in the workspace. Use this tool when you want to search with an exact string or regex. If you are not sure what words will appear in the workspace, prefer using regex patterns with alternation (|) or character classes to search for multiple potential words at once instead of making separate searches. For example, use 'function|method|procedure' to look for all of those words at once. Use includePattern to search within files matching a specific pattern, or in a specific file, using a relative path. Use 'includeIgnoredFiles' to include files normally ignored by .gitignore, other ignore files, and `files.exclude` and `search.exclude` settings. Warning: using this may cause the search to be slower, only set it when you want to search in ignored folders like node_modules or build outputs. Use this tool when you want to see an overview of a particular file, instead of using read many times to look for code within a file.",
     category: "filesystem",
     inputSchema: {
       type: "object",
@@ -157,7 +157,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "create_file",
+    name: "write",
     displayName: "Create File",
     description: "This is a tool for creating a new file in the workspace. The file will be created with the specified content. The directory will be created if it does not already exist. Never use this tool to edit a file that already exists.",
     category: "filesystem",
@@ -183,29 +183,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "create_directory",
-    displayName: "Create Directory",
-    description: "Create a new directory structure in the workspace. Will recursively create all directories in the path, like mkdir -p. You do not need to use this tool before using create_file, that tool will automatically create the needed directories.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["dirPath"],
-      properties: {
-        dirPath: {
-          description: "The absolute path of the directory to create.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "moderate",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "replace_string_in_file",
+    name: "edit",
     displayName: "Replace String",
     description: "This is a tool for making edits in an existing file in the workspace. For moving or renaming files, use run in terminal tool with the 'mv' command instead. For larger edits, split them into smaller edits and call the edit tool multiple times to ensure accuracy. Before editing, always ensure you have the context to understand the file's contents and context. To edit a file, provide: 1) filePath (absolute path), 2) oldString (MUST be the exact literal text to replace including all whitespace, indentation, newlines, and surrounding code etc), and 3) newString (MUST be the exact literal text to replace `oldString` with (also including all whitespace, indentation, newlines, and surrounding code etc.). Ensure the resulting code is correct and idiomatic.). Each use of this tool replaces exactly ONE occurrence of oldString.\n\nCRITICAL for `oldString`: Must uniquely identify the single instance to change. Include at least 3 lines of context BEFORE and AFTER the target text, matching whitespace and indentation precisely. If this string matches multiple locations, or does not match exactly, the tool will fail. Never use 'Lines 123-456 omitted' from summarized documents or ...existing code... comments in the oldString or newString.",
     category: "filesystem",
@@ -235,9 +213,9 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "multi_replace_string_in_file",
+    name: "multiedit",
     displayName: "Multi Replace String",
-    description: "This tool allows you to apply multiple replace_string_in_file operations in a single call, which is more efficient than calling replace_string_in_file multiple times. It takes an array of replacement operations and applies them sequentially. Each replacement operation has the same parameters as replace_string_in_file: filePath, oldString, newString, and explanation. This tool is ideal when you need to make multiple edits across different files or multiple edits in the same file. The tool will provide a summary of successful and failed operations.",
+    description: "This tool allows you to apply multiple edit operations in a single call, which is more efficient than calling edit multiple times. It takes an array of replacement operations and applies them sequentially. Each replacement operation has the same parameters as edit: filePath, oldString, newString, and explanation. This tool is ideal when you need to make multiple edits across different files or multiple edits in the same file. The tool will provide a summary of successful and failed operations.",
     category: "filesystem",
     inputSchema: {
       type: "object",
@@ -284,7 +262,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "run_in_terminal",
+    name: "bash",
     displayName: "Run in Terminal",
     description: "Run a shell command in the workspace. Use absolute paths. For long-running commands (watch mode, dev servers), set isBackground=true. Use get_terminal_output to check background command output.",
     category: "code",
@@ -322,14 +300,14 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "get_terminal_output",
     displayName: "Get Terminal Output",
-    description: "Get the output of a background terminal command started with run_in_terminal.",
+    description: "Get the output of a background terminal command started with bash.",
     category: "code",
     inputSchema: {
       type: "object",
       required: ["id"],
       properties: {
         id: {
-          description: "The terminal id returned by run_in_terminal.",
+          description: "The terminal id returned by bash.",
           type: "string",
         },
       },
@@ -420,33 +398,48 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: false,
   },
   {
-    name: "todo_list",
-    displayName: "Todo List",
-    description: "Present or update a structured task list with statuses.",
-    category: "custom",
+    name: "plan_write",
+    displayName: "Present Project Plans",
+    description: "Present 3 web project plan options (prototype, beta, mvp).",
+    category: "data",
+    inputSchema: {
+      type: "object",
+      required: ["plans"],
+      properties: {
+        plans: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { type: "object" },
+        },
+      },
+    },
+    requiresApproval: false,
+    allowedRoles: ["admin", "member", "viewer"],
+    riskLevel: "safe",
+    executionEnvironment: "server",
+    isBuiltin: true,
+    isEnabled: true,
+  },
+  {
+    name: "todowrite",
+    displayName: "Build Tasks",
+    description: "Track and update build progress tasks during project generation.",
+    category: "data",
     inputSchema: {
       type: "object",
       required: ["tasks"],
       properties: {
         tasks: {
           type: "array",
-          description: "List of tasks to display to the user.",
           items: {
             type: "object",
-            required: ["id", "title", "status"],
+            required: ["content", "activeForm", "status"],
             properties: {
-              id: { type: "string", description: "Unique task id." },
-              title: { type: "string", description: "Short task title." },
-              status: {
-                type: "string",
-                enum: ["pending", "in_progress", "completed", "error"],
-              },
-              files: {
-                type: "array",
-                items: { type: "string" },
-                description: "Optional list of related file paths.",
-              },
-              details: { type: "string", description: "Optional extra details." },
+              content: { type: "string" },
+              activeForm: { type: "string" },
+              status: { type: "string", enum: ["pending", "in_progress", "completed"] },
+              files: { type: "array", items: { type: "string" } },
             },
           },
         },
@@ -455,7 +448,25 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     requiresApproval: false,
     allowedRoles: ["admin", "member", "viewer"],
     riskLevel: "safe",
-    executionEnvironment: "server",
+    executionEnvironment: "local",
+    isBuiltin: true,
+    isEnabled: true,
+  },
+  {
+    name: "build_complete",
+    displayName: "Mark Build Complete",
+    description: "Signal that project generation is complete.",
+    category: "data",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+      },
+    },
+    requiresApproval: false,
+    allowedRoles: ["admin", "member", "viewer"],
+    riskLevel: "safe",
+    executionEnvironment: "local",
     isBuiltin: true,
     isEnabled: true,
   },
