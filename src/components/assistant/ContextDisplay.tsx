@@ -17,8 +17,11 @@ import {
 // Model context window sizes (in tokens)
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // OpenAI - GPT-5.x series (400K context)
-  "gpt-5.1": 400_000,
+  "gpt-5.1-codex-mini": 400_000,
+  "gpt-5.1-codex-max": 400_000,
   "gpt-5.2": 400_000,
+  "gpt-5.2-codex": 400_000,
+  "gpt-5.3-codex": 400_000,
   // OpenAI - Legacy models
   "gpt-4o": 128_000,
   "gpt-4o-mini": 128_000,

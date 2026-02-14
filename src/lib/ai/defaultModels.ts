@@ -7,12 +7,9 @@ export interface ModelOption {
   providers: string[]
 }
 
-// Model catalog per CrossCode Pricing Spec v3
-// Tiers: Fast (1/2 credits), Standard (5/10 credits), Powerful (25/50 credits)
+// Curated model catalog used for initial UI defaults.
 export const DEFAULT_MODELS: ModelOption[] = [
-  // ============================================
-  // FAST TIER - 1 input / 2 output credits per 1K tokens
-  // ============================================
+  // Fast tier
   {
     id: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
@@ -29,12 +26,10 @@ export const DEFAULT_MODELS: ModelOption[] = [
     tier: 'fast',
     providers: ['google'],
   },
-  // ============================================
-  // STANDARD TIER - 5 input / 10 output credits per 1K tokens
-  // ============================================
+  // Standard tier
   {
-    id: 'gpt-5.1',
-    name: 'GPT-5.1',
+    id: 'gpt-5.1-codex-mini',
+    name: 'GPT-5.1-Codex-Mini',
     chef: 'OpenAI',
     chefSlug: 'openai',
     tier: 'standard',
@@ -48,9 +43,31 @@ export const DEFAULT_MODELS: ModelOption[] = [
     tier: 'standard',
     providers: ['anthropic'],
   },
-  // ============================================
-  // POWERFUL TIER - 25 input / 50 output credits per 1K tokens
-  // ============================================
+  // Powerful tier
+  {
+    id: 'gpt-5.3-codex',
+    name: 'GPT-5.3-Codex',
+    chef: 'OpenAI',
+    chefSlug: 'openai',
+    tier: 'powerful',
+    providers: ['openai'],
+  },
+  {
+    id: 'gpt-5.2-codex',
+    name: 'GPT-5.2-Codex',
+    chef: 'OpenAI',
+    chefSlug: 'openai',
+    tier: 'powerful',
+    providers: ['openai'],
+  },
+  {
+    id: 'gpt-5.1-codex-max',
+    name: 'GPT-5.1-Codex-Max',
+    chef: 'OpenAI',
+    chefSlug: 'openai',
+    tier: 'powerful',
+    providers: ['openai'],
+  },
   {
     id: 'gpt-5.2',
     name: 'GPT-5.2',
@@ -76,4 +93,3 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['google'],
   },
 ]
-

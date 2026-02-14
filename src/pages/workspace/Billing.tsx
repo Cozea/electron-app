@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
 import { useQuery } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import { useCachedQuery } from '../../stores/useQueryCache'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
-const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+import { useAuth } from '../../contexts/AuthContext'
+import { api } from '../../../convex/_generated/api'
+import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -40,13 +39,18 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react'
+import { normalizeWorkspacePlanForPricing, type WorkspacePricingPlanId } from '@/lib/billing/planLabels'
+
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+
+type PlanId = WorkspacePricingPlanId
 
 interface PlanInfo {
-  id: string
+  id: PlanId
   name: string
   price: string
   period: string
-  credits: number
+  description: string
   features: string[]
 }
 
@@ -56,40 +60,53 @@ const plans: PlanInfo[] = [
     name: 'Free',
     price: '$0',
     period: '/month',
-    credits: 0,
-    features: ['Use your own API keys', 'Unlimited projects', '2 team members', 'Basic support'],
+    description: 'Solo usage with your own connected AI provider accounts.',
+    features: [
+      '1 member',
+      '1 GB cloud storage',
+      '1 project',
+      'Realtime collaboration + auto-sync not included',
+    ],
   },
   {
     id: 'pro',
-    name: 'Pro',
-    price: '$20',
-    period: '/month',
-    credits: 5000,
-    features: ['5,000 AI credits/month', 'Unlimited projects', '10 team members', 'Priority support'],
+    name: 'Power Duo',
+    price: '$15',
+    period: '/workspace/month',
+    description: 'Infrastructure plan for a 2-person workspace.',
+    features: [
+      'Up to 2 members',
+      '5 GB cloud storage',
+      'Up to 5 projects',
+      'Unlimited realtime collaboration + auto sync (Git engine)',
+    ],
   },
   {
     id: 'max',
-    name: 'Max',
-    price: '$50',
-    period: '/month',
-    credits: 15000,
-    features: ['15,000 AI credits/month', 'Unlimited projects', '25 team members', 'Priority support'],
+    name: 'Winning Team',
+    price: '$49',
+    period: '/workspace/month',
+    description: 'Scaled collaborative workspace for teams up to 10.',
+    features: [
+      'Up to 10 members',
+      '30 GB cloud storage',
+      'Up to 20 projects',
+      'Unlimited realtime collaboration + auto sync + premium support',
+    ],
   },
   {
     id: 'team',
-    name: 'Team',
-    price: '$40',
-    period: '/seat/month',
-    credits: 10000,
-    features: ['10,000 credits per seat', 'Unlimited projects', 'Unlimited members', 'Dedicated support'],
+    name: 'Custom',
+    price: 'Custom',
+    period: '',
+    description: 'Custom limits and infrastructure terms for larger workspaces.',
+    features: [
+      'Custom member limits',
+      'Custom storage limits',
+      'Custom project limits',
+      'Priority onboarding and support SLA',
+    ],
   },
-]
-
-const creditPacks = [
-  { id: 'starter', name: 'Starter', credits: 1000, price: '$12' },
-  { id: 'plus', name: 'Plus', credits: 5000, price: '$50' },
-  { id: 'pro', name: 'Pro', credits: 15000, price: '$120' },
-  { id: 'max', name: 'Max', credits: 50000, price: '$350' },
 ]
 
 interface StripeInvoice {
@@ -104,10 +121,15 @@ interface StripeInvoice {
   invoicePdf: string | null
 }
 
+interface UsagePoint {
+  date: string
+  tokens: number
+  requests: number
+}
+
 export function Billing() {
   const { user, logout, currentOrganization, accessToken } = useAuth()
 
-  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
   const freshOrg = useQuery(
     api.organizations.getByWorkosId,
     currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
@@ -117,26 +139,17 @@ export function Billing() {
     freshOrg
   )
 
-  // Get members count
   const members = useQuery(
     api.organizations.getMembers,
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
-  // Stripe invoices state
-  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
-  const [invoicesLoading, setInvoicesLoading] = useState(false)
-
-  // Get credit lots (purchased credits)
-  const creditLots = useQuery(
-    api.billing.getCreditLots,
-    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+  const usageLimits = useQuery(
+    api.organizations.getUsageLimits,
+    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
-  // Usage chart state
   const [usageTimeRange, setUsageTimeRange] = useState('30d')
-
-  // Calculate date range for usage query
   const usageDateRange = useMemo(() => {
     const now = Date.now()
     const daysToSubtract = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
@@ -144,7 +157,6 @@ export function Billing() {
     return { startDate, endDate: now }
   }, [usageTimeRange])
 
-  // Get daily usage aggregates
   const usageAggregates = useQuery(
     api.aiUsage.getAggregates,
     convexOrg?._id ? {
@@ -155,13 +167,11 @@ export function Billing() {
     } : 'skip'
   )
 
-  // Transform usage data for chart
-  const chartData = useMemo(() => {
+  const chartData = useMemo<UsagePoint[]>(() => {
     if (!usageAggregates) return []
 
-    // Create a map of all dates in the range
     const daysToShow = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
-    const dates: { date: string; credits: number }[] = []
+    const dates: UsagePoint[] = []
     const now = new Date()
 
     for (let i = daysToShow - 1; i >= 0; i--) {
@@ -170,37 +180,49 @@ export function Billing() {
       date.setHours(0, 0, 0, 0)
       dates.push({
         date: date.toISOString().split('T')[0],
-        credits: 0,
+        tokens: 0,
+        requests: 0,
       })
     }
 
-    // Fill in actual usage data
     for (const aggregate of usageAggregates) {
       const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
-      const found = dates.find(d => d.date === dateStr)
+      const found = dates.find((d) => d.date === dateStr)
       if (found) {
-        found.credits = aggregate.totalCreditsUsed
+        found.tokens = aggregate.totalTokens
+        found.requests = aggregate.requestCount
       }
     }
 
     return dates
   }, [usageAggregates, usageTimeRange])
 
-  // Chart config
+  const chartTotals = useMemo(() => {
+    return chartData.reduce(
+      (acc, point) => {
+        acc.tokens += point.tokens
+        acc.requests += point.requests
+        return acc
+      },
+      { tokens: 0, requests: 0 }
+    )
+  }, [chartData])
+
   const chartConfig: ChartConfig = {
-    credits: {
-      label: 'Credits Used',
+    tokens: {
+      label: 'Tokens',
       theme: {
-        light: 'hsl(240 5% 34%)',
-        dark: 'hsl(0 0% 85%)',
+        light: 'hsl(217 91% 60%)',
+        dark: 'hsl(217 91% 70%)',
       },
     },
   }
 
+  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [isUpgrading, setIsUpgrading] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
 
-  // Fetch Stripe invoices
   useEffect(() => {
     const fetchInvoices = async () => {
       if (!currentOrganization?.organizationId || !accessToken) return
@@ -231,27 +253,21 @@ export function Billing() {
   }, [currentOrganization?.organizationId, accessToken])
 
   const subscription = convexOrg?.subscription
-  const credits = convexOrg?.credits
-  const currentPlan = subscription?.plan || 'free'
-  const planInfo = plans.find(p => p.id === currentPlan)
+  const currentPlan = normalizeWorkspacePlanForPricing(subscription?.plan)
+  const planInfo = plans.find((p) => p.id === currentPlan) || plans[0]
 
-  // Credit calculations
-  const subscriptionCreditsRemaining = credits?.subscriptionCreditsRemaining ?? 0
+  const memberCount = usageLimits?.seats.current ?? members?.length ?? 0
+  const memberLimit = usageLimits?.seats.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 2 : currentPlan === 'max' ? 10 : -1)
 
-  // Purchased credits from active lots
-  const purchasedCreditsRemaining = creditLots
-    ?.filter(lot => lot.status === 'active')
-    .reduce((sum, lot) => sum + lot.remainingCredits, 0) ?? 0
+  const projectCurrent = usageLimits?.projects.current ?? 0
+  const projectLimit = usageLimits?.projects.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 5 : currentPlan === 'max' ? 20 : -1)
 
-  const totalCreditsRemaining = subscriptionCreditsRemaining + purchasedCreditsRemaining
+  const storageCurrent = usageLimits?.storage.currentFormatted ?? '0 B'
+  const storageLimit = usageLimits?.storage.limitFormatted ?? '0 B'
+  const storagePercent = usageLimits?.storage.usagePercent ?? 0
 
-  // Member counts
-  const memberCount = members?.length ?? 0
-  const memberLimit = currentPlan === 'free' ? 2 : currentPlan === 'pro' ? 10 : currentPlan === 'max' ? 25 : -1
-
-  // Format date
   const formatDate = (timestamp?: number) => {
-    if (!timestamp) return '—'
+    if (!timestamp) return '-'
     return new Date(timestamp).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -259,7 +275,6 @@ export function Billing() {
     })
   }
 
-  // Handle Stripe portal for managing billing
   const handleManageBilling = useCallback(async () => {
     if (!currentOrganization?.organizationId || !accessToken) return
 
@@ -291,13 +306,16 @@ export function Billing() {
     }
   }, [currentOrganization?.organizationId, accessToken])
 
-  // Handle plan upgrade via Stripe Checkout (redirect)
-  const handleUpgrade = useCallback(async (planId: string) => {
+  const handleUpgrade = useCallback(async (planId: PlanId) => {
     if (!currentOrganization?.organizationId || !accessToken) return
 
-    // Free plan / downgrade - use portal
     if (planId === 'free') {
       handleManageBilling()
+      return
+    }
+
+    if (planId === 'team') {
+      await window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Custom%20Workspace%20Plan')
       return
     }
 
@@ -335,49 +353,11 @@ export function Billing() {
     }
   }, [currentOrganization?.organizationId, accessToken, handleManageBilling])
 
-  // Handle credit pack purchase via Stripe Checkout (redirect)
-  const handleBuyCredits = useCallback(async (packId: string) => {
-    if (!currentOrganization?.organizationId || !accessToken) return
-
-    try {
-      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          organizationId: currentOrganization.organizationId,
-          type: 'credits',
-          packType: packId,
-          successUrl: 'cozea://billing/success?type=credits',
-          cancelUrl: 'cozea://billing/canceled',
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create checkout')
-      }
-
-      const { url } = await response.json()
-      if (url) {
-        await window.electronAPI.shell.openExternal(url)
-      }
-    } catch (err) {
-      console.error('Checkout error:', err)
-      alert(err instanceof Error ? err.message : 'Failed to start checkout')
-    }
-  }, [currentOrganization?.organizationId, accessToken])
-
-  // Check for success/cancel query params from Stripe redirect
   const urlParams = new URLSearchParams(window.location.search)
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
 
-  const isLoading = !convexOrg
-
-  if (isLoading) {
+  if (!convexOrg) {
     return (
       <DashboardLayout
         user={user}
@@ -391,23 +371,20 @@ export function Billing() {
     )
   }
 
+  const currentPlanIndex = plans.findIndex((p) => p.id === currentPlan)
+
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
     >
-      {/* Success/Cancel Alerts */}
       {successType && (
         <Alert className="mb-6 border-green-500/50 bg-green-500/10">
           <CheckCircle2 className="h-4 w-4 text-green-500" />
-          <AlertTitle className="text-green-500">
-            {successType === 'subscription' ? 'Subscription Updated!' : 'Credits Purchased!'}
-          </AlertTitle>
+          <AlertTitle className="text-green-500">Subscription Updated</AlertTitle>
           <AlertDescription>
-            {successType === 'subscription'
-              ? 'Your subscription has been updated. Your new credits are now available.'
-              : 'Your credits have been added to your account and are ready to use.'}
+            Workspace infrastructure billing was updated. AI usage billing continues through each connected provider subscription.
           </AlertDescription>
         </Alert>
       )}
@@ -423,13 +400,11 @@ export function Billing() {
       )}
 
       <div className="space-y-4">
-        {/* Current Plan */}
         <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="pt-0">
-            {/* Header row */}
-            <div className="flex items-center justify-between mb-2">
+          <CardContent className="pt-0 space-y-5">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold">{planInfo?.name} plan</h3>
+                <h3 className="text-lg font-semibold">{planInfo.name} plan</h3>
                 {subscription?.status === 'active' && (
                   <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20">
                     Active
@@ -437,93 +412,80 @@ export function Billing() {
                 )}
               </div>
               <Button onClick={() => setShowUpgradeOptions(!showUpgradeOptions)}>
-                {showUpgradeOptions ? 'Hide Plans' : 'Upgrade Plan'}
+                {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
               </Button>
             </div>
 
-            {/* Description */}
-            <p className="text-sm text-muted-foreground mb-4">
-              {planInfo?.features[0]}
-            </p>
+            <p className="text-sm text-muted-foreground">{planInfo.description}</p>
 
-            {/* Price */}
-            <div className="mb-6">
-              <span className="text-3xl font-bold">{planInfo?.price}</span>
-              <span className="text-muted-foreground">{planInfo?.period}</span>
+            <div>
+              <span className="text-3xl font-bold">{planInfo.price}</span>
+              {planInfo.period && <span className="text-muted-foreground">{planInfo.period}</span>}
             </div>
 
-            {/* Team Usage */}
-            {memberLimit > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Team Usage</span>
-                  <span className="text-muted-foreground">{memberCount} of {memberLimit} seats</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Workspace members</span>
+                  <span>{memberLimit < 0 ? `${memberCount} / Unlimited` : `${memberCount} / ${memberLimit}`}</span>
                 </div>
-                <Progress value={(memberCount / memberLimit) * 100} className="h-2" />
-                {/* Member Avatars */}
-                {members && members.length > 0 && (
-                  <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
-                    <div className="flex -space-x-2">
-                      {members.slice(0, 4).map((member) => {
-                        const displayName = member.user?.firstName
-                          ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
-                          : member.user?.email
-                        return (
-                          <Avatar key={member._id} className="ring-background ring-2">
-                            <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
-                            <AvatarFallback className="text-xs">
-                              {(displayName || '?').slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        )
-                      })}
-                    </div>
-                    {members.length > 4 && (
-                      <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
-                        +{members.length - 4}
-                      </span>
-                    )}
-                  </div>
+                {memberLimit > 0 && (
+                  <Progress value={Math.min(100, (memberCount / Math.max(memberLimit, 1)) * 100)} className="h-2" />
+                )}
+              </div>
+
+              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Projects</span>
+                  <span>{projectLimit < 0 ? `${projectCurrent} / Unlimited` : `${projectCurrent} / ${projectLimit}`}</span>
+                </div>
+                {projectLimit > 0 && (
+                  <Progress value={Math.min(100, (projectCurrent / Math.max(projectLimit, 1)) * 100)} className="h-2" />
+                )}
+              </div>
+
+              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Cloud storage</span>
+                  <span>{storageCurrent} / {storageLimit}</span>
+                </div>
+                {!usageLimits?.storage.isUnlimited && (
+                  <Progress value={Math.min(100, storagePercent)} className="h-2" />
+                )}
+              </div>
+            </div>
+
+            {members && members.length > 0 && (
+              <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
+                <div className="flex -space-x-2">
+                  {members.slice(0, 5).map((member) => {
+                    const displayName = member.user?.firstName
+                      ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                      : member.user?.email
+                    return (
+                      <Avatar key={member._id} className="ring-background ring-2">
+                        <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
+                        <AvatarFallback className="text-xs">
+                          {(displayName || '?').slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    )
+                  })}
+                </div>
+                {members.length > 5 && (
+                  <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
+                    +{members.length - 5}
+                  </span>
                 )}
               </div>
             )}
-            {memberLimit < 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Team Usage</span>
-                  <span className="text-muted-foreground">{memberCount} members (unlimited)</span>
-                </div>
-                {/* Member Avatars */}
-                {members && members.length > 0 && (
-                  <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
-                    <div className="flex -space-x-2">
-                      {members.slice(0, 4).map((member) => {
-                        const displayName = member.user?.firstName
-                          ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
-                          : member.user?.email
-                        return (
-                          <Avatar key={member._id} className="ring-background ring-2">
-                            <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
-                            <AvatarFallback className="text-xs">
-                              {(displayName || '?').slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        )
-                      })}
-                    </div>
-                    {members.length > 4 && (
-                      <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
-                        +{members.length - 4}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+
+            <p className="text-xs text-muted-foreground">
+              AI tokens are tracked for visibility only. AI provider charges are billed directly by each connected provider account.
+            </p>
           </CardContent>
         </Card>
 
-        {/* Upgrade Options (collapsible with animation) */}
         <div
           className={`grid transition-all duration-300 ease-in-out ${showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
             }`}
@@ -533,28 +495,21 @@ export function Billing() {
               <CardHeader className="pt-0">
                 <CardTitle>Available Plans</CardTitle>
                 <CardDescription>
-                  Choose a plan that fits your needs
+                  Pricing is for shared infrastructure: cloud storage, project capacity, sync, and collaboration.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {plans.map((plan, index) => {
                     const isCurrent = plan.id === currentPlan
-                    const isDowngrade = plans.findIndex(p => p.id === plan.id) < plans.findIndex(p => p.id === currentPlan)
-
-                    const descriptions: Record<string, string> = {
-                      free: 'Use your own API keys with unlimited projects and basic support.',
-                      pro: 'Get 5,000 AI credits monthly with priority support and more team members.',
-                      max: 'Get 15,000 AI credits monthly with extended team size and priority support.',
-                      team: 'Scale with 10,000 credits per seat, unlimited members, and dedicated support.',
-                    }
+                    const isDowngrade = plans.findIndex((p) => p.id === plan.id) < currentPlanIndex
 
                     return (
                       <div
                         key={plan.id}
                         className={`relative rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 flex flex-col transition-all duration-300 shadow-none ${showUpgradeOptions
-                            ? 'opacity-100 translate-y-0'
-                            : 'opacity-0 -translate-y-4'
+                          ? 'opacity-100 translate-y-0'
+                          : 'opacity-0 -translate-y-4'
                           }`}
                         style={{
                           transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(plans.length - 1 - index) * 50}ms`,
@@ -569,9 +524,14 @@ export function Billing() {
                             {plan.price}{plan.period}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground flex-1 mb-4">
-                          {descriptions[plan.id]}
+                        <p className="text-sm text-muted-foreground mb-3">
+                          {plan.description}
                         </p>
+                        <ul className="text-xs text-muted-foreground space-y-1 mb-4 flex-1">
+                          {plan.features.map((feature) => (
+                            <li key={feature}>- {feature}</li>
+                          ))}
+                        </ul>
                         <Button
                           variant="outline"
                           size="sm"
@@ -579,7 +539,13 @@ export function Billing() {
                           disabled={isCurrent || isUpgrading}
                           onClick={() => handleUpgrade(plan.id)}
                         >
-                          {isCurrent ? 'Current Plan' : isDowngrade ? 'Downgrade' : `Upgrade to ${plan.name}`}
+                          {isCurrent
+                            ? 'Current Plan'
+                            : plan.id === 'team'
+                              ? 'Contact Sales'
+                              : isDowngrade
+                                ? 'Downgrade'
+                                : `Upgrade to ${plan.name}`}
                         </Button>
                       </div>
                     )
@@ -590,16 +556,14 @@ export function Billing() {
           </div>
         </div>
 
-        {/* Credits & Usage */}
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0">
-            {/* Usage Chart */}
             <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="font-medium">Usage Over Time</p>
+                  <p className="font-medium">AI Token Usage</p>
                   <p className="text-sm text-muted-foreground">
-                    Daily credit consumption
+                    Daily token consumption across the workspace
                   </p>
                 </div>
                 <Select value={usageTimeRange} onValueChange={setUsageTimeRange}>
@@ -616,9 +580,9 @@ export function Billing() {
               <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
                 <AreaChart data={chartData}>
                   <defs>
-                    <linearGradient id="fillCredits" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-credits)" stopOpacity={0.8} />
-                      <stop offset="95%" stopColor="var(--color-credits)" stopOpacity={0.1} />
+                    <linearGradient id="fillTokens" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-tokens)" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="var(--color-tokens)" stopOpacity={0.1} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} />
@@ -652,65 +616,30 @@ export function Billing() {
                     }
                   />
                   <Area
-                    dataKey="credits"
+                    dataKey="tokens"
                     type="natural"
-                    fill="url(#fillCredits)"
-                    stroke="var(--color-credits)"
+                    fill="url(#fillTokens)"
+                    stroke="var(--color-tokens)"
                   />
                 </AreaChart>
               </ChartContainer>
             </div>
 
-            {/* Total Credits Summary */}
-            <div className="mt-6 pt-6 border-t">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Total Available Credits</p>
-                  <p className="text-sm text-muted-foreground">
-                    Subscription + purchased credits
-                  </p>
-                </div>
-                <p className="text-3xl font-bold">{totalCreditsRemaining.toLocaleString()}</p>
+            <div className="mt-6 pt-6 border-t grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="font-medium">Tokens in Selected Range</p>
+                <p className="text-sm text-muted-foreground">Tracking only, not billed by Cozea</p>
+                <p className="text-3xl font-bold mt-1">{chartTotals.tokens.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="font-medium">Requests in Selected Range</p>
+                <p className="text-sm text-muted-foreground">All workspace AI requests</p>
+                <p className="text-3xl font-bold mt-1">{chartTotals.requests.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Buy Credits */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle>Buy Credits</CardTitle>
-            <CardDescription>
-              Purchase additional credits that never expire (valid for 12 months)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {creditPacks.map((pack) => (
-                <Card
-                  key={pack.id}
-                  className="cursor-pointer transition-colors shadow-none bg-muted/70 dark:bg-secondary/40 hover:bg-muted/80 dark:hover:bg-secondary/50"
-                >
-                  <CardContent className="pt-4 text-center">
-                    <p className="text-2xl font-bold">{pack.credits.toLocaleString()}</p>
-                    <p className="text-sm text-muted-foreground mb-3">credits</p>
-                    <p className="text-lg font-semibold mb-3">{pack.price}</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full bg-foreground/14 hover:bg-foreground/18"
-                      onClick={() => handleBuyCredits(pack.id)}
-                    >
-                      Buy {pack.name}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Invoice History */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0">
             <CardTitle>Invoice History</CardTitle>
@@ -776,7 +705,6 @@ export function Billing() {
             )}
           </CardContent>
         </Card>
-
       </div>
     </DashboardLayout>
   )

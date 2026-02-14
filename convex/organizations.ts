@@ -1,8 +1,8 @@
 import { mutation, query, internalMutation } from "./_generated/server"
 import { v } from "convex/values"
 import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
-import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
 import { checkSeatLimit } from "./lib/seatLimits"
+import { getWorkspacePlanLabel } from "./lib/planNames"
 import {
   checkProjectLimit,
   checkStorageUsage,
@@ -47,12 +47,10 @@ export const syncFromWorkOS = mutation({
       if (!existingOrg.aiSettings) {
         updates.aiSettings = {
           allowedProviders: ["anthropic", "openai", "google", "xai"],
-          byokPolicy: "required",
           allowProviderTools: false,
           allowWebSearch: false,
           maxReasoningDepth: "high",
           defaultModelTier: "standard",
-          overageEnabled: false,
         }
       }
 
@@ -62,25 +60,6 @@ export const syncFromWorkOS = mutation({
           status: "active",
           currentPeriodStart: now,
           currentPeriodEnd: new Date(now + 30 * 24 * 60 * 60 * 1000).getTime(),
-        }
-      }
-
-      const existingCredits = existingOrg.credits || {} as Partial<typeof existingOrg.credits>
-      if (
-        existingCredits.subscriptionCreditsRemaining === undefined ||
-        existingCredits.subscriptionCreditsTotal === undefined
-      ) {
-        const fallbackBalance = existingCredits.balance ?? 0
-        updates.credits = {
-          subscriptionCreditsRemaining: fallbackBalance,
-          subscriptionCreditsTotal: fallbackBalance,
-          overageCreditsUsed: existingCredits.overageCreditsUsed ?? 0,
-          overageAmountCents: existingCredits.overageAmountCents ?? 0,
-          currentPeriodStart: existingCredits.currentPeriodStart ?? now,
-          currentPeriodEnd: existingCredits.currentPeriodEnd ?? new Date(now + 30 * 24 * 60 * 60 * 1000).getTime(),
-          balance: existingCredits.balance,
-          monthlyAllocation: existingCredits.monthlyAllocation,
-          lastResetAt: existingCredits.lastResetAt,
         }
       }
 
@@ -98,35 +77,18 @@ export const syncFromWorkOS = mutation({
       workosId: args.workosId,
       name: args.name,
       slug,
-      settings: {
-        allowByok: true,
-        defaultModel: "claude-sonnet-4-20250514",
-      },
       aiSettings: {
         allowedProviders: ["anthropic", "openai", "google", "xai"],
-        byokPolicy: "required",
         allowProviderTools: false,
         allowWebSearch: false,
         maxReasoningDepth: "high",
         defaultModelTier: "standard",
-        overageEnabled: false,
       },
       subscription: {
         plan: "free",
         status: "active",
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
-      },
-      credits: {
-        subscriptionCreditsRemaining: 0,
-        subscriptionCreditsTotal: 0,
-        overageCreditsUsed: 0,
-        overageAmountCents: 0,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        balance: 0,
-        monthlyAllocation: 0,
-        lastResetAt: now,
       },
       createdAt: now,
       updatedAt: now,
@@ -225,29 +187,7 @@ export const getByWorkosId = query({
       .first()
 
     if (!org) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { aiCredentials, ...safeOrg } = org
-    return safeOrg
-  },
-})
-
-// Get AI credentials status (connected/not connected) without exposing keys
-export const getAiCredentialsStatus = query({
-  args: { orgId: v.id("organizations") },
-  handler: async (ctx, args) => {
-    const org = await ctx.db.get(args.orgId)
-    if (!org) return null
-
-    const creds = org.aiCredentials || {}
-
-    // Keys are encrypted - just return connection status
-    return {
-      anthropic: { connected: !!creds.anthropicKey },
-      openai: { connected: !!creds.openaiKey },
-      google: { connected: !!creds.googleKey },
-      xai: { connected: !!creds.xaiKey },
-    }
+    return org
   },
 })
 
@@ -266,24 +206,7 @@ export const getByWorkosIdForServer = query({
       .first()
 
     if (!org) return null
-
-    const encrypted = org.aiCredentials || {}
-    const decryptOrPass = async (value?: string) => {
-      if (!value) return undefined
-      const decrypted = await safeDecrypt(value)
-      if (decrypted !== null) return decrypted
-      return isEncrypted(value) ? undefined : value
-    }
-
-    return {
-      ...org,
-      aiCredentials: {
-        anthropicKey: await decryptOrPass(encrypted.anthropicKey),
-        openaiKey: await decryptOrPass(encrypted.openaiKey),
-        googleKey: await decryptOrPass(encrypted.googleKey),
-        xaiKey: await decryptOrPass(encrypted.xaiKey),
-      },
-    }
+    return org
   },
 })
 
@@ -358,35 +281,18 @@ export const create = mutation({
       workosId: args.workosId,
       name: args.name,
       slug: args.slug,
-      settings: {
-        allowByok: true,
-        defaultModel: "claude-sonnet-4-20250514",
-      },
       aiSettings: {
         allowedProviders: ["anthropic", "openai", "google", "xai"],
-        byokPolicy: "required",
         allowProviderTools: false,
         allowWebSearch: false,
         maxReasoningDepth: "high",
         defaultModelTier: "standard",
-        overageEnabled: false,
       },
       subscription: {
         plan: "free",
         status: "active",
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
-      },
-      credits: {
-        subscriptionCreditsRemaining: 0,
-        subscriptionCreditsTotal: 0,
-        overageCreditsUsed: 0,
-        overageAmountCents: 0,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        balance: 0,
-        monthlyAllocation: 0,
-        lastResetAt: now,
       },
       createdAt: now,
       updatedAt: now,
@@ -422,10 +328,7 @@ export const get = query({
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.id)
     if (!org) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { aiCredentials, ...safeOrg } = org
-    return safeOrg
+    return org
   },
 })
 
@@ -439,131 +342,7 @@ export const getBySlug = query({
       .first()
 
     if (!org) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { aiCredentials, ...safeOrg } = org
-    return safeOrg
-  },
-})
-
-// Update organization settings
-export const updateSettings = mutation({
-  args: {
-    orgId: v.id("organizations"),
-    userId: v.id("users"),
-    settings: v.object({
-      allowByok: v.optional(v.boolean()),
-      defaultModel: v.optional(v.string()),
-      monthlyCreditsLimit: v.optional(v.number()),
-    }),
-  },
-  handler: async (ctx, args) => {
-    // Verify user is admin or owner
-    const membership = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.orgId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
-      throw new Error("Unauthorized")
-    }
-
-    const org = await ctx.db.get(args.orgId)
-    if (!org) throw new Error("Organization not found")
-
-    const now = Date.now()
-    await ctx.db.patch(args.orgId, {
-      settings: { ...org.settings, ...args.settings },
-      updatedAt: now,
-    })
-
-    // Audit log
-    await ctx.db.insert("auditLogs", {
-      organizationId: args.orgId,
-      userId: args.userId,
-      action: "settings.updated",
-      resourceType: "organization",
-      resourceId: args.orgId,
-      metadata: args.settings,
-      timestamp: now,
-    })
-  },
-})
-
-// Update AI credentials
-export const updateAiCredentials = mutation({
-  args: {
-    orgId: v.id("organizations"),
-    userId: v.id("users"),
-    anthropicKey: v.optional(v.string()),
-    openaiKey: v.optional(v.string()),
-    googleKey: v.optional(v.string()),
-    xaiKey: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    // Verify user is admin or owner
-    const membership = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.orgId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || !hasPermission(membership.role as Role, "settings:manage_api_keys")) {
-      throw new Error("Unauthorized")
-    }
-
-    const org = await ctx.db.get(args.orgId)
-    if (!org) {
-      throw new Error("Organization not found")
-    }
-
-    const updates: Record<string, string | undefined> = {}
-    if (args.anthropicKey !== undefined) {
-      if (args.anthropicKey && !validateKeyFormat("anthropic", args.anthropicKey)) {
-        throw new Error("Invalid Anthropic API key format")
-      }
-      updates.anthropicKey = args.anthropicKey ? await ensureEncrypted(args.anthropicKey) : undefined
-    }
-    if (args.openaiKey !== undefined) {
-      if (args.openaiKey && !validateKeyFormat("openai", args.openaiKey)) {
-        throw new Error("Invalid OpenAI API key format")
-      }
-      updates.openaiKey = args.openaiKey ? await ensureEncrypted(args.openaiKey) : undefined
-    }
-    if (args.googleKey !== undefined) {
-      if (args.googleKey && !validateKeyFormat("google", args.googleKey)) {
-        throw new Error("Invalid Google API key format")
-      }
-      updates.googleKey = args.googleKey ? await ensureEncrypted(args.googleKey) : undefined
-    }
-    if (args.xaiKey !== undefined) {
-      if (args.xaiKey && !validateKeyFormat("xai", args.xaiKey)) {
-        throw new Error("Invalid xAI API key format")
-      }
-      updates.xaiKey = args.xaiKey ? await ensureEncrypted(args.xaiKey) : undefined
-    }
-
-    const now = Date.now()
-    await ctx.db.patch(args.orgId, {
-      aiCredentials: {
-        ...(org.aiCredentials || {}),
-        ...updates,
-      },
-      updatedAt: now,
-    })
-
-    // Audit log (without exposing keys)
-    await ctx.db.insert("auditLogs", {
-      organizationId: args.orgId,
-      userId: args.userId,
-      action: "ai_credentials.updated",
-      resourceType: "organization",
-      resourceId: args.orgId,
-      timestamp: now,
-    })
+    return org
   },
 })
 
@@ -582,13 +361,11 @@ export const updateAiSettings = mutation({
         )
       ),
       allowedModels: v.optional(v.array(v.string())),
-      byokPolicy: v.union(v.literal("required"), v.literal("optional"), v.literal("disabled")),
       allowProviderTools: v.optional(v.boolean()),
       allowWebSearch: v.optional(v.boolean()),
       maxReasoningDepth: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
       monthlySpendingCapCents: v.optional(v.number()),
       defaultModelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
-      overageEnabled: v.optional(v.boolean()),
     }),
   },
   handler: async (ctx, args) => {
@@ -901,10 +678,18 @@ export const getUsageSummary = query({
       .first()
 
     const org = await ctx.db.get(args.orgId)
+    const aggregateWithTrackedUnits = aggregate
+      ? {
+          ...aggregate,
+          totalTrackedUnits: aggregate.totalTrackedUnits,
+        }
+      : null
 
     return {
-      aggregate,
-      credits: org?.credits,
+      aggregate: aggregateWithTrackedUnits,
+      trackedUsage: {
+        totalTrackedUnits: aggregate?.totalTrackedUnits ?? 0,
+      },
       subscription: org?.subscription,
     }
   },
@@ -1017,6 +802,7 @@ export const getUsageLimits = query({
     if (!org) return null
 
     const plan = org.subscription.plan
+    const planDisplayName = getWorkspacePlanLabel(plan)
 
     // Get all limits
     const projectStatus = await checkProjectLimit(ctx, args.orgId)
@@ -1025,7 +811,7 @@ export const getUsageLimits = query({
 
     return {
       plan,
-      planDisplayName: plan.charAt(0).toUpperCase() + plan.slice(1),
+      planDisplayName,
 
       // Project limits
       projects: {

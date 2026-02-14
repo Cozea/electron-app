@@ -11,6 +11,7 @@ export default defineConfig([
     'dist-ssr',
     'out',
     'node_modules',
+    'external/**',
     'build/runtime/packs-src',
     'build/runtime/packs',
     'convex/_generated',

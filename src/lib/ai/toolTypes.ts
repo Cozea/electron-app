@@ -15,15 +15,8 @@ export interface ToolMetaShape {
   supportsDeferredResults?: boolean
 }
 
-export interface ToolPolicy {
-  allowProviderTools: boolean
-  allowWebSearch: boolean
-  maxReasoningDepth: 'low' | 'medium' | 'high'
-}
-
 export interface ToolsApiResponse<TToolMeta extends ToolMetaShape = ToolMetaShape> {
   tools: TToolMeta[]
-  policy?: ToolPolicy
 }
 
 export interface ToolCallPayload {
@@ -33,4 +26,3 @@ export interface ToolCallPayload {
   dynamic?: boolean
   providerExecuted?: boolean
 }
-

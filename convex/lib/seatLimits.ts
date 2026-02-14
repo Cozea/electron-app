@@ -8,15 +8,22 @@ import type { Id } from "../_generated/dataModel"
 export function getPlanMemberLimit(plan: string): number {
   switch (plan) {
     case "free":
-      return 2
+      // Free is intentionally solo-only.
+      return 1
     case "pro":
-      return 10
-    case "max":
-      return 25
-    case "team":
-      return -1 // Unlimited
-    default:
+      // Power Duo
       return 2
+    case "max":
+      // Winning Team
+      return 10
+    case "team":
+      // Legacy "team" is treated as custom.
+      return -1
+    case "enterprise":
+      // Custom
+      return -1
+    default:
+      return 1
   }
 }
 

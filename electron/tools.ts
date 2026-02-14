@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
 import { notifyFileChanged } from './yjsNotify'
@@ -101,6 +102,13 @@ interface StartDevServerInput {
 const WORKSPACE_ROOT = path.resolve(
   process.env.COZEA_WORKSPACE_ROOT || process.env.APP_ROOT || process.cwd()
 )
+const DEFAULT_SAFE_READ_PARENT = process.platform === 'win32'
+  ? process.env.USERPROFILE || process.cwd()
+  : process.env.HOME || process.cwd()
+const SAFE_READ_ROOT = path.resolve(
+  process.env.COZEA_SAFE_READ_ROOT || path.join(DEFAULT_SAFE_READ_PARENT, 'Cozea', 'assistant-readonly')
+)
+const SAFE_READ_FALLBACK = path.resolve(path.join(os.tmpdir(), 'cozea-assistant-readonly'))
 
 const MAX_OUTPUT_LENGTH = 60_000
 const TRUNCATION_MESSAGE = '\n...output truncated...\n'
@@ -118,6 +126,24 @@ const UNSUPPORTED_NATIVE_COMMAND_PATTERNS: RegExp[] = [
   /\bflutter\b/i,
   /\bswift\b/i,
 ]
+
+const TOOLS_REQUIRING_PROJECT_CONTEXT = new Set<string>([
+  'create_file',
+  'create_directory',
+  'replace_string_in_file',
+  'multi_replace_string_in_file',
+  'run_in_terminal',
+  'get_terminal_output',
+  'install_dependencies',
+  'verify_build',
+  'start_dev_server',
+])
+const READ_ONLY_TOOLS_WITHOUT_PROJECT = new Set<string>([
+  'read_file',
+  'list_dir',
+  'file_search',
+  'grep_search',
+])
 
 interface BackgroundProcess {
   id: string
@@ -295,6 +321,19 @@ function resolveToolPath(inputPath: string, workingDir: string): string {
     throw new Error('Path is outside of the workspace')
   }
   return resolved
+}
+
+function resolveOutsideProjectReadRoot(): string {
+  const candidates = [SAFE_READ_ROOT, SAFE_READ_FALLBACK]
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true })
+      return candidate
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error('Unable to initialize a safe read-only workspace for assistant tools.')
 }
 
 type SupportedPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
@@ -1031,8 +1070,22 @@ async function getTerminalOutput(input: { id: string }) {
 }
 
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
-  // Use projectPath if provided, otherwise fall back to global WORKSPACE_ROOT
-  const workingDir = request.projectPath || WORKSPACE_ROOT
+  if (!request.projectPath && TOOLS_REQUIRING_PROJECT_CONTEXT.has(request.name)) {
+    return {
+      success: false,
+      error: 'This tool requires an active project context. Open a project and retry.',
+    }
+  }
+
+  if (!request.projectPath && !READ_ONLY_TOOLS_WITHOUT_PROJECT.has(request.name)) {
+    return {
+      success: false,
+      error: 'Outside project context only read-only tools are allowed.',
+    }
+  }
+
+  // Outside project context, all read tools are anchored to a dedicated safe directory.
+  const workingDir = request.projectPath ?? resolveOutsideProjectReadRoot()
   const shouldNotify = Boolean(request.projectPath)
 
   try {

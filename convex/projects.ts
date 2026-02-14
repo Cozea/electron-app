@@ -112,11 +112,33 @@ export const create = mutation({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()),
       })
     ),
@@ -369,11 +391,33 @@ export const update = mutation({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()),
       })
     ),

@@ -37,6 +37,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('auth:error', handler)
     },
   },
+  providerAuth: {
+    listProviders: () => ipcRenderer.invoke('providerAuth:listProviders'),
+    getStatus: (provider?: 'openai' | 'anthropic' | 'google') =>
+      ipcRenderer.invoke('providerAuth:getStatus', provider),
+    connect: (options: {
+      provider: 'openai' | 'anthropic' | 'google'
+      method?: 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini'
+      authorizationCode?: string
+      credentialPath?: string
+    }) => ipcRenderer.invoke('providerAuth:connect', options),
+    disconnect: (provider: 'openai' | 'anthropic' | 'google') =>
+      ipcRenderer.invoke('providerAuth:disconnect', provider),
+    getRequestAuth: (options: {
+      provider: 'openai' | 'anthropic' | 'google'
+      modelId: string
+      organizationId: string
+    }) => ipcRenderer.invoke('providerAuth:getRequestAuth', options),
+  },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),

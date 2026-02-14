@@ -19,6 +19,7 @@ import { DatabaseService } from './services/DatabaseService'
 import { PerformanceService } from './services/PerformanceService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
+import { ProviderAuthService } from './services/ProviderAuthService'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
@@ -261,7 +262,7 @@ function stopUpdateChecks(): void {
 function handleBillingCallback(url: string): void {
   const urlObj = new URL(url)
   const urlPath = urlObj.pathname // '/success' or '/canceled'
-  const type = urlObj.searchParams.get('type') // 'subscription' or 'credits'
+  const type = urlObj.searchParams.get('type') // 'subscription'
 
   // Focus the window
   if (win) {
@@ -465,6 +466,7 @@ function createWindow() {
 // IPC Handlers
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
+ProviderAuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()

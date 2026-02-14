@@ -31,27 +31,39 @@ import {
 } from '@/components/ai/model-selector'
 import { cn } from '@/lib/utils'
 import {
+  loadGlobalModelSettings,
   loadModelSettings,
   saveModelSettings,
+  type StoredModelSettings,
+  updateGlobalModelSettings,
+  writeStoredModelSettings,
 } from '@/lib/modelSettingsStorage'
 import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
+  VARIANT_DEFINITIONS,
+  getSupportedVariantsForModel,
+  normalizeVariantForModel,
+  type RuntimeModelCapabilities,
+  type RuntimeProvider,
+} from '@/lib/ai/runtimeProfiles'
+import {
   IconArrowUp,
-  IconBolt,
-  IconBrain,
   IconChevronDown,
-  IconCircle,
-  IconCircleDashed,
   IconPlus,
   IconPaperclip,
-  IconProgress,
-  IconRobot,
   IconSquare,
-  IconUser,
   IconCheck,
   IconX,
 } from '@tabler/icons-react'
+import { Brain } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import {
+  CONNECTED_PROVIDER_DISPLAY_NAME,
+  CONNECTED_PROVIDER_ORDER,
+  isConnectedProvider,
+  useConnectedProviders,
+  type ConnectedProvider,
+} from '@/hooks/useConnectedProviders'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -96,17 +108,18 @@ import { BillingError, parseBillingError, type BillingErrorData } from '@/compon
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
-import type { ToolCallPayload, ToolMetaShape, ToolPolicy, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
   initialPrompt: string
   promptSettings: {
     model: string
-    agentType: 'agent' | 'assistant'
-    reasoningDepth: 'low' | 'medium' | 'high'
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+    surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+    variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   }
   onPlanSelected: (plan: PlanOption) => void
   className?: string
@@ -114,19 +127,12 @@ interface WizardConversationProps {
 
 type ToolMeta = ToolMetaShape
 
-interface ModelCapabilities {
-  reasoningType?: 'effort' | 'token' | 'budget' | string
-  supportsEffortParameter?: boolean
-  supportsExtendedThinking?: boolean
-  reasoningRange?: unknown
-}
-
 interface ModelApiModel {
   id: string
   displayName: string
   provider: string
   tier: string
-  capabilities?: ModelCapabilities
+  capabilities?: RuntimeModelCapabilities
 }
 
 interface ModelApiResponse {
@@ -156,7 +162,7 @@ interface ReasoningPart {
 interface UsageData {
   model?: string
   provider?: string
-  creditsUsed?: number
+  trackedUnits?: number
   promptTokens?: number
   completionTokens?: number
   totalTokens?: number
@@ -214,9 +220,10 @@ function getToolState(state: string | undefined): ToolState {
   return 'input-streaming'
 }
 
-// Tools allowed during planning phase (read-only + display_plan)
+// Local tools allowed during planning.
+// Web search is executed server/provider-side and does not run through local runtime.
 const PLANNING_TOOLS = new Set([
-  'read_file', 'list_dir', 'file_search', 'grep_search', 'present_plans'
+  'present_plans'
 ])
 
 // Model catalog (same as AIConversation)
@@ -231,27 +238,25 @@ export function WizardConversation({
 }: WizardConversationProps) {
   const navigate = useNavigate()
   const { accessToken, currentOrganization } = useAuth()
+  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
+  const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
 
   // State
   const [input, setInput] = useState('')
   const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
-  const [model, setModel] = useState(promptSettings.model)
+  const [model, setModel] = useState(
+    initialGlobalModelSettings.model || promptSettings.model || defaultModels[0]?.id || ''
+  )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<ToolPolicy | null>(null)
+  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<'Agent' | 'Assistant'>(
-    promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant'
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(
+    initialGlobalModelSettings.variantId ?? promptSettings.variantId ?? 'medium'
   )
-  const [selectedPerformance, setSelectedPerformance] = useState<'High' | 'Medium' | 'Low'>(
-    (promptSettings.reasoningDepth.charAt(0).toUpperCase() + promptSettings.reasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
-  )
-  const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high'>(
-    promptSettings.thinkingEffort ?? 'medium'
-  )
-  const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
+  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
-  const [modelCapabilities, setModelCapabilities] = useState<Record<string, ModelCapabilities>>({})
+  const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
@@ -265,52 +270,51 @@ export function WizardConversation({
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
-  const selectedModelData = availableModels.find((m) => m.id === model)
+  const providerScopedModels = useMemo(() => {
+    const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
+    if (!providerAuthAvailable || !providerStatusLoaded) return supportedModels
+    if (connectedProviders.length === 0) return []
+    const connectedSet = new Set(connectedProviders)
+    return supportedModels.filter((m) => connectedSet.has(m.chefSlug as ConnectedProvider))
+  }, [availableModels, connectedProviders, providerAuthAvailable, providerStatusLoaded])
+
+  const selectedModelData = providerScopedModels.find((m) => m.id === model)
   const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
   const activeProvider = selectedModelData?.chefSlug
-  const visibleChefs =
-    allowCrossProviderSwitching || !selectedModelData
-      ? ['Anthropic', 'OpenAI', 'Google']
-      : [selectedModelData.chef]
   const visibleModels =
     allowCrossProviderSwitching || !activeProvider
-      ? availableModels
-      : availableModels.filter((m) => m.chefSlug === activeProvider)
+      ? providerScopedModels
+      : providerScopedModels.filter((m) => m.chefSlug === activeProvider)
+  const visibleChefs = useMemo(
+    () =>
+      CONNECTED_PROVIDER_ORDER
+        .map((provider) => CONNECTED_PROVIDER_DISPLAY_NAME[provider])
+        .filter((chef) => visibleModels.some((modelOption) => modelOption.chef === chef)),
+    [visibleModels]
+  )
+  const hasSelectableModel = Boolean(selectedModelData)
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
-
-  // Determine which controls to show based on model capabilities
-  const showPerformanceControl = useMemo(() => {
-    if (!selectedModelCapabilities) return true // Default to showing
-    // Show for effort-based models (OpenAI) OR models with supportsEffortParameter (Opus 4.5)
-    return selectedModelCapabilities.reasoningType === 'effort' ||
-      selectedModelCapabilities.supportsEffortParameter === true
-  }, [selectedModelCapabilities])
-
-  const showThinkingControl = useMemo(() => {
-    if (!selectedModelCapabilities) return false // Don't show by default
-    return selectedModelCapabilities.supportsExtendedThinking === true
-  }, [selectedModelCapabilities])
-
-  const initialModelDefaults = useMemo(
-    () => ({
-      selectedAgent: promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant',
-      selectedPerformance:
-        promptSettings.reasoningDepth.charAt(0).toUpperCase() +
-        promptSettings.reasoningDepth.slice(1),
-      thinkingEffort: promptSettings.thinkingEffort ?? 'medium',
-    }),
-    [promptSettings]
+  const supportedVariants = useMemo(
+    () =>
+      getSupportedVariantsForModel({
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelCapabilities, selectedModelData?.chefSlug]
   )
-  const fallbackDefaults = useMemo(
-    () => ({
-      selectedAgent: 'Agent' as const,
-      selectedPerformance: 'High' as const,
-      thinkingEffort: 'medium' as const,
-    }),
-    []
+  const normalizedVariantId = useMemo(
+    () =>
+      normalizeVariantForModel(variantId, {
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelCapabilities, selectedModelData?.chefSlug, variantId]
   )
+
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
-  const isAgentMode = selectedAgent.toLowerCase() === 'agent'
+  const isAgentMode = false
 
   const modelSettingsRef = useRef(modelSettings)
   useEffect(() => {
@@ -318,26 +322,31 @@ export function WizardConversation({
   }, [modelSettings])
 
   useEffect(() => {
-    const stored = modelSettingsRef.current[model]
-    const defaults = model === promptSettings.model ? initialModelDefaults : fallbackDefaults
-    const next = stored ?? defaults
-    setSelectedAgent(next.selectedAgent ?? 'Agent')
-    setSelectedPerformance(next.selectedPerformance ?? 'High')
-    setThinkingEffort(next.thinkingEffort ?? 'medium')
-  }, [model, promptSettings.model, initialModelDefaults, fallbackDefaults])
-
-  useEffect(() => {
-    const nextSettings = {
-      selectedAgent,
-      selectedPerformance,
-      thinkingEffort,
+    const nextSettings: StoredModelSettings = {
+      agentId: 'plan',
+      surface: 'wizard',
     }
     setModelSettings((prev) => {
-      const updated = { ...prev, [model]: nextSettings }
+      const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
       saveModelSettings(updated)
       return updated
     })
-  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
+  }, [model])
+
+  useEffect(() => {
+    if (!model) return
+    updateGlobalModelSettings({
+      model,
+      variantId: variantId ?? normalizedVariantId,
+    })
+  }, [model, variantId, normalizedVariantId])
+
+  useEffect(() => {
+    if (providerScopedModels.length === 0) return
+    if (!providerScopedModels.some((item) => item.id === model)) {
+      setModel(providerScopedModels[0].id)
+    }
+  }, [providerScopedModels, model])
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
@@ -350,6 +359,38 @@ export function WizardConversation({
     setToolsError(null)
   }, [accessToken, currentOrganization?.organizationId])
 
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
+    if (!organizationId) {
+      setProviderAuthHeader(null)
+      return
+    }
+
+    const selectedProvider = selectedModelData?.chefSlug
+    const provider = (selectedProvider && isConnectedProvider(selectedProvider))
+      ? selectedProvider
+      : inferProviderFromModelId(model)
+    if (!provider) {
+      setProviderAuthHeader(null)
+      return
+    }
+
+    void (async () => {
+      const result = await buildEncodedProviderAuthHeader({
+        provider,
+        modelId: model,
+        organizationId,
+      })
+      if (cancelled) return
+      setProviderAuthHeader(result.header || null)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [model, selectedModelData?.chefSlug, currentOrganization?.organizationId])
+
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
     for (const tool of availableTools) {
@@ -357,24 +398,6 @@ export function WizardConversation({
     }
     return map
   }, [availableTools])
-
-  const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? 'medium'
-
-  const performanceToDisplay: Record<string, string> = {
-    'High': 'x3',
-    'Medium': 'x2',
-    'Low': 'x1',
-  }
-
-  // Clamp performance to max allowed
-  useEffect(() => {
-    const order = { low: 0, medium: 1, high: 2 }
-    const current = selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high'
-    if (order[current] > order[maxReasoningDepth]) {
-      const capped = (maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
-      setSelectedPerformance(capped)
-    }
-  }, [maxReasoningDepth, selectedPerformance])
 
   // Sync tools
   useEffect(() => {
@@ -403,15 +426,17 @@ export function WizardConversation({
       })
       .then((data: ModelApiResponse) => {
         if (!data?.models) return
-        const mapped = data.models.map((m) => ({
-          id: m.id,
-          name: m.displayName,
-          chef: m.provider === 'openai' ? 'OpenAI' : m.provider === 'anthropic' ? 'Anthropic' : 'Google',
-          chefSlug: m.provider,
-          tier: m.tier,
-          providers: [m.provider],
-        }))
-        const caps: Record<string, ModelCapabilities> = {}
+        const mapped = data.models
+          .filter((m): m is ModelApiModel & { provider: ConnectedProvider } => isConnectedProvider(m.provider))
+          .map((m) => ({
+            id: m.id,
+            name: m.displayName,
+            chef: CONNECTED_PROVIDER_DISPLAY_NAME[m.provider],
+            chefSlug: m.provider,
+            tier: m.tier,
+            providers: [m.provider],
+          }))
+        const caps: Record<string, RuntimeModelCapabilities> = {}
         for (const m of data.models) {
           if (m.capabilities) caps[m.id] = m.capabilities
         }
@@ -419,9 +444,6 @@ export function WizardConversation({
         setModelsError(null)
         if (mapped.length > 0) {
           setAvailableModels(mapped)
-          if (!mapped.some((item) => item.id === model)) {
-            setModel(mapped[0].id)
-          }
         }
       })
       .catch((err) => {
@@ -432,7 +454,7 @@ export function WizardConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers, model])
+  }, [accessToken, currentOrganization?.organizationId, headers])
 
   // Fetch tools
   useEffect(() => {
@@ -455,7 +477,6 @@ export function WizardConversation({
       .then((data: ToolResponse) => {
         if (!data?.tools) return
         setAvailableTools(data.tools)
-        setToolPolicy(data.policy ?? null)
         setToolsError(null)
       })
       .catch((err) => {
@@ -475,9 +496,10 @@ export function WizardConversation({
     projectId: projectId || null,
     model,
     conversationId,
-    actionType: selectedAgent.toLowerCase(),
-    reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    thinkingEffort,
+    agentId: 'plan' as const,
+    surface: 'wizard' as const,
+    variantId: normalizedVariantId,
+    providerAuthHeader,
   })
 
   useEffect(() => {
@@ -487,11 +509,12 @@ export function WizardConversation({
       projectId: projectId || null,
       model,
       conversationId,
-      actionType: selectedAgent.toLowerCase(),
-      reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-      thinkingEffort,
+      agentId: 'plan',
+      surface: 'wizard',
+      variantId: normalizedVariantId,
+      providerAuthHeader,
     }
-  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, selectedAgent, selectedPerformance, thinkingEffort])
+  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, normalizedVariantId, providerAuthHeader])
 
   // Chat transport (same pattern as AIConversation)
   const chatTransport = useMemo(() => {
@@ -499,7 +522,15 @@ export function WizardConversation({
       api: AI_API_URL,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
+        const providerHeader = requestConfigRef.current.providerAuthHeader
+        const next: Record<string, string> = {}
+        if (token) {
+          next.Authorization = `Bearer ${token}`
+        }
+        if (providerHeader) {
+          next['x-cozea-provider-auth'] = providerHeader
+        }
+        return next
       },
       body: () => ({
         model: requestConfigRef.current.model,
@@ -507,16 +538,14 @@ export function WizardConversation({
         // Only include projectId if it exists (project created when plan selected)
         ...(requestConfigRef.current.projectId && { projectId: requestConfigRef.current.projectId }),
         conversationId: requestConfigRef.current.conversationId,
-        feature: 'project-wizard',
-        actionType: requestConfigRef.current.actionType,
+        agentId: requestConfigRef.current.agentId,
+        surface: requestConfigRef.current.surface,
+        variantId: requestConfigRef.current.variantId,
         enableTools: true, // Always enabled - gated client-side based on planning phase
         enableWebSearch: true, // Always enabled
-        reasoningDepth: requestConfigRef.current.reasoningDepth,
-        thinkingEffort: requestConfigRef.current.thinkingEffort,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const actionType = requestConfigRef.current.actionType
-        const api = actionType === 'agent' ? `${AI_BASE_URL}/agent` : `${AI_BASE_URL}/chat`
+        const api = `${AI_BASE_URL}/chat`
         const requestBody = body ?? {}
         const nextBody = {
           ...requestBody,
@@ -547,13 +576,13 @@ export function WizardConversation({
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    // Planning-phase gating: only allow read-only tools and present_plans
+    // Planning-phase gating: local runtime only allows present_plans.
     if (!PLANNING_TOOLS.has(toolCall.toolName)) {
       void addToolOutput({
         state: 'output-error',
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
-        errorText: 'This tool is not available during planning. Only search and read tools are available.',
+        errorText: 'This tool is not available during planning.',
       })
       return
     }
@@ -706,11 +735,11 @@ export function WizardConversation({
 
   // Send initial message on mount (use ref to prevent duplicate sends)
   useEffect(() => {
-    if (!hasSentInitialMessageRef.current && initialPrompt && accessToken) {
+    if (!hasSentInitialMessageRef.current && initialPrompt && accessToken && hasSelectableModel) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [initialPrompt, accessToken, sendMessage])
+  }, [initialPrompt, accessToken, hasSelectableModel, sendMessage])
 
   // Validate and filter plan options
   const validatePlans = (plans: unknown[]): PlanOption[] => {
@@ -859,6 +888,7 @@ export function WizardConversation({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (!hasSelectableModel) return
     if (!input.trim()) return
 
     const messageText = input
@@ -1050,7 +1080,7 @@ export function WizardConversation({
 
             <Button
               type="submit"
-              disabled={!input.trim() && !isLoading}
+              disabled={(!hasSelectableModel || !input.trim()) && !isLoading}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
             >
@@ -1062,100 +1092,23 @@ export function WizardConversation({
             </Button>
           </div>
         </div>
+        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
+          <p className="pt-2 text-xs text-amber-600">
+            Connect an AI provider in Workspace AI settings to continue planning.
+          </p>
+        )}
 
         {/* Options row */}
         <div className="flex items-center gap-0 pt-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-              >
-                <IconUser className="size-3" />
-                <span>{selectedAgent}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedAgent('Agent')}>
-                  <IconUser size={16} className="opacity-60" />
-                  Agent
-                </DropdownMenuItem>
-                <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedAgent('Assistant')}>
-                  <IconRobot size={16} className="opacity-60" />
-                  Assistant
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Performance Control - Show for OpenAI and Opus 4.5 */}
-          {showPerformanceControl && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                >
-                  <IconBolt className="size-3" />
-                  <span>{performanceToDisplay[selectedPerformance]}</span>
-                  <IconChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-                <DropdownMenuGroup className="space-y-1">
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setSelectedPerformance('High')}
-                    disabled={maxReasoningDepth !== 'high'}
-                  >
-                    <IconCircle size={16} className="opacity-60" />
-                    High
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setSelectedPerformance('Medium')}
-                    disabled={maxReasoningDepth === 'low'}
-                  >
-                    <IconProgress size={16} className="opacity-60" />
-                    Medium
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedPerformance('Low')}>
-                    <IconCircleDashed size={16} className="opacity-60" />
-                    Low
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Thinking Effort - shows for models with extended thinking */}
-          {showThinkingControl && (() => {
-            // Get supported levels from model capabilities
-            const reasoningRange = selectedModelCapabilities?.reasoningRange
-            const supportedLevels: string[] = Array.isArray(reasoningRange)
-              ? reasoningRange.filter((level): level is string => typeof level === 'string')
-              : ['low', 'medium', 'high'] // Default for effort-based models
-            const normalizedSupportedLevels = supportedLevels.length > 0
-              ? supportedLevels
-              : ['low', 'medium', 'high']
-
-            // Ensure current selection is valid, otherwise use highest available
-            const effectiveLevel = normalizedSupportedLevels.includes(thinkingEffort)
-              ? thinkingEffort
-              : normalizedSupportedLevels[normalizedSupportedLevels.length - 1] || 'high'
-
-            const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
-              minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
-              low: { label: 'Low (faster)', icon: IconCircleDashed },
-              medium: { label: 'Medium (balanced)', icon: IconProgress },
-              high: { label: 'High (deeper reasoning)', icon: IconCircle },
-            }
-
-            return (
+          <div
+            className={cn(
+              "grid overflow-hidden transition-all duration-200 ease-out",
+              supportedVariants.length > 1
+                ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+            )}
+          >
+            <div className="min-w-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1163,32 +1116,41 @@ export function WizardConversation({
                     size="sm"
                     className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
                   >
-                    <IconBrain className="size-3" />
-                    <span>{effectiveLevel.charAt(0).toUpperCase() + effectiveLevel.slice(1)}</span>
+                    <Brain className="size-3" />
+                    <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
                     <IconChevronDown className="size-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
                   <DropdownMenuGroup className="space-y-1">
-                    {/* Show levels in reverse order (high first) */}
-                    {[...normalizedSupportedLevels].reverse().map((level) => {
-                      const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
-                      return (
-                        <DropdownMenuItem
-                          key={level}
-                          className="rounded-[calc(1rem-6px)] text-xs"
-                          onClick={() => setThinkingEffort(level as 'low' | 'medium' | 'high')}
-                        >
-                          <Icon size={16} className="opacity-60" />
-                          {label}
-                        </DropdownMenuItem>
-                      )
-                    })}
+                    {supportedVariants.map((variant) => (
+                      <DropdownMenuItem
+                        key={variant}
+                        className="rounded-[calc(1rem-6px)] text-xs"
+                        onClick={() => setVariantId(variant)}
+                      >
+                        <Brain size={16} className="opacity-60" />
+                        {VARIANT_DEFINITIONS[variant]?.label ?? variant}
+                      </DropdownMenuItem>
+                    ))}
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )
-          })()}
+            </div>
+          </div>
+          <div
+            className={cn(
+              "grid overflow-hidden transition-all duration-200 ease-out",
+              supportedVariants.length <= 1
+                ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+            )}
+          >
+            <div className="min-w-0 h-6 px-2 flex items-center rounded-full border border-transparent text-muted-foreground text-xs">
+              <Brain className="size-3 mr-1" />
+              <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+            </div>
+          </div>
 
           <Context
             maxTokens={getContextWindowSize(model)}
@@ -1261,8 +1223,9 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
             if (!usage) return null
 
             const stats: string[] = []
-            if (usage.creditsUsed !== undefined) {
-              stats.push(`${usage.creditsUsed} credits`)
+            const trackedUnits = usage.trackedUnits
+            if (trackedUnits !== undefined) {
+              stats.push(`${trackedUnits} units`)
             }
             if (usage.totalTokens !== undefined) {
               stats.push(`${usage.totalTokens} tokens`)

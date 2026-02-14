@@ -59,10 +59,12 @@ export const TIER_RATES: Record<ModelTier, TierRates> = {
 export const MODEL_CREDITS_PER_1K: Record<string, ModelCreditsPerK> = {
   "claude-haiku-4-5": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
   "gemini-3-flash": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
-  "gpt-5.1": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
-  "gpt-5.1-mini": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.1-codex-mini": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
   "claude-sonnet-4-5": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.1-codex-max": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gpt-5.2": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gpt-5.2-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gpt-5.3-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "claude-opus-4-5": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gemini-3-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
 }
@@ -94,20 +96,12 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
   // STANDARD TIER (5 input / 10 output per 1K)
   // Available: Pro and above (or BYOK)
   // ============================================
-  "gpt-5.1": {
-    id: "gpt-5.1",
-    displayName: "GPT-5.1",
+  "gpt-5.1-codex-mini": {
+    id: "gpt-5.1-codex-mini",
+    displayName: "GPT-5.1-Codex-Mini",
     provider: "openai",
     tier: "standard",
-    providerModelId: "gpt-5.1",
-    isAvailable: true,
-  },
-  "gpt-5.1-mini": {
-    id: "gpt-5.1-mini",
-    displayName: "GPT-5.1 Mini",
-    provider: "openai",
-    tier: "standard",
-    providerModelId: "gpt-5-mini",
+    providerModelId: "gpt-5.1-codex-mini",
     isAvailable: true,
   },
   "claude-sonnet-4-5": {
@@ -123,6 +117,30 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
   // POWERFUL TIER (25 input / 50 output per 1K)
   // Available: Max and above (or BYOK if allowed)
   // ============================================
+  "gpt-5.3-codex": {
+    id: "gpt-5.3-codex",
+    displayName: "GPT-5.3-Codex",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.3-codex",
+    isAvailable: true,
+  },
+  "gpt-5.2-codex": {
+    id: "gpt-5.2-codex",
+    displayName: "GPT-5.2-Codex",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.2-codex",
+    isAvailable: true,
+  },
+  "gpt-5.1-codex-max": {
+    id: "gpt-5.1-codex-max",
+    displayName: "GPT-5.1-Codex-Max",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.1-codex-max",
+    isAvailable: true,
+  },
   "gpt-5.2": {
     id: "gpt-5.2",
     displayName: "GPT-5.2",
@@ -151,8 +169,10 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
 
 // Plan-based tier access
 export const PLAN_TIER_ACCESS: Record<string, ModelTier[]> = {
-  free: [], // BYOK only - no managed tiers
-  pro: ["fast", "standard"],
+  // AI costs are handled by user-connected provider subscriptions.
+  // Plan tiers here no longer restrict model access.
+  free: ["fast", "standard", "powerful"],
+  pro: ["fast", "standard", "powerful"],
   max: ["fast", "standard", "powerful"],
   team: ["fast", "standard", "powerful"],
   enterprise: ["fast", "standard", "powerful"],
@@ -161,19 +181,19 @@ export const PLAN_TIER_ACCESS: Record<string, ModelTier[]> = {
 // Plan credits per month
 export const PLAN_CREDITS: Record<string, number> = {
   free: 0,
-  pro: 5000,
-  max: 15000,
-  team: 10000, // Per seat
+  pro: 0,
+  max: 0,
+  team: 0,
   enterprise: 0, // Custom
 }
 
 // Overage rates (cents per credit)
 export const OVERAGE_RATES: Record<string, number> = {
   free: 0, // No overage allowed
-  pro: 1.0, // $0.01/credit
-  max: 0.8, // $0.008/credit
-  team: 0.6, // $0.006/credit
-  enterprise: 0, // Custom
+  pro: 0,
+  max: 0,
+  team: 0,
+  enterprise: 0,
 }
 
 // Credit pack definitions
@@ -198,11 +218,21 @@ export function getModelTier(modelId: string): ModelTier {
   // Fallback: try to infer from model name patterns
   const lowerModelId = modelId.toLowerCase()
 
+  if (lowerModelId.includes("codex-mini")) {
+    return "standard"
+  }
+
   if (lowerModelId.includes("haiku") || lowerModelId.includes("flash") || lowerModelId.includes("mini")) {
     return "fast"
   }
 
-  if (lowerModelId.includes("opus") || lowerModelId.includes("pro") || lowerModelId.includes("5.2")) {
+  if (
+    lowerModelId.includes("opus") ||
+    lowerModelId.includes("pro") ||
+    lowerModelId.includes("5.2") ||
+    lowerModelId.includes("5.3") ||
+    lowerModelId.includes("codex-max")
+  ) {
     return "powerful"
   }
 
@@ -316,7 +346,8 @@ export function getOverageRate(plan: string): number {
  * Check if a plan allows overage
  */
 export function planAllowsOverage(plan: string): boolean {
-  return plan !== "free" && OVERAGE_RATES[plan] > 0
+  void plan
+  return false
 }
 
 /**

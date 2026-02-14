@@ -26,6 +26,9 @@ import { parseBillingError, type BillingErrorData } from '@/components/assistant
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
+import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
+import { useConnectedProviders } from '@/hooks/useConnectedProviders'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
@@ -34,6 +37,7 @@ import {
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
+import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
 
 // Builder-specific tools that should always be executed locally
 // These are defined inline on the server but not in Convex's tools table
@@ -51,6 +55,19 @@ const BUILDER_LOCAL_TOOLS = new Set([
   'replace_string_in_file',
   'multi_replace_string_in_file',
 ])
+
+const FALLBACK_MODEL_BY_PROVIDER: Record<'anthropic' | 'openai' | 'google', string> = {
+  anthropic: 'claude-sonnet-4-5',
+  openai: 'gpt-5.2-codex',
+  google: 'gemini-3-pro',
+}
+
+function resolveFallbackModel(aiProvider?: string): string {
+  if (aiProvider === 'anthropic' || aiProvider === 'openai' || aiProvider === 'google') {
+    return FALLBACK_MODEL_BY_PROVIDER[aiProvider]
+  }
+  return DEFAULT_MODELS[0]?.id ?? 'claude-sonnet-4-5'
+}
 
 // Project type from Convex
 interface Project {
@@ -96,9 +113,9 @@ interface Project {
   }
   promptSettings?: {
     model: string
-    agentType: 'agent' | 'assistant'
-    reasoningDepth: 'low' | 'medium' | 'high'
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+    surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+    variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   }
 }
 
@@ -241,17 +258,14 @@ export function BuilderConversation({
   className,
 }: BuilderConversationProps) {
   const { accessToken, currentOrganization, convexUserId } = useAuth()
+  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
 
   const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
   const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
 
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<{
-    allowProviderTools: boolean
-    allowWebSearch: boolean
-    maxReasoningDepth: 'low' | 'medium' | 'high'
-  } | null>(null)
+  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
   const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
@@ -332,28 +346,71 @@ export function BuilderConversation({
   }, [project.buildContract, project.targetPlatform])
   const preflightFailedRef = useRef(false)
   const promptSettings = project.promptSettings
+  const globalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const fallbackModel = resolveFallbackModel(project.stack?.aiProvider)
+  const requestedModel = globalModelSettings.model ?? promptSettings?.model ?? fallbackModel
+  const requestedProvider = inferProviderFromModelId(requestedModel)
+  const connectedModelFallback = useMemo(() => {
+    if (!providerAuthAvailable || !providerStatusLoaded) return null
+    if (connectedProviders.length === 0) return null
+    return resolveFallbackModel(connectedProviders[0])
+  }, [connectedProviders, providerAuthAvailable, providerStatusLoaded])
+  const model = useMemo(() => {
+    if (!providerAuthAvailable || !providerStatusLoaded) return requestedModel
+    if (connectedProviders.length === 0) return requestedModel
+    if (requestedProvider && connectedProviders.includes(requestedProvider)) {
+      return requestedModel
+    }
+    return connectedModelFallback ?? requestedModel
+  }, [
+    connectedModelFallback,
+    connectedProviders,
+    providerAuthAvailable,
+    providerStatusLoaded,
+    requestedModel,
+    requestedProvider,
+  ])
   console.log('[Builder] Project promptSettings:', promptSettings)
-  console.log('[Builder] Using model:', promptSettings?.model ?? 'gemini-3-pro (default)')
-  const model = promptSettings?.model ?? 'gemini-3-pro'
-  const requestedReasoningDepth = promptSettings?.reasoningDepth ?? 'high'
-  const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? requestedReasoningDepth
-  const effectiveReasoningDepth = useMemo(() => {
-    const order = { low: 0, medium: 1, high: 2 }
-    return order[requestedReasoningDepth] > order[maxReasoningDepth]
-      ? maxReasoningDepth
-      : requestedReasoningDepth
-  }, [requestedReasoningDepth, maxReasoningDepth])
+  console.log('[Builder] Using model:', model)
   // Builder always needs tools to create files and track progress
   const enableTools = true
   // Web search always enabled for builder
   const enableWebSearch = true
-  const actionType = promptSettings?.agentType ?? 'agent'
-  const thinkingEffort = promptSettings?.thinkingEffort
+  const variantId = globalModelSettings.variantId ?? promptSettings?.variantId
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
     return { Authorization: `Bearer ${accessToken}` }
   }, [accessToken])
+
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
+    if (!organizationId) {
+      setProviderAuthHeader(null)
+      return
+    }
+
+    const provider = inferProviderFromModelId(model)
+    if (!provider) {
+      setProviderAuthHeader(null)
+      return
+    }
+
+    void (async () => {
+      const result = await buildEncodedProviderAuthHeader({
+        provider,
+        modelId: model,
+        organizationId,
+      })
+      if (cancelled) return
+      setProviderAuthHeader(result.header || null)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [model, currentOrganization?.organizationId])
 
   // Sync tools
   useEffect(() => {
@@ -378,9 +435,6 @@ export function BuilderConversation({
       .then((data) => {
         if (!data?.tools) return
         setAvailableTools(data.tools as ToolMeta[])
-        if (data?.policy) {
-          setToolPolicy(data.policy)
-        }
       })
       .catch((err) => {
         if ((err as { name?: string }).name === 'AbortError') return
@@ -396,6 +450,7 @@ export function BuilderConversation({
     organizationId: currentOrganization?.organizationId || null,
     projectId: project._id,
     conversationId,
+    providerAuthHeader,
   })
 
   useEffect(() => {
@@ -404,8 +459,9 @@ export function BuilderConversation({
       organizationId: currentOrganization?.organizationId || null,
       projectId: project._id,
       conversationId,
+      providerAuthHeader,
     }
-  }, [accessToken, currentOrganization?.organizationId, project._id, conversationId])
+  }, [accessToken, currentOrganization?.organizationId, project._id, conversationId, providerAuthHeader])
 
   // Build initial prompt with full plan context
   const initialPrompt = useMemo(() => {
@@ -450,19 +506,26 @@ Now begin by defining your task list with build_tasks, then start working throug
       api: AI_API_URL,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
+        const providerHeader = requestConfigRef.current.providerAuthHeader
+        const next: Record<string, string> = {}
+        if (token) {
+          next.Authorization = `Bearer ${token}`
+        }
+        if (providerHeader) {
+          next['x-cozea-provider-auth'] = providerHeader
+        }
+        return next
       },
       body: () => ({
         model,
         organizationId: requestConfigRef.current.organizationId,
         projectId: requestConfigRef.current.projectId,
         conversationId: requestConfigRef.current.conversationId,
-        feature: 'project-builder',
-        actionType,
+        agentId: 'build',
+        surface: 'builder',
+        variantId,
         enableTools,
         enableWebSearch,
-        reasoningDepth: effectiveReasoningDepth,
-        thinkingEffort,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
         const api = `${AI_BASE_URL}/agent`
@@ -475,16 +538,14 @@ Now begin by defining your task list with build_tasks, then start working throug
         return { api, body: nextBody }
       },
     })
-  }, [model, actionType, enableTools, enableWebSearch, effectiveReasoningDepth, thinkingEffort])
-
-  const isAgentMode = actionType === 'agent'
+  }, [model, enableTools, enableWebSearch, variantId])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
     if (toolMeta.executionEnvironment !== 'local') return false
-    if (isAgentMode) return false // Agent mode auto-executes without approval
-    return toolMeta.requiresApproval ?? false
-  }, [isAgentMode])
+    // Builder profile always auto-executes local tools.
+    return false
+  }, [])
 
   const normalizeProjectPath = useCallback((filePath?: string) => {
     if (!filePath) return localPath

@@ -102,9 +102,9 @@ export interface WizardGeneratedPlan {
 
 export interface WizardPromptSettings {
   model: string
-  agentType: 'agent' | 'assistant'
-  reasoningDepth: 'low' | 'medium' | 'high'
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+  surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+  variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   toolsEnabled: boolean
   webSearchEnabled: boolean
 }

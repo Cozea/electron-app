@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import * as Y from "yjs"
+import { canConsumeStorage } from "./lib/workspaceLimits"
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
@@ -11,6 +12,54 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 type YjsSyncCtx = QueryCtx | MutationCtx
+
+async function getProjectWithOrganization(
+  ctx: YjsSyncCtx,
+  projectId: Id<"projects">
+) {
+  const project = await ctx.db.get(projectId)
+  if (!project) {
+    throw new Error("Project not found")
+  }
+
+  const organization = await ctx.db.get(project.organizationId)
+  if (!organization) {
+    throw new Error("Organization not found")
+  }
+
+  return { project, organization }
+}
+
+async function assertCollaborationAccess(ctx: YjsSyncCtx, projectId: Id<"projects">) {
+  const { organization } = await getProjectWithOrganization(ctx, projectId)
+  if (organization.subscription.plan === "free") {
+    throw new Error(
+      "Realtime collaboration is not available on the Free plan. Upgrade your workspace to enable collaborative editing."
+    )
+  }
+  return { organizationId: organization._id }
+}
+
+async function assertCollaborationWriteAllowed(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+  additionalBytes: number
+) {
+  const { organization } = await getProjectWithOrganization(ctx, projectId)
+  if (organization.subscription.plan === "free") {
+    throw new Error(
+      "Realtime collaboration is not available on the Free plan. Upgrade your workspace to enable collaborative editing."
+    )
+  }
+
+  const normalizedAdditional = Math.max(0, additionalBytes)
+  if (normalizedAdditional > 0) {
+    const capacity = await canConsumeStorage(ctx, organization._id, normalizedAdditional)
+    if (!capacity.allowed) {
+      throw new Error(capacity.message || "Storage limit reached")
+    }
+  }
+}
 
 async function loadServerState(ctx: YjsSyncCtx, projectId: Id<"projects">) {
   const serverDoc = new Y.Doc()
@@ -64,6 +113,7 @@ export const broadcastUpdate = mutation({
     origin: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
     await ctx.db.insert("yjsUpdates", {
       projectId: args.projectId,
       update: args.update,
@@ -84,6 +134,7 @@ export const getUpdatesSince = query({
     since: v.number(),
   },
   handler: async (ctx, args) => {
+    await assertCollaborationAccess(ctx, args.projectId)
     return await ctx.db
       .query("yjsUpdates")
       .withIndex("by_project_and_time", (q) =>
@@ -100,6 +151,7 @@ export const getUpdatesSince = query({
 export const getLatestSnapshot = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
+    await assertCollaborationAccess(ctx, args.projectId)
     return await ctx.db
       .query("yjsDocuments")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -119,6 +171,7 @@ export const saveSnapshot = mutation({
     version: v.number(),
   },
   handler: async (ctx, args) => {
+    await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
     await ctx.db.insert("yjsDocuments", {
       projectId: args.projectId,
       snapshot: args.snapshot,
@@ -138,6 +191,7 @@ export const cleanupOldUpdates = mutation({
     olderThan: v.number(),
   },
   handler: async (ctx, args) => {
+    await assertCollaborationAccess(ctx, args.projectId)
     const oldUpdates = await ctx.db
       .query("yjsUpdates")
       .withIndex("by_project_and_time", (q) =>
@@ -168,6 +222,7 @@ export const syncWithServer = mutation({
   },
   handler: async (ctx, args) => {
     if (args.clientUpdate) {
+      await assertCollaborationWriteAllowed(ctx, args.projectId, args.clientUpdate.byteLength)
       await ctx.db.insert("yjsUpdates", {
         projectId: args.projectId,
         update: args.clientUpdate,
@@ -175,6 +230,8 @@ export const syncWithServer = mutation({
         origin: "reconnect",
         timestamp: Date.now(),
       })
+    } else {
+      await assertCollaborationAccess(ctx, args.projectId)
     }
 
     const {

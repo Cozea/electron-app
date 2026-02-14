@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -79,10 +78,7 @@ export const getByWorkosId = query({
       .first()
 
     if (!user) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    return user
   },
 })
 
@@ -101,20 +97,7 @@ export const getByWorkosIdForServer = query({
       .first()
 
     if (!user) return null
-
-    const decryptOrPass = async (value?: string) => {
-      if (!value) return undefined
-      const decrypted = await safeDecrypt(value)
-      if (decrypted !== null) return decrypted
-      return isEncrypted(value) ? undefined : value
-    }
-
-    return {
-      ...user,
-      byokAnthropicKey: await decryptOrPass(user.byokAnthropicKey),
-      byokOpenaiKey: await decryptOrPass(user.byokOpenaiKey),
-      byokGoogleKey: await decryptOrPass(user.byokGoogleKey),
-    }
+    return user
   },
 })
 
@@ -128,10 +111,7 @@ export const getByEmail = query({
       .first()
 
     if (!user) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    return user
   },
 })
 
@@ -141,11 +121,7 @@ export const getById = query({
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId)
     if (!user) return null
-
-    // Strip sensitive BYOK keys
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    return user
   },
 })
 
@@ -198,44 +174,6 @@ export const updatePreferences = mutation({
   },
 })
 
-// Update BYOK keys
-export const updateByokKeys = mutation({
-  args: {
-    userId: v.id("users"),
-    byokAnthropicKey: v.optional(v.string()),
-    byokOpenaiKey: v.optional(v.string()),
-    byokGoogleKey: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { userId, ...keys } = args
-    const updates: Record<string, string | undefined> = {}
-
-    if (keys.byokAnthropicKey !== undefined) {
-      if (keys.byokAnthropicKey && !validateKeyFormat("anthropic", keys.byokAnthropicKey)) {
-        throw new Error("Invalid Anthropic API key format")
-      }
-      updates.byokAnthropicKey = keys.byokAnthropicKey ? await ensureEncrypted(keys.byokAnthropicKey) : undefined
-    }
-    if (keys.byokOpenaiKey !== undefined) {
-      if (keys.byokOpenaiKey && !validateKeyFormat("openai", keys.byokOpenaiKey)) {
-        throw new Error("Invalid OpenAI API key format")
-      }
-      updates.byokOpenaiKey = keys.byokOpenaiKey ? await ensureEncrypted(keys.byokOpenaiKey) : undefined
-    }
-    if (keys.byokGoogleKey !== undefined) {
-      if (keys.byokGoogleKey && !validateKeyFormat("google", keys.byokGoogleKey)) {
-        throw new Error("Invalid Google API key format")
-      }
-      updates.byokGoogleKey = keys.byokGoogleKey ? await ensureEncrypted(keys.byokGoogleKey) : undefined
-    }
-
-    await ctx.db.patch(userId, {
-      ...updates,
-      updatedAt: Date.now(),
-    })
-  },
-})
-
 // Get user with their organizations
 export const getWithOrganizations = query({
   args: { userId: v.id("users") },
@@ -255,18 +193,11 @@ export const getWithOrganizations = query({
       })
     )
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-
     return {
-      ...safeUser,
+      ...user,
       organizations: organizations
         .filter((org): org is NonNullable<typeof org> => org !== null)
-        .map((org) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { aiCredentials, ...safeOrg } = org
-          return safeOrg
-        }),
+        .map((org) => org),
     }
   },
 })

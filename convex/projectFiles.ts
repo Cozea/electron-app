@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import { canConsumeStorage } from "./lib/workspaceLimits"
 
 // Generate upload URL for a project file
 export const generateUploadUrl = mutation({
@@ -40,6 +41,9 @@ export const saveFile = mutation({
   handler: async (ctx, args) => {
     const now = Date.now()
 
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
     // Check if file already exists at this path
     const existing = await ctx.db
       .query("projectFiles")
@@ -48,6 +52,15 @@ export const saveFile = mutation({
       )
       .filter((q) => q.eq(q.field("status"), "active"))
       .first()
+
+    const previousSize = existing?.sizeBytes ?? 0
+    const additionalBytes = Math.max(0, args.sizeBytes - previousSize)
+    if (additionalBytes > 0) {
+      const capacity = await canConsumeStorage(ctx, project.organizationId, additionalBytes)
+      if (!capacity.allowed) {
+        throw new Error(capacity.message || "Storage limit reached")
+      }
+    }
 
     // Mark existing as superseded
     if (existing) {
@@ -184,6 +197,39 @@ export const saveFiles = mutation({
   handler: async (ctx, args) => {
     const now = Date.now()
     const results: Array<{ path: string; fileId: string }> = []
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    let requiredAdditionalBytes = 0
+
+    for (const file of args.files) {
+      const existing = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project_and_path", (q) =>
+          q.eq("projectId", args.projectId).eq("filePath", file.filePath)
+        )
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .first()
+
+      if (existing && existing.checksum === file.checksum) {
+        continue
+      }
+
+      const previousSize = existing?.sizeBytes ?? 0
+      requiredAdditionalBytes += Math.max(0, file.sizeBytes - previousSize)
+    }
+
+    if (requiredAdditionalBytes > 0) {
+      const capacity = await canConsumeStorage(
+        ctx,
+        project.organizationId,
+        requiredAdditionalBytes
+      )
+      if (!capacity.allowed) {
+        throw new Error(capacity.message || "Storage limit reached")
+      }
+    }
 
     for (const file of args.files) {
       // Check if file already exists at this path
