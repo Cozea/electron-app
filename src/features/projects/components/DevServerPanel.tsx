@@ -59,10 +59,17 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     const fitAddonRef = useRef<FitAddon | null>(null)
     const searchAddonRef = useRef<SearchAddon | null>(null)
     const devServerTerminalIdRef = useRef<string | null>(null)
+    const serverOutputRef = useRef(serverOutput)
+    // Track previous output length to detect new lines
+    const prevOutputLengthRef = useRef(serverOutput.length)
 
     useEffect(() => {
         devServerTerminalIdRef.current = devServerTerminalId
     }, [devServerTerminalId])
+
+    useEffect(() => {
+        serverOutputRef.current = serverOutput
+    }, [serverOutput])
 
     // Initialize xterm
     useEffect(() => {
@@ -225,11 +232,12 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         }, 50)
 
         // Restore history from store
-        const history = serverOutput
+        const history = serverOutputRef.current
         if (history.length > 0) {
             term.write(history.join(''))
             setHasOutput(true)
         }
+        prevOutputLengthRef.current = history.length
 
         // Register custom link provider for file paths (e.g., src/App.tsx:42:10)
         term.registerLinkProvider({
@@ -270,10 +278,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
             fitAddonRef.current = null
             searchAddonRef.current = null
         }
-    }, [serverStatus, isCollapsed, terminalInitRetry, serverOutput, projectPath])
-
-    // Track previous output length to detect new lines
-    const prevOutputLengthRef = useRef(serverOutput.length)
+    }, [serverStatus, isCollapsed, terminalInitRetry, projectPath])
 
     // Listen for new output and write to terminal
     useEffect(() => {

@@ -46,10 +46,6 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   multiedit: FilesIcon,
   // Terminal/Code
   bash: TerminalIcon,
-  get_terminal_output: TerminalIcon,
-  install_dependencies: TerminalIcon,
-  verify_build: TerminalIcon,
-  start_dev_server: TerminalIcon,
   apply_patch: GitCompareIcon,
   // Web
   web_search: GlobeIcon,
@@ -74,10 +70,6 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   edit: { present: "Editing", past: "Edited" },
   multiedit: { present: "Editing", past: "Edited" },
   bash: { present: "Running", past: "Ran" },
-  get_terminal_output: { present: "Getting output", past: "Got output" },
-  install_dependencies: { present: "Installing", past: "Installed" },
-  verify_build: { present: "Verifying", past: "Verified" },
-  start_dev_server: { present: "Starting", past: "Started" },
   apply_patch: { present: "Applying patch", past: "Applied patch" },
   web_search: { present: "Searching", past: "Searched" },
   google_search: { present: "Searching", past: "Searched" },
@@ -131,19 +123,12 @@ const getToolTarget = (
     case "grep":
       return {
         type: "query",
-        value: String(input.query || input.pattern || ""),
+        value: String(input.pattern || input.query || ""),
       };
     case "bash":
-    case "verify_build":
-    case "start_dev_server":
       return {
         type: "command",
         value: String(input.command || ""),
-      };
-    case "install_dependencies":
-      return {
-        type: "command",
-        value: String(input.packageManager || "auto"),
       };
     case "web_search":
     case "google_search":
@@ -152,12 +137,13 @@ const getToolTarget = (
         value: String(input.query || ""),
       };
     case "multiedit": {
-      const replacements = input.replacements as Array<{ filePath?: string }> | undefined;
-      if (replacements && replacements.length > 0) {
-        const fileCount = new Set(replacements.map(r => r.filePath)).size;
+      const edits = (Array.isArray(input.edits) ? input.edits : input.replacements) as Array<{ filePath?: string }> | undefined;
+      if (edits && edits.length > 0) {
+        const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined;
+        const fileCount = new Set(edits.map((r) => r.filePath || defaultFilePath)).size;
         return {
           type: "file",
-          value: fileCount > 1 ? `${fileCount} files` : getFileName(String(replacements[0]?.filePath || "")),
+          value: fileCount > 1 ? `${fileCount} files` : getFileName(String(edits[0]?.filePath || defaultFilePath || "")),
         };
       }
       return { type: null, value: "" };
@@ -219,13 +205,14 @@ function getDiffStatsForTool(
   }
 
   if (toolName === "multiedit") {
-    const replacements = Array.isArray(input.replacements) ? input.replacements : [];
+    const edits = Array.isArray(input.edits) ? input.edits : Array.isArray(input.replacements) ? input.replacements : [];
+    const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined;
     let added = 0;
     let removed = 0;
-    for (const item of replacements) {
+    for (const item of edits) {
       if (!item || typeof item !== "object") continue;
       const record = item as Record<string, unknown>;
-      const filePath = record.filePath || record.file_path;
+      const filePath = record.filePath || record.file_path || defaultFilePath;
       if (typeof filePath !== "string" || filePath.trim().length === 0) continue;
       added += countContentLines(String(record.newString || record.new_string || ""));
       removed += countContentLines(String(record.oldString || record.old_string || ""));
@@ -234,7 +221,7 @@ function getDiffStatsForTool(
   }
 
   if (toolName === "apply_patch") {
-    const patchInput = input.input || input.patch;
+    const patchInput = input.patchText || input.input || input.patch;
     if (typeof patchInput !== "string" || !patchInput.trim()) return null;
     let added = 0;
     let removed = 0;

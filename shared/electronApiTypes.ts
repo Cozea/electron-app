@@ -615,6 +615,12 @@ export interface ProviderAuthStatus {
   updatedAt?: number
 }
 
+export interface ProviderAuthStatusChangedEvent {
+  provider?: ProviderAuthProvider
+  statuses: ProviderAuthStatus[]
+  updatedAt: number
+}
+
 export interface ProviderAuthConnectResult {
   success: boolean
   status?: ProviderAuthStatus
@@ -710,6 +716,7 @@ export interface ElectronAPI {
       modelId: string
       organizationId: string
     }) => Promise<ProviderAuthRequestAuthResult>
+    onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => () => void
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
@@ -933,6 +940,7 @@ export interface ElectronAPI {
       filePath: string
       origin?: string
       isBinary: boolean
+      isDirectory?: boolean
       sizeBytes: number
       content?: string
     }) => void) => () => void

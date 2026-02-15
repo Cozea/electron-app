@@ -123,6 +123,13 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
   try {
     const stats = fs.statSync(fullPath)
     if (stats.isDirectory()) {
+      notifyFileMetaChanged({
+        filePath: fullPath,
+        origin: 'external',
+        isBinary: false,
+        isDirectory: true,
+        sizeBytes: 0,
+      })
       if (handle.watcherType === 'manual') {
         void ensureDirWatched(handle, fullPath)
       }
@@ -136,6 +143,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
         filePath: fullPath,
         origin: 'external',
         isBinary,
+        isDirectory: false,
         sizeBytes: stats.size,
       })
       return
@@ -147,6 +155,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
       filePath: fullPath,
       origin: 'external',
       isBinary: false,
+      isDirectory: false,
       sizeBytes: stats.size,
       content,
     })

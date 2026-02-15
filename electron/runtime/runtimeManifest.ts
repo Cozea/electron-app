@@ -16,12 +16,25 @@ function getAppRoot(): string {
   return process.env.APP_ROOT || process.cwd()
 }
 
+function firstExistingPath(candidates: string[]): string {
+  const match = candidates.find((candidate) => fs.existsSync(candidate))
+  return match || candidates[0]
+}
+
 export function getBundledRuntimeManifestPath(): string {
-  return path.join(getAppRoot(), 'build', 'runtime', 'manifest.json')
+  return firstExistingPath([
+    path.join(getAppRoot(), 'build', 'runtime', 'manifest.json'),
+    path.join(process.resourcesPath, 'runtime', 'manifest.json'),
+  ])
 }
 
 export function getBundledRuntimeManifestSignaturePath(): string {
-  return path.join(getAppRoot(), 'build', 'runtime', 'manifest.sig')
+  return firstExistingPath([
+    path.join(getAppRoot(), 'build', 'runtime', 'runtime-manifest.sig'),
+    path.join(getAppRoot(), 'build', 'runtime', 'manifest.sig'),
+    path.join(process.resourcesPath, 'runtime', 'runtime-manifest.sig'),
+    path.join(process.resourcesPath, 'runtime', 'manifest.sig'),
+  ])
 }
 
 export function loadBundledRuntimeManifest(): RuntimeManifest {
@@ -34,11 +47,17 @@ export function loadBundledRuntimeManifest(): RuntimeManifest {
 }
 
 export function getBundledCapabilityCatalogPath(): string {
-  return path.join(getAppRoot(), 'build', 'runtime', 'capability-catalog.json')
+  return firstExistingPath([
+    path.join(getAppRoot(), 'build', 'runtime', 'capability-catalog.json'),
+    path.join(process.resourcesPath, 'runtime', 'capability-catalog.json'),
+  ])
 }
 
 export function getBundledCapabilityCatalogSignaturePath(): string {
-  return path.join(getAppRoot(), 'build', 'runtime', 'capability-catalog.sig')
+  return firstExistingPath([
+    path.join(getAppRoot(), 'build', 'runtime', 'capability-catalog.sig'),
+    path.join(process.resourcesPath, 'runtime', 'capability-catalog.sig'),
+  ])
 }
 
 export function loadBundledCapabilityCatalog(): CapabilityCatalog {

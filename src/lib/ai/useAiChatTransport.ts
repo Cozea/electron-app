@@ -3,6 +3,7 @@ import { DefaultChatTransport } from 'ai'
 
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import type { AgentId, AISurface, VariantId } from '@/lib/ai/runtimeProfiles'
+import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 
 interface UseAiChatTransportArgs {
   accessToken: string | null
@@ -73,7 +74,14 @@ export function useAiChatTransport({
       api: AI_API_URL,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
+        const next: Record<string, string> = {}
+        if (token) {
+          next.Authorization = `Bearer ${token}`
+        }
+        return {
+          ...next,
+          ...getAiTimezoneHeaders(),
+        }
       },
       body: () => ({
         model: requestConfigRef.current.model,

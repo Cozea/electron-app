@@ -5,9 +5,6 @@ import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
 import { notifyFileChanged } from './yjsNotify'
 import { markInternalFsChange } from './projectWatcher'
-import { TerminalService } from './services/TerminalService'
-import { loadCapabilityCatalog } from './runtime/capabilityCatalog'
-import { collectProjectEvidence } from './runtime/projectEvidence'
 import { createRuntimeEnv } from './runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from './runtime/runtimeInstaller'
 import { getRuntimePathPrefixes, resolveCommandWithRuntime } from './runtime/runtimeResolver'
@@ -31,25 +28,22 @@ interface ReadFileInput {
   filePath: string
   offset?: number
   limit?: number
-  startLine?: number
-  endLine?: number
 }
 
 interface ListDirInput {
-  path: string
+  path?: string
+  ignore?: string[]
 }
 
 interface FindFilesInput {
-  query: string
-  maxResults?: number
+  pattern: string
+  path?: string
 }
 
 interface GrepSearchInput {
-  query: string
-  isRegexp?: boolean
-  includePattern?: string
-  maxResults?: number
-  includeIgnoredFiles?: boolean
+  pattern: string
+  path?: string
+  include?: string
 }
 
 interface CreateFileInput {
@@ -61,37 +55,24 @@ interface ReplaceStringInput {
   filePath: string
   oldString: string
   newString: string
+  replaceAll?: boolean
 }
 
 interface MultiReplaceInput {
-  replacements: Array<{ filePath: string; oldString: string; newString: string }>
+  filePath: string
+  edits: Array<{
+    filePath?: string
+    oldString: string
+    newString: string
+    replaceAll?: boolean
+  }>
 }
 
 interface RunInTerminalInput {
   command: string
-  explanation?: string
-  isBackground?: boolean
+  description: string
   timeout?: number
-}
-
-interface GetTerminalOutputInput {
-  id: string
-}
-
-interface InstallDependenciesInput {
-  packageManager?: 'npm' | 'pnpm' | 'yarn' | 'bun'
-  timeout?: number
-}
-
-interface VerifyBuildInput {
-  command?: string
-  timeout?: number
-}
-
-interface StartDevServerInput {
-  command?: string
-  isBackground?: boolean
-  timeout?: number
+  workdir?: string
 }
 
 const WORKSPACE_ROOT = path.resolve(
@@ -127,10 +108,6 @@ const TOOLS_REQUIRING_PROJECT_CONTEXT = new Set<string>([
   'edit',
   'multiedit',
   'bash',
-  'get_terminal_output',
-  'install_dependencies',
-  'verify_build',
-  'start_dev_server',
 ])
 const READ_ONLY_TOOLS_WITHOUT_PROJECT = new Set<string>([
   'read',
@@ -330,93 +307,6 @@ function resolveOutsideProjectReadRoot(): string {
   throw new Error('Unable to initialize a safe read-only workspace for assistant tools.')
 }
 
-type SupportedPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
-
-function readWorkspacePackageJson(workingDir: string): { scripts?: Record<string, string> } | null {
-  const packageJsonPath = path.join(workingDir, 'package.json')
-  if (!fs.existsSync(packageJsonPath)) return null
-  try {
-    const raw = fs.readFileSync(packageJsonPath, 'utf-8')
-    return JSON.parse(raw) as { scripts?: Record<string, string> }
-  } catch {
-    return null
-  }
-}
-
-function detectWorkspacePackageManager(workingDir: string): SupportedPackageManager {
-  const checks: Array<{ file: string; manager: SupportedPackageManager }> = [
-    { file: 'bun.lockb', manager: 'bun' },
-    { file: 'pnpm-lock.yaml', manager: 'pnpm' },
-    { file: 'yarn.lock', manager: 'yarn' },
-    { file: 'package-lock.json', manager: 'npm' },
-  ]
-
-  for (const check of checks) {
-    if (fs.existsSync(path.join(workingDir, check.file))) {
-      return check.manager
-    }
-  }
-  return 'npm'
-}
-
-function getInstallCommandForPackageManager(pm: SupportedPackageManager): string {
-  if (pm === 'bun') return 'bun install'
-  if (pm === 'pnpm') return 'pnpm install'
-  if (pm === 'yarn') return 'yarn install'
-  return 'npm install'
-}
-
-function getRunScriptCommand(pm: SupportedPackageManager, scriptName: string): string {
-  if (pm === 'bun') return `bun run ${scriptName}`
-  if (pm === 'pnpm') return `pnpm run ${scriptName}`
-  if (pm === 'yarn') return `yarn ${scriptName}`
-  return `npm run ${scriptName}`
-}
-
-function getBuildVerificationCommand(workingDir: string): string {
-  const packageJson = readWorkspacePackageJson(workingDir)
-  if (packageJson?.scripts?.build) {
-    return getRunScriptCommand(detectWorkspacePackageManager(workingDir), 'build')
-  }
-
-  const evidence = collectProjectEvidence(workingDir)
-  if (evidence.files.includes('Cargo.toml')) return 'cargo build'
-  if (evidence.files.includes('go.mod')) return 'go build ./...'
-  if (evidence.files.includes('pyproject.toml') || evidence.files.includes('requirements.txt')) {
-    return 'python -m compileall .'
-  }
-
-  return getRunScriptCommand(detectWorkspacePackageManager(workingDir), 'build')
-}
-
-function getDevServerStartCommand(workingDir: string): string {
-  const packageJson = readWorkspacePackageJson(workingDir)
-  const packageManager = detectWorkspacePackageManager(workingDir)
-  if (packageJson?.scripts?.dev) {
-    return getRunScriptCommand(packageManager, 'dev')
-  }
-  if (packageJson?.scripts?.start) {
-    return getRunScriptCommand(packageManager, 'start')
-  }
-
-  const evidence = collectProjectEvidence(workingDir)
-  const catalog = loadCapabilityCatalog()
-  const suggestions: Array<{ command: string; confidence: number }> = []
-
-  for (const rule of catalog.rules) {
-    const fileMatch = (rule.matchAnyFile ?? []).some((candidate) => evidence.files.includes(candidate))
-    const scriptMatch = (rule.matchAnyScript ?? []).some((script) => evidence.scripts.includes(script))
-    if (!fileMatch && !scriptMatch) continue
-
-    for (const suggestion of rule.suggestedCommands) {
-      suggestions.push({ command: suggestion.command, confidence: suggestion.confidence })
-    }
-  }
-
-  suggestions.sort((a, b) => b.confidence - a.confidence)
-  return suggestions[0]?.command ?? getRunScriptCommand(packageManager, 'dev')
-}
-
 async function runRipgrep(
   args: string[],
   workingDir: string,
@@ -508,8 +398,6 @@ async function readFile(input: {
   filePath: string
   offset?: number
   limit?: number
-  startLine?: number
-  endLine?: number
 }, workingDir: string) {
   const filePath = resolveToolPath(input.filePath, workingDir)
   const content = fs.readFileSync(filePath, 'utf-8')
@@ -520,17 +408,8 @@ async function readFile(input: {
   let offset = 1
   let limit = totalLines
 
-  const hasRange = input.startLine !== undefined || input.endLine !== undefined
-  if (hasRange) {
-    const startLine = Math.max(1, input.startLine ?? 1)
-    const endLine = Math.min(totalLines, input.endLine ?? totalLines)
-    offset = Math.min(totalLines, startLine)
-    const adjustedEnd = Math.max(offset, endLine)
-    limit = Math.max(1, adjustedEnd - offset + 1)
-  } else {
-    offset = Math.max(1, input.offset ?? 1)
-    limit = input.limit ? Math.max(1, input.limit) : totalLines
-  }
+  offset = Math.max(1, input.offset ?? 1)
+  limit = input.limit ? Math.max(1, input.limit) : totalLines
 
   const startIndex = Math.min(totalLines, offset) - 1
   const boundedLimit = Math.min(limit, maxLines)
@@ -553,41 +432,68 @@ async function readFile(input: {
   }
 }
 
-async function listDir(input: { path: string }, workingDir: string) {
-  const dirPath = resolveToolPath(input.path, workingDir)
+async function listDir(input: ListDirInput, workingDir: string) {
+  const requestedPath =
+    typeof input.path === 'string' && input.path.trim().length > 0
+      ? input.path
+      : '.'
+  const dirPath = resolveToolPath(requestedPath, workingDir)
   const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+  const ignorePatterns = Array.isArray(input.ignore)
+    ? input.ignore.filter((pattern): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0)
+    : []
+
+  const wildcardToRegex = (pattern: string): RegExp => {
+    const escaped = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.')
+    return new RegExp(`^${escaped}$`)
+  }
+
+  const shouldIgnore = (name: string): boolean => {
+    if (ignorePatterns.length === 0) return false
+    return ignorePatterns.some((pattern) => wildcardToRegex(pattern).test(name))
+  }
 
   return {
     path: dirPath,
-    entries: entries.map((entry) => ({
-      name: entry.name,
-      type: entry.isDirectory() ? 'directory' : 'file',
-    })),
+    entries: entries
+      .filter((entry) => !shouldIgnore(entry.name))
+      .map((entry) => ({
+        name: entry.name,
+        type: entry.isDirectory() ? 'directory' : 'file',
+      })),
   }
 }
 
 async function findFiles(
-  input: { query: string; maxResults?: number },
+  input: FindFilesInput,
   workingDir: string,
   context?: { runId?: string }
 ) {
-  const pattern = input.query
+  const pattern = input.pattern
+  const searchDir =
+    typeof input.path === 'string' && input.path.trim().length > 0
+      ? resolveToolPath(input.path, workingDir)
+      : workingDir
   const args = ['--files', '-g', pattern]
-  const max = input.maxResults ? Math.max(1, input.maxResults) : 20
+  const max = 200
   const results: string[] = []
-  const { terminatedEarly, timedOut } = await runRipgrep(args, workingDir, {
+  const { terminatedEarly, timedOut } = await runRipgrep(args, searchDir, {
     runId: context?.runId,
     timeoutMs: 6000,
     onLine: (line) => {
       const trimmed = line.trim()
       if (!trimmed) return false
-      results.push(trimmed)
+      results.push(path.resolve(searchDir, trimmed))
       return results.length >= max
     },
   })
 
   return {
-    query: pattern,
+    pattern,
+    path: searchDir,
     results,
     total: results.length,
     truncated: terminatedEarly || timedOut,
@@ -596,35 +502,25 @@ async function findFiles(
 }
 
 async function grepSearch(
-  input: {
-    query: string
-    isRegexp?: boolean
-    includePattern?: string
-    maxResults?: number
-    includeIgnoredFiles?: boolean
-  },
+  input: GrepSearchInput,
   workingDir: string,
   context?: { runId?: string }
 ) {
-  const max = input.maxResults ? Math.max(1, input.maxResults) : 20
+  const max = 200
+  const searchDir =
+    typeof input.path === 'string' && input.path.trim().length > 0
+      ? resolveToolPath(input.path, workingDir)
+      : workingDir
   const args = ['--json']
 
-  if (input.includePattern) {
-    args.push('-g', input.includePattern)
+  if (input.include) {
+    args.push('-g', input.include)
   }
 
-  if (input.includeIgnoredFiles) {
-    args.push('-uuu')
-  }
-
-  if (input.isRegexp === false) {
-    args.push('-F')
-  }
-
-  args.push(input.query)
+  args.push(input.pattern)
 
   const matches: Array<{ filePath: string; line: number; text: string }> = []
-  const { terminatedEarly, timedOut } = await runRipgrep(args, workingDir, {
+  const { terminatedEarly, timedOut } = await runRipgrep(args, searchDir, {
     runId: context?.runId,
     timeoutMs: 8000,
     onLine: (line) => {
@@ -633,7 +529,7 @@ async function grepSearch(
       try {
         const event = JSON.parse(trimmed)
         if (event.type === 'match') {
-          const filePath = event.data.path.text
+          const filePath = path.resolve(searchDir, event.data.path.text as string)
           const lineNumber = event.data.line_number
           const text = event.data.lines.text
           matches.push({ filePath, line: lineNumber, text })
@@ -647,7 +543,8 @@ async function grepSearch(
   })
 
   return {
-    query: input.query,
+    pattern: input.pattern,
+    path: searchDir,
     results: matches,
     total: matches.length,
     truncated: terminatedEarly || timedOut,
@@ -676,22 +573,28 @@ async function createFile(
 }
 
 function replaceStringInFile(
-  input: { filePath: string; oldString: string; newString: string },
+  input: { filePath: string; oldString: string; newString: string; replaceAll?: boolean },
   workingDir: string,
   options?: { notify?: boolean }
 ) {
   const filePath = resolveToolPath(input.filePath, workingDir)
+  if (input.oldString.length === 0) {
+    throw new Error('oldString must be non-empty')
+  }
   const content = fs.readFileSync(filePath, 'utf-8')
 
   const occurrences = content.split(input.oldString).length - 1
   if (occurrences === 0) {
     throw new Error('Old string not found in file')
   }
-  if (occurrences > 1) {
+  if (!input.replaceAll && occurrences > 1) {
     throw new Error('Old string must match exactly one occurrence')
   }
 
-  const updated = content.replace(input.oldString, input.newString)
+  const updated = input.replaceAll
+    ? content.split(input.oldString).join(input.newString)
+    : content.replace(input.oldString, input.newString)
+  const replacementCount = input.replaceAll ? occurrences : 1
   markInternalFsChange(filePath)
   fs.writeFileSync(filePath, updated, 'utf-8')
 
@@ -699,35 +602,76 @@ function replaceStringInFile(
     notifyFileChanged(filePath, updated, { origin: 'agent' })
   }
 
-  return { filePath, replacements: 1 }
+  return { filePath, replacements: replacementCount }
 }
 
 function multiReplaceString(
-  input: { replacements: Array<{ filePath: string; oldString: string; newString: string }> },
+  input: {
+    filePath: string
+    edits: Array<{ filePath?: string; oldString: string; newString: string; replaceAll?: boolean }>
+  },
   workingDir: string,
   options?: { notify?: boolean }
 ) {
-  const results: Array<{ filePath: string; replacements: number }> = []
+  const edits = Array.isArray(input.edits) ? input.edits : []
+  if (edits.length === 0) {
+    throw new Error('edits must contain at least one edit')
+  }
 
-  for (const replacement of input.replacements) {
-    const filePath = resolveToolPath(replacement.filePath, workingDir)
-    const content = fs.readFileSync(filePath, 'utf-8')
+  const workingContentByFile = new Map<string, string>()
+  const replacementCountByFile = new Map<string, number>()
 
-    const occurrences = content.split(replacement.oldString).length - 1
+  for (const edit of edits) {
+    if (typeof edit.oldString !== 'string' || typeof edit.newString !== 'string') {
+      throw new Error('Each edit must include oldString and newString')
+    }
+    const targetFilePath =
+      typeof edit.filePath === 'string' && edit.filePath.trim().length > 0
+        ? edit.filePath
+        : input.filePath
+    if (typeof targetFilePath !== 'string' || targetFilePath.trim().length === 0) {
+      throw new Error('Each edit must resolve to a valid filePath')
+    }
+    if (edit.oldString.length === 0) {
+      throw new Error('oldString must be non-empty')
+    }
+
+    const resolvedFilePath = resolveToolPath(targetFilePath, workingDir)
+    const current =
+      workingContentByFile.get(resolvedFilePath) ??
+      fs.readFileSync(resolvedFilePath, 'utf-8')
+
+    const occurrences = current.split(edit.oldString).length - 1
     if (occurrences === 0) {
-      throw new Error(`Old string not found in file: ${replacement.filePath}`)
+      throw new Error(`Old string not found in file: ${targetFilePath}`)
     }
-    if (occurrences > 1) {
-      throw new Error(`Old string must match exactly one occurrence in file: ${replacement.filePath}`)
+    if (!edit.replaceAll && occurrences > 1) {
+      throw new Error(`Old string must match exactly one occurrence in file: ${targetFilePath}`)
     }
 
-    const updated = content.replace(replacement.oldString, replacement.newString)
-    markInternalFsChange(filePath)
-    fs.writeFileSync(filePath, updated, 'utf-8')
+    const updated = edit.replaceAll
+      ? current.split(edit.oldString).join(edit.newString)
+      : current.replace(edit.oldString, edit.newString)
+    const replacementCount = edit.replaceAll ? occurrences : 1
+
+    workingContentByFile.set(resolvedFilePath, updated)
+    replacementCountByFile.set(
+      resolvedFilePath,
+      (replacementCountByFile.get(resolvedFilePath) ?? 0) + replacementCount
+    )
+  }
+
+  const results: Array<{ filePath: string; replacements: number }> = []
+  for (const [resolvedFilePath, updatedContent] of workingContentByFile.entries()) {
+    markInternalFsChange(resolvedFilePath)
+    fs.writeFileSync(resolvedFilePath, updatedContent, 'utf-8')
     if (options?.notify) {
-      notifyFileChanged(filePath, updated, { origin: 'agent' })
+      notifyFileChanged(resolvedFilePath, updatedContent, { origin: 'agent' })
     }
-    results.push({ filePath, replacements: 1 })
+    results.push({
+      filePath: resolvedFilePath,
+      replacements: replacementCountByFile.get(resolvedFilePath) ?? 0,
+    })
   }
 
   return { results }
@@ -735,12 +679,15 @@ function multiReplaceString(
 
 async function runInTerminal(input: {
   command: string
-  explanation?: string
-  isBackground?: boolean
+  description: string
   timeout?: number
+  workdir?: string
 }, workingDir: string, context?: { runId?: string }) {
   if (!input.command || typeof input.command !== 'string') {
     throw new Error('command is required')
+  }
+  if (!input.description || typeof input.description !== 'string' || input.description.trim().length === 0) {
+    throw new Error('description is required')
   }
 
   const normalizedCommand = input.command.trim()
@@ -820,17 +767,16 @@ async function runInTerminal(input: {
     }
   }
 
-  const isBackground = Boolean(input.isBackground)
-  const timeoutMs = typeof input.timeout === 'number'
-    ? Math.max(0, input.timeout)
-    : isBackground
-      ? 0
-      : 120_000
+  const timeoutMs = typeof input.timeout === 'number' ? Math.max(0, input.timeout) : 120_000
+  const commandWorkingDir =
+    typeof input.workdir === 'string' && input.workdir.trim().length > 0
+      ? resolveToolPath(input.workdir, workingDir)
+      : workingDir
   const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
 
   const shouldDetach = process.platform !== 'win32'
   const child = spawn(input.command, {
-    cwd: workingDir,
+    cwd: commandWorkingDir,
     shell: true,
     env: runtimeEnv,
     detached: shouldDetach,
@@ -868,38 +814,6 @@ async function runInTerminal(input: {
     entry.exitCode = -1
     entry.endedAt = Date.now()
   })
-
-  if (isBackground) {
-    registerRunProcess(context?.runId, child)
-
-    if (timeoutMs > 0) {
-      setTimeout(() => {
-        if (!entry.endedAt) {
-          entry.timedOut = true
-          terminateProcess(child)
-        }
-      }, timeoutMs)
-    }
-
-    const executionState = getTerminalExecutionState({
-      running: true,
-      exitCode: null,
-      timedOut: false,
-      cancelled: false,
-    })
-
-    return {
-      id,
-      pid: child.pid,
-      command: input.command,
-      isBackground: true,
-      running: true,
-      timedOut: false,
-      cancelled: false,
-      success: executionState.success,
-      status: executionState.status,
-    }
-  }
 
   registerRunProcess(context?.runId, child)
 
@@ -943,114 +857,6 @@ async function runInTerminal(input: {
       }, timeoutMs)
     }
   })
-}
-
-async function installDependencies(
-  input: InstallDependenciesInput,
-  workingDir: string,
-  context?: { runId?: string }
-) {
-  const packageManager = input.packageManager ?? detectWorkspacePackageManager(workingDir)
-  const command = getInstallCommandForPackageManager(packageManager)
-  return runInTerminal({
-    command,
-    explanation: 'Install project dependencies using the detected package manager.',
-    isBackground: false,
-    timeout: typeof input.timeout === 'number' ? input.timeout : 120_000,
-  }, workingDir, context)
-}
-
-async function verifyBuild(
-  input: VerifyBuildInput,
-  workingDir: string,
-  context?: { runId?: string }
-) {
-  const command = input.command?.trim() || getBuildVerificationCommand(workingDir)
-  return runInTerminal({
-    command,
-    explanation: 'Verify the project build succeeds.',
-    isBackground: false,
-    timeout: typeof input.timeout === 'number' ? input.timeout : 120_000,
-  }, workingDir, context)
-}
-
-async function startDevServer(
-  input: StartDevServerInput,
-  workingDir: string,
-  context?: { runId?: string }
-) {
-  const command = input.command?.trim() || getDevServerStartCommand(workingDir)
-  return runInTerminal({
-    command,
-    explanation: 'Start the project development server.',
-    isBackground: input.isBackground ?? true,
-    timeout: typeof input.timeout === 'number' ? input.timeout : 0,
-  }, workingDir, context)
-}
-
-async function getTerminalOutput(input: { id: string }) {
-  if (!input.id || typeof input.id !== 'string') {
-    throw new Error('id is required')
-  }
-  const id = input.id.trim()
-  if (!id) {
-    throw new Error('id is required')
-  }
-
-  pruneTerminalHistory()
-
-  const entry = backgroundProcesses.get(id)
-  if (entry) {
-    const running = entry.endedAt === undefined
-    const executionState = getTerminalExecutionState({
-      running,
-      exitCode: entry.exitCode ?? null,
-      timedOut: entry.timedOut ?? false,
-      cancelled: entry.cancelled ?? false,
-    })
-    return {
-      id: entry.id,
-      command: entry.command,
-      stdout: entry.stdout,
-      stderr: entry.stderr,
-      exitCode: entry.exitCode ?? null,
-      running,
-      startedAt: entry.startedAt,
-      endedAt: entry.endedAt ?? null,
-      timedOut: entry.timedOut ?? false,
-      cancelled: entry.cancelled ?? false,
-      success: executionState.success,
-      status: executionState.status,
-      ...(executionState.error ? { error: executionState.error } : {}),
-    }
-  }
-
-  const terminalSnapshot = TerminalService.getInstance().getTerminalSnapshot(id)
-  if (terminalSnapshot) {
-    const executionState = getTerminalExecutionState({
-      running: terminalSnapshot.running,
-      exitCode: terminalSnapshot.exitCode,
-      timedOut: terminalSnapshot.timedOut,
-      cancelled: terminalSnapshot.cancelled,
-    })
-    return {
-      id: terminalSnapshot.id,
-      command: terminalSnapshot.command ?? '',
-      stdout: terminalSnapshot.stdout,
-      stderr: terminalSnapshot.stderr,
-      exitCode: terminalSnapshot.exitCode,
-      running: terminalSnapshot.running,
-      startedAt: terminalSnapshot.startedAt,
-      endedAt: terminalSnapshot.endedAt,
-      timedOut: terminalSnapshot.timedOut,
-      cancelled: terminalSnapshot.cancelled,
-      success: executionState.success,
-      status: executionState.status,
-      ...(executionState.error ? { error: executionState.error } : {}),
-    }
-  }
-
-  throw new Error('Unknown terminal id')
 }
 
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
@@ -1111,29 +917,6 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
             runId: request.runId,
           }),
         }
-      case 'install_dependencies':
-        return {
-          success: true,
-          output: await installDependencies(request.input as InstallDependenciesInput, workingDir, {
-            runId: request.runId,
-          }),
-        }
-      case 'verify_build':
-        return {
-          success: true,
-          output: await verifyBuild(request.input as VerifyBuildInput, workingDir, {
-            runId: request.runId,
-          }),
-        }
-      case 'start_dev_server':
-        return {
-          success: true,
-          output: await startDevServer(request.input as StartDevServerInput, workingDir, {
-            runId: request.runId,
-          }),
-        }
-      case 'get_terminal_output':
-        return { success: true, output: await getTerminalOutput(request.input as GetTerminalOutputInput) }
       case 'apply_patch':
         return { success: false, error: 'apply_patch is not yet enabled in this runtime' }
       default:

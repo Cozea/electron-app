@@ -61,7 +61,7 @@ function extractDiffData(
     }
 
     case 'multiedit': {
-      const replacements = input.replacements as Array<{
+      const edits = (Array.isArray(input.edits) ? input.edits : input.replacements) as Array<{
         filePath?: string
         file_path?: string
         oldString?: string
@@ -69,11 +69,17 @@ function extractDiffData(
         newString?: string
         new_string?: string
       }> | undefined
+      const defaultFilePath =
+        typeof input.filePath === 'string'
+          ? input.filePath
+          : typeof input.file_path === 'string'
+            ? input.file_path
+            : ''
 
-      if (!Array.isArray(replacements) || replacements.length === 0) return null
+      if (!Array.isArray(edits) || edits.length === 0) return null
 
-      return replacements.map((r) => ({
-        filePath: String(r.filePath || r.file_path || ''),
+      return edits.map((r) => ({
+        filePath: String(r.filePath || r.file_path || defaultFilePath),
         original: String(r.oldString || r.old_string || ''),
         modified: String(r.newString || r.new_string || ''),
       })).filter((d) => d.filePath && d.original)
