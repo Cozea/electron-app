@@ -85,6 +85,14 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['anthropic'],
   },
   {
+    id: 'claude-opus-4-6',
+    name: 'Claude Opus 4.6',
+    chef: 'Anthropic',
+    chefSlug: 'anthropic',
+    tier: 'powerful',
+    providers: ['anthropic'],
+  },
+  {
     id: 'gemini-3-pro',
     name: 'Gemini 3 Pro',
     chef: 'Google',

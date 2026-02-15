@@ -66,6 +66,7 @@ export const MODEL_CREDITS_PER_1K: Record<string, ModelCreditsPerK> = {
   "gpt-5.2-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gpt-5.3-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "claude-opus-4-5": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "claude-opus-4-6": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gemini-3-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
 }
 
@@ -155,6 +156,14 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
     provider: "anthropic",
     tier: "powerful",
     providerModelId: "claude-opus-4-5-20251101",
+    isAvailable: true,
+  },
+  "claude-opus-4-6": {
+    id: "claude-opus-4-6",
+    displayName: "Claude Opus 4.6",
+    provider: "anthropic",
+    tier: "powerful",
+    providerModelId: "claude-opus-4-6",
     isAvailable: true,
   },
   "gemini-3-pro": {

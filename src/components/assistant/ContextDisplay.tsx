@@ -36,6 +36,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-haiku-4-5": 200_000,
   "claude-sonnet-4-5": 200_000,
   "claude-opus-4-5": 200_000,
+  "claude-opus-4-6": 200_000,
   // Anthropic - Legacy models
   "claude-3-5-sonnet-20241022": 200_000,
   "claude-3-5-haiku-20241022": 200_000,
