@@ -38,9 +38,40 @@ export function normalizeToolInput(toolName: string, rawInput: unknown): unknown
     return next
   }
 
+  if (toolName === 'glob' || toolName === 'grep') {
+    if (typeof next.pattern !== 'string' || !next.pattern.trim()) {
+      const candidate = next.query
+      if (typeof candidate === 'string') {
+        next.pattern = candidate
+      }
+    }
+    if (toolName === 'grep' && (typeof next.include !== 'string' || !next.include.trim())) {
+      const candidate = next.includePattern
+      if (typeof candidate === 'string') {
+        next.include = candidate
+      }
+    }
+    return next
+  }
+
   if (toolName === 'read' || toolName === 'write' || toolName === 'edit') {
     if (typeof next.filePath !== 'string' || !next.filePath.trim()) {
       const candidate = next.path
+      if (typeof candidate === 'string') {
+        next.filePath = candidate
+      }
+    }
+    return next
+  }
+
+  if (toolName === 'multiedit') {
+    if (Array.isArray(next.replacements) && !Array.isArray(next.edits)) {
+      next.edits = next.replacements
+    }
+    if (typeof next.filePath !== 'string' || !next.filePath.trim()) {
+      const edits = Array.isArray(next.edits) ? next.edits : []
+      const firstEdit = edits.find((edit) => isPlainObject(edit)) as Record<string, unknown> | undefined
+      const candidate = firstEdit?.filePath ?? firstEdit?.path
       if (typeof candidate === 'string') {
         next.filePath = candidate
       }

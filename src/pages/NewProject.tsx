@@ -38,6 +38,7 @@ import {
 import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
 import { cn } from '@/lib/utils'
+import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -802,6 +803,24 @@ export function NewProject() {
 
       if (result.slug) {
         setImportSyncState('syncing')
+
+        const runtimePreflight = await ensureProjectRuntimeToolchains(importPath, (progress) => {
+          setImportSyncMessage(progress.message)
+        })
+        if (!runtimePreflight.success) {
+          const failedLabel = runtimePreflight.failedRuntime
+            ? runtimeLabel(runtimePreflight.failedRuntime)
+            : 'Required'
+          const message = runtimePreflight.error || `${failedLabel} runtime is unavailable.`
+          setImportError(message)
+          setImportSyncState('error')
+          setImportSyncMessage(message)
+          return
+        }
+
+        if (runtimePreflight.installed.length > 0) {
+          setImportSyncMessage(`Installed runtimes: ${runtimePreflight.installed.map(runtimeLabel).join(', ')}`)
+        }
 
         try {
           await updateSyncStatus({

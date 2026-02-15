@@ -138,10 +138,6 @@ const READ_LOCAL_TOOLS = new Set([
   'grep',
 ])
 
-const REVIEW_DIAGNOSTIC_TOOLS = new Set([
-  'verify_build',
-])
-
 function isVariantId(value: unknown): value is VariantId {
   return typeof value === 'string' && KNOWN_VARIANTS.includes(value as VariantId)
 }
@@ -282,7 +278,7 @@ export function isLocalToolAllowedForAgent(args: {
     case 'read':
       return READ_LOCAL_TOOLS.has(toolName)
     case 'review':
-      return READ_LOCAL_TOOLS.has(toolName) || REVIEW_DIAGNOSTIC_TOOLS.has(toolName)
+      return READ_LOCAL_TOOLS.has(toolName)
     case 'project_full':
     case 'builder_full':
       return hasProjectContext

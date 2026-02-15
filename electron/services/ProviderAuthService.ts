@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import { randomBytes, createHash } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
@@ -381,13 +381,32 @@ export class ProviderAuthService {
     const store = this.loadStore()
     store.providers[provider] = credential
     this.saveStore(store)
-    return this.toStatus(provider, credential)
+    const status = this.toStatus(provider, credential)
+    this.emitStatusChanged(provider)
+    return status
   }
 
   private removeProviderCredential(provider: ProviderAuthProvider): void {
     const store = this.loadStore()
     delete store.providers[provider]
     this.saveStore(store)
+    this.emitStatusChanged(provider)
+  }
+
+  private emitStatusChanged(provider?: ProviderAuthProvider): void {
+    const store = this.loadStore()
+    const providers: ProviderAuthProvider[] = provider ? [provider] : ['openai', 'anthropic', 'google']
+    const statuses = providers.map((id) => this.toStatus(id, store.providers[id]))
+    const payload = {
+      provider,
+      statuses,
+      updatedAt: Date.now(),
+    }
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue
+      window.webContents.send('providerAuth:statusChanged', payload)
+    }
   }
 
   private toStatus(

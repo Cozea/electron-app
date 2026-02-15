@@ -31,6 +31,7 @@ import {
   type PipelineDiagnostic,
   type ToolDiagnosticsSummary,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? '' : 's'}`
@@ -472,7 +473,7 @@ export function ProjectBuild() {
     addLog(`Template: ${project.template || 'custom'}`)
     addLog(`Pages: ${project.generatedPlan?.pages?.length || 0}`)
     addLog(`Entities: ${project.generatedPlan?.entities?.length || 0}`)
-    setStatusMessage('AI is analyzing your project plan...')
+    setStatusMessage('Preparing build environment...')
 
     try {
       await updateStatus({ projectId: project._id, status: 'building' })
@@ -526,6 +527,26 @@ export function ProjectBuild() {
       }
 
       addLog(`Using folder: ${path}`)
+
+      const preflight = await ensureProjectRuntimeToolchains(path, (progress) => {
+        setStatusMessage(progress.message)
+      })
+
+      if (!preflight.success) {
+        const failedLabel = preflight.failedRuntime ? runtimeLabel(preflight.failedRuntime) : 'required'
+        throw new Error(preflight.error || `${failedLabel} runtime is unavailable.`)
+      }
+
+      if (preflight.required.length > 0) {
+        const installedNames = preflight.installed.map(runtimeLabel)
+        if (installedNames.length > 0) {
+          addLog(`Installed runtimes: ${installedNames.join(', ')}`)
+        } else {
+          addLog('Runtime check passed (already available).')
+        }
+      }
+
+      setStatusMessage('AI is analyzing your project plan...')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       addLog(`Error: ${errorMessage}`)

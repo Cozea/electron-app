@@ -25,6 +25,7 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
@@ -45,13 +46,12 @@ const BUILDER_LOCAL_TOOLS = new Set([
   'write',
   'read',
   'list',
+  'glob',
+  'grep',
   'bash',
-  'get_terminal_output',
-  'install_dependencies',
-  'verify_build',
-  'start_dev_server',
   'edit',
   'multiedit',
+  'apply_patch',
 ])
 
 const FALLBACK_MODEL_BY_PROVIDER: Record<'anthropic' | 'openai' | 'google', string> = {
@@ -267,6 +267,7 @@ export function BuilderConversation({
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
   const [providerAuthResolved, setProviderAuthResolved] = useState(false)
+  const [providerAuthRevision, setProviderAuthRevision] = useState(0)
   const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
@@ -299,6 +300,14 @@ export function BuilderConversation({
   useEffect(() => {
     terminalSessionsRef.current = terminalSessions
   }, [terminalSessions])
+
+  useEffect(() => {
+    if (!window.electronAPI?.providerAuth?.onStatusChanged) return
+    const unsubscribe = window.electronAPI.providerAuth.onStatusChanged(() => {
+      setProviderAuthRevision((current) => current + 1)
+    })
+    return unsubscribe
+  }, [])
 
   // Auto-continuation refs (defined early for use in error handling)
   const latestTasksRef = useRef<BuildTask[]>([])
@@ -411,7 +420,7 @@ export function BuilderConversation({
     return () => {
       cancelled = true
     }
-  }, [model, currentOrganization?.organizationId])
+  }, [model, currentOrganization?.organizationId, providerAuthRevision])
 
   // Sync tools
   useEffect(() => {
@@ -522,6 +531,7 @@ Now begin by defining your task list with todowrite, then start working through 
         if (providerHeader) {
           next['x-cozea-provider-auth'] = providerHeader
         }
+        Object.assign(next, getAiTimezoneHeaders())
         return next
       },
       body: () => ({
@@ -582,10 +592,15 @@ Now begin by defining your task list with todowrite, then start working through 
       return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
     }
     if (toolName === 'multiedit') {
-      const replacements = Array.isArray(input.replacements) ? input.replacements : []
-      return replacements
+      const edits = Array.isArray(input.edits)
+        ? input.edits
+        : Array.isArray(input.replacements)
+          ? input.replacements
+          : []
+      const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined
+      return edits
         .filter(isRecord)
-        .map((replacement) => replacement.filePath)
+        .map((edit) => edit.filePath ?? defaultFilePath)
         .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
     }
     return []
@@ -956,52 +971,84 @@ Now begin by defining your task list with todowrite, then start working through 
       }
 
       if (toolName === 'multiedit') {
-        interface ReplacementInput {
+        interface EditInput {
           filePath: string
           oldString: string
           newString: string
+          replaceAll?: boolean
         }
-        const replacements = Array.isArray(toolInput?.replacements)
-          ? toolInput?.replacements.filter(isRecord).map((replacement) => ({
-              filePath: replacement.filePath,
-              oldString: replacement.oldString,
-              newString: replacement.newString,
-            })).filter((replacement) =>
-              typeof replacement.filePath === 'string' &&
-              typeof replacement.oldString === 'string' &&
-              typeof replacement.newString === 'string'
-            ) as ReplacementInput[]
-          : []
+        const defaultFilePath =
+          typeof toolInput?.filePath === 'string' && toolInput.filePath.trim().length > 0
+            ? toolInput.filePath
+            : null
+        const edits = Array.isArray(toolInput?.edits)
+          ? toolInput.edits
+          : Array.isArray(toolInput?.replacements)
+            ? toolInput.replacements
+            : []
+        const normalizedEdits: EditInput[] = []
+        for (const edit of edits) {
+          if (!isRecord(edit)) continue
+          const resolvedFilePath =
+            typeof edit.filePath === 'string' && edit.filePath.trim().length > 0
+              ? edit.filePath
+              : defaultFilePath
+          const oldString = edit.oldString
+          const newString = edit.newString
+          if (
+            typeof resolvedFilePath !== 'string' ||
+            typeof oldString !== 'string' ||
+            typeof newString !== 'string'
+          ) {
+            continue
+          }
+          normalizedEdits.push({
+            filePath: resolvedFilePath,
+            oldString,
+            newString,
+            replaceAll: typeof edit.replaceAll === 'boolean' ? edit.replaceAll : undefined,
+          })
+        }
 
-        const paths = replacements.map((r) => r.filePath)
+        if (normalizedEdits.length === 0) {
+          throw new Error('multiedit requires filePath and at least one valid edit operation')
+        }
+
+        const paths = normalizedEdits.map((edit) => edit.filePath)
         await withFileLocks(paths, async () => {
           const results: Array<{ filePath: string; replacements: number }> = []
-          for (const replacement of replacements) {
+          for (const edit of normalizedEdits) {
             const readResult = await window.electronAPI.project.readFile({
               projectPath: localPath,
-              filePath: replacement.filePath,
+              filePath: edit.filePath,
             })
             if (!readResult.success || readResult.content === undefined) {
-              throw new Error(readResult.error || `File not found: ${replacement.filePath}`)
+              throw new Error(readResult.error || `File not found: ${edit.filePath}`)
             }
             const content = readResult.content
-            const occurrences = content.split(replacement.oldString).length - 1
+            if (edit.oldString.length === 0) {
+              throw new Error(`oldString must be non-empty for file: ${edit.filePath}`)
+            }
+            const occurrences = content.split(edit.oldString).length - 1
             if (occurrences === 0) {
-              throw new Error(`Old string not found in file: ${replacement.filePath}`)
+              throw new Error(`Old string not found in file: ${edit.filePath}`)
             }
-            if (occurrences > 1) {
-              throw new Error(`Old string must match exactly one occurrence in file: ${replacement.filePath}`)
+            if (!edit.replaceAll && occurrences > 1) {
+              throw new Error(`Old string must match exactly one occurrence in file: ${edit.filePath}`)
             }
-            const updated = content.replace(replacement.oldString, replacement.newString)
+            const updated = edit.replaceAll
+              ? content.split(edit.oldString).join(edit.newString)
+              : content.replace(edit.oldString, edit.newString)
+            const replacementCount = edit.replaceAll ? occurrences : 1
             const writeResult = await window.electronAPI.project.writeFile({
               projectPath: localPath,
-              filePath: replacement.filePath,
+              filePath: edit.filePath,
               content: updated,
             })
             if (!writeResult.success) {
-              throw new Error(writeResult.error || `Failed to write file: ${replacement.filePath}`)
+              throw new Error(writeResult.error || `Failed to write file: ${edit.filePath}`)
             }
-            results.push({ filePath: replacement.filePath, replacements: 1 })
+            results.push({ filePath: edit.filePath, replacements: replacementCount })
           }
           const enrichedOutput = await enrichToolOutputWithDiagnostics(
             toolName,
@@ -1017,71 +1064,14 @@ Now begin by defining your task list with todowrite, then start working through 
         return
       }
 
-      if (toolName === 'get_terminal_output') {
-        const terminalId = toolInput && typeof toolInput.id === 'string' ? toolInput.id.trim() : ''
-        if (!terminalId) {
-          throw new Error('get_terminal_output requires id')
-        }
-
-        const session = terminalOutputByIdRef.current.get(terminalId)
-        if (session) {
-          const running = session.endedAt === null
-          const executionState = getTerminalExecutionState({
-            running,
-            exitCode: session.exitCode,
-            timedOut: session.timedOut,
-            cancelled: session.cancelled,
-          })
-          void addToolOutput({
-            tool: toolName,
-            toolCallId,
-            output: JSON.stringify({
-              id: session.id,
-              command: session.command,
-              stdout: session.stdout,
-              stderr: session.stderr,
-              exitCode: session.exitCode,
-              running,
-              startedAt: session.startedAt,
-              endedAt: session.endedAt,
-              timedOut: session.timedOut,
-              cancelled: session.cancelled,
-              success: executionState.success,
-              status: executionState.status,
-              ...(executionState.error ? { error: executionState.error } : {}),
-            }),
-          })
-          return
-        }
-
-        const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
-          toolName,
-          input: toolInput ?? { id: terminalId },
-          toolCallId,
-        })
-
-        if (runtimeResult.success) {
-          if (cancelledToolCallsRef.current.has(toolCallId)) return
-          void addToolOutput({
-            tool: toolName,
-            toolCallId,
-            output: runtimeResult.output,
-          })
-        } else {
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: runtimeResult.error || 'Tool failed',
-          })
-        }
-        return
-      }
-
       if (toolName === 'bash' && localPath) {
         const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
+        const description = toolInput && typeof toolInput.description === 'string' ? toolInput.description : ''
         if (!command) {
           throw new Error('bash requires command')
+        }
+        if (!description.trim()) {
+          throw new Error('bash requires description')
         }
         const unsupportedNativeMessage = detectUnsupportedNativeBuildCommand(command)
         if (unsupportedNativeMessage) {
@@ -1093,14 +1083,16 @@ Now begin by defining your task list with todowrite, then start working through 
           })
           return
         }
-        const isBackground = Boolean(toolInput?.isBackground)
         const timeout = typeof toolInput?.timeout === 'number' ? toolInput.timeout : 120000 // 2 min default
+        const requestedWorkdir =
+          toolInput && typeof toolInput.workdir === 'string' ? toolInput.workdir : ''
+        const terminalCwd = requestedWorkdir ? normalizeProjectPath(requestedWorkdir) : localPath
 
         try {
           // Create a PTY terminal session for interactive command execution
           const createResult = await window.electronAPI.terminal.create({
             projectPath: localPath,
-            cwd: localPath,
+            cwd: terminalCwd,
             cols: 120,
             rows: 30,
           })
@@ -1195,89 +1187,70 @@ Now begin by defining your task list with todowrite, then start working through 
             })
           }, 100)
 
-          if (isBackground) {
-            // For background processes, return immediately with terminal ID
-            if (cancelledToolCallsRef.current.has(toolCallId)) return
-            void addToolOutput({
-              tool: toolName,
-              toolCallId,
-              output: JSON.stringify({
-                id: terminalId,
-                command,
-                isBackground: true,
-                running: true,
-                success: true,
-                status: 'running',
-                message: 'Background process started. Use get_terminal_output to check status.',
-              }),
-            })
-          } else {
-            // For foreground processes, wait for completion or timeout
-            const timeoutPromise = timeout > 0
-              ? new Promise<{ exitCode: number | null }>((resolve) => {
-                  setTimeout(() => {
-                    if (!completed) {
-                      resolve({ exitCode: -1 })
-                    }
-                  }, timeout)
-                })
-              : new Promise<never>(() => {}) // Never resolves if no timeout
-
-            const result = await Promise.race([exitPromise, timeoutPromise])
-            exitCode = result.exitCode
-
-            // If timed out, kill the process
-            if (!completed && timeout > 0) {
-              const session = terminalOutputByIdRef.current.get(terminalId)
-              if (session) {
-                session.timedOut = true
-                session.exitCode = -1
-                session.endedAt = Date.now()
-              }
-              try {
-                await window.electronAPI.terminal.kill({ terminalId })
-              } catch {
-                // Ignore kill errors
-              }
-              // Remove from active sessions on timeout
-              setTerminalSessions(prev => {
-                const next = new Map(prev)
-                next.delete(toolCallId)
-                return next
+          const timeoutPromise = timeout > 0
+            ? new Promise<{ exitCode: number | null }>((resolve) => {
+                setTimeout(() => {
+                  if (!completed) {
+                    resolve({ exitCode: -1 })
+                  }
+                }, timeout)
               })
-              output = appendTerminalOutput(
-                output,
-                '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
-              )
+            : new Promise<never>(() => {}) // Never resolves if no timeout
+
+          const result = await Promise.race([exitPromise, timeoutPromise])
+          exitCode = result.exitCode
+
+          // If timed out, kill the process
+          if (!completed && timeout > 0) {
+            const session = terminalOutputByIdRef.current.get(terminalId)
+            if (session) {
+              session.timedOut = true
+              session.exitCode = -1
+              session.endedAt = Date.now()
             }
+            try {
+              await window.electronAPI.terminal.kill({ terminalId })
+            } catch {
+              // Ignore kill errors
+            }
+            // Remove from active sessions on timeout
+            setTerminalSessions(prev => {
+              const next = new Map(prev)
+              next.delete(toolCallId)
+              return next
+            })
+            output = appendTerminalOutput(
+              output,
+              '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
+            )
+          }
 
-            releaseListeners()
+          releaseListeners()
 
-            if (cancelledToolCallsRef.current.has(toolCallId)) return
-            const timedOut = !completed && timeout > 0
-            const executionState = getTerminalExecutionState({
-              running: false,
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
+          const timedOut = !completed && timeout > 0
+          const executionState = getTerminalExecutionState({
+            running: false,
+            exitCode,
+            timedOut,
+            cancelled: false,
+          })
+          void addToolOutput({
+            tool: toolName,
+            toolCallId,
+            output: JSON.stringify({
+              id: terminalId,
+              command,
+              stdout: output,
+              stderr: '',
               exitCode,
               timedOut,
               cancelled: false,
-            })
-            void addToolOutput({
-              tool: toolName,
-              toolCallId,
-              output: JSON.stringify({
-                id: terminalId,
-                command,
-                stdout: output,
-                stderr: '',
-                exitCode,
-                timedOut,
-                cancelled: false,
-                success: executionState.success,
-                status: executionState.status,
-                ...(executionState.error ? { error: executionState.error } : {}),
-              }),
-            })
-          }
+              success: executionState.success,
+              status: executionState.status,
+              ...(executionState.error ? { error: executionState.error } : {}),
+            }),
+          })
         } catch (err) {
           // Remove from active sessions on error
           terminalListenerCleanupRef.current.get(toolCallId)?.()

@@ -98,6 +98,7 @@ interface ProjectLayoutHeaderProps {
     header?: ReactNode
     breadcrumbAddon?: ReactNode
     rightAddon?: ReactNode
+    className?: string
     isSecondarySidebarVisible: boolean
     insetLeft?: number
     insetRight?: number
@@ -109,6 +110,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     header,
     breadcrumbAddon,
     rightAddon,
+    className,
     isSecondarySidebarVisible,
     insetLeft = 0,
     insetRight = 0,
@@ -123,6 +125,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             header={header}
             breadcrumbAddon={breadcrumbAddon}
             rightAddon={rightAddon}
+            className={className}
             leftWindowControlsInset={areAllSidebarsCollapsed}
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
@@ -625,6 +628,7 @@ export function ProjectLayout({
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
                                 rightAddon={rightHeaderAddon ?? undefined}
+                                className={isPagesView ? "bg-transparent backdrop-blur-xl" : undefined}
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}

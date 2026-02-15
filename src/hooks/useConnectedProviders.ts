@@ -73,6 +73,14 @@ export function useConnectedProviders() {
     }
   }, [refreshConnectedProviders])
 
+  useEffect(() => {
+    if (!window.electronAPI?.providerAuth?.onStatusChanged) return
+    const unsubscribe = window.electronAPI.providerAuth.onStatusChanged(() => {
+      void refreshConnectedProviders()
+    })
+    return unsubscribe
+  }, [refreshConnectedProviders])
+
   return {
     connectedProviders,
     providerStatuses,

@@ -7,6 +7,7 @@ import type {
   MergeCacheRecord,
   OrganizationMembership,
   PerfBatch,
+  ProviderAuthStatusChangedEvent,
   RuntimeKind,
   Session,
   SyncOp,
@@ -54,6 +55,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       modelId: string
       organizationId: string
     }) => ipcRenderer.invoke('providerAuth:getRequestAuth', options),
+    onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        event: ProviderAuthStatusChangedEvent
+      ) => callback(event)
+      ipcRenderer.on('providerAuth:statusChanged', handler)
+      return () => ipcRenderer.removeListener('providerAuth:statusChanged', handler)
+    },
   },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
@@ -342,6 +351,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       filePath: string
       origin?: string
       isBinary: boolean
+      isDirectory?: boolean
       sizeBytes: number
       content?: string
     }) => void) => {
@@ -349,6 +359,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         filePath: string
         origin?: string
         isBinary: boolean
+        isDirectory?: boolean
         sizeBytes: number
         content?: string
       }) => callback(data)

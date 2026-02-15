@@ -270,7 +270,7 @@ function MessageBubbleComponent({
               return null
             }
             // Special handling for terminal tools
-            const isTerminalTool = toolName === 'bash' || toolName === 'get_terminal_output'
+            const isTerminalTool = toolName === 'bash'
             // Special handling for file edit tools (show Monaco diff)
             const isEditTool = isFileEditTool(toolName)
             // Special handling for web search tools (show only sources)

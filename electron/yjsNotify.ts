@@ -10,6 +10,7 @@ export interface ExternalFileMetaChangePayload {
   filePath: string
   origin?: string
   isBinary: boolean
+  isDirectory?: boolean
   sizeBytes: number
   content?: string
 }

@@ -43,7 +43,9 @@ module.exports = {
     {
       from: "build/runtime",
       to: "runtime",
-      filter: ["**/*", "!packs-src/**/*"],
+      // Keep bundled JS toolchain (node/npm/corepack/pnpm/yarn/bun) and metadata,
+      // but ship runtime packs (python/rust/go archives) via release assets.
+      filter: ["**/*", "!packs/**/*", "!packs-src/**/*"],
     },
   ],
   mac: {

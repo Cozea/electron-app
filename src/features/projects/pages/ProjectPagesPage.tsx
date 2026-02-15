@@ -123,7 +123,6 @@ export function ProjectPagesPage() {
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
-    const [isFocusedIframeVisible, setIsFocusedIframeVisible] = useState(true)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
@@ -167,18 +166,6 @@ export function ProjectPagesPage() {
     }, [routes, cachedFocusedRoutePath])
 
     useEffect(() => {
-        if (!isFocusedPreview || !focusedRoute || serverStatus !== 'running' || !serverPort) {
-            setIsFocusedIframeVisible(true)
-            return
-        }
-        if (focusedIframeLoadedPathRef.current === focusedRoute.path) {
-            setIsFocusedIframeVisible(true)
-            return
-        }
-        setIsFocusedIframeVisible(false)
-    }, [isFocusedPreview, focusedRoute, serverStatus, serverPort])
-
-    useEffect(() => {
         const el = headerRef.current
         if (!el) return
 
@@ -209,7 +196,6 @@ export function ProjectPagesPage() {
             setFocusedPageIndex(null)
             setCachedFocusedRoutePath(null)
             focusedIframeLoadedPathRef.current = null
-            setIsFocusedIframeVisible(true)
         }
 
         prevProjectPathRef.current = projectPath
@@ -737,7 +723,6 @@ export function ProjectPagesPage() {
         if (previewRoute?.path) {
             focusedIframeLoadedPathRef.current = previewRoute.path
         }
-        setIsFocusedIframeVisible(true)
         if (!isFocusedPreview) {
             return
         }
@@ -1368,17 +1353,12 @@ export function ProjectPagesPage() {
                             </motion.div>
                         ) : (
                             <div className="relative flex-1 min-h-0 min-w-0 bg-sidebar/60">
+                                {!isFocusedPreview && (
                                 <motion.div
                                     initial={false}
-                                    animate={isFocusedPreview
-                                        ? { opacity: 0, y: -6, scale: 0.998 }
-                                        : { opacity: 1, y: 0, scale: 1 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
                                     transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                    className={cn(
-                                        "app-scrollbar absolute inset-0 overflow-y-auto p-6",
-                                        isFocusedPreview && "pointer-events-none"
-                                    )}
-                                    aria-hidden={isFocusedPreview}
+                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6"
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                         {routes.map((route, index) => {
@@ -1476,19 +1456,14 @@ export function ProjectPagesPage() {
                                         })}
                                     </div>
                                 </motion.div>
+                                )}
 
-                                {previewRoute && (
+                                {isFocusedPreview && previewRoute && (
                                     <motion.div
                                         initial={false}
-                                        animate={isFocusedPreview
-                                            ? { opacity: 1, y: 0, scale: 1 }
-                                            : { opacity: 0, y: 8, scale: 0.998 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
                                         transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                                        className={cn(
-                                            "absolute inset-0 flex overflow-hidden min-h-0 min-w-0",
-                                            !isFocusedPreview && "pointer-events-none"
-                                        )}
-                                        aria-hidden={!isFocusedPreview}
+                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0"
                                     >
                                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                             {/* Preview area */}
@@ -1511,15 +1486,9 @@ export function ProjectPagesPage() {
                                                                 ref={iframeRef}
                                                                 name={focusedPreviewFrameName}
                                                                 src={`http://localhost:${serverPort}${previewRoute.path}`}
-                                                                className={cn(
-                                                                    "h-full w-full border-none transition-opacity duration-300 ease-out",
-                                                                    isFocusedIframeVisible ? "opacity-100" : "opacity-0"
-                                                                )}
+                                                                className="h-full w-full border-none"
                                                                 onLoad={handleIframeLoad}
                                                             />
-                                                            {!isFocusedIframeVisible && (
-                                                                <div className="pointer-events-none absolute inset-0 bg-muted/35 backdrop-blur-[1px]" />
-                                                            )}
                                                         </div>
                                                     ) : (
                                                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">

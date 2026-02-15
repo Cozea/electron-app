@@ -78,6 +78,7 @@ import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachme
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
@@ -151,8 +152,7 @@ interface UsageData {
 // Tool categories for diagnostics + file locking.
 const WRITE_TOOLS = new Set([
   'write', 'edit',
-  'multiedit', 'bash', 'get_terminal_output', 'apply_patch',
-  'install_dependencies', 'verify_build', 'start_dev_server',
+  'multiedit', 'bash', 'apply_patch',
 ])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -601,6 +601,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         if (providerHeader) {
           headers['x-cozea-provider-auth'] = providerHeader
         }
+        Object.assign(headers, getAiTimezoneHeaders())
         return headers
       },
       body: () => ({
@@ -655,10 +656,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     if (toolName === 'multiedit') {
-      const replacements = Array.isArray(input.replacements) ? input.replacements : []
-      return replacements
+      const edits = Array.isArray(input.edits)
+        ? input.edits
+        : Array.isArray(input.replacements)
+          ? input.replacements
+          : []
+      const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined
+      return edits
         .filter(isRecord)
-        .map((r) => r.filePath)
+        .map((r) => r.filePath ?? defaultFilePath)
         .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
     }
 

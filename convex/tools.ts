@@ -44,14 +44,6 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
           description: "The absolute path of the file to read.",
           type: "string",
         },
-        startLine: {
-          description: "The line number to start reading from, 1-based.",
-          type: "number",
-        },
-        endLine: {
-          description: "The inclusive line number to end reading at, 1-based.",
-          type: "number",
-        },
         offset: {
           description: "Optional: the 1-based line number to start reading from. Only use this if the file is too large to read at once. If not specified, the file will be read from the beginning.",
           type: "number",
@@ -77,11 +69,15 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     category: "filesystem",
     inputSchema: {
       type: "object",
-      required: ["path"],
       properties: {
         path: {
-          description: "The absolute path to the directory to list.",
+          description: "The absolute path to the directory to list. If omitted, the current workspace directory is used.",
           type: "string",
+        },
+        ignore: {
+          description: "Optional glob patterns to ignore.",
+          type: "array",
+          items: { type: "string" },
         },
       },
     },
@@ -95,19 +91,19 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "glob",
     displayName: "Find Files",
-    description: "Search for files in the workspace by glob pattern. This only returns the paths of matching files. Use this tool when you know the exact filename pattern of the files you're searching for. Glob patterns match from the root of the workspace folder. Examples:\n- **/*.{js,ts} to match all js/ts files in the workspace.\n- src/** to match all files under the top-level src folder.\n- **/foo/**/*.js to match all js files under any foo folder in the workspace.",
+    description: "Find files using a glob pattern.",
     category: "filesystem",
     inputSchema: {
       type: "object",
-      required: ["query"],
+      required: ["pattern"],
       properties: {
-        query: {
-          description: "Search for files with names or paths matching this glob pattern.",
+        pattern: {
+          description: "The glob pattern to match files against.",
           type: "string",
         },
-        maxResults: {
-          description: "The maximum number of results to return. Do not use this unless necessary, it can slow things down. By default, only some matches are returned. If you use this and don't see what you're looking for, you can try again with a more specific query or a larger maxResults.",
-          type: "number",
+        path: {
+          description: "Optional directory to search in. Defaults to the current workspace directory.",
+          type: "string",
         },
       },
     },
@@ -121,31 +117,23 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "grep",
     displayName: "Find Text in Files",
-    description: "Do a fast text search in the workspace. Use this tool when you want to search with an exact string or regex. If you are not sure what words will appear in the workspace, prefer using regex patterns with alternation (|) or character classes to search for multiple potential words at once instead of making separate searches. For example, use 'function|method|procedure' to look for all of those words at once. Use includePattern to search within files matching a specific pattern, or in a specific file, using a relative path. Use 'includeIgnoredFiles' to include files normally ignored by .gitignore, other ignore files, and `files.exclude` and `search.exclude` settings. Warning: using this may cause the search to be slower, only set it when you want to search in ignored folders like node_modules or build outputs. Use this tool when you want to see an overview of a particular file, instead of using read many times to look for code within a file.",
+    description: "Search file contents using a regular expression.",
     category: "filesystem",
     inputSchema: {
       type: "object",
-      required: ["query", "isRegexp"],
+      required: ["pattern"],
       properties: {
-        query: {
-          description: "The pattern to search for in files in the workspace. Use regex with alternation (e.g., 'word1|word2|word3') or character classes to find multiple potential words in a single search. Be sure to set the isRegexp property properly to declare whether it's a regex or plain text pattern. Is case-insensitive.",
+        pattern: {
+          description: "The regex pattern to search for in file contents.",
           type: "string",
         },
-        isRegexp: {
-          description: "Whether the pattern is a regex.",
-          type: "boolean",
-        },
-        includePattern: {
-          description: "Search files matching this glob pattern. Will be applied to the relative path of files within the workspace. To search recursively inside a folder, use a proper glob pattern like \"src/folder/**\". Do not use | in includePattern.",
+        path: {
+          description: "Optional directory to search in. Defaults to the current workspace directory.",
           type: "string",
         },
-        maxResults: {
-          description: "The maximum number of results to return. Do not use this unless necessary, it can slow things down. By default, only some matches are returned. If you use this and don't see what you're looking for, you can try again with a more specific query or a larger maxResults.",
-          type: "number",
-        },
-        includeIgnoredFiles: {
-          description: "Whether to include files that would normally be ignored according to .gitignore, other ignore files and `files.exclude` and `search.exclude` settings. Warning: using this may cause the search to be slower. Only set it when you want to search in ignored folders like node_modules or build outputs.",
-          type: "boolean",
+        include: {
+          description: "Optional file include glob (for example, \"*.ts\" or \"*.{ts,tsx}\").",
+          type: "string",
         },
       },
     },
@@ -203,6 +191,10 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
           description: "The exact literal text to replace `oldString` with, preferably unescaped. Provide the EXACT text. Ensure the resulting code is correct and idiomatic.",
           type: "string",
         },
+        replaceAll: {
+          description: "Replace all occurrences of oldString. Defaults to false.",
+          type: "boolean",
+        },
       },
     },
     requiresApproval: true,
@@ -215,28 +207,24 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "multiedit",
     displayName: "Multi Replace String",
-    description: "This tool allows you to apply multiple edit operations in a single call, which is more efficient than calling edit multiple times. It takes an array of replacement operations and applies them sequentially. Each replacement operation has the same parameters as edit: filePath, oldString, newString, and explanation. This tool is ideal when you need to make multiple edits across different files or multiple edits in the same file. The tool will provide a summary of successful and failed operations.",
+    description: "Apply multiple edit operations sequentially to a file.",
     category: "filesystem",
     inputSchema: {
       type: "object",
-      required: ["replacements", "explanation"],
+      required: ["filePath", "edits"],
       properties: {
-        explanation: {
-          description: "A brief explanation of what the multi-replace operation will accomplish.",
+        filePath: {
+          description: "The absolute path to the file to modify.",
           type: "string",
         },
-        replacements: {
-          description: "An array of replacement operations to apply sequentially.",
+        edits: {
+          description: "Array of edit operations to perform sequentially.",
           type: "array",
           minItems: 1,
           items: {
             type: "object",
-            required: ["explanation", "filePath", "oldString", "newString"],
+            required: ["filePath", "oldString", "newString"],
             properties: {
-              explanation: {
-                description: "A brief explanation of this specific replacement operation.",
-                type: "string",
-              },
               filePath: {
                 description: "An absolute path to the file to edit.",
                 type: "string",
@@ -248,6 +236,10 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
               newString: {
                 description: "The exact literal text to replace `oldString` with, preferably unescaped. Provide the EXACT text. Ensure the resulting code is correct and idiomatic.",
                 type: "string",
+              },
+              replaceAll: {
+                description: "Replace all occurrences of oldString. Defaults to false.",
+                type: "boolean",
               },
             },
           },
@@ -264,29 +256,27 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "bash",
     displayName: "Run in Terminal",
-    description: "Run a shell command in the workspace. Use absolute paths. For long-running commands (watch mode, dev servers), set isBackground=true. Use get_terminal_output to check background command output.",
+    description: "Run a shell command in the workspace.",
     category: "code",
     inputSchema: {
       type: "object",
-      required: ["command"],
+      required: ["command", "description"],
       properties: {
         command: {
           description: "The command to run in the terminal.",
           type: "string",
         },
-        explanation: {
-          description: "A one-sentence description of what the command does.",
+        timeout: {
+          description: "Optional timeout in milliseconds.",
+          type: "number",
+        },
+        workdir: {
+          description: "Optional working directory. Defaults to the current workspace directory.",
           type: "string",
         },
-        isBackground: {
-          description: "Whether the command starts a background process. Defaults to false.",
-          type: "boolean",
-          default: false,
-        },
-        timeout: {
-          description: "Timeout in milliseconds. Use 0 or omit for no timeout. Defaults to 0.",
-          type: "number",
-          default: 0,
+        description: {
+          description: "Clear, concise description of what this command does in 5-10 words.",
+          type: "string",
         },
       },
     },
@@ -298,42 +288,16 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: true,
   },
   {
-    name: "get_terminal_output",
-    displayName: "Get Terminal Output",
-    description: "Get the output of a background terminal command started with bash.",
-    category: "code",
-    inputSchema: {
-      type: "object",
-      required: ["id"],
-      properties: {
-        id: {
-          description: "The terminal id returned by bash.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
     name: "apply_patch",
     displayName: "Apply Patch",
-    description: "Edit text files. Do not use this tool to edit Jupyter notebooks. `apply_patch` allows you to execute a diff/patch against a text file, but the format of the diff specification is unique to this task, so pay careful attention to these instructions. To use the `apply_patch` command, you should pass a message of the following structure as \"input\":\n\n*** Begin Patch\n[YOUR_PATCH]\n*** End Patch\n\nWhere [YOUR_PATCH] is the actual content of your patch, specified in the following V4A diff format.\n\n*** [ACTION] File: [/absolute/path/to/file] -> ACTION can be one of Add, Update, or Delete.\nAn example of a message that you might pass as \"input\" to this function, in order to apply a patch, is shown below.\n\n*** Begin Patch\n*** Update File: /Users/someone/pygorithm/searching/binary_search.py\n@@class BaseClass\n@@    def search():\n-        pass\n+        raise NotImplementedError()\n\n@@class Subclass\n@@    def search():\n-        pass\n+        raise NotImplementedError()\n\n*** End Patch\nDo not use line numbers in this diff format.",
+    description: "Apply a patch to files using the apply_patch patch format.",
     category: "code",
     inputSchema: {
       type: "object",
-      required: ["input", "explanation"],
+      required: ["patchText"],
       properties: {
-        input: {
-          description: "Patch content in apply_patch format.",
-          type: "string",
-        },
-        explanation: {
-          description: "Why the patch is needed.",
+        patchText: {
+          description: "The full patch text that describes all changes to be made.",
           type: "string",
         },
       },
@@ -472,6 +436,24 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   },
 ]
 
+const CANONICAL_TOOL_NAMES = new Set(BUILTIN_TOOLS.map((tool) => tool.name))
+const LEGACY_TOOL_NAMES = [
+  "read_file",
+  "list_dir",
+  "file_search",
+  "grep_search",
+  "create_file",
+  "create_directory",
+  "replace_string_in_file",
+  "multi_replace_string_in_file",
+  "run_in_terminal",
+  "get_terminal_output",
+  "present_plans",
+  "build_tasks",
+  "mark_complete",
+  "todo_list",
+]
+
 export const syncBuiltinTools = mutation({
   args: { serverSecret: v.string() },
   handler: async (ctx, args) => {
@@ -524,6 +506,27 @@ export const syncBuiltinTools = mutation({
     }
 
     return { created, updated }
+  },
+})
+
+export const purgeLegacyTools = mutation({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const tools = await ctx.db.query("tools").collect()
+    const explicitLegacy = new Set(LEGACY_TOOL_NAMES)
+    let removed = 0
+
+    for (const tool of tools) {
+      const nonCanonicalBuiltin = tool.isBuiltin === true && !CANONICAL_TOOL_NAMES.has(tool.name)
+      const isLegacy = explicitLegacy.has(tool.name)
+      if (!nonCanonicalBuiltin && !isLegacy) continue
+      await ctx.db.delete(tool._id)
+      removed++
+    }
+
+    return { removed }
   },
 })
 

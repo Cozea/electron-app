@@ -106,6 +106,7 @@ import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-di
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
@@ -555,6 +556,7 @@ export function WizardConversation({
         if (providerHeader) {
           next['x-cozea-provider-auth'] = providerHeader
         }
+        Object.assign(next, getAiTimezoneHeaders())
         return next
       },
       body: () => ({

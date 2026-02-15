@@ -48,8 +48,10 @@ export function useBinaryFileSync(
       origin?: string
       isBinary: boolean
       sizeBytes: number
+      isDirectory?: boolean
     }) => {
       if (!data.filePath.startsWith(projectPath)) return
+      if (data.isDirectory) return
       const relativePath = data.filePath
         .slice(projectPath.length)
         .replace(/^[/\\]+/, '')
