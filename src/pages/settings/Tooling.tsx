@@ -144,7 +144,7 @@ export function Tooling() {
       void loadRuntimeStatus()
     }, 2500)
     return () => window.clearInterval(timer)
-  }, [runtimeInstallJobs, loadRuntimeStatus])
+  }, [loadRuntimeStatus, runtimeInstallJobs])
 
   useEffect(() => {
     for (const [runtimeKey, job] of Object.entries(runtimeInstallJobs)) {
@@ -156,7 +156,7 @@ export function Tooling() {
       }
       previousStatusesRef.current[runtime] = job.status
     }
-  }, [runtimeInstallJobs, loadRuntimeStatus])
+  }, [loadRuntimeStatus, runtimeInstallJobs])
 
   const runtimeByKind = useMemo(
     () => new Map((runtimeStatus?.runtimes ?? []).map((runtime) => [runtime.runtime, runtime])),

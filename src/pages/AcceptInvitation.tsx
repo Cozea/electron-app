@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { AlertCircle } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import {
@@ -11,7 +12,7 @@ import {
 } from '../components/ui/card'
 
 export function AcceptInvitation() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { token } = useParams<{ token: string }>()
 
   const shortToken = useMemo(() => {

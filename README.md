@@ -9,7 +9,28 @@ Currently, two official plugins are available:
 
 ## React Compiler
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+React Compiler is enabled by default in renderer builds and can be disabled with `VITE_FF_REACT_COMPILER=0`.
+
+## Modernization Flags
+
+All modernization paths are controlled by feature flags (`true` by default):
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `VITE_FF_DATA_ROUTER` | `1` | `RouterProvider` data-router mode (set `0` for BrowserRouter fallback). |
+| `VITE_FF_VIEW_TRANSITIONS` | `1` | Global View Transition navigation wrapper. |
+| `VITE_FF_PRIORITIZED_SCHEDULING` | `1` | `scheduler.postTask` / yielding in hot paths. |
+| `VITE_FF_REACT_COMPILER` | `1` | Enables React Compiler Babel transform in renderer build. |
+| `VITE_FF_ROLLDOWN_BUILD` | `1` | Enables Vite 8 native-plugin acceleration settings. |
+| `VITE_FF_JANK_DIAGNOSTICS` | `1` | Dev-only LoAF + longtask logging. |
+| `VITE_FF_CONTENT_VISIBILITY` | `1` | `content-visibility` / containment classes on heavy dashboard sections. |
+| `VITE_FF_OFFSCREEN_SCREENSHOT` | `1` | Off-main-thread screenshot encoding path in preview bridge. |
+| `VITE_FF_UTILITY_PROCESS_MANIFEST` | `1` | Utility-process manifest generation (set `0` to force main-thread fallback path). |
+
+Profiling scripts:
+- `npm run dev:perf:modern` (all flags enabled)
+- `npm run dev:perf:baseline` (all modernization flags disabled)
+- `npm run perf:runbook` (points to `docs/perf-runbook.md`)
 
 ## Expanding the ESLint configuration
 

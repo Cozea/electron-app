@@ -86,6 +86,7 @@ import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import { fetchWithAbort } from '@/lib/abort'
 
 // AI Elements components
 import {
@@ -433,10 +434,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
     const controller = new AbortController()
 
-    fetch(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetchWithAbort(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
       headers,
       signal: controller.signal,
-    })
+    }, { signal: controller.signal, timeoutMs: 15000 })
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
@@ -494,10 +495,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       hasProjectContext: hasProjectContext ? '1' : '0',
     })
 
-    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
+    fetchWithAbort(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
-    })
+    }, { signal: controller.signal, timeoutMs: 15000 })
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
@@ -1193,7 +1194,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (!accessToken) return
 
     try {
-      await fetch(`${AI_BASE_URL}/permissions/reply`, {
+      await fetchWithAbort(`${AI_BASE_URL}/permissions/reply`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -1204,7 +1205,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           reply,
           ...(message ? { message } : {}),
         }),
-      })
+      }, { timeoutMs: 15000 })
     } catch (err) {
       console.warn('Failed to reply to permission request:', err)
     }

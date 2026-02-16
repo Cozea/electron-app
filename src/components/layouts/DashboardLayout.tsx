@@ -10,6 +10,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
+import { featureFlags } from "@/lib/featureFlags"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -81,12 +82,24 @@ function DashboardLayoutContent({
               leftWindowControlsInset={areAllSidebarsCollapsed}
             />
             {contentMode === 'fixed' ? (
-              <div className={cn("flex flex-1 min-h-0 flex-col overflow-hidden", showHeader && contentTopInsetClassName)}>
+              <div
+                className={cn(
+                  'flex flex-1 min-h-0 flex-col overflow-hidden',
+                  featureFlags.contentVisibility && 'perf-contain-card',
+                  showHeader && contentTopInsetClassName
+                )}
+              >
                 {children}
               </div>
             ) : (
-              <ScrollArea className="flex-1">
-                <div className={cn("flex flex-col gap-4 p-4 min-h-full", showHeader && contentTopInsetClassName)}>
+              <ScrollArea className={cn('flex-1', featureFlags.contentVisibility && 'perf-contain-auto')}>
+                <div
+                  className={cn(
+                    'flex min-h-full flex-col gap-4 p-4',
+                    featureFlags.contentVisibility && 'perf-contain-card',
+                    showHeader && contentTopInsetClassName
+                  )}
+                >
                   {children}
                 </div>
               </ScrollArea>

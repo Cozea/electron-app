@@ -1,7 +1,8 @@
 "use client"
 
 import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
-import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom"
+import { Outlet, useLocation, useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useCachedQuery } from "@/stores/useQueryCache"
@@ -145,7 +146,7 @@ export function ProjectLayout({
 }: ProjectLayoutProps) {
     const { user, logout, currentOrganization } = useAuth()
     const location = useLocation()
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)

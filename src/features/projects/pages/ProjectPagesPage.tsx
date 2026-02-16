@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { motion } from 'framer-motion'
 import { api } from '../../../../convex/_generated/api'
@@ -76,7 +77,7 @@ function normalizeFilePath(path?: string | null): string | null {
 
 export function ProjectPagesPage() {
     const { slug } = useParams<{ slug: string }>()
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const { currentOrganization } = useAuth()
     const syncContext = useOptionalProjectSyncContext()

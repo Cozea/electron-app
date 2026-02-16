@@ -1,16 +1,18 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { useCachedQuery } from '../stores/useQueryCache'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
+import { cn } from '@/lib/utils'
 import { ProjectCard } from '../features/projects/components/ProjectCard'
 import { ProjectListRow } from '../features/projects/components/ProjectListRow'
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -31,18 +33,14 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu'
 import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  EmptyDescription,
-  EmptyContent,
-} from '../components/ui/empty'
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip'
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '../components/ui/tooltip'
 
 import { Badge } from '../components/ui/badge'
-import { Skeleton } from '../components/ui/skeleton'
-import { IconFolderCode } from '@tabler/icons-react'
+import { featureFlags } from '@/lib/featureFlags'
 
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -50,7 +48,7 @@ type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
 
 export function Projects() {
   const { user, logout, currentOrganization } = useAuth()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const [sortBy, setSortBy] = useState<SortOption>('last_modified')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -118,35 +116,30 @@ export function Projects() {
     freshProjects
   )
 
-  // Filter and sort projects
   const filteredProjects = useMemo(() => {
     if (!projects) return []
 
     let result = projects
 
-    // Filter by status
     if (statusFilter !== 'all') {
       if (statusFilter === 'building') {
-        result = result.filter((p) => p.status === 'building' || p.status === 'generating')
+        result = result.filter((project) => project.status === 'building' || project.status === 'generating')
       } else {
-        result = result.filter((p) => p.status === statusFilter)
+        result = result.filter((project) => project.status === statusFilter)
       }
     }
 
-    // Sort
-    result = [...result].sort((a, b) => {
+    return [...result].sort((left, right) => {
       switch (sortBy) {
         case 'name':
-          return a.name.localeCompare(b.name)
+          return left.name.localeCompare(right.name)
         case 'created':
-          return b.createdAt - a.createdAt
+          return right.createdAt - left.createdAt
         case 'last_modified':
         default:
-          return b.updatedAt - a.updatedAt
+          return right.updatedAt - left.updatedAt
       }
     })
-
-    return result
   }, [projects, statusFilter, sortBy])
 
   // Pagination Logic
@@ -162,7 +155,8 @@ export function Projects() {
   }, [statusFilter, sortBy])
 
   const isLoading = convexOrg === undefined || (convexOrg && projects === undefined)
-  const hasProjects = projects && projects.length > 0
+  const hasProjects = (projects?.length ?? 0) > 0
+  const showProjectControls = hasProjects || isLoading
 
 
   // Project limit calculations for circular gauge
@@ -177,7 +171,9 @@ export function Projects() {
   const breadcrumbAddon = (
     <>
       {usageLimits === undefined ? (
-        <Skeleton className="h-5 w-16 rounded-full" />
+        <Badge variant="secondary" className="text-xs font-normal">
+          --
+        </Badge>
       ) : hasProjects && (projectLimit && projectLimit.limit > 0 ? (
         <Badge
           variant="secondary"
@@ -185,7 +181,6 @@ export function Projects() {
           title={`${projectLimit.current} / ${projectLimit.limit} projects used`}
         >
           <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
-            {/* Background circle */}
             <circle
               cx="10"
               cy="10"
@@ -195,7 +190,6 @@ export function Projects() {
               strokeWidth="2.5"
               className="opacity-20"
             />
-            {/* Progress circle */}
             <circle
               cx="10"
               cy="10"
@@ -224,7 +218,7 @@ export function Projects() {
 
   const headerContent = (
     <div className="flex items-center gap-2">
-      {hasProjects && <>
+      {showProjectControls && <>
         {/* Status Filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -295,7 +289,7 @@ export function Projects() {
     </div>
   )
 
-  const showPagination = !isLoading && filteredProjects.length > ITEMS_PER_PAGE
+  const showPagination = filteredProjects.length > ITEMS_PER_PAGE
 
   return (
     <DashboardLayout
@@ -306,53 +300,44 @@ export function Projects() {
       header={headerContent || undefined}
     >
       <TooltipProvider>
-
-        {/* Loading State - no spinner, just empty */}
-        {isLoading ? (
-          null
-        ) : filteredProjects.length === 0 ? (
-          /* Empty State */
-          <Empty className="h-[calc(100vh-12rem)]">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <IconFolderCode />
-              </EmptyMedia>
-              <EmptyTitle>No Projects Yet</EmptyTitle>
-              <EmptyDescription>
-                You haven't created any projects yet. Get started by creating your first project.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-                <Plus className="h-4 w-4" />
-                Create Project
-              </Button>
-            </EmptyContent>
-          </Empty>
-        ) : (
-          /* Projects List */
-          effectiveViewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
-              {paginatedProjects.map((project) => (
+        {effectiveViewMode === 'grid' ? (
+          <div
+            className={cn(
+              featureFlags.contentVisibility && 'perf-contain-auto',
+              'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10'
+            )}
+          >
+            {paginatedProjects.length > 0 ? (
+              paginatedProjects.map((project) => (
                 <ProjectCard key={project._id} project={project} userId={convexUser?._id} />
-              ))}
-            </div>
-          ) : (
-            <div className="pb-10">
-              <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-                <Table className="w-full table-fixed [&_th]:px-4 [&_td]:px-4">
-                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
-                      <TableHead className="w-[13%] text-center">Status</TableHead>
-                      <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>
-                      <TableHead className="hidden lg:table-cell lg:w-[11%] text-center">Sync</TableHead>
-                      <TableHead className="hidden sm:table-cell sm:w-[14%] text-right">Last modified</TableHead>
-                      <TableHead className="w-[10%] text-right" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                    {paginatedProjects.map((project) => {
+              ))
+            ) : (
+              <div className="col-span-full rounded-xl border border-dashed border-border/60 bg-card/70 p-6 text-sm text-muted-foreground">
+                {isLoading
+                  ? 'Loading projects...'
+                  : statusFilter === 'all'
+                    ? 'No projects yet. Create your first project.'
+                    : 'No projects match the current filters.'}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className={cn(featureFlags.contentVisibility && 'perf-contain-auto', 'pb-10')}>
+            <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+              <Table className="w-full table-fixed [&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
+                    <TableHead className="w-[13%] text-center">Status</TableHead>
+                    <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>
+                    <TableHead className="hidden lg:table-cell lg:w-[11%] text-center">Sync</TableHead>
+                    <TableHead className="hidden sm:table-cell sm:w-[14%] text-right">Last modified</TableHead>
+                    <TableHead className="w-[10%] text-right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {paginatedProjects.length > 0 ? (
+                    paginatedProjects.map((project) => {
                       const modifier = userMap[project.lastSyncBy || project.createdBy]
                       return (
                         <ProjectListRow
@@ -363,12 +348,30 @@ export function Projects() {
                           creatorImage={modifier?.image}
                         />
                       )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                        {isLoading
+                          ? 'Loading projects...'
+                          : statusFilter === 'all'
+                            ? 'No projects yet. Create your first project.'
+                            : 'No projects match the current filters.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          )
+            {!isLoading && filteredProjects.length === 0 && statusFilter === 'all' && (
+              <div className="mt-3 flex justify-end">
+                <Button className="gap-2" onClick={() => navigate('/projects/new')}>
+                  <Plus className="h-4 w-4" />
+                  Create Project
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Floating Pagination Pill */}

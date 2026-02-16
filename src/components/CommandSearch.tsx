@@ -6,7 +6,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
   CornerDownLeft,
   Search,
@@ -56,7 +57,7 @@ const actionItems = [
 
 export function CommandSearch({ className }: CommandSearchProps) {
   const [open, setOpen] = useState(false)
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const location = useLocation()
 
   const runCommand = useCallback((command: () => unknown) => {

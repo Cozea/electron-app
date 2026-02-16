@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -36,6 +36,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
+import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary {
@@ -116,14 +117,17 @@ const preloadProjectDetailPage = () => import('@/features/projects/pages/Project
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 export function ProjectCard({ project, userId }: ProjectCardProps) {
-    const navigate = useNavigate()
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-    const [deleteConfirmName, setDeleteConfirmName] = useState('')
-    const [isDeleting, setIsDeleting] = useState(false)
-    const [deleteError, setDeleteError] = useState<string | null>(null)
-    const [syncState, setSyncState] = useState<SyncState>('idle')
-    const [syncMessage, setSyncMessage] = useState('')
-    const deleteProject = useMutation(api.projects.deleteProject)
+  const navigate = useViewTransitionNavigate()
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const isInViewport = useInViewportOnce(cardRef)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [syncState, setSyncState] = useState<SyncState>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
+  const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [localPath, setLocalPath] = useState<string | null>(null)
 
@@ -138,13 +142,16 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
         api.projects.getPreviewImageUrl,
         project.status !== 'draft' ? { projectId: project._id } : 'skip'
     )
-    const [imageLoaded, setImageLoaded] = useState(false)
-    const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
-    useEffect(() => {
-        let cancelled = false
+  useEffect(() => {
+    if (!shouldHydrateSyncStatus) return
 
-        const loadLocalPath = async () => {
+    let cancelled = false
+
+    const loadLocalPath = async () => {
             if (project.status === 'draft') {
                 if (!cancelled) setLocalPath(null)
                 return
@@ -154,16 +161,17 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
             if (!cancelled) setLocalPath(path)
         }
 
-        void loadLocalPath()
-        return () => {
-            cancelled = true
-        }
-    }, [project.slug, project.status])
+    void loadLocalPath()
+    return () => {
+      cancelled = true
+    }
+  }, [project.slug, project.status, shouldHydrateSyncStatus])
 
-    const preloadProjectDestination = useCallback(() => {
-        if (project.status === 'draft') {
-            void preloadNewProjectPage()
-            return
+  const preloadProjectDestination = useCallback(() => {
+    setSyncHydrationRequested(true)
+    if (project.status === 'draft') {
+      void preloadNewProjectPage()
+      return
         }
         void preloadProjectDetailPage()
     }, [project.status])
@@ -300,6 +308,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
     return (
         <div className="h-full">
                 <Card
+                    ref={cardRef}
                     className={cn(
                     "group relative flex flex-col h-full shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
                     syncState !== 'idle' && "pointer-events-none"
@@ -369,7 +378,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                     )}
 
                     {/* Sync Badge positioned over preview */}
-                    {project.status !== 'draft' && localPath && syncState === 'idle' && (
+                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath && syncState === 'idle' && (
                         <div onClick={(e) => e.stopPropagation()} className="absolute top-2 right-2 z-10">
                             <ProjectDiffBadge
                                 projectId={project._id}

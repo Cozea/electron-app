@@ -8,6 +8,7 @@ import type {
   AgentToolCall,
   AgentToolResult,
 } from './runtime'
+import { fetchWithAbort } from '@/lib/abort'
 
 /**
  * Cloud Agent Runtime - Executes agent runs on the server
@@ -46,13 +47,30 @@ export class CloudAgentRuntime implements AgentRuntime {
     return headers
   }
 
+  private request(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = {
+      ...this.getHeaders(),
+      ...((init.headers as Record<string, string> | undefined) ?? {}),
+    }
+    return fetchWithAbort(
+      `${this.baseUrl}${path}`,
+      {
+        ...init,
+        headers,
+      },
+      {
+        timeoutMs: 30000,
+        signal: init.signal ?? undefined,
+      }
+    )
+  }
+
   /**
    * Start a new agent run on the server
    */
   async startRun(request: AgentRunRequest): Promise<AgentRunHandle> {
-    const response = await fetch(`${this.baseUrl}/agent/start`, {
+    const response = await this.request('/agent/start', {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({
         runId: request.runId,
         conversationId: request.conversationId,
@@ -124,9 +142,8 @@ export class CloudAgentRuntime implements AgentRuntime {
    * Request tool execution from the server
    */
   async requestToolExecution(runId: string, toolCall: AgentToolCall): Promise<AgentToolResult> {
-    const response = await fetch(`${this.baseUrl}/agent/${runId}/tool`, {
+    const response = await this.request(`/agent/${runId}/tool`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({
         toolName: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
@@ -153,9 +170,8 @@ export class CloudAgentRuntime implements AgentRuntime {
    * Save a checkpoint for the agent run
    */
   async checkpoint(checkpoint: AgentCheckpoint): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/agent/${checkpoint.runId}/checkpoint`, {
+    const response = await this.request(`/agent/${checkpoint.runId}/checkpoint`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({
         label: checkpoint.label,
         metadata: checkpoint.metadata,
@@ -172,9 +188,8 @@ export class CloudAgentRuntime implements AgentRuntime {
    * Send approval response for a tool call requiring confirmation
    */
   async confirm(approval: AgentApprovalResponse): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/agent/${approval.runId}/approve`, {
+    const response = await this.request(`/agent/${approval.runId}/approve`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({
         approvalId: approval.approvalId,
         approved: approval.approved,
@@ -199,9 +214,8 @@ export class CloudAgentRuntime implements AgentRuntime {
       this.activeEventSources.delete(runId)
     }
 
-    const response = await fetch(`${this.baseUrl}/agent/${runId}/cancel`, {
+    const response = await this.request(`/agent/${runId}/cancel`, {
       method: 'POST',
-      headers: this.getHeaders(),
     })
 
     if (!response.ok) {
@@ -221,9 +235,8 @@ export class CloudAgentRuntime implements AgentRuntime {
       this.activeEventSources.delete(runId)
     }
 
-    const response = await fetch(`${this.baseUrl}/agent/${runId}/finalize`, {
+    const response = await this.request(`/agent/${runId}/finalize`, {
       method: 'POST',
-      headers: this.getHeaders(),
     })
 
     // Finalize is best-effort, don't throw on error
@@ -236,9 +249,8 @@ export class CloudAgentRuntime implements AgentRuntime {
    * Get the status of an agent run
    */
   async getRunStatus(runId: string): Promise<AgentRunHandle | null> {
-    const response = await fetch(`${this.baseUrl}/agent/${runId}/status`, {
+    const response = await this.request(`/agent/${runId}/status`, {
       method: 'GET',
-      headers: this.getHeaders(),
     })
 
     if (!response.ok) {
@@ -256,9 +268,8 @@ export class CloudAgentRuntime implements AgentRuntime {
    * Restore a run to a previous checkpoint
    */
   async restoreCheckpoint(runId: string, checkpointId: string): Promise<AgentRunHandle> {
-    const response = await fetch(`${this.baseUrl}/agent/${runId}/restore`, {
+    const response = await this.request(`/agent/${runId}/restore`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({ checkpointId }),
     })
 

@@ -59,6 +59,18 @@ body {
   min-height: 100vh;
 }
 
+.perf-contain-auto {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 900px;
+}
+
+.perf-contain-card {
+  content-visibility: auto;
+  contain: content;
+  contain-intrinsic-size: 420px;
+}
+
 /* Sidebar border with fade near top/bottom edges. */
 .sidebar-fade-border::before,
 .sidebar-fade-border::after {

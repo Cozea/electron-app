@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { scheduleTask } from '@/lib/scheduler'
 
 interface QueryCacheState {
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -115,21 +116,23 @@ export function useCachedQuery<T>(
   // Update cache when fresh data arrives
   useEffect(() => {
     if (freshData !== undefined) {
-      // Use getState to avoid re-render loop
-      const currentCache = useQueryCache.getState().cache[key]
-      // Simple reference check is usually sufficient for Convex data
-      if (currentCache?.data === freshData) return
+      void scheduleTask(() => {
+        // Use getState to avoid re-render loop
+        const currentCache = useQueryCache.getState().cache[key]
+        // Simple reference check is usually sufficient for Convex data
+        if (currentCache?.data === freshData) return
 
-      // Guard against high-frequency cache writes when a query returns
-      // rapidly changing object references.
-      if (
-        currentCache &&
-        Date.now() - currentCache.timestamp < MIN_CACHE_REFRESH_INTERVAL_MS
-      ) {
-        return
-      }
+        // Guard against high-frequency cache writes when a query returns
+        // rapidly changing object references.
+        if (
+          currentCache &&
+          Date.now() - currentCache.timestamp < MIN_CACHE_REFRESH_INTERVAL_MS
+        ) {
+          return
+        }
 
-      useQueryCache.getState().set(key, freshData)
+        useQueryCache.getState().set(key, freshData)
+      }, 'background')
     }
   }, [key, freshData])
 

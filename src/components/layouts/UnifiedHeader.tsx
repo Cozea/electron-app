@@ -9,6 +9,7 @@ import {
 } from "react"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { scheduleTask } from "@/lib/scheduler"
 import {
   Breadcrumb,
   BreadcrumbEllipsis,
@@ -173,12 +174,18 @@ export function UnifiedHeader({
     const container = breadcrumbContainerRef.current
     if (!viewport || !container) return
 
+    const scheduleRecompute = () => {
+      void scheduleTask(() => {
+        recomputeVisibleBreadcrumbs()
+      }, 'background')
+    }
+
     const frame = window.requestAnimationFrame(() => {
-      recomputeVisibleBreadcrumbs()
+      scheduleRecompute()
     })
 
     const observer = new ResizeObserver(() => {
-      recomputeVisibleBreadcrumbs()
+      scheduleRecompute()
     })
     observer.observe(container)
     observer.observe(viewport)

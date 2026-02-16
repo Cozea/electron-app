@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useChat } from '@ai-sdk/react'
 import {
   DefaultChatTransport,
@@ -112,6 +112,7 @@ import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import { fetchWithAbort } from '@/lib/abort'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
@@ -237,7 +238,7 @@ export function WizardConversation({
   onPlanSelected,
   className,
 }: WizardConversationProps) {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { accessToken, currentOrganization } = useAuth()
   const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
@@ -430,10 +431,10 @@ export function WizardConversation({
     if (!accessToken || !currentOrganization?.organizationId) return
     const controller = new AbortController()
 
-    fetch(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetchWithAbort(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
       headers,
       signal: controller.signal,
-    })
+    }, { signal: controller.signal, timeoutMs: 15000 })
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
@@ -487,10 +488,10 @@ export function WizardConversation({
       hasProjectContext: '0',
     })
 
-    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
+    fetchWithAbort(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
-    })
+    }, { signal: controller.signal, timeoutMs: 15000 })
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {

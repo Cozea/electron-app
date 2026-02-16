@@ -6,7 +6,6 @@ import type {
   ElectronAPI,
   MergeCacheRecord,
   OrganizationMembership,
-  PerfBatch,
   ProviderAuthStatusChangedEvent,
   RuntimeKind,
   Session,
@@ -440,9 +439,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('updates:status', handler)
       return () => ipcRenderer.removeListener('updates:status', handler)
     },
-  },
-  performance: {
-    report: (payload: PerfBatch) => ipcRenderer.invoke('performance:report', payload),
   },
   dependencies: {
     inspect: (options: { projectPath: string }) => ipcRenderer.invoke('dependencies:inspect', options),

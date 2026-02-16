@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useCallback, useState, useEffect } from 'react'
+import { Activity, lazy, Suspense, useRef, useCallback, useState, useEffect } from 'react'
 import { Plus, History } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -183,16 +183,18 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
 
         {/* Body - AI Conversation */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          {hasMountedConversation ? (
-            <Suspense fallback={<PanelLoadingFallback />}>
-              <AIConversation
-                className="w-full h-full"
-                projectPath={projectPath}
-                projectName={projectName}
-                projectSlug={projectSlug}
-              />
-            </Suspense>
-          ) : null}
+          <Activity mode={isOpen ? 'visible' : 'hidden'}>
+            {hasMountedConversation ? (
+              <Suspense fallback={<PanelLoadingFallback />}>
+                <AIConversation
+                  className="w-full h-full"
+                  projectPath={projectPath}
+                  projectName={projectName}
+                  projectSlug={projectSlug}
+                />
+              </Suspense>
+            ) : null}
+          </Activity>
         </div>
       </div>
 

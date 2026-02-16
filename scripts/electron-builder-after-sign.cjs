@@ -5,7 +5,7 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 function log(message) {
-  console.log(`[afterSign:pack-sign] ${message}`)
+  console.log(`[afterPack:pack-sign] ${message}`)
 }
 
 function run(command, args, options = {}) {

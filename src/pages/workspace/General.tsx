@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useQuery, useMutation } from 'convex/react'
@@ -24,7 +24,7 @@ import {
 import { AlertTriangle, Trash2, Loader2, Check, X } from 'lucide-react'
 
 export function General() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { user, logout, currentOrganization, convexUserId } = useAuth()
   const {
     updateOrganization: updateWorkosOrganization,

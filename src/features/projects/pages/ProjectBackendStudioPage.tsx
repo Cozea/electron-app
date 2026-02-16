@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from "convex/react"
 import { ConvexHttpClient } from "convex/browser"
 import type { FunctionReference } from "convex/server"
@@ -208,7 +209,7 @@ function normalizePath(path: string): string {
 }
 
 export function ProjectBackendStudioPage() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization } = useAuth()
   const syncContext = useOptionalProjectSyncContext()

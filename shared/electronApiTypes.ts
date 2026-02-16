@@ -662,29 +662,6 @@ export interface DbFirestoreListDocumentsResult {
   error?: string
 }
 
-export interface PerfHistogram {
-  buckets: number[]
-  counts: number[]
-  count: number
-  sum: number
-  max: number
-}
-
-export interface PerfMetric {
-  name: string
-  unit: 'ms'
-  histogram: PerfHistogram
-  tags?: Record<string, string>
-}
-
-export interface PerfBatch {
-  sessionId: string
-  source: 'renderer'
-  timestamp: number
-  metrics: PerfMetric[]
-  context?: Record<string, string>
-}
-
 export interface ElectronAPI {
   platform: NodeJS.Platform
   auth: {
@@ -990,9 +967,6 @@ export interface ElectronAPI {
     searchRegistry: (options: { query: string; size?: number }) => Promise<DependenciesRegistrySearchResult>
     fetchPackageMeta: (options: { names: string[] }) => Promise<DependenciesFetchPackageMetaResult>
     onJobStatus: (callback: (payload: { projectPath: string; job: DependencyJobPayload }) => void) => () => void
-  }
-  performance: {
-    report: (payload: PerfBatch) => Promise<{ success: boolean }>
   }
   diagnostics: {
     start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>

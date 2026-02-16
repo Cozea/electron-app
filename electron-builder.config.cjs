@@ -28,7 +28,9 @@ const macRuntimeBinaries = macRuntimeTargets
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
-  afterSign: "scripts/electron-builder-after-sign.cjs",
+  // Pack archive rewriting must happen before app signing/notarization.
+  // Running it after notarization invalidates Gatekeeper trust for the final app.
+  afterPack: "scripts/electron-builder-after-sign.cjs",
   directories: {
     buildResources: "build",
     output: "dist",

@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -45,6 +45,7 @@ import {
 
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
+import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -88,17 +89,21 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function ProjectListRow({ project, userId, creatorName, creatorImage }: ProjectListRowProps) {
-    const navigate = useNavigate()
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const navigate = useViewTransitionNavigate()
+  const rowRef = useRef<HTMLTableRowElement | null>(null)
+  const isInViewport = useInViewportOnce(rowRef)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
     const [deleteConfirmName, setDeleteConfirmName] = useState('')
     const [isDeleting, setIsDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState<string | null>(null)
-    const [syncState, setSyncState] = useState<SyncState>('idle')
-    const [syncMessage, setSyncMessage] = useState('')
+  const [syncState, setSyncState] = useState<SyncState>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
     const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-    const [showMenu, setShowMenu] = useState(false)
-    const [localPath, setLocalPath] = useState<string | null>(null)
+  const [showMenu, setShowMenu] = useState(false)
+  const [localPath, setLocalPath] = useState<string | null>(null)
+  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
     // Get cloud manifest for sync check
     const cloudManifest = useQuery(
@@ -106,7 +111,9 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         project.status !== 'draft' ? { projectId: project._id } : 'skip'
     )
 
-    useEffect(() => {
+  useEffect(() => {
+        if (!shouldHydrateSyncStatus) return
+
         let cancelled = false
 
         const loadLocalPath = async () => {
@@ -123,9 +130,10 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         return () => {
             cancelled = true
         }
-    }, [project.slug, project.status])
+    }, [project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
+        setSyncHydrationRequested(true)
         if (project.status === 'draft') {
             void preloadNewProjectPage()
             return
@@ -247,6 +255,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     return (
         <>
             <TableRow
+                ref={rowRef}
                 className={cn(
                     "group cursor-pointer",
                     syncState !== 'idle' && "pointer-events-none"
@@ -307,7 +316,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 </TableCell>
 
                 <TableCell className="hidden text-center lg:table-cell">
-                    {project.status !== 'draft' && localPath ? (
+                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath ? (
                         <div onClick={(e) => e.stopPropagation()}>
                             <ProjectSyncStats
                                 projectId={project._id}
