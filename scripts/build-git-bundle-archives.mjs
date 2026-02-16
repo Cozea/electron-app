@@ -148,7 +148,7 @@ async function validateTargetBinary(target) {
 }
 
 async function signDarwinTargetBinaries(target) {
-  if (process.platform !== 'darwin' || target.platform !== 'darwin') return
+  if (process.platform !== 'darwin' || !target.id.startsWith('darwin-')) return
 
   const identity = resolveCodesignIdentity()
   if (!identity) {
