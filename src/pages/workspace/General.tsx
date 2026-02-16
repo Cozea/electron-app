@@ -159,20 +159,6 @@ export function General() {
 
   const isLoading = convexOrg === undefined
 
-  if (isLoading) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
-      >
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
-
   const hasChanges = isFormInitialized && (
     workspaceName !== convexOrg?.name ||
     workspaceSlug !== convexOrg?.slug ||
@@ -189,6 +175,12 @@ export function General() {
     >
       <div className="flex min-h-[calc(100vh-8rem)] gap-0">
         <div className="w-full max-w-2xl space-y-6 pr-0 xl:pr-10">
+          {isLoading && (
+            <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+              Loading workspace settings...
+            </div>
+          )}
+
           {/* Workspace Details */}
           <Card className="border-none shadow-none bg-transparent">
             <CardContent className="space-y-4 pt-0">
@@ -198,6 +190,7 @@ export function General() {
                   id="name"
                   value={workspaceName}
                   onChange={(e) => setWorkspaceName(e.target.value)}
+                  disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
@@ -211,6 +204,7 @@ export function General() {
                     value={workspaceSlug}
                     onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     className="rounded-l-none"
+                    disabled={isLoading}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -224,6 +218,7 @@ export function General() {
                   placeholder="A short description of your workspace"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  disabled={isLoading}
                 />
               </div>
 
@@ -241,7 +236,7 @@ export function General() {
                 </div>
               )}
 
-              <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
+              <Button onClick={handleSave} disabled={isLoading || isSaving || !hasChanges}>
                 {isSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -263,7 +258,7 @@ export function General() {
               <div className="flex items-center justify-between py-2">
                 <span className="text-muted-foreground">Workspace ID</span>
                 <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
-                  {convexOrg?._id}
+                  {convexOrg?._id ?? '—'}
                 </code>
               </div>
               <Separator />
