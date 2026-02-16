@@ -7,6 +7,7 @@ export default defineSchema({
     // WorkOS identifiers
     workosId: v.string(),
     email: v.string(),
+    normalizedEmail: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
@@ -28,7 +29,8 @@ export default defineSchema({
     lastLoginAt: v.optional(v.number()),
   })
     .index("by_workos_id", ["workosId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_normalized_email", ["normalizedEmail"]),
 
   // Organizations - synced from WorkOS
   organizations: defineTable({
@@ -377,6 +379,19 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
     .index("by_user", ["userId"]),
+
+  // Identity repair and duplication reconciliation audit.
+  identityRepairRuns: defineTable({
+    scope: v.union(v.literal("scan"), v.literal("repair")),
+    dryRun: v.boolean(),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
+    summary: v.optional(v.any()),
+    error: v.optional(v.string()),
+  })
+    .index("by_started_at", ["startedAt"])
+    .index("by_status", ["status"]),
 
   // Tool registry for agent capabilities
   tools: defineTable({

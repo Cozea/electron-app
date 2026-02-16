@@ -15,6 +15,7 @@ import type * as billing from "../billing.js";
 import type * as builderRuns from "../builderRuns.js";
 import type * as crons from "../crons.js";
 import type * as fileTombstones from "../fileTombstones.js";
+import type * as identityRepair from "../identityRepair.js";
 import type * as integrations from "../integrations.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_encryption from "../lib/encryption.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   builderRuns: typeof builderRuns;
   crons: typeof crons;
   fileTombstones: typeof fileTombstones;
+  identityRepair: typeof identityRepair;
   integrations: typeof integrations;
   invitations: typeof invitations;
   "lib/encryption": typeof lib_encryption;

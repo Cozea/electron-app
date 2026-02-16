@@ -4,6 +4,34 @@ import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 import { checkProjectLimit } from "./lib/workspaceLimits"
 
+type OrganizationRole = "admin" | "member" | "viewer"
+
+function organizationRolePriority(role: OrganizationRole): number {
+  switch (role) {
+    case "admin":
+      return 3
+    case "member":
+      return 2
+    default:
+      return 1
+  }
+}
+
+function pickCanonicalOrganizationMembership<
+  T extends { role: OrganizationRole; updatedAt?: number; joinedAt?: number; _id: unknown },
+>(memberships: T[]): T | null {
+  if (memberships.length === 0) return null
+  return [...memberships].sort((a, b) => {
+    const roleDelta = organizationRolePriority(b.role) - organizationRolePriority(a.role)
+    if (roleDelta !== 0) return roleDelta
+    const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+    if (updatedDelta !== 0) return updatedDelta
+    const joinedDelta = (b.joinedAt || 0) - (a.joinedAt || 0)
+    if (joinedDelta !== 0) return joinedDelta
+    return String(a._id).localeCompare(String(b._id))
+  })[0]
+}
+
 // Helper to generate URL-safe slug from project name
 function generateSlug(name: string): string {
   return name
@@ -606,12 +634,13 @@ export const deleteProject = mutation({
     const isProjectManager = membership?.role === "project_manager"
 
     // Check org membership (admin can also delete)
-    const orgMembership = await ctx.db
+    const orgMemberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", project.organizationId).eq("userId", args.userId)
       )
-      .first()
+      .collect()
+    const orgMembership = pickCanonicalOrganizationMembership(orgMemberships)
     const isOrgAdmin = orgMembership?.role === "admin"
 
     if (!isCreator && !isProjectManager && !isOrgAdmin) {

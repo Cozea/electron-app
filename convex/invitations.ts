@@ -3,75 +3,111 @@ import { v } from "convex/values"
 import { hasPermission, type Role } from "./lib/permissions"
 import { checkSeatLimit } from "./lib/seatLimits"
 
-// Generate a cryptographically secure random token
+// Generate a cryptographically secure random token.
 function generateToken(): string {
-  // Use crypto.randomUUID() which provides cryptographically secure random values
-  // Generate two UUIDs and combine for a 64-char token (removing hyphens)
-  const uuid1 = crypto.randomUUID().replace(/-/g, '')
-  const uuid2 = crypto.randomUUID().replace(/-/g, '')
-  return (uuid1 + uuid2).slice(0, 48) // 48 chars of cryptographic randomness
+  const uuid1 = crypto.randomUUID().replace(/-/g, "")
+  const uuid2 = crypto.randomUUID().replace(/-/g, "")
+  return (uuid1 + uuid2).slice(0, 48)
 }
 
-// Invite a user to an organization
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function rolePriority(role: "admin" | "member" | "viewer"): number {
+  switch (role) {
+    case "admin":
+      return 3
+    case "member":
+      return 2
+    default:
+      return 1
+  }
+}
+
+function pickCanonicalMembership<
+  T extends { role: "admin" | "member" | "viewer"; updatedAt?: number; joinedAt?: number; _id: unknown },
+>(memberships: T[]): T | null {
+  if (memberships.length === 0) return null
+  return [...memberships].sort((a, b) => {
+    const roleDelta = rolePriority(b.role) - rolePriority(a.role)
+    if (roleDelta !== 0) return roleDelta
+    const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+    if (updatedDelta !== 0) return updatedDelta
+    const joinedDelta = (b.joinedAt || 0) - (a.joinedAt || 0)
+    if (joinedDelta !== 0) return joinedDelta
+    return String(a._id).localeCompare(String(b._id))
+  })[0]
+}
+
+// Invite a user to an organization.
 export const create = mutation({
   args: {
     orgId: v.id("organizations"),
     invitedBy: v.id("users"),
     email: v.string(),
     role: v.union(v.literal("admin"), v.literal("member"), v.literal("viewer")),
-    workosInvitationId: v.optional(v.string()), // WorkOS invitation ID for revocation
+    workosInvitationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check seat limit first
     const seatCheck = await checkSeatLimit(ctx, args.orgId)
     if (!seatCheck.allowed) {
       throw new Error(seatCheck.message || "Seat limit reached")
     }
 
-    // Verify inviter has permission
-    const membership = await ctx.db
+    const inviterMemberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", args.orgId).eq("userId", args.invitedBy)
       )
-      .first()
+      .collect()
+    const inviterMembership = pickCanonicalMembership(inviterMemberships)
 
-    if (!membership || !hasPermission(membership.role as Role, "invitations:send")) {
+    if (!inviterMembership || !hasPermission(inviterMembership.role as Role, "invitations:send")) {
       throw new Error("Unauthorized to invite members")
     }
 
-    // Check if user is already a member
-    const existingUser = await ctx.db
+    // Check if user is already a member using normalized email matching.
+    const normalizedInviteEmail = normalizeEmail(args.email)
+    const byNormalizedEmail = await ctx.db
+      .query("users")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedInviteEmail))
+      .collect()
+    const byExactEmail = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first()
+      .collect()
 
-    if (existingUser) {
-      const existingMembership = await ctx.db
+    const candidateUsers = new Map<string, (typeof byNormalizedEmail)[number]>()
+    for (const user of byNormalizedEmail) {
+      candidateUsers.set(String(user._id), user)
+    }
+    for (const user of byExactEmail) {
+      candidateUsers.set(String(user._id), user)
+    }
+
+    for (const user of candidateUsers.values()) {
+      const memberships = await ctx.db
         .query("members")
         .withIndex("by_organization_and_user", (q) =>
-          q.eq("organizationId", args.orgId).eq("userId", existingUser._id)
+          q.eq("organizationId", args.orgId).eq("userId", user._id)
         )
-        .first()
-
-      if (existingMembership) {
+        .collect()
+      if (pickCanonicalMembership(memberships)) {
         throw new Error("User is already a member of this organization")
       }
     }
 
-    // Check for existing pending invitation
-    const existingInvite = await ctx.db
+    // Prevent duplicate pending invites for the same normalized email.
+    const pendingInvites = await ctx.db
       .query("invitations")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("organizationId"), args.orgId),
-          q.eq(q.field("status"), "pending")
-        )
-      )
-      .first()
-
-    if (existingInvite) {
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect()
+    const duplicatePendingInvite = pendingInvites.find(
+      (invite) => normalizeEmail(invite.email) === normalizedInviteEmail
+    )
+    if (duplicatePendingInvite) {
       throw new Error("Invitation already pending for this email")
     }
 
@@ -86,11 +122,10 @@ export const create = mutation({
       token,
       workosInvitationId: args.workosInvitationId,
       status: "pending",
-      expiresAt: now + 7 * 24 * 60 * 60 * 1000, // 7 days
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
       createdAt: now,
     })
 
-    // Audit log
     await ctx.db.insert("auditLogs", {
       organizationId: args.orgId,
       userId: args.invitedBy,
@@ -105,81 +140,20 @@ export const create = mutation({
   },
 })
 
-// Accept an invitation
+// Legacy Convex token acceptance is retired. WorkOS invite acceptance is authoritative.
 export const accept = mutation({
   args: {
     token: v.string(),
     userId: v.id("users"),
   },
-  handler: async (ctx, args) => {
-    const invitation = await ctx.db
-      .query("invitations")
-      .withIndex("by_token", (q) => q.eq("token", args.token))
-      .first()
-
-    if (!invitation) {
-      throw new Error("Invitation not found")
-    }
-
-    if (invitation.status !== "pending") {
-      throw new Error("Invitation is no longer valid")
-    }
-
-    const now = Date.now()
-    if (invitation.expiresAt < now) {
-      await ctx.db.patch(invitation._id, { status: "expired" })
-      throw new Error("Invitation has expired")
-    }
-
-    // Verify user email matches invitation
-    const user = await ctx.db.get(args.userId)
-    if (!user || user.email !== invitation.email) {
-      throw new Error("Invitation email does not match user")
-    }
-
-    // Check if already a member
-    const existingMembership = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", invitation.organizationId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (existingMembership) {
-      throw new Error("Already a member of this organization")
-    }
-
-    // Create membership
-    // Note: workosId is a placeholder - in production, this should create
-    // the membership in WorkOS first and use that ID
-    await ctx.db.insert("members", {
-      workosId: `convex_${args.userId}_${invitation.organizationId}`,
-      organizationId: invitation.organizationId,
-      userId: args.userId,
-      role: invitation.role,
-      joinedAt: now,
-      updatedAt: now,
-    })
-
-    // Update invitation status
-    await ctx.db.patch(invitation._id, { status: "accepted" })
-
-    // Audit log
-    await ctx.db.insert("auditLogs", {
-      organizationId: invitation.organizationId,
-      userId: args.userId,
-      action: "member.joined",
-      resourceType: "member",
-      resourceId: args.userId,
-      metadata: { role: invitation.role, invitationId: invitation._id },
-      timestamp: now,
-    })
-
-    return invitation.organizationId
+  handler: async () => {
+    throw new Error(
+      "legacy_invitation_accept_disabled: WorkOS is the authority for membership acceptance. Ask an admin to resend the WorkOS invite."
+    )
   },
 })
 
-// Get pending invitations for an organization (excludes expired)
+// Get pending invitations for an organization (excludes expired).
 export const listForOrganization = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
@@ -188,16 +162,13 @@ export const listForOrganization = query({
       .query("invitations")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
       .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "pending"),
-          q.gt(q.field("expiresAt"), now) // Only return non-expired invitations
-        )
+        q.and(q.eq(q.field("status"), "pending"), q.gt(q.field("expiresAt"), now))
       )
       .collect()
   },
 })
 
-// Get invitation by token
+// Get invitation by token.
 export const getByToken = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
@@ -208,9 +179,7 @@ export const getByToken = query({
 
     if (!invitation) return null
 
-    // Get organization details
     const org = await ctx.db.get(invitation.organizationId)
-
     return {
       ...invitation,
       organization: org ? { name: org.name, slug: org.slug } : null,
@@ -218,7 +187,7 @@ export const getByToken = query({
   },
 })
 
-// Revoke an invitation
+// Revoke an invitation.
 export const revoke = mutation({
   args: {
     invitationId: v.id("invitations"),
@@ -230,21 +199,19 @@ export const revoke = mutation({
       throw new Error("Invitation not found")
     }
 
-    // Verify user has permission
-    const membership = await ctx.db
+    const memberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", invitation.organizationId).eq("userId", args.userId)
       )
-      .first()
-
+      .collect()
+    const membership = pickCanonicalMembership(memberships)
     if (!membership || !hasPermission(membership.role as Role, "invitations:revoke")) {
       throw new Error("Unauthorized")
     }
 
     await ctx.db.delete(args.invitationId)
 
-    // Audit log
     await ctx.db.insert("auditLogs", {
       organizationId: invitation.organizationId,
       userId: args.userId,
@@ -257,24 +224,16 @@ export const revoke = mutation({
   },
 })
 
-// Internal: Clean up expired invitations (called by cron job)
+// Internal: clean up expired invitations (called by cron job).
 export const cleanupExpired = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now()
-
-    // Find all expired pending invitations
     const expiredInvitations = await ctx.db
       .query("invitations")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "pending"),
-          q.lt(q.field("expiresAt"), now)
-        )
-      )
+      .filter((q) => q.and(q.eq(q.field("status"), "pending"), q.lt(q.field("expiresAt"), now)))
       .collect()
 
-    // Mark them as expired
     for (const invitation of expiredInvitations) {
       await ctx.db.patch(invitation._id, { status: "expired" })
     }

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -44,7 +44,7 @@ export function ContextSwitcher() {
   const navigate = useNavigate()
   const location = useLocation()
   const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization, user } = useAuth()
+  const { currentOrganization, user, organizations } = useAuth()
 
   const [open, setOpen] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
@@ -184,6 +184,10 @@ export function ContextSwitcher() {
     navigate('/projects/new')
   }
 
+  const handleSwitchWorkspace = () => {
+    navigate('/workspaces/select')
+  }
+
   const isBusy = syncState !== 'idle'
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -318,6 +322,17 @@ export function ContextSwitcher() {
               </div>
               <span className="text-muted-foreground font-medium">New Project</span>
             </DropdownMenuItem>
+            {organizations.length > 1 ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSwitchWorkspace} className="gap-2 p-2" disabled={isBusy}>
+                  <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
+                    <ArrowRightLeft className="size-4" />
+                  </div>
+                  <span className="text-muted-foreground font-medium">Switch Workspace</span>
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

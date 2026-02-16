@@ -35,6 +35,37 @@ export interface SeatStatus {
   message?: string
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function dedupeMembersByUserId<T extends { userId: Id<"users"> }>(members: T[]): T[] {
+  const byUser = new Map<string, T>()
+  for (const member of members) {
+    const key = String(member.userId)
+    if (!byUser.has(key)) {
+      byUser.set(key, member)
+    }
+  }
+  return [...byUser.values()]
+}
+
+function dedupePendingInvitesByEmail<T extends { email: string; createdAt?: number }>(invites: T[]): T[] {
+  const byEmail = new Map<string, T>()
+  for (const invite of invites) {
+    const key = normalizeEmail(invite.email)
+    const existing = byEmail.get(key)
+    if (!existing) {
+      byEmail.set(key, invite)
+      continue
+    }
+    if ((invite.createdAt || 0) >= (existing.createdAt || 0)) {
+      byEmail.set(key, invite)
+    }
+  }
+  return [...byEmail.values()]
+}
+
 /**
  * Check if an organization can add more members based on their subscription
  * Counts both active members and pending invitations
@@ -60,10 +91,11 @@ export async function checkSeatLimit(
   // Team plan has unlimited members
   if (limit === -1) {
     // Still count members for display purposes
-    const members = await ctx.db
+    const rawMembers = await ctx.db
       .query("members")
       .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
       .collect()
+    const members = dedupeMembersByUserId(rawMembers)
 
     return {
       allowed: true,
@@ -74,17 +106,19 @@ export async function checkSeatLimit(
   }
 
   // Count active members
-  const members = await ctx.db
+  const rawMembers = await ctx.db
     .query("members")
     .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
     .collect()
+  const members = dedupeMembersByUserId(rawMembers)
 
   // Count pending invitations
-  const pendingInvites = await ctx.db
+  const rawPendingInvites = await ctx.db
     .query("invitations")
     .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
     .filter((q) => q.eq(q.field("status"), "pending"))
     .collect()
+  const pendingInvites = dedupePendingInvitesByEmail(rawPendingInvites)
 
   const current = members.length + pendingInvites.length
   const overLimit = current > limit

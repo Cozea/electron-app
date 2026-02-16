@@ -37,6 +37,13 @@ crons.cron(
   {}
 )
 
+// Identity invariant scan (daily at 6:15 AM UTC)
+crons.cron(
+  "identity invariant scan",
+  "15 6 * * *",
+  internal.identityRepair.runInvariantCheckDaily
+)
+
 // ============================================
 // STORAGE TRACKING CRON JOBS
 // ============================================

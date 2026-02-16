@@ -442,16 +442,25 @@ export const updateMemberLocalPath = mutation({
         .withIndex("by_organization_and_user", (q) =>
           q.eq("organizationId", project.organizationId).eq("userId", args.userId)
         )
-        .first()
+        .collect()
+      const canonicalOrgMembership = [...orgMembership].sort((a, b) => {
+        const roleScore = (role: "admin" | "member" | "viewer") =>
+          role === "admin" ? 3 : role === "member" ? 2 : 1
+        const roleDelta = roleScore(b.role) - roleScore(a.role)
+        if (roleDelta !== 0) return roleDelta
+        const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+        if (updatedDelta !== 0) return updatedDelta
+        return String(a._id).localeCompare(String(b._id))
+      })[0]
 
-      if (!orgMembership) {
+      if (!canonicalOrgMembership) {
         throw new Error("User is not a member of this organization")
       }
 
       const role =
-        orgMembership.role === "admin"
+        canonicalOrgMembership.role === "admin"
           ? "project_manager"
-          : orgMembership.role === "member"
+          : canonicalOrgMembership.role === "member"
             ? "developer"
             : "viewer"
 
