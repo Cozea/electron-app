@@ -1,7 +1,7 @@
 {
   "name": "cozea",
   "private": true,
-  "version": "0.0.28",
+  "version": "0.0.29",
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "for a in darwin-arm64 darwin-x64; do chmod +x \"node_modules/node-pty/prebuilds/$a/spawn-helper\" 2>/dev/null || true; done",
