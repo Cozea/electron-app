@@ -26,7 +26,7 @@ jobs:
             runs_on: macos-14
             electron_target: mac
             arch: arm64
-            bundle_targets: blacksmith-4vcpu-ubuntu-2404-arm
+            bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
             runs_on: macos-15-intel
