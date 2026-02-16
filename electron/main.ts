@@ -395,6 +395,7 @@ if (!gotTheLock) {
 function createWindow() {
   const isMac = process.platform === 'darwin'
   const isWindows = process.platform === 'win32'
+  const isReleaseBuild = app.isPackaged
   const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
 
   // Load window state
@@ -413,6 +414,7 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      devTools: !isReleaseBuild,
     },
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
@@ -431,6 +433,35 @@ function createWindow() {
 
   // Register window state listeners
   mainWindowState.manage(win)
+
+  if (isReleaseBuild) {
+    // Prevent browser-style navigations/popups in packaged builds.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        void shell.openExternal(url)
+      }
+      return { action: 'deny' }
+    })
+
+    win.webContents.on('will-navigate', (event, url) => {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        void shell.openExternal(url)
+      }
+    })
+
+    win.webContents.on('before-input-event', (event, input) => {
+      const key = input.key.toLowerCase()
+      const isReloadShortcut = input.key === 'F5' || (input.control || input.meta) && key === 'r'
+      const isDevToolsShortcut =
+        input.key === 'F12' ||
+        ((input.control || input.meta) && input.alt && key === 'i') ||
+        ((input.control || input.meta) && input.shift && key === 'i')
+      if (isReloadShortcut || isDevToolsShortcut) {
+        event.preventDefault()
+      }
+    })
+  }
 
   // Show window when ready to prevent flickering
   win.once('ready-to-show', () => {

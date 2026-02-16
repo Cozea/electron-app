@@ -108,6 +108,42 @@ jobs:
           brew update
           brew install autoconf
 
+      - name: Import macOS signing certificate (pre-pack signing)
+        if: runner.os == 'macOS' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cert_path="${RUNNER_TEMP}/cozea-signing-cert.p12"
+          if [[ "${CSC_LINK}" == http://* || "${CSC_LINK}" == https://* ]]; then
+            curl -fsSL "${CSC_LINK}" -o "${cert_path}"
+          elif [[ "${CSC_LINK}" == file://* ]]; then
+            cp "${CSC_LINK#file://}" "${cert_path}"
+          elif [[ -f "${CSC_LINK}" ]]; then
+            cp "${CSC_LINK}" "${cert_path}"
+          else
+            payload="${CSC_LINK#base64:}"
+            if [[ "${payload}" == data:* ]]; then
+              payload="${payload#*,}"
+            fi
+            printf '%s' "${payload}" | base64 --decode > "${cert_path}" 2>/dev/null || printf '%s' "${payload}" | base64 -D > "${cert_path}"
+          fi
+
+          keychain_path="${RUNNER_TEMP}/cozea-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+
+          existing_keychains="$(security list-keychains -d user | sed 's/[ "]//g' | tr '\n' ' ')"
+          security list-keychains -d user -s "${keychain_path}" ${existing_keychains}
+          security default-keychain -d user -s "${keychain_path}"
+
+          security import "${cert_path}" -k "${keychain_path}" -P "${CSC_KEY_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
+          security find-identity -v -p codesigning "${keychain_path}"
+
       - name: Prepare Bundled Git
         run: npm run prepare:bundled-git
 
@@ -115,6 +151,7 @@ jobs:
         run: npm run prepare:bundled-git:check
 
       - name: Build Git Bundle Archives
+        if: steps.publish_mode.outputs.mode == 'always'
         run: npm run build:git-bundle-archives
 
       - name: Prepare Bundled Runtimes

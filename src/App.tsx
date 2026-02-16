@@ -7,10 +7,10 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { UpdateMenu } from './components/updates/UpdateMenu'
 // Eager load core pages for instant startup (VS Code style)
 import { Projects } from './pages/Projects'
-import { ProjectLayout } from './features/projects/layouts/ProjectLayout'
 
 // Lazy load other non-critical pages
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })))
+const ProjectLayout = lazy(() => import('./features/projects/layouts/ProjectLayout').then(m => ({ default: m.ProjectLayout })))
 const NewProject = lazy(() => import('./pages/NewProject').then(m => ({ default: m.NewProject })))
 const ProjectBuild = lazy(() => import('./pages/ProjectBuild').then(m => ({ default: m.ProjectBuild })))
 const ProjectDetailPage = lazy(() => import('./features/projects/pages/ProjectDetailPage').then(m => ({ default: m.ProjectDetailPage })))
@@ -94,19 +94,26 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
 
+    const shouldWarmProjectEditor =
+      location.pathname.startsWith('/projects/') &&
+      !location.pathname.startsWith('/projects/new')
+
     const warmupTimer = window.setTimeout(() => {
       void import('./pages/NewProject')
       void import('./pages/ProjectBuild')
-      void import('./features/projects/pages/ProjectPagesPage')
-      void import('./features/projects/pages/ProjectBackendStudioPage')
-      void import('./features/projects/pages/ChangesPage')
       void import('./pages/workspace/Billing')
+
+      if (shouldWarmProjectEditor) {
+        void import('./features/projects/pages/ProjectPagesPage')
+        void import('./features/projects/pages/ProjectBackendStudioPage')
+        void import('./features/projects/pages/ChangesPage')
+      }
     }, 1200)
 
     return () => {
       window.clearTimeout(warmupTimer)
     }
-  }, [isAuthenticated, isLoading, needsOnboarding])
+  }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
   if (!isAuthenticated) {
     return <Login />
