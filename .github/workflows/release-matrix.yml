@@ -153,13 +153,16 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
           security find-identity -v -p codesigning "${keychain_path}"
 
-          identity="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F\" '/Developer ID Application:/{print $2; exit}')"
-          if [[ -z "${identity}" ]]; then
+          identity_full="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F\" '/Developer ID Application:/{print $2; exit}')"
+          if [[ -z "${identity_full}" ]]; then
             echo "::error::No Developer ID Application identity found in imported signing certificate."
             exit 1
           fi
-          echo "CSC_NAME=${identity}" >> "$GITHUB_ENV"
-          echo "Using codesigning identity: ${identity}"
+          identity_common="${identity_full#Developer ID Application: }"
+          echo "COZEA_CODESIGN_IDENTITY=${identity_full}" >> "$GITHUB_ENV"
+          echo "CSC_NAME=${identity_common}" >> "$GITHUB_ENV"
+          echo "Using codesigning identity (full): ${identity_full}"
+          echo "Using electron-builder CSC_NAME: ${identity_common}"
 
       - name: Prepare Bundled Git
         run: npm run prepare:bundled-git
