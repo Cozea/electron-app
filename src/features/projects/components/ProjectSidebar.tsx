@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useNavigate, useParams, useLocation } from "react-router-dom"
+import { useParams, useLocation } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -161,7 +162,7 @@ export function ProjectSidebar({
     className,
     ...props
 }: ProjectSidebarProps) {
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
     const location = useLocation()
     const { currentOrganization, convexUserId } = useAuth()

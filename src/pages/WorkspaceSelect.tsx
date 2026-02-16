@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Building2, Check } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +14,7 @@ import {
 } from '@/components/ui/table'
 
 export function WorkspaceSelect() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { organizations, currentOrganization, setCurrentOrganization } = useAuth()
 
   const activeOrganizations = useMemo(() => {

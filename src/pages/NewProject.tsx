@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
@@ -118,7 +118,7 @@ function buildImportPreflightIssueMessage(
 
 export function NewProject() {
   const { user, logout, convexUserId, currentOrganization } = useAuth()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const convex = useConvex()
 
   // Get Convex org ID from currentOrganization (populated after Convex sync)

@@ -40,6 +40,9 @@ import {
   XCircle,
 } from 'lucide-react'
 import { normalizeWorkspacePlanForPricing, type WorkspacePricingPlanId } from '@/lib/billing/planLabels'
+import { scheduleTask } from '@/lib/scheduler'
+import { fetchWithAbort } from '@/lib/abort'
+import { featureFlags } from '@/lib/featureFlags'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 
@@ -159,34 +162,51 @@ export function Billing() {
     } : 'skip'
   )
 
-  const chartData = useMemo<UsagePoint[]>(() => {
-    if (!usageAggregates) return []
+  const [chartData, setChartData] = useState<UsagePoint[]>([])
 
-    const daysToShow = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
-    const dates: UsagePoint[] = []
-    const now = new Date()
-
-    for (let i = daysToShow - 1; i >= 0; i--) {
-      const date = new Date(now)
-      date.setDate(date.getDate() - i)
-      date.setHours(0, 0, 0, 0)
-      dates.push({
-        date: date.toISOString().split('T')[0],
-        tokens: 0,
-        requests: 0,
-      })
-    }
-
-    for (const aggregate of usageAggregates) {
-      const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
-      const found = dates.find((d) => d.date === dateStr)
-      if (found) {
-        found.tokens = aggregate.totalTokens
-        found.requests = aggregate.requestCount
+  useEffect(() => {
+    let cancelled = false
+    void scheduleTask(() => {
+      if (!usageAggregates) {
+        if (!cancelled) setChartData([])
+        return
       }
-    }
 
-    return dates
+      const daysToShow = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+      const dates: UsagePoint[] = []
+      const now = new Date()
+
+      for (let i = daysToShow - 1; i >= 0; i -= 1) {
+        const date = new Date(now)
+        date.setDate(date.getDate() - i)
+        date.setHours(0, 0, 0, 0)
+        dates.push({
+          date: date.toISOString().split('T')[0],
+          tokens: 0,
+          requests: 0,
+        })
+      }
+
+      const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
+      for (const aggregate of usageAggregates) {
+        const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
+        const index = indexByDate.get(dateStr)
+        if (index === undefined) continue
+        dates[index] = {
+          ...dates[index],
+          tokens: aggregate.totalTokens,
+          requests: aggregate.requestCount,
+        }
+      }
+
+      if (!cancelled) {
+        setChartData(dates)
+      }
+    }, 'user-visible')
+
+    return () => {
+      cancelled = true
+    }
   }, [usageAggregates, usageTimeRange])
 
   const chartTotals = useMemo(() => {
@@ -216,32 +236,54 @@ export function Billing() {
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
 
   useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+
+    const isAbortError = (error: unknown): boolean => {
+      if (error instanceof DOMException) return error.name === 'AbortError'
+      if (typeof error === 'object' && error !== null && 'name' in error) {
+        return (error as { name?: string }).name === 'AbortError'
+      }
+      return false
+    }
+
     const fetchInvoices = async () => {
       if (!currentOrganization?.organizationId || !accessToken) return
 
       setInvoicesLoading(true)
       try {
-        const response = await fetch(
+        const response = await fetchWithAbort(
           `${AUTH_SERVER_URL}/stripe/invoices?organizationId=${currentOrganization.organizationId}&limit=10`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
             },
-          }
+            signal: controller.signal,
+          },
+          { signal: controller.signal, timeoutMs: 15000 }
         )
 
         if (response.ok) {
           const data = await response.json()
-          setStripeInvoices(data.invoices || [])
+          if (!cancelled) {
+            setStripeInvoices(data.invoices || [])
+          }
         }
       } catch (err) {
+        if (isAbortError(err)) return
         console.error('Failed to fetch invoices:', err)
       } finally {
-        setInvoicesLoading(false)
+        if (!cancelled) {
+          setInvoicesLoading(false)
+        }
       }
     }
 
-    fetchInvoices()
+    void fetchInvoices()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [currentOrganization?.organizationId, accessToken])
 
   const subscription = convexOrg?.subscription
@@ -271,7 +313,7 @@ export function Billing() {
     if (!currentOrganization?.organizationId || !accessToken) return
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-portal`, {
+      const response = await fetchWithAbort(`${AUTH_SERVER_URL}/stripe/create-portal`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -281,7 +323,7 @@ export function Billing() {
           organizationId: currentOrganization.organizationId,
           returnUrl: `${window.location.origin}/workspace/billing`,
         }),
-      })
+      }, { timeoutMs: 15000 })
 
       if (!response.ok) {
         const error = await response.json()
@@ -313,7 +355,7 @@ export function Billing() {
 
     setIsUpgrading(true)
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
+      const response = await fetchWithAbort(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -326,7 +368,7 @@ export function Billing() {
           successUrl: 'cozea://billing/success?type=subscription',
           cancelUrl: 'cozea://billing/canceled',
         }),
-      })
+      }, { timeoutMs: 15000 })
 
       if (!response.ok) {
         const error = await response.json()
@@ -391,7 +433,7 @@ export function Billing() {
         </Alert>
       )}
 
-      <div className="space-y-4">
+      <div className={[featureFlags.contentVisibility ? 'perf-contain-auto' : '', 'space-y-4'].join(' ').trim()}>
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0 space-y-5">
             <div className="flex items-center justify-between gap-4">
@@ -641,24 +683,20 @@ export function Billing() {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            {invoicesLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : stripeInvoices.length > 0 ? (
-              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-                <Table className="[&_th]:px-4 [&_td]:px-4">
-                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Invoice</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                    {stripeInvoices.map((invoice) => (
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Invoice</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {stripeInvoices.length > 0 ? (
+                    stripeInvoices.map((invoice) => (
                       <TableRow key={invoice.id}>
                         <TableCell>{formatDate(invoice.date)}</TableCell>
                         <TableCell className="max-w-[200px] truncate">
@@ -687,15 +725,17 @@ export function Billing() {
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No invoices yet</p>
-              </div>
-            )}
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
+                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -3,6 +3,19 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
+function readBooleanFlag(name: string, fallback: boolean): boolean {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const normalized = raw.trim().toLowerCase()
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+    return true
+  }
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false
+  }
+  return fallback
+}
+
 function resolveAiProxyTarget(): string {
   const defaultRemoteTarget = 'https://crosscode-auth-gateway-production.up.railway.app'
 
@@ -28,6 +41,8 @@ function resolveAiProxyTarget(): string {
 }
 
 const aiProxyTarget = resolveAiProxyTarget()
+const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
+const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
 
 export default defineConfig({
   main: {
@@ -53,6 +68,7 @@ export default defineConfig({
         entry: 'electron/preload.ts',
       },
       rollupOptions: {
+        external: ['electron'],
         output: {
           format: 'cjs',
           entryFileNames: 'index.js',
@@ -62,7 +78,24 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react({
+        babel: reactCompilerEnabled
+          ? {
+              plugins: [['babel-plugin-react-compiler', {}]],
+            }
+          : undefined,
+      }),
+      tailwindcss(),
+    ],
+    experimental: {
+      // Vite 8 beta runs on Rolldown; keep a kill switch for native plugin acceleration.
+      enableNativePlugin: rolldownBuildEnabled ? true : false,
+    },
+    builder: {
+      sharedConfigBuild: rolldownBuildEnabled,
+      sharedPlugins: rolldownBuildEnabled,
+    },
     server: {
       host: 'localhost',
       port: 5183,

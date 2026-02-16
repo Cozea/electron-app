@@ -61,6 +61,15 @@ jobs:
       # Vite env vars must be available at build time (GitHub Actions runner env).
       VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || vars.VITE_CONVEX_URL }}
       VITE_AI_API_URL: ${{ secrets.VITE_AI_API_URL || vars.VITE_AI_API_URL }}
+      VITE_FF_DATA_ROUTER: '1'
+      VITE_FF_VIEW_TRANSITIONS: '1'
+      VITE_FF_PRIORITIZED_SCHEDULING: '1'
+      VITE_FF_REACT_COMPILER: '1'
+      VITE_FF_ROLLDOWN_BUILD: '1'
+      VITE_FF_JANK_DIAGNOSTICS: '1'
+      VITE_FF_CONTENT_VISIBILITY: '1'
+      VITE_FF_OFFSCREEN_SCREENSHOT: '1'
+      VITE_FF_UTILITY_PROCESS_MANIFEST: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

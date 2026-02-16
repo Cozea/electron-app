@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -147,7 +147,7 @@ const bytesToGB = (bytes: number): number => bytes / (1024 * 1024 * 1024)
 
 export function Sync() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
   const [isClearing, setIsClearing] = useState(false)
 

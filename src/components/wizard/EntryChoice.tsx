@@ -65,6 +65,7 @@ import {
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import { fetchWithAbort } from '@/lib/abort'
 
 export interface PromptSettings {
   model: string
@@ -211,12 +212,12 @@ export function EntryChoice({
 
     const controller = new AbortController()
 
-    fetch(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    fetchWithAbort(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
       signal: controller.signal,
-    })
+    }, { signal: controller.signal, timeoutMs: 15000 })
       .then(async (res) => {
         if (!res.ok) {
           throw new Error('Failed to load models')

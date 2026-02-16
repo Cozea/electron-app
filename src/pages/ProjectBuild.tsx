@@ -1,4 +1,5 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import * as Y from 'yjs'
 import { api } from '../../convex/_generated/api'
@@ -53,7 +54,7 @@ function formatDiagnosticLocation(file: string, line?: number, column?: number):
 
 export function ProjectBuild() {
   const { projectId } = useParams<{ projectId: string }>()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { user, logout, convexUserId } = useAuth()
 
   // Load project from Convex

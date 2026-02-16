@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { OrganizationMembership } from '../types/electron'
+import { fetchWithAbort } from '@/lib/abort'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 const STORAGE_KEY_TOKEN = 'auth_token'
@@ -96,9 +97,12 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       if (token) {
         headers.set('Authorization', `Bearer ${token}`)
       }
-      return fetch(url, {
+      return fetchWithAbort(url, {
         ...options,
         headers,
+      }, {
+        signal: options.signal ?? undefined,
+        timeoutMs: 20000,
       })
     }
 

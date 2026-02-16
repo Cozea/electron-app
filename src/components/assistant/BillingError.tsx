@@ -1,5 +1,5 @@
 import { AlertCircle, CreditCard, ArrowRight, AlertTriangle, Ban } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -50,7 +50,7 @@ const errorColors: Record<string, string> = {
 }
 
 export function BillingError({ error, onAction, className }: BillingErrorProps) {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const code = error.code || 'UNKNOWN'
   const Icon = errorIcons[code] || AlertCircle
   const colorClass = errorColors[code] || 'text-muted-foreground bg-muted/50 border-border'

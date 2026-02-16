@@ -3,7 +3,6 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { performance } from 'node:perf_hooks'
 import { cancelToolRuns, runTool } from './tools'
 import { autoUpdater } from 'electron-updater'
 import * as pty from 'node-pty' // Still used for DevServer PTY
@@ -16,7 +15,6 @@ import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { DatabaseService } from './services/DatabaseService'
-import { PerformanceService } from './services/PerformanceService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
 import { ProviderAuthService } from './services/ProviderAuthService'
@@ -38,8 +36,6 @@ const devServerProcesses = new Map<string, pty.IPty>()
 // Terminal Management (VS Code-style multi-terminal)
 // ============================================
 // Logic moved to TerminalService
-
-const mainStart = performance.now()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -111,7 +107,6 @@ function saveSettings(settings: Partial<AppSettings>): void {
 }
 
 let win: InstanceType<typeof BrowserWindow> | null
-const performanceService = PerformanceService.getInstance()
 
 type UpdateStatus =
   | 'idle'
@@ -465,13 +460,8 @@ function createWindow() {
 
   // Show window when ready to prevent flickering
   win.once('ready-to-show', () => {
-    performanceService.recordMainMetric('window.ready_to_show', performance.now() - mainStart)
     win?.show()
     win?.focus()
-  })
-
-  win.webContents.once('did-finish-load', () => {
-    performanceService.recordMainMetric('window.did_finish_load', performance.now() - mainStart)
   })
 
   // Update background color on system theme change
@@ -503,12 +493,10 @@ IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
-performanceService.start()
 
 registerCoreHandlers(ipcMain, {
   runTool,
   cancelToolRuns,
-  reportPerformance: (payload) => performanceService.reportRendererBatch(payload),
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
   checkForUpdates,
@@ -583,7 +571,6 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
-  performanceService.recordMainMetric('app.when_ready', performance.now() - mainStart)
   loadSyncState()
   registerAutoUpdater()
   createWindow()

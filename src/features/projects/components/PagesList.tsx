@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type MouseEvent } from "react"
-import { useParams, useNavigate, useSearchParams } from "react-router-dom"
+import { useParams, useSearchParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -14,7 +15,7 @@ import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
 export function PagesList() {
     const { slug } = useParams<{ slug: string }>()
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const [searchParams] = useSearchParams()
     const { currentOrganization } = useAuth()
     const { serverStatus, serverPort } = useProjectPagesStore()

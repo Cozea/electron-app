@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
@@ -41,7 +42,7 @@ interface ProjectNavigationState {
 
 export function ContextSwitcher() {
   const { isMobile } = useSidebar()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const location = useLocation()
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization, user, organizations } = useAuth()
