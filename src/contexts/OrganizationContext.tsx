@@ -73,13 +73,18 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
   )
   const [isLoading, setIsLoading] = useState(false)
 
-  // Update organizations when initialOrganizations changes
+  // Keep local organization state in sync with AuthContext without creating
+  // a self-triggering effect cycle on currentOrganization updates.
   useEffect(() => {
     setOrganizations(initialOrganizations)
-    if (initialOrganizations.length > 0 && !currentOrganization) {
-      setCurrentOrganization(initialOrganizations[0])
+
+    if (initialOrganizations.length === 0) {
+      setCurrentOrganization(null)
+      return
     }
-  }, [initialOrganizations, currentOrganization])
+
+    setCurrentOrganization((prev) => prev ?? initialOrganizations[0])
+  }, [initialOrganizations])
 
   // Make authenticated requests and retry once after token refresh on 401.
   const fetchWithRefresh = useCallback(async (

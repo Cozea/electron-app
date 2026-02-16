@@ -2,6 +2,7 @@ import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 
 export function createApplicationMenu() {
     const isMac = process.platform === 'darwin'
+    const isReleaseBuild = app.isPackaged
 
     const template: MenuItemConstructorOptions[] = [
         // { role: 'appMenu' }
@@ -47,10 +48,14 @@ export function createApplicationMenu() {
         {
             label: 'View',
             submenu: [
-                { role: 'reload' },
-                { role: 'forceReload' },
-                { role: 'toggleDevTools' },
-                { type: 'separator' },
+                ...(!isReleaseBuild
+                    ? [
+                        { role: 'reload' as const },
+                        { role: 'forceReload' as const },
+                        { role: 'toggleDevTools' as const },
+                        { type: 'separator' as const },
+                    ]
+                    : []),
                 { role: 'resetZoom' },
                 { role: 'zoomIn' },
                 { role: 'zoomOut' },

@@ -12,6 +12,7 @@ interface QueryCacheState {
 const DEFAULT_MAX_AGE = 5 * 60 * 1000 // 5 minutes
 const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_CACHE_ENTRIES = 250
+const MIN_CACHE_REFRESH_INTERVAL_MS = 750
 
 function pruneCache(
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -50,6 +51,11 @@ export const useQueryCache = create<QueryCacheState>()(
       cache: {},
 
       set: (key: string, data: unknown) => {
+        const existing = get().cache[key]
+        if (existing && existing.data === data) {
+          return
+        }
+
         set((state) => ({
           cache: pruneCache({
             ...state.cache,
@@ -112,9 +118,18 @@ export function useCachedQuery<T>(
       // Use getState to avoid re-render loop
       const currentCache = useQueryCache.getState().cache[key]
       // Simple reference check is usually sufficient for Convex data
-      if (!currentCache || currentCache.data !== freshData) {
-        useQueryCache.getState().set(key, freshData)
+      if (currentCache?.data === freshData) return
+
+      // Guard against high-frequency cache writes when a query returns
+      // rapidly changing object references.
+      if (
+        currentCache &&
+        Date.now() - currentCache.timestamp < MIN_CACHE_REFRESH_INTERVAL_MS
+      ) {
+        return
       }
+
+      useQueryCache.getState().set(key, freshData)
     }
   }, [key, freshData])
 

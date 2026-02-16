@@ -128,6 +128,8 @@ const LOGIN_FLOW_TIMEOUT_MS = 90_000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const organizationsRef = useRef<OrganizationMembership[]>([])
+  const currentOrganizationRef = useRef<OrganizationMembership | null>(null)
 
   // Initialize state from localStorage for instant load
   const [user, setUser] = useState<User | null>(() => {
@@ -171,6 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [convexLoading, setConvexLoading] = useState(false)
   const [workspaceSelectionRequired, setWorkspaceSelectionRequired] = useState(false)
 
+  useEffect(() => {
+    organizationsRef.current = organizations
+    currentOrganizationRef.current = currentOrganization
+  }, [organizations, currentOrganization])
+
   // Query Convex for user's organizations (source of truth)
   const convexUserWithOrgs = useQuery(
     api.users.getWithOrganizations,
@@ -196,12 +203,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )
 
       // Update with Convex data if convexOrgId is missing (to fix race condition)
-      const needsConvexOrgId = !currentOrganization?.convexOrgId || organizations.some(org => !org.convexOrgId)
+      const currentOrg = currentOrganizationRef.current
+      const existingOrganizations = organizationsRef.current
+      const needsConvexOrgId = !currentOrg?.convexOrgId || existingOrganizations.some(org => !org.convexOrgId)
       if (convexOrgs.length > 0 && needsConvexOrgId) {
         setOrganizationsState(convexOrgs)
         if (!workspaceSelectionRequired) {
           // Update current org with the one that has convexOrgId
-          const currentOrgId = currentOrganization?.organizationId
+          const currentOrgId = currentOrg?.organizationId
           const updatedCurrentOrg = currentOrgId
             ? convexOrgs.find(org => org.organizationId === currentOrgId)
             : convexOrgs[0]
@@ -217,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Query completed but no orgs
       setConvexLoading(false)
     }
-  }, [convexUserWithOrgs, organizations, currentOrganization, workspaceSelectionRequired])
+  }, [convexUserWithOrgs, workspaceSelectionRequired])
 
   // Derived state: user needs onboarding if authenticated, Convex loaded, and has no orgs
   const needsOnboarding = !!user && !convexLoading && convexUserWithOrgs !== undefined &&

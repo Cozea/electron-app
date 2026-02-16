@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "convex/react"
 import { ConvexHttpClient } from "convex/browser"
-import { makeFunctionReference } from "convex/server"
+import type { FunctionReference } from "convex/server"
 import {
   ReactFlowProvider,
   addEdge,
@@ -146,6 +146,12 @@ function convexFunctionNameFromApiPath(apiPath: string): string {
   const fn = parts.pop()
   const modulePath = parts.join("/")
   return fn ? `${modulePath}:${fn}` : modulePath
+}
+
+function toFunctionReference<T extends "query" | "mutation" | "action">(
+  name: string
+): FunctionReference<T> {
+  return name as unknown as FunctionReference<T>
 }
 
 function parseEnvFile(content: string): Record<string, string> {
@@ -484,10 +490,10 @@ export function ProjectBackendStudioPage() {
 
       const result =
         selectedData.operation === "query"
-          ? await convexHttpClient.query(makeFunctionReference<"query">(functionName), args)
+          ? await convexHttpClient.query(toFunctionReference<"query">(functionName), args)
           : selectedData.operation === "mutation"
-            ? await convexHttpClient.mutation(makeFunctionReference<"mutation">(functionName), args)
-            : await convexHttpClient.action(makeFunctionReference<"action">(functionName), args)
+            ? await convexHttpClient.mutation(toFunctionReference<"mutation">(functionName), args)
+            : await convexHttpClient.action(toFunctionReference<"action">(functionName), args)
 
       setRunnerOutput(JSON.stringify(result, null, 2))
     } catch (e) {
