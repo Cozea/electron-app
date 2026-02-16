@@ -153,6 +153,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
           security find-identity -v -p codesigning "${keychain_path}"
 
+          identity="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F\" '/Developer ID Application:/{print $2; exit}')"
+          if [[ -z "${identity}" ]]; then
+            echo "::error::No Developer ID Application identity found in imported signing certificate."
+            exit 1
+          fi
+          echo "CSC_NAME=${identity}" >> "$GITHUB_ENV"
+          echo "Using codesigning identity: ${identity}"
+
       - name: Prepare Bundled Git
         run: npm run prepare:bundled-git
 
@@ -193,6 +201,37 @@ jobs:
 
       - name: Build and Package
         run: npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }}
+
+      - name: Verify macOS Signature and Notarization
+        if: runner.os == 'macOS' && steps.publish_mode.outputs.mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          found_app=0
+          while IFS= read -r app_path; do
+            found_app=1
+            echo "Verifying app bundle: ${app_path}"
+            codesign --verify --deep --strict --verbose=2 "${app_path}"
+            spctl --assess --type execute --verbose=4 "${app_path}"
+            xcrun stapler validate "${app_path}"
+          done < <(find dist -maxdepth 5 -type d -name '*.app')
+
+          if [[ "${found_app}" -eq 0 ]]; then
+            echo "::error::No .app bundle found in dist/ for signature/notarization verification."
+            exit 1
+          fi
+
+          found_dmg=0
+          while IFS= read -r dmg_path; do
+            found_dmg=1
+            echo "Validating DMG staple: ${dmg_path}"
+            xcrun stapler validate "${dmg_path}"
+          done < <(find dist -maxdepth 5 -type f -name '*.dmg')
+
+          if [[ "${found_dmg}" -eq 0 ]]; then
+            echo "::warning::No DMG artifact found in dist/ to validate."
+          fi
 
       - name: Upload Runtime Assets to Release
         if: steps.publish_mode.outputs.mode == 'always'

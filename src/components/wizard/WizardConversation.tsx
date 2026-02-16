@@ -1058,58 +1058,60 @@ export function WizardConversation({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
-                <ModelSelectorTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                  >
-                    {selectedModelData?.chefSlug && (
-                      <ModelSelectorLogo provider={selectedModelData.chefSlug} />
-                    )}
-                    {selectedModelData?.name && (
-                      <ModelSelectorName className="ml-1">{selectedModelData.name}</ModelSelectorName>
-                    )}
-                    <IconChevronDown className="size-3 ml-1" />
-                  </Button>
-                </ModelSelectorTrigger>
-                <ModelSelectorContent>
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {visibleChefs.map((chef) => (
-                      <ModelSelectorGroup heading={chef} key={chef}>
-                        {visibleModels
-                          .filter((m) => m.chef === chef)
-                          .map((m) => (
-                            <ModelSelectorItem
-                              key={m.id}
-                              onSelect={() => {
-                                setModel(m.id)
-                                setModelSelectorOpen(false)
-                              }}
-                              value={m.id}
-                            >
-                              <ModelSelectorLogo provider={m.chefSlug} />
-                              <ModelSelectorName>{m.name}</ModelSelectorName>
-                              <ModelSelectorLogoGroup>
-                                {m.providers.map((provider) => (
-                                  <ModelSelectorLogo key={provider} provider={provider} />
-                                ))}
-                              </ModelSelectorLogoGroup>
-                              {model === m.id ? (
-                                <IconCheck className="ml-auto size-4" />
-                              ) : (
-                                <div className="ml-auto size-4" />
-                              )}
-                            </ModelSelectorItem>
-                          ))}
-                      </ModelSelectorGroup>
-                    ))}
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
+              {hasSelectableModel && (
+                <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
+                  <ModelSelectorTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                    >
+                      {selectedModelData?.chefSlug && (
+                        <ModelSelectorLogo provider={selectedModelData.chefSlug} />
+                      )}
+                      {selectedModelData?.name && (
+                        <ModelSelectorName className="ml-1">{selectedModelData.name}</ModelSelectorName>
+                      )}
+                      <IconChevronDown className="size-3 ml-1" />
+                    </Button>
+                  </ModelSelectorTrigger>
+                  <ModelSelectorContent>
+                    <ModelSelectorInput placeholder="Search models..." />
+                    <ModelSelectorList>
+                      <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                      {visibleChefs.map((chef) => (
+                        <ModelSelectorGroup heading={chef} key={chef}>
+                          {visibleModels
+                            .filter((m) => m.chef === chef)
+                            .map((m) => (
+                              <ModelSelectorItem
+                                key={m.id}
+                                onSelect={() => {
+                                  setModel(m.id)
+                                  setModelSelectorOpen(false)
+                                }}
+                                value={m.id}
+                              >
+                                <ModelSelectorLogo provider={m.chefSlug} />
+                                <ModelSelectorName>{m.name}</ModelSelectorName>
+                                <ModelSelectorLogoGroup>
+                                  {m.providers.map((provider) => (
+                                    <ModelSelectorLogo key={provider} provider={provider} />
+                                  ))}
+                                </ModelSelectorLogoGroup>
+                                {model === m.id ? (
+                                  <IconCheck className="ml-auto size-4" />
+                                ) : (
+                                  <div className="ml-auto size-4" />
+                                )}
+                              </ModelSelectorItem>
+                            ))}
+                        </ModelSelectorGroup>
+                      ))}
+                    </ModelSelectorList>
+                  </ModelSelectorContent>
+                </ModelSelector>
+              )}
             </div>
 
             <Button
@@ -1139,70 +1141,74 @@ export function WizardConversation({
 
         {/* Options row */}
         <div className="flex items-center gap-0 pt-2">
-          <div
-            className={cn(
-              "grid overflow-hidden transition-all duration-200 ease-out",
-              supportedVariants.length > 1
-                ? "grid-cols-[1fr] opacity-100 translate-y-0"
-                : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
-            )}
-          >
-            <div className="min-w-0">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                  >
-                    <Brain className="size-3" />
-                    <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
-                    <IconChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-                  <DropdownMenuGroup className="space-y-1">
-                    {supportedVariants.map((variant) => (
-                      <DropdownMenuItem
-                        key={variant}
-                        className="rounded-[calc(1rem-6px)] text-xs"
-                        onClick={() => setVariantId(variant)}
+          {hasSelectableModel && (
+            <>
+              <div
+                className={cn(
+                  "grid overflow-hidden transition-all duration-200 ease-out",
+                  supportedVariants.length > 1
+                    ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                    : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                )}
+              >
+                <div className="min-w-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
                       >
-                        <Brain size={16} className="opacity-60" />
-                        {VARIANT_DEFINITIONS[variant]?.label ?? variant}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-          <div
-            className={cn(
-              "grid overflow-hidden transition-all duration-200 ease-out",
-              supportedVariants.length <= 1
-                ? "grid-cols-[1fr] opacity-100 translate-y-0"
-                : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
-            )}
-          >
-            <div className="min-w-0 h-6 px-2 flex items-center rounded-full border border-transparent text-muted-foreground text-xs">
-              <Brain className="size-3 mr-1" />
-              <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
-            </div>
-          </div>
+                        <Brain className="size-3" />
+                        <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                        <IconChevronDown className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
+                      <DropdownMenuGroup className="space-y-1">
+                        {supportedVariants.map((variant) => (
+                          <DropdownMenuItem
+                            key={variant}
+                            className="rounded-[calc(1rem-6px)] text-xs"
+                            onClick={() => setVariantId(variant)}
+                          >
+                            <Brain size={16} className="opacity-60" />
+                            {VARIANT_DEFINITIONS[variant]?.label ?? variant}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "grid overflow-hidden transition-all duration-200 ease-out",
+                  supportedVariants.length <= 1
+                    ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                    : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                )}
+              >
+                <div className="min-w-0 h-6 px-2 flex items-center rounded-full border border-transparent text-muted-foreground text-xs">
+                  <Brain className="size-3 mr-1" />
+                  <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                </div>
+              </div>
 
-          <Context
-            maxTokens={getContextWindowSize(model)}
-            usedTokens={accumulatedUsage.usedTokens}
-            usage={accumulatedUsage.usage}
-            modelId={model}
-          >
-            <ContextTrigger />
-            <ContextContent>
-              <ContextContentHeader />
-              <ContextContentFooter />
-            </ContextContent>
-          </Context>
+              <Context
+                maxTokens={getContextWindowSize(model)}
+                usedTokens={accumulatedUsage.usedTokens}
+                usage={accumulatedUsage.usage}
+                modelId={model}
+              >
+                <ContextTrigger />
+                <ContextContent>
+                  <ContextContentHeader />
+                  <ContextContentFooter />
+                </ContextContent>
+              </Context>
+            </>
+          )}
 
           <div className="flex-1" />
         </div>

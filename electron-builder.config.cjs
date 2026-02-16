@@ -28,6 +28,7 @@ const macRuntimeBinaries = macRuntimeTargets
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
+  forceCodeSigning: true,
   // Pack archive rewriting must happen before app signing/notarization.
   // Running it after notarization invalidates Gatekeeper trust for the final app.
   afterPack: "scripts/electron-builder-after-sign.cjs",
@@ -53,6 +54,9 @@ module.exports = {
   mac: {
     category: "public.app-category.developer-tools",
     icon: "build/icon.icns",
+    hardenedRuntime: true,
+    entitlements: "build/entitlements.mac.plist",
+    entitlementsInherit: "build/entitlements.mac.plist",
     binaries: [...macGitBinaries, ...macRuntimeBinaries],
     target: ["dmg", "zip"],
   },

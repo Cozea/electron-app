@@ -970,9 +970,9 @@ export function NewProject() {
               </div>
 
               {showImportTerminalPanel && importTerminalId && (
-                <div className="min-w-0 lg:sticky lg:top-14 lg:self-stretch">
-                  <div className="rounded-2xl border border-border overflow-hidden bg-sidebar flex flex-col h-[44vh] min-h-[260px] lg:h-full">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <div className="min-w-0 lg:self-stretch">
+                  <div className="rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden flex flex-col h-[44vh] min-h-[260px] lg:h-full lg:min-h-0">
+                    <div className="flex items-center justify-between border-b border-border px-6 py-4">
                       <p className="text-sm font-medium">Import Terminal</p>
                       <p className="text-xs text-muted-foreground">
                         Live output from dependency installation
@@ -981,7 +981,7 @@ export function NewProject() {
                     <div className="flex-1 min-h-0">
                       <TerminalInstance
                         terminalId={importTerminalId}
-                        className="h-full w-full"
+                        className="h-full w-full [--terminal-panel-bg:var(--secondary)]"
                         shouldAutoFocus={isImporting}
                       />
                     </div>

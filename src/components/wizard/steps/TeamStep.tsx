@@ -142,7 +142,7 @@ export function TeamStep({
           <Label className="text-base font-medium">Team Members</Label>
 
           {team.length > 0 ? (
-            <div className="rounded-xl divide-y bg-card overflow-hidden">
+            <div className="rounded-xl divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
               {team.map((member) => {
                 const initials = member.name
                   ? member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -162,7 +162,12 @@ export function TeamStep({
                       <p className="text-sm font-medium flex items-center gap-2">
                         {member.name || member.email}
                         {member.isCurrentUser && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 py-0 font-normal">You</Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-1.5 py-0 font-normal border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                          >
+                            You
+                          </Badge>
                         )}
                       </p>
                       {member.name && (
@@ -171,7 +176,10 @@ export function TeamStep({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant="secondary" className="font-normal capitalize">
+                    <Badge
+                      variant="secondary"
+                      className="font-normal capitalize border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                    >
                       {member.role.replace('_', ' ')}
                     </Badge>
                     {!member.isCurrentUser && (
@@ -225,7 +233,7 @@ export function TeamStep({
                 </Select>
               </div>
             </div>
-            <div className="app-scrollbar rounded-xl divide-y bg-card overflow-hidden max-h-48 overflow-y-auto">
+            <div className="app-scrollbar rounded-xl divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden max-h-48 overflow-y-auto">
               {availableOrgMembers.map((orgMember) => {
                 const name = `${orgMember.firstName || ''} ${orgMember.lastName || ''}`.trim()
                 const displayName = name || orgMember.email.split('@')[0]
@@ -267,7 +275,7 @@ export function TeamStep({
         )}
 
         {/* Invite by Email Form */}
-        <div className="bg-muted/30 p-6 rounded-xl space-y-4">
+        <div className="bg-secondary/80 dark:bg-secondary/40 p-6 rounded-xl space-y-4">
           <Label className="text-base font-medium">
             {availableOrgMembers.length > 0 ? 'Or Invite by Email' : 'Invite New Member'}
           </Label>
@@ -279,11 +287,12 @@ export function TeamStep({
             value={emailInput}
             onChange={(e) => setEmailInput(e.target.value)}
             onKeyDown={handleAddEmail}
+            className="bg-background dark:bg-background/80"
           />
 
           {/* Pending invites list */}
           {inviteMembers.length > 0 && (
-            <div className="border rounded-lg divide-y bg-card overflow-hidden">
+            <div className="rounded-lg divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
               {inviteMembers.map((member, i) => (
                 <div
                   key={i}

@@ -42,6 +42,7 @@ build/runtime/**
 
 # Server (separate repo)
 server/
+external/
 
 # Duplicate lockfile
 package-lock 2.json
