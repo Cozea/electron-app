@@ -82,6 +82,20 @@ export function Roles() {
   const startIndex = (currentPage - 1) * categoriesPerPage
   const paginatedPermissions = permissions.slice(startIndex, startIndex + categoriesPerPage)
 
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = []
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i += 1) pages.push(i)
+    } else if (currentPage <= 3) {
+      pages.push(1, 2, 3, '...', totalPages)
+    } else if (currentPage >= totalPages - 2) {
+      pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages)
+    } else {
+      pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages)
+    }
+    return pages
+  }
+
   return (
     <DashboardLayout
       user={user}
@@ -190,7 +204,7 @@ export function Roles() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Showing category groups {startIndex + 1}-{Math.min(startIndex + categoriesPerPage, permissions.length)} of {permissions.length}
+                Showing <span className="font-medium">{startIndex + 1}-{Math.min(startIndex + categoriesPerPage, permissions.length)}</span> of <span className="font-medium">{permissions.length}</span> entries
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -202,15 +216,27 @@ export function Roles() {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-sm text-muted-foreground px-2">
-                  {currentPage} / {totalPages}
-                </span>
+                {getPageNumbers().map((page, i) => (
+                  typeof page === 'number' ? (
+                    <Button
+                      key={i}
+                      variant={currentPage === page ? 'default' : 'secondary'}
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </Button>
+                  ) : (
+                    <span key={i} className="px-2 text-muted-foreground">...</span>
+                  )
+                ))}
                 <Button
                   variant="secondary"
                   size="icon"
                   className="h-8 w-8 rounded-full"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage === totalPages || totalPages === 0}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>

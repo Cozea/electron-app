@@ -109,8 +109,10 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
 
         // Get CSS variable value and convert to hex
         const getThemeColor = (cssVar: string, fallback: string): string => {
+            const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
             const themeRoot = container.closest('.dark, .navy, .wine, .sunny, .forest') || document.documentElement
-            const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+            const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+            const computed = localComputed || rootComputed
 
             if (!computed) {
                 return fallback
@@ -131,7 +133,8 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         }
 
         // Map theme colors
-        const background = getThemeColor('--terminal-panel-bg', '#1a1a1a')
+        const secondaryFallback = getThemeColor('--secondary', '#1a1a1a')
+        const background = getThemeColor('--terminal-panel-bg', secondaryFallback)
         const foreground = getThemeColor('--sidebar-foreground', '#fafafa')
         const muted = getThemeColor('--muted', '#27272a')
 
@@ -333,7 +336,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
     return (
         <div
             className={cn("relative w-full h-full overflow-hidden", className)}
-            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+            style={{ backgroundColor: "var(--terminal-panel-bg, var(--secondary))" }}
             onContextMenu={handleContextMenu}
         >
             {selectedText.trim().length > 0 && (
