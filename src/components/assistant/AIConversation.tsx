@@ -1116,22 +1116,27 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const serviceErrorMessage = modelsError || toolsError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
+  const providerConnectionMessage =
+    !hasSelectableModel && providerStatusLoaded && providerAuthAvailable
+      ? 'Connect an AI provider in Workspace AI settings to use the assistant.'
+      : null
+  const surfaceBannerMessage = surfaceErrorMessage || providerConnectionMessage
 
   const genericErrorRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!surfaceErrorMessage) {
+    if (!surfaceBannerMessage) {
       genericErrorRef.current = null
       setDismissedError(null)
       return
     }
-    if (surfaceErrorMessage !== genericErrorRef.current) {
-      genericErrorRef.current = surfaceErrorMessage
+    if (surfaceBannerMessage !== genericErrorRef.current) {
+      genericErrorRef.current = surfaceBannerMessage
       setDismissedError(null)
     }
-  }, [surfaceErrorMessage])
+  }, [surfaceBannerMessage])
 
   const showGenericError = Boolean(
-    surfaceErrorMessage && dismissedError !== surfaceErrorMessage
+    surfaceBannerMessage && dismissedError !== surfaceBannerMessage
   )
 
   // Compute accumulated token usage from all messages
@@ -1514,21 +1519,21 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         )}
         style={{ backgroundColor: 'var(--assistant-surface, var(--background))' }}
       >
-        <div className="bg-muted/40 border border-border rounded-2xl">
+        <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
               error={billingError}
               className="border-0 border-b rounded-none p-3"
             />
-          ) : showGenericError && surfaceErrorMessage && (
+          ) : showGenericError && surfaceBannerMessage && (
             <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
               <p className="text-xs leading-relaxed flex-1">
-                {surfaceErrorMessage}
+                {surfaceBannerMessage}
               </p>
               <button
                 type="button"
                 className="mt-0.5 text-destructive/70 hover:text-destructive"
-                onClick={() => setDismissedError(surfaceErrorMessage)}
+                onClick={() => setDismissedError(surfaceBannerMessage)}
                 aria-label="Dismiss error"
               >
                 <IconX className="size-4" />
@@ -1690,12 +1695,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             </div>
           </div>
         </div>
-        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
-          <p className="px-1 pt-2 text-xs text-amber-600">
-            Connect an AI provider in Workspace AI settings to use the assistant.
-          </p>
-        )}
-
         <div className="flex items-center gap-1 pt-2">
           <div
             className={cn(

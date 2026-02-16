@@ -36,12 +36,10 @@ export function useOrganizationMutations() {
   const createOrganization = useMutation(api.organizations.create)
   const inviteMember = useMutation(api.invitations.create)
   const revokeInvitation = useMutation(api.invitations.revoke)
-  const acceptInvitation = useMutation(api.invitations.accept)
 
   return {
     createOrganization,
     inviteMember,
     revokeInvitation,
-    acceptInvitation,
   }
 }

@@ -3,6 +3,23 @@ import { v } from "convex/values"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function pickCanonicalUser<T extends { updatedAt?: number; createdAt: number; _id: unknown }>(
+  users: T[]
+): T | null {
+  if (users.length === 0) return null
+  return [...users].sort((a, b) => {
+    const updateDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+    if (updateDelta !== 0) return updateDelta
+    const createdDelta = b.createdAt - a.createdAt
+    if (createdDelta !== 0) return createdDelta
+    return String(a._id).localeCompare(String(b._id))
+  })[0]
+}
+
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
     throw new Error("AI_GATEWAY_SECRET is not configured")
@@ -23,19 +40,31 @@ export const syncFromWorkOS = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const normalizedEmail = normalizeEmail(args.email)
 
-    // Check if user already exists by WorkOS ID
-    let existingUser = await ctx.db
+    // Check if user already exists by WorkOS ID.
+    const existingByWorkosId = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    let existingUser = pickCanonicalUser(existingByWorkosId)
 
-    // If not found by WorkOS ID, check by email (handles WorkOS user recreation)
+    // If not found by WorkOS ID, check by normalized email (handles WorkOS user recreation).
     if (!existingUser) {
-      existingUser = await ctx.db
+      const existingByNormalizedEmail = await ctx.db
+        .query("users")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+        .collect()
+      existingUser = pickCanonicalUser(existingByNormalizedEmail)
+    }
+
+    // Safety fallback for pre-normalized rows.
+    if (!existingUser) {
+      const existingByEmail = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", args.email))
-        .first()
+        .collect()
+      existingUser = pickCanonicalUser(existingByEmail)
     }
 
     if (existingUser) {
@@ -43,6 +72,7 @@ export const syncFromWorkOS = mutation({
       await ctx.db.patch(existingUser._id, {
         workosId: args.workosId,
         email: args.email,
+        normalizedEmail,
         firstName: args.firstName,
         lastName: args.lastName,
         profileImageUrl: args.profileImageUrl,
@@ -56,6 +86,7 @@ export const syncFromWorkOS = mutation({
     const userId = await ctx.db.insert("users", {
       workosId: args.workosId,
       email: args.email,
+      normalizedEmail,
       firstName: args.firstName,
       lastName: args.lastName,
       profileImageUrl: args.profileImageUrl,
@@ -72,10 +103,11 @@ export const syncFromWorkOS = mutation({
 export const getByWorkosId = query({
   args: { workosId: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
+    const users = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    const user = pickCanonicalUser(users)
 
     if (!user) return null
     return user
@@ -91,10 +123,11 @@ export const getByWorkosIdForServer = query({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
-    const user = await ctx.db
+    const users = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    const user = pickCanonicalUser(users)
 
     if (!user) return null
     return user
@@ -105,13 +138,23 @@ export const getByWorkosIdForServer = query({
 export const getByEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
+    const normalizedEmail = normalizeEmail(args.email)
+    const byNormalizedEmail = await ctx.db
+      .query("users")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+      .collect()
+    const user = pickCanonicalUser(byNormalizedEmail)
+
+    if (user) return user
+
+    const byEmail = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first()
+      .collect()
+    const fallback = pickCanonicalUser(byEmail)
 
-    if (!user) return null
-    return user
+    if (!fallback) return null
+    return fallback
   },
 })
 
@@ -193,11 +236,18 @@ export const getWithOrganizations = query({
       })
     )
 
+    const dedupedByOrg = new Map<string, NonNullable<(typeof organizations)[number]>>()
+    for (const org of organizations) {
+      if (!org) continue
+      const existing = dedupedByOrg.get(String(org._id))
+      if (!existing || (org.updatedAt || 0) >= (existing.updatedAt || 0)) {
+        dedupedByOrg.set(String(org._id), org)
+      }
+    }
+
     return {
       ...user,
-      organizations: organizations
-        .filter((org): org is NonNullable<typeof org> => org !== null)
-        .map((org) => org),
+      organizations: [...dedupedByOrg.values()],
     }
   },
 })

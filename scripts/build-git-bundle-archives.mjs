@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,7 +27,61 @@ function run(command, args, cwd = rootDir) {
   })
   return {
     ok: result.status === 0,
+    stdout: result.stdout ?? '',
     stderr: result.stderr ?? result.error?.message ?? '',
+  }
+}
+
+function isCI() {
+  return process.env.CI === 'true'
+}
+
+function resolveCodesignIdentity() {
+  const explicitIdentity = (process.env.COZEA_CODESIGN_IDENTITY ?? process.env.CSC_NAME ?? '').trim()
+  if (explicitIdentity) return explicitIdentity
+
+  const lookup = run('security', ['find-identity', '-v', '-p', 'codesigning'])
+  if (!lookup.ok) return ''
+
+  const developerIdLine = lookup.stdout
+    .split('\n')
+    .find((line) => line.includes('Developer ID Application:'))
+  if (!developerIdLine) return ''
+
+  const identityMatch = developerIdLine.match(/"([^"]+)"/)
+  return identityMatch?.[1] ?? ''
+}
+
+function isMachO(filePath) {
+  const probe = run('file', ['-b', filePath])
+  if (!probe.ok) return false
+  return /Mach-O/i.test(probe.stdout)
+}
+
+async function collectFiles(rootDir) {
+  const files = []
+  const queue = [rootDir]
+  while (queue.length > 0) {
+    const current = queue.pop()
+    const entries = await readdir(current, { withFileTypes: true })
+    for (const entry of entries) {
+      const entryPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        queue.push(entryPath)
+        continue
+      }
+      if (entry.isFile()) {
+        files.push(entryPath)
+      }
+    }
+  }
+  return files
+}
+
+function signBinary(filePath, identity) {
+  const result = run('codesign', ['--force', '--sign', identity, '--timestamp', '--options', 'runtime', filePath])
+  if (!result.ok) {
+    throw new Error(`Failed to sign ${filePath}: ${result.stderr.trim()}`)
   }
 }
 
@@ -93,6 +147,33 @@ async function validateTargetBinary(target) {
   }
 }
 
+async function signDarwinTargetBinaries(target) {
+  if (process.platform !== 'darwin' || target.platform !== 'darwin') return
+
+  const identity = resolveCodesignIdentity()
+  if (!identity) {
+    if (isCI()) {
+      throw new Error(
+        `No Developer ID codesigning identity available while building bundled git archive for ${target.id}`
+      )
+    }
+    log(`No Developer ID identity found; skipping codesign pass for ${target.id}`)
+    return
+  }
+
+  const targetDir = path.join(bundledGitRoot, target.id)
+  const files = await collectFiles(targetDir)
+  let signedCount = 0
+
+  for (const filePath of files) {
+    if (!isMachO(filePath)) continue
+    signBinary(filePath, identity)
+    signedCount += 1
+  }
+
+  log(`Signed ${signedCount} Mach-O binaries for ${target.id}`)
+}
+
 async function archiveTarget(target) {
   const targetDir = path.join(bundledGitRoot, target.id)
   const archivePath = path.join(archiveRoot, `git-bundle-${target.id}.tar.gz`)
@@ -116,6 +197,7 @@ async function main() {
 
   for (const target of selectedTargets) {
     await validateTargetBinary(target)
+    await signDarwinTargetBinaries(target)
     await archiveTarget(target)
   }
 }

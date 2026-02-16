@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
@@ -37,6 +37,7 @@ const Storage = lazy(() => import('./pages/settings/Storage').then(m => ({ defau
 const Tooling = lazy(() => import('./pages/settings/Tooling').then(m => ({ default: m.Tooling })))
 const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })))
 const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })))
+const WorkspaceSelect = lazy(() => import('./pages/WorkspaceSelect').then(m => ({ default: m.WorkspaceSelect })))
 import { TooltipProvider } from './components/ui/tooltip'
 
 
@@ -87,7 +88,8 @@ function ElectronNavigationBridge() {
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
+  const { isAuthenticated, isLoading, needsOnboarding, workspaceSelectionRequired } = useAuth()
+  const location = useLocation()
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
@@ -116,6 +118,12 @@ function AppContent() {
 
   if (needsOnboarding) {
     return <Onboarding />
+  }
+
+  const isWorkspaceSelectRoute = location.pathname === '/workspaces/select'
+  const isInviteRoute = location.pathname.startsWith('/invite/')
+  if (workspaceSelectionRequired && !isWorkspaceSelectRoute && !isInviteRoute) {
+    return <Navigate to="/workspaces/select" replace />
   }
 
   return (
@@ -153,6 +161,7 @@ function AppContent() {
         <Route path="/teams/roles" element={<Roles />} />
 
         {/* Workspace Settings */}
+        <Route path="/workspaces/select" element={<WorkspaceSelect />} />
         <Route path="/workspace/general" element={<General />} />
         <Route path="/workspace/billing" element={<Billing />} />
         <Route path="/workspace/ai" element={<AI />} />
