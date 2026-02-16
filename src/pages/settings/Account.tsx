@@ -27,7 +27,6 @@ import {
   Bell,
   AlertTriangle,
   Trash2,
-  Loader2,
   Upload,
 } from 'lucide-react'
 
@@ -88,20 +87,7 @@ export function Account() {
     }
   }
 
-  // Loading state
-  if (profile === undefined) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const isProfileLoading = profile === undefined
 
   return (
     <DashboardLayout
@@ -110,6 +96,12 @@ export function Account() {
       breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
     >
       <div className="max-w-2xl space-y-8 px-6 pt-6">
+        {isProfileLoading && (
+          <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+            Loading account profile...
+          </div>
+        )}
+
         {/* Profile Summary */}
         <div>
           <h3 className="text-base font-medium mb-1">Profile</h3>
@@ -223,6 +215,7 @@ export function Account() {
               <Switch
                 checked={notificationPrefs.emailNotifications}
                 onCheckedChange={(checked) => handleNotificationToggle('emailNotifications', checked)}
+                disabled={isProfileLoading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -238,6 +231,7 @@ export function Account() {
               <Switch
                 checked={notificationPrefs.pushNotifications}
                 onCheckedChange={(checked) => handleNotificationToggle('pushNotifications', checked)}
+                disabled={isProfileLoading}
               />
             </div>
           </div>

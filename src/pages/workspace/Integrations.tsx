@@ -31,7 +31,7 @@ import type {
   IntegrationCategory,
   IntegrationCredentials,
 } from '@/lib/integrations/types'
-import { Plus, Loader2, Plug } from 'lucide-react'
+import { Plus, Plug } from 'lucide-react'
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 
@@ -176,31 +176,28 @@ export function Integrations() {
       breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
-      {/* Loading state */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : !hasFilteredIntegrations ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <p className="text-muted-foreground">
+      <div className="space-y-8">
+        {isLoading && (
+          <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+            Loading integrations...
+          </div>
+        )}
+
+        {!isLoading && !hasFilteredIntegrations ? (
+          <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
             {filter === 'connected'
               ? 'No integrations connected yet.'
               : filter === 'disconnected'
                 ? 'All integrations are connected!'
                 : 'No integrations available.'}
-          </p>
-        </div>
-      ) : (
-        /* Category sections */
-        <div className="space-y-8">
-          {categories.map((category) => {
+          </div>
+        ) : (
+          categories.map((category) => {
             const categoryIntegrations = filterIntegrations(groupedIntegrations[category])
             if (categoryIntegrations.length === 0) return null
 
             return (
               <div key={category}>
-                {/* Category header */}
                 <div className="mb-4">
                   <h2 className="text-lg font-semibold">{CATEGORY_INFO[category].label}</h2>
                   <p className="text-sm text-muted-foreground">
@@ -208,7 +205,6 @@ export function Integrations() {
                   </p>
                 </div>
 
-                {/* Integration cards grid */}
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {categoryIntegrations.map((integration) => {
                     const connected = getConnectedIntegration(integration.id)
@@ -220,7 +216,6 @@ export function Integrations() {
                         key={integration.id}
                         className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 flex flex-col"
                       >
-                        {/* Top: icon, name, description */}
                         <div className="flex items-start gap-3 p-4">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50">
                             <IntegrationIcon provider={integration.id} size="lg" />
@@ -233,10 +228,8 @@ export function Integrations() {
                           </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="h-px bg-transparent" />
 
-                        {/* Bottom: buttons and toggle */}
                         <div className="flex items-center justify-between px-4 py-3">
                           <div className="flex items-center gap-2">
                             <Button
@@ -269,7 +262,6 @@ export function Integrations() {
                       </div>
                     )
                   })}
-                  {/* Empty placeholder cards to fill the row */}
                   {Array.from({
                     length: (3 - (categoryIntegrations.length % 3)) % 3,
                   }).map((_, i) => (
@@ -281,9 +273,9 @@ export function Integrations() {
                 </div>
               </div>
             )
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
       {/* Connect dialog */}
       <IntegrationConnectDialog

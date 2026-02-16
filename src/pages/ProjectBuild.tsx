@@ -17,7 +17,6 @@ import {
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 import {
-  Loader2,
   Monitor,
   MonitorOff,
 } from 'lucide-react'
@@ -828,44 +827,8 @@ export function ProjectBuild() {
     }
   }
 
-  // Loading state
-  if (project === undefined) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[
-          { label: 'Projects', href: '/projects' },
-          { label: 'Loading...' },
-        ]}
-      >
-        <div className="h-full flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  // Project not found
-  if (project === null) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[
-          { label: 'Projects', href: '/projects' },
-          { label: 'Not Found' },
-        ]}
-      >
-        <div className="h-full flex flex-col items-center justify-center gap-4">
-          <div className="text-foreground text-lg">Project not found</div>
-          <Button variant="outline" onClick={() => navigate('/projects')}>
-            Back to Projects
-          </Button>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const isProjectLoading = project === undefined
+  const isProjectMissing = project === null
 
   return (
     <DashboardLayout
@@ -873,10 +836,10 @@ export function ProjectBuild() {
       onLogout={logout}
       breadcrumbs={[
         { label: 'Projects', href: '/projects' },
-        { label: project.name },
-        { label: 'Build' },
+        { label: isProjectLoading ? 'Loading...' : isProjectMissing || !project ? 'Not Found' : project.name },
+        ...(isProjectLoading || isProjectMissing || !project ? [] : [{ label: 'Build' }]),
       ]}
-      header={(
+      header={!isProjectLoading && !isProjectMissing ? (
         <Button
           variant="outline"
           size="sm"
@@ -895,11 +858,23 @@ export function ProjectBuild() {
             </>
           )}
         </Button>
-      )}
+      ) : undefined}
       headerContentInsetClassName="pt-11"
       contentMode="fixed"
     >
-      <div className="h-full flex flex-col overflow-hidden">
+      {isProjectLoading ? (
+        <div className="h-full flex items-center justify-center text-muted-foreground">
+          Loading project...
+        </div>
+      ) : isProjectMissing || !project ? (
+        <div className="h-full flex flex-col items-center justify-center gap-4">
+          <div className="text-foreground text-lg">Project not found</div>
+          <Button variant="outline" onClick={() => navigate('/projects')}>
+            Back to Projects
+          </Button>
+        </div>
+      ) : (
+        <div className="h-full flex flex-col overflow-hidden">
         {/* Progress Bar - Pulling (Moved from header) */}
         {isPulling && (
           <div className="px-6 py-4 border-b">
@@ -1021,7 +996,8 @@ export function ProjectBuild() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

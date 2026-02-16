@@ -34,7 +34,6 @@ import {
   SelectValue,
 } from '../../components/ui/select'
 import {
-  Loader2,
   ExternalLink,
   CheckCircle2,
   XCircle,
@@ -292,6 +291,8 @@ export function Billing() {
 
   const memberCount = usageLimits?.seats.current ?? members?.length ?? 0
   const memberLimit = usageLimits?.seats.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 2 : currentPlan === 'max' ? 10 : -1)
+  const visibleMembers = (members ?? []).slice(0, 5)
+  const overflowMembers = Math.max((members?.length ?? 0) - 5, 0)
 
   const projectCurrent = usageLimits?.projects.current ?? 0
   const projectLimit = usageLimits?.projects.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 5 : currentPlan === 'max' ? 20 : -1)
@@ -390,20 +391,7 @@ export function Billing() {
   const urlParams = new URLSearchParams(window.location.search)
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
-
-  if (!convexOrg) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const isWorkspaceLoading = !convexOrg
 
   const currentPlanIndex = plans.findIndex((p) => p.id === currentPlan)
 
@@ -429,6 +417,15 @@ export function Billing() {
           <AlertTitle className="text-amber-500">Checkout Canceled</AlertTitle>
           <AlertDescription>
             Your checkout was canceled. No charges were made.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isWorkspaceLoading && (
+        <Alert className="mb-6">
+          <AlertTitle>Loading billing details</AlertTitle>
+          <AlertDescription>
+            Workspace billing profile is still loading. Cached values remain visible.
           </AlertDescription>
         </Alert>
       )}
@@ -491,30 +488,41 @@ export function Billing() {
               </div>
             </div>
 
-            {members && members.length > 0 && (
-              <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit">
-                <div className="flex -space-x-2">
-                  {members.slice(0, 5).map((member) => {
-                    const displayName = member.user?.firstName
-                      ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
-                      : member.user?.email
+            <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit min-h-10">
+              <div className="flex -space-x-2">
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const memberSlot = visibleMembers[index]
+                  if (!memberSlot) {
                     return (
-                      <Avatar key={member._id} className="ring-background ring-2">
-                        <AvatarImage src={member.user?.profileImageUrl} alt={displayName} />
-                        <AvatarFallback className="text-xs">
-                          {(displayName || '?').slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
+                      <Avatar key={`placeholder-${index}`} className="ring-background ring-2 opacity-55">
+                        <AvatarFallback className="text-xs text-muted-foreground">--</AvatarFallback>
                       </Avatar>
                     )
-                  })}
-                </div>
-                {members.length > 5 && (
-                  <span className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-full bg-transparent px-2 text-xs">
-                    +{members.length - 5}
-                  </span>
-                )}
+                  }
+
+                  const displayName = memberSlot.user?.firstName
+                    ? `${memberSlot.user.firstName} ${memberSlot.user.lastName || ''}`.trim()
+                    : memberSlot.user?.email
+
+                  return (
+                    <Avatar key={memberSlot._id} className="ring-background ring-2">
+                      <AvatarImage src={memberSlot.user?.profileImageUrl} alt={displayName} />
+                      <AvatarFallback className="text-xs">
+                        {(displayName || '?').slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  )
+                })}
               </div>
-            )}
+              <span
+                className={[
+                  'flex items-center justify-center rounded-full bg-transparent px-2 text-xs min-w-[2.25rem]',
+                  overflowMembers > 0 ? 'text-muted-foreground hover:text-foreground' : 'text-transparent select-none',
+                ].join(' ')}
+              >
+                {overflowMembers > 0 ? `+${overflowMembers}` : '--'}
+              </span>
+            </div>
 
             <p className="text-xs text-muted-foreground">
               AI tokens are tracked for visibility only. AI provider charges are billed directly by each connected provider account.

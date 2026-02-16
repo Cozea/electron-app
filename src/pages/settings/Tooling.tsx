@@ -230,167 +230,176 @@ export function Tooling() {
           )}
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-6 text-sm text-muted-foreground">
+        {isLoading && (
+          <div className="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading tooling status...
           </div>
-        ) : error ? (
+        )}
+        {error && (
           <div className="rounded-2xl bg-destructive/10 px-4 py-4 text-sm text-destructive">
             {error}
           </div>
-        ) : (
-          <>
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Framework Families Installed</h3>
-              </div>
-              {installedFamilies.length === 0 ? (
-                <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
-                  No framework families are installed yet on this device.
-                </div>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {installedFamilies.map((family) => (
-                    <div key={family.id} className="rounded-2xl bg-secondary/60 px-4 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">{family.name}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
-                        </div>
-                        <Badge variant="secondary">Installed</Badge>
-                      </div>
-                      <p className="mt-3 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Examples:</span>{' '}
-                        {family.examples.join(', ')}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Requires:</span>{' '}
-                        {requiredRuntimeSummary(family)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <HardDrive className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Framework Families Not Installed</h3>
-              </div>
-              {missingFamilies.length === 0 ? (
-                <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
-                  All supported framework families are currently available in this Cozea instance.
-                </div>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {missingFamilies.map((family) => (
-                    <div key={family.id} className="rounded-2xl bg-secondary/40 px-4 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">{family.name}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
-                        </div>
-                        <Badge variant="secondary" className="opacity-80">Missing</Badge>
-                      </div>
-                      <p className="mt-3 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Requires:</span>{' '}
-                        {requiredRuntimeSummary(family)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Runtime Inventory</h3>
-              </div>
-              <div className="overflow-hidden rounded-2xl bg-secondary/60">
-                <div className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
-                  <span>Runtime</span>
-                  <span>Source</span>
-                  <span>Path</span>
-                  <span className="text-right">Action</span>
-                </div>
-                <div className="space-y-1 px-1 pb-1">
-                  {runtimeStatus?.runtimes.map((runtime) => (
-                    (() => {
-                      const installJob = runtimeInstallJobs[runtime.runtime]
-                      const isInstalling = installJob?.status === 'installing'
-                      const installSucceeded = installJob?.status === 'success'
-                      const installFailed = installJob?.status === 'error'
-                      const isInstalled = runtime.available || installSucceeded
-
-                      return (
-                        <div
-                          key={runtime.runtime}
-                          className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
-                        >
-                          <span className="font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
-                          <span className="text-muted-foreground">{sourceLabel(runtime.source)}</span>
-                          <span
-                            className="truncate text-muted-foreground"
-                            title={runtime.executablePath || installJob?.error || runtime.error || ''}
-                          >
-                            {runtime.executablePath || installJob?.error || runtime.error || '—'}
-                          </span>
-                          <div className="flex items-center justify-end">
-                            {isInstalled ? (
-                              <Badge variant="secondary" className="gap-1 rounded-full">
-                                <Check className="h-3 w-3" />
-                                Installed
-                              </Badge>
-                            ) : (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className={cn(
-                                  'h-8 w-8 rounded-full',
-                                  installFailed && 'text-amber-500 hover:text-amber-500'
-                                )}
-                                title={
-                                  isInstalling
-                                    ? 'Downloading runtime...'
-                                    : installFailed
-                                      ? 'Retry download'
-                                      : 'Download runtime'
-                                }
-                                aria-label={
-                                  isInstalling
-                                    ? 'Downloading runtime'
-                                    : installFailed
-                                      ? 'Retry runtime download'
-                                      : 'Download runtime'
-                                }
-                                disabled={isInstalling}
-                                onClick={() => {
-                                  void ensureRuntimeInstalled(runtime.runtime)
-                                }}
-                              >
-                                {isInstalling ? (
-                                  <RuntimeProgressRing progress={installJob?.progress ?? 0} />
-                                ) : installFailed ? (
-                                  <AlertTriangle className="h-4 w-4" />
-                                ) : (
-                                  <Download className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })()
-                  ))}
-                </div>
-              </div>
-            </section>
-          </>
         )}
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Terminal className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Framework Families Installed</h3>
+          </div>
+          {installedFamilies.length === 0 ? (
+            <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
+              {isLoading && !runtimeStatus
+                ? 'Loading framework support...'
+                : 'No framework families are installed yet on this device.'}
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {installedFamilies.map((family) => (
+                <div key={family.id} className="rounded-2xl bg-secondary/60 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{family.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
+                    </div>
+                    <Badge variant="secondary">Installed</Badge>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Examples:</span>{' '}
+                    {family.examples.join(', ')}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Requires:</span>{' '}
+                    {requiredRuntimeSummary(family)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <HardDrive className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Framework Families Not Installed</h3>
+          </div>
+          {missingFamilies.length === 0 ? (
+            <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
+              {isLoading && !runtimeStatus
+                ? 'Loading framework support...'
+                : 'All supported framework families are currently available in this Cozea instance.'}
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {missingFamilies.map((family) => (
+                <div key={family.id} className="rounded-2xl bg-secondary/40 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{family.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
+                    </div>
+                    <Badge variant="secondary" className="opacity-80">Missing</Badge>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Requires:</span>{' '}
+                    {requiredRuntimeSummary(family)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Terminal className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Runtime Inventory</h3>
+          </div>
+          <div className="overflow-hidden rounded-2xl bg-secondary/60">
+            <div className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
+              <span>Runtime</span>
+              <span>Source</span>
+              <span>Path</span>
+              <span className="text-right">Action</span>
+            </div>
+            <div className="space-y-1 px-1 pb-1">
+              {(runtimeStatus?.runtimes ?? []).length > 0 ? (
+                (runtimeStatus?.runtimes ?? []).map((runtime) => (
+                  (() => {
+                    const installJob = runtimeInstallJobs[runtime.runtime]
+                    const isInstalling = installJob?.status === 'installing'
+                    const installSucceeded = installJob?.status === 'success'
+                    const installFailed = installJob?.status === 'error'
+                    const isInstalled = runtime.available || installSucceeded
+
+                    return (
+                      <div
+                        key={runtime.runtime}
+                        className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
+                      >
+                        <span className="font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
+                        <span className="text-muted-foreground">{sourceLabel(runtime.source)}</span>
+                        <span
+                          className="truncate text-muted-foreground"
+                          title={runtime.executablePath || installJob?.error || runtime.error || ''}
+                        >
+                          {runtime.executablePath || installJob?.error || runtime.error || '—'}
+                        </span>
+                        <div className="flex items-center justify-end">
+                          {isInstalled ? (
+                            <Badge variant="secondary" className="gap-1 rounded-full">
+                              <Check className="h-3 w-3" />
+                              Installed
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={cn(
+                                'h-8 w-8 rounded-full',
+                                installFailed && 'text-amber-500 hover:text-amber-500'
+                              )}
+                              title={
+                                isInstalling
+                                  ? 'Downloading runtime...'
+                                  : installFailed
+                                    ? 'Retry download'
+                                    : 'Download runtime'
+                              }
+                              aria-label={
+                                isInstalling
+                                  ? 'Downloading runtime'
+                                  : installFailed
+                                    ? 'Retry runtime download'
+                                    : 'Download runtime'
+                              }
+                              disabled={isInstalling}
+                              onClick={() => {
+                                void ensureRuntimeInstalled(runtime.runtime)
+                              }}
+                            >
+                              {isInstalling ? (
+                                <RuntimeProgressRing progress={installJob?.progress ?? 0} />
+                              ) : installFailed ? (
+                                <AlertTriangle className="h-4 w-4" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-muted-foreground">
+                  {isLoading ? 'Loading runtime inventory...' : 'No runtime data available.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </DashboardLayout>
   )
