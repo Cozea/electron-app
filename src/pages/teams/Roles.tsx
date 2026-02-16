@@ -1,7 +1,8 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
+import { Card, CardContent, CardTitle } from '../../components/ui/card'
+import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import {
   Table,
@@ -11,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table'
-import { Check, X, Shield, Users, Eye } from 'lucide-react'
+import { Check, X, Shield, Users, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const roles = [
   {
@@ -75,6 +76,11 @@ const permissions = [
 
 export function Roles() {
   const { user, logout } = useAuth()
+  const [currentPage, setCurrentPage] = useState(1)
+  const categoriesPerPage = 2
+  const totalPages = Math.max(1, Math.ceil(permissions.length / categoriesPerPage))
+  const startIndex = (currentPage - 1) * categoriesPerPage
+  const paginatedPermissions = permissions.slice(startIndex, startIndex + categoriesPerPage)
 
   return (
     <DashboardLayout
@@ -82,64 +88,59 @@ export function Roles() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Teams' }, { label: 'Roles' }]}
     >
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Roles & Permissions</h1>
-        <p className="text-muted-foreground">
-          Understand what each role can do in your workspace
-        </p>
-      </div>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Roles & Permissions</h1>
+          <p className="text-muted-foreground">
+            Understand what each role can do in your workspace
+          </p>
+        </div>
 
-      {/* Role Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        {roles.map((role) => {
-          const Icon = role.icon
-          return (
-            <Card key={role.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${role.color}`}>
-                    <Icon className="h-5 w-5" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {roles.map((role) => {
+            const Icon = role.icon
+            return (
+              <Card key={role.id} className="border-none shadow-none bg-transparent">
+                <CardContent className="pt-0">
+                  <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${role.color}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <CardTitle className="text-base">{role.name}</CardTitle>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{role.description}</p>
                   </div>
-                  <CardTitle className="text-base">{role.name}</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>{role.description}</CardDescription>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
 
-      {/* Permissions Matrix */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Permissions Matrix</CardTitle>
-          <CardDescription>
+        <div>
+          <CardTitle className="mb-1">Permissions Matrix</CardTitle>
+          <p className="mb-4 text-sm text-muted-foreground">
             Detailed breakdown of what each role can access and modify
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
           <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
             <Table className="[&_th]:px-4 [&_td]:px-4">
               <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                 <TableRow>
                   <TableHead className="w-[300px]">Permission</TableHead>
                   <TableHead className="text-center">
-                    <Badge variant="outline" className={roles[0].color}>
+                    <Badge variant="secondary" className={roles[0].color}>
                       <Shield className="h-3 w-3 mr-1" />
                       Admin
                     </Badge>
                   </TableHead>
                   <TableHead className="text-center">
-                    <Badge variant="outline" className={roles[1].color}>
+                    <Badge variant="secondary" className={roles[1].color}>
                       <Users className="h-3 w-3 mr-1" />
                       Member
                     </Badge>
                   </TableHead>
                   <TableHead className="text-center">
-                    <Badge variant="outline" className={roles[2].color}>
+                    <Badge variant="secondary" className={roles[2].color}>
                       <Eye className="h-3 w-3 mr-1" />
                       Viewer
                     </Badge>
@@ -147,7 +148,7 @@ export function Roles() {
                 </TableRow>
               </TableHeader>
               <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                {permissions.map((category) => (
+                {paginatedPermissions.map((category) => (
                   <Fragment key={category.category}>
                     <TableRow>
                       <TableCell colSpan={4} className="bg-secondary/60 font-medium">
@@ -185,8 +186,39 @@ export function Roles() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Showing category groups {startIndex + 1}-{Math.min(startIndex + categoriesPerPage, permissions.length)} of {permissions.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground px-2">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </DashboardLayout>
   )
 }

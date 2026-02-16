@@ -488,14 +488,14 @@ export function Billing() {
               </div>
             </div>
 
-            <div className="flex items-center rounded-full p-1 shadow-sm bg-background w-fit min-h-10">
+            <div className="flex items-center rounded-full p-1 bg-secondary/80 dark:bg-secondary/40 w-fit min-h-10">
               <div className="flex -space-x-2">
                 {Array.from({ length: 5 }).map((_, index) => {
                   const memberSlot = visibleMembers[index]
                   if (!memberSlot) {
                     return (
-                      <Avatar key={`placeholder-${index}`} className="ring-background ring-2 opacity-55">
-                        <AvatarFallback className="text-xs text-muted-foreground">--</AvatarFallback>
+                      <Avatar key={`placeholder-${index}`} className="ring-secondary/80 dark:ring-secondary/40 ring-2">
+                        <AvatarFallback className="text-xs font-medium bg-zinc-200 dark:bg-zinc-700 text-foreground">--</AvatarFallback>
                       </Avatar>
                     )
                   }
@@ -505,9 +505,9 @@ export function Billing() {
                     : memberSlot.user?.email
 
                   return (
-                    <Avatar key={memberSlot._id} className="ring-background ring-2">
+                    <Avatar key={memberSlot._id} className="ring-secondary/80 dark:ring-secondary/40 ring-2">
                       <AvatarImage src={memberSlot.user?.profileImageUrl} alt={displayName} />
-                      <AvatarFallback className="text-xs">
+                      <AvatarFallback className="text-xs font-medium bg-zinc-200 dark:bg-zinc-700 text-foreground">
                         {(displayName || '?').slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -516,8 +516,10 @@ export function Billing() {
               </div>
               <span
                 className={[
-                  'flex items-center justify-center rounded-full bg-transparent px-2 text-xs min-w-[2.25rem]',
-                  overflowMembers > 0 ? 'text-muted-foreground hover:text-foreground' : 'text-transparent select-none',
+                  'flex items-center justify-center rounded-full bg-transparent text-xs transition-all',
+                  overflowMembers > 0
+                    ? 'ml-1 px-2 min-w-[2rem] text-muted-foreground hover:text-foreground'
+                    : 'w-0 min-w-0 px-0 overflow-hidden text-transparent select-none',
                 ].join(' ')}
               >
                 {overflowMembers > 0 ? `+${overflowMembers}` : '--'}
