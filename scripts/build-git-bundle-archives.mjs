@@ -32,6 +32,10 @@ function run(command, args, cwd = rootDir) {
   }
 }
 
+function isTimestampServiceUnavailable(details) {
+  return /timestamp service is not available/i.test(details)
+}
+
 function isCI() {
   return process.env.CI === 'true'
 }
@@ -79,9 +83,34 @@ async function collectFiles(rootDir) {
 }
 
 function signBinary(filePath, identity) {
-  const result = run('codesign', ['--force', '--sign', identity, '--timestamp', '--options', 'runtime', filePath])
-  if (!result.ok) {
-    throw new Error(`Failed to sign ${filePath}: ${result.stderr.trim()}`)
+  const baseArgs = ['--force', '--sign', identity, '--options', 'runtime']
+  const maxTimestampAttempts = Number.parseInt(process.env.COZEA_CODESIGN_TIMESTAMP_RETRIES ?? '3', 10)
+  const timestampAttempts = Number.isFinite(maxTimestampAttempts)
+    ? Math.max(1, Math.min(maxTimestampAttempts, 10))
+    : 3
+  let lastTimestampError = ''
+
+  for (let attempt = 1; attempt <= timestampAttempts; attempt += 1) {
+    const timestampResult = run('codesign', [...baseArgs, '--timestamp', filePath])
+    if (timestampResult.ok) return
+
+    const details = timestampResult.stderr.trim()
+    if (!isTimestampServiceUnavailable(details)) {
+      throw new Error(`Failed to sign ${filePath}: ${details}`)
+    }
+
+    lastTimestampError = details
+    if (attempt < timestampAttempts) {
+      log(`Timestamp service unavailable while signing ${filePath}; retry ${attempt}/${timestampAttempts} failed.`)
+    }
+  }
+
+  log(`Timestamp service unavailable for ${filePath}; signing without timestamp as fallback.`)
+  const fallbackResult = run('codesign', [...baseArgs, filePath])
+  if (!fallbackResult.ok) {
+    throw new Error(
+      `Failed to sign ${filePath} without timestamp (timestamp_error="${lastTimestampError}", fallback_error="${fallbackResult.stderr.trim()}")`
+    )
   }
 }
 

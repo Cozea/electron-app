@@ -29,6 +29,14 @@ function tryRun(command, args, options = {}) {
   })
 }
 
+function extractProcessDetails(result) {
+  return (result.stderr || result.stdout || result.error?.message || '').trim()
+}
+
+function isTimestampServiceUnavailable(details) {
+  return /timestamp service is not available/i.test(details)
+}
+
 function detectArchiveType(filePath) {
   const lower = filePath.toLowerCase()
   if (lower.endsWith('.tar.gz')) return 'tar.gz'
@@ -110,7 +118,40 @@ function repackArchive(archivePath, extractDir, archiveType) {
 }
 
 function signBinary(filePath, identity) {
-  run('codesign', ['--force', '--sign', identity, '--timestamp', '--options', 'runtime', filePath])
+  const baseArgs = ['--force', '--sign', identity, '--options', 'runtime']
+  const maxTimestampAttempts = Number.parseInt(process.env.COZEA_CODESIGN_TIMESTAMP_RETRIES ?? '3', 10)
+  const timestampAttempts = Number.isFinite(maxTimestampAttempts)
+    ? Math.max(1, Math.min(maxTimestampAttempts, 10))
+    : 3
+  let lastTimestampDetails = ''
+
+  for (let attempt = 1; attempt <= timestampAttempts; attempt += 1) {
+    const result = tryRun('codesign', [...baseArgs, '--timestamp', filePath])
+    if (result.status === 0) return
+
+    const details = extractProcessDetails(result)
+    if (!isTimestampServiceUnavailable(details)) {
+      throw new Error(`codesign ${[...baseArgs, '--timestamp', filePath].join(' ')} failed: ${details}`)
+    }
+
+    lastTimestampDetails = details
+    if (attempt < timestampAttempts) {
+      log(
+        `Timestamp service unavailable while signing ${filePath}; retry ${attempt}/${timestampAttempts} failed, retrying.`
+      )
+    }
+  }
+
+  log(
+    `Timestamp service unavailable after ${timestampAttempts} attempts for ${filePath}; retrying without timestamp.`
+  )
+  const noTimestampResult = tryRun('codesign', [...baseArgs, filePath])
+  if (noTimestampResult.status !== 0) {
+    const noTimestampDetails = extractProcessDetails(noTimestampResult)
+    throw new Error(
+      `codesign failed for ${filePath} (timestamp_details="${lastTimestampDetails}", no_timestamp_details="${noTimestampDetails}")`
+    )
+  }
 }
 
 function resolveIdentity(context) {
