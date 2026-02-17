@@ -265,12 +265,28 @@ jobs:
           found_dmg=0
           while IFS= read -r dmg_path; do
             found_dmg=1
-            echo "Attempting to staple and validate DMG: ${dmg_path}"
-            if xcrun stapler staple "${dmg_path}" && xcrun stapler validate "${dmg_path}"; then
-              echo "DMG staple validation succeeded: ${dmg_path}"
-            else
-              echo "::warning::DMG staple validation failed for ${dmg_path}; continuing because notarized .app verification is the release gate."
+            echo "Submitting DMG for notarization: ${dmg_path}"
+            dmg_notarized=0
+            for dmg_attempt in 1 2; do
+              if xcrun notarytool submit "${dmg_path}" --apple-id "${APPLE_ID}" --password "${APPLE_APP_SPECIFIC_PASSWORD}" --team-id "${APPLE_TEAM_ID}" --wait; then
+                dmg_notarized=1
+                break
+              fi
+              if [[ "${dmg_attempt}" -lt 2 ]]; then
+                echo "::warning::DMG notarization attempt ${dmg_attempt}/2 failed for ${dmg_path}; retrying once."
+                sleep 20
+              fi
+            done
+
+            if [[ "${dmg_notarized}" -ne 1 ]]; then
+              echo "::error::DMG notarization failed for ${dmg_path}"
+              exit 1
             fi
+
+            echo "Stapling DMG: ${dmg_path}"
+            xcrun stapler staple "${dmg_path}"
+            xcrun stapler validate "${dmg_path}"
+            echo "DMG staple validation succeeded: ${dmg_path}"
           done < <(find dist -maxdepth 5 -type f -name '*.dmg')
 
           if [[ "${found_dmg}" -eq 0 ]]; then
