@@ -218,7 +218,9 @@ jobs:
             codesign --verify --deep --strict --verbose=2 "${app_path}"
             spctl --assess --type execute --verbose=4 "${app_path}"
             xcrun stapler validate "${app_path}"
-          done < <(find dist -maxdepth 5 -type d -name '*.app')
+          # Validate only distributable top-level app bundles; helper apps nested in
+          # Contents/Frameworks do not carry their own stapled ticket.
+          done < <(find dist -maxdepth 4 -type d -name '*.app' ! -path '*/Contents/Frameworks/*')
 
           if [[ "${found_app}" -eq 0 ]]; then
             echo "::error::No .app bundle found in dist/ for signature/notarization verification."
