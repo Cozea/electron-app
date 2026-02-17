@@ -50,7 +50,6 @@ export default defineConfig({
       lib: {
         entry: {
           index: 'electron/main.ts',
-          fileOpsWorker: 'electron/workers/fileOpsWorker.ts',
         },
       },
       rollupOptions: {

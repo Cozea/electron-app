@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -46,6 +46,9 @@ import {
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
+import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -72,6 +75,7 @@ interface ProjectListRowProps {
     userId?: Id<'users'>
     creatorName?: string
     creatorImage?: string
+    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -88,7 +92,13 @@ function formatRelativeTime(timestamp: number): string {
     return 'now'
 }
 
-export function ProjectListRow({ project, userId, creatorName, creatorImage }: ProjectListRowProps) {
+export function ProjectListRow({
+  project,
+  userId,
+  creatorName,
+  creatorImage,
+  onRequireSyncReview,
+}: ProjectListRowProps) {
   const navigate = useViewTransitionNavigate()
   const rowRef = useRef<HTMLTableRowElement | null>(null)
   const isInViewport = useInViewportOnce(rowRef)
@@ -104,12 +114,6 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
   const [showMenu, setShowMenu] = useState(false)
   const [localPath, setLocalPath] = useState<string | null>(null)
   const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
-
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
 
   useEffect(() => {
         if (!shouldHydrateSyncStatus) return
@@ -206,33 +210,57 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
+            let gateSyncScreen = false
+            let openCheck: ProjectOpenReplicaCheckResult | null = null
+
+            // Full ReplicaGit check before opening, same as card view.
+            if (effectiveLocalPath) {
+                setSyncMessage('Checking sync status...')
+                const check = await runProjectOpenReplicaCheck({
+                    projectId: String(project._id),
                     projectPath: effectiveLocalPath,
-                    debugSource: `project-list-row:${project._id}`,
                 })
+                openCheck = check
+                gateSyncScreen = check.gateSyncScreen
 
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
+                if (check.totalChanges > 0) {
                     setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
+                    if (check.hasConflicts) {
+                        setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
+                    } else if (check.likelyLocalWipe) {
+                        setSyncMessage('Local files missing. Opening recovery...')
+                    } else {
+                        setSyncMessage('Sync changes detected')
+                    }
                 }
             }
 
             // Navigate to project
             setSyncState('ready')
-            setSyncMessage('Opening project...')
+            setSyncMessage(gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
             // Small delay to show the ready state
             setTimeout(() => {
+                if (gateSyncScreen && effectiveLocalPath && onRequireSyncReview && openCheck) {
+                    void onRequireSyncReview({
+                        projectId: project._id,
+                        projectSlug: project.slug,
+                        projectName: project.name,
+                        projectTemplate: project.template ?? undefined,
+                        projectPath: effectiveLocalPath,
+                        check: openCheck,
+                    })
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    return
+                }
+
                 navigate(`/projects/${project.slug}`, {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        gateSyncScreen,
                     },
                 })
             }, 200)
@@ -248,7 +276,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
+    }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 
@@ -348,14 +376,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
-                                preloadProjectDetailPage()
-                                navigate(`/projects/${project.slug}`, {
-                                    state: {
-                                        projectSlug: project.slug,
-                                        projectName: project.name,
-                                        projectTemplate: project.template ?? undefined,
-                                    },
-                                })
+                                void handleRowClick()
                             }}>
                                 Open Project
                             </DropdownMenuItem>

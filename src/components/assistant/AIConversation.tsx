@@ -87,6 +87,7 @@ import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 
 // AI Elements components
 import {
@@ -176,6 +177,7 @@ type ChatHookResult = ReturnType<typeof useChat>
 const defaultModels: ModelOption[] = DEFAULT_MODELS
 
 export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
+  const navigate = useViewTransitionNavigate()
   const {
     triggerClearChat,
     pendingPrompt,
@@ -1119,7 +1121,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
   const providerConnectionMessage =
     !hasSelectableModel && providerStatusLoaded && providerAuthAvailable
-      ? 'Connect an AI provider in Workspace AI settings to use the assistant.'
+      ? 'Connect an AI provider'
       : null
   const surfaceBannerMessage = surfaceErrorMessage || providerConnectionMessage
 
@@ -1139,6 +1141,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const showGenericError = Boolean(
     surfaceBannerMessage && dismissedError !== surfaceBannerMessage
   )
+  const showProviderSettingsCta = surfaceBannerMessage === providerConnectionMessage
 
   // Compute accumulated token usage from all messages
   // This follows the official AI SDK pattern of reading custom data-* parts from the stream
@@ -1527,18 +1530,30 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
               className="border-0 border-b rounded-none p-3"
             />
           ) : showGenericError && surfaceBannerMessage && (
-            <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
-              <p className="text-xs leading-relaxed flex-1">
+            <div className="flex items-center gap-2 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">
+              <p className="text-xs leading-5 flex-1 min-w-0">
                 {surfaceBannerMessage}
               </p>
-              <button
-                type="button"
-                className="mt-0.5 text-destructive/70 hover:text-destructive"
-                onClick={() => setDismissedError(surfaceBannerMessage)}
-                aria-label="Dismiss error"
-              >
-                <IconX className="size-4" />
-              </button>
+              {showProviderSettingsCta ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 border-destructive/40 bg-transparent px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => navigate('/workspace/ai')}
+                >
+                  AI Settings
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  className="mt-0.5 text-destructive/70 hover:text-destructive"
+                  onClick={() => setDismissedError(surfaceBannerMessage)}
+                  aria-label="Dismiss error"
+                >
+                  <IconX className="size-4" />
+                </button>
+              )}
             </div>
           )}
           <input

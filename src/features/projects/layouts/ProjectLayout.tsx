@@ -141,6 +141,11 @@ interface ProjectLayoutProps {
     breadcrumbs?: { label: string; href?: string }[]
 }
 
+interface ProjectLayoutLocationState {
+    gateSyncScreen?: boolean
+    skipInitialSyncCheck?: boolean
+}
+
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
@@ -148,6 +153,9 @@ export function ProjectLayout({
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
+    const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
+    const shouldGateSyncScreen = locationState?.gateSyncScreen === true
+    const shouldSkipInitialSyncCheck = locationState?.skipInitialSyncCheck === true
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -521,6 +529,7 @@ export function ProjectLayout({
     // Determine if we can enable sync (need project + user data + resolved path decision)
     const hasSyncIdentities = Boolean(project?._id && convexUser?._id && slug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
+    const shouldHoldWorkspaceForSyncGate = shouldGateSyncScreen && !canSync
     const {
         header: headerContent,
         breadcrumbAddon,
@@ -596,6 +605,17 @@ export function ProjectLayout({
                 isBusy={isResolvingPath}
                 error={pathResolutionError}
             />
+        )
+    }
+
+    if (shouldHoldWorkspaceForSyncGate) {
+        return (
+            <div className="h-screen w-screen bg-background flex items-center justify-center">
+                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Preparing sync review...
+                </div>
+            </div>
         )
     }
 
@@ -682,6 +702,8 @@ export function ProjectLayout({
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
                 onFilesChanged={handleRefreshFiles}
+                initialGateSyncScreen={shouldGateSyncScreen}
+                skipInitialSyncCheck={shouldSkipInitialSyncCheck}
             >
                 {layoutContent}
             </ProjectSyncProvider>
