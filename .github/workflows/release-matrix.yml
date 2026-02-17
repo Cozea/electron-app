@@ -23,13 +23,13 @@ jobs:
         include:
           - name: macOS arm64
             artifact_name: macos-arm64
-            runs_on: macos-14
+            runs_on: macos-15-xlarge
             electron_target: mac
             arch: arm64
             bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
-            runs_on: macos-15-intel
+            runs_on: macos-15-large
             electron_target: mac
             arch: x64
             bundle_targets: darwin-x64
