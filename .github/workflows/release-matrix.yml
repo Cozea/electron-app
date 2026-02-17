@@ -268,12 +268,44 @@ jobs:
             echo "Submitting DMG for notarization: ${dmg_path}"
             dmg_notarized=0
             for dmg_attempt in 1 2; do
-              if xcrun notarytool submit "${dmg_path}" --apple-id "${APPLE_ID}" --password "${APPLE_APP_SPECIFIC_PASSWORD}" --team-id "${APPLE_TEAM_ID}" --wait; then
+              set +e
+              dmg_submit_output="$(
+                xcrun notarytool submit "${dmg_path}" \
+                  --apple-id "${APPLE_ID}" \
+                  --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+                  --team-id "${APPLE_TEAM_ID}" \
+                  --wait \
+                  --output-format json 2>&1
+              )"
+              dmg_submit_exit=$?
+              set -e
+
+              printf '%s\n' "${dmg_submit_output}"
+
+              dmg_submission_id="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/.*"id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+              if [[ -z "${dmg_submission_id}" ]]; then
+                dmg_submission_id="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/^[[:space:]]*id:[[:space:]]*([0-9a-fA-F-]{36}).*/\1/p' | head -n1)"
+              fi
+
+              dmg_submission_status="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/.*"status"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+              if [[ -z "${dmg_submission_status}" ]]; then
+                dmg_submission_status="$(printf '%s\n' "${dmg_submit_output}" | sed -nE 's/^[[:space:]]*status:[[:space:]]*([A-Za-z]+).*/\1/p' | head -n1)"
+              fi
+
+              dmg_submission_status_lc="$(printf '%s' "${dmg_submission_status}" | tr '[:upper:]' '[:lower:]')"
+              if [[ "${dmg_submit_exit}" -eq 0 && "${dmg_submission_status_lc}" == "accepted" ]]; then
                 dmg_notarized=1
                 break
               fi
+
+              if [[ -n "${dmg_submission_id}" ]]; then
+                echo "::group::DMG notary log ${dmg_submission_id}"
+                xcrun notarytool log "${dmg_submission_id}" --apple-id "${APPLE_ID}" --password "${APPLE_APP_SPECIFIC_PASSWORD}" --team-id "${APPLE_TEAM_ID}" || true
+                echo "::endgroup::"
+              fi
+
               if [[ "${dmg_attempt}" -lt 2 ]]; then
-                echo "::warning::DMG notarization attempt ${dmg_attempt}/2 failed for ${dmg_path}; retrying once."
+                echo "::warning::DMG notarization attempt ${dmg_attempt}/2 failed for ${dmg_path} (exit=${dmg_submit_exit}, status=${dmg_submission_status:-unknown}, id=${dmg_submission_id:-none}); retrying once."
                 sleep 20
               fi
             done
