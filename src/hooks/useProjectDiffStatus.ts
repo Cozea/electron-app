@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { isBootstrapOnlyLocalPath } from "@/features/projects/lib/localWorkspaceState"
 import {
   useProjectDiffStore,
   type ProjectDiffStatus,
@@ -176,9 +177,23 @@ export function useProjectDiffStatus({
         if (!plan.success) {
           throw new Error(plan.error || "Failed to compute replica plan")
         }
+        const nonBootstrapUploadCount = plan.uploads.filter(
+          (entry) => !isBootstrapOnlyLocalPath(entry.path)
+        ).length
+        const localWipeLikePattern =
+          nonBootstrapUploadCount === 0 &&
+          plan.localDeletes.length === 0 &&
+          plan.conflicts.length === 0 &&
+          (plan.autoMerged?.length ?? 0) === 0 &&
+          plan.cloudDeletes.length > 0
+
         setDiffStatus(projectSlug, {
-          downloads: plan.downloads.length,
-          uploads: plan.uploads.length + plan.cloudDeletes.length,
+          downloads: localWipeLikePattern
+            ? plan.downloads.length + plan.cloudDeletes.length
+            : plan.downloads.length,
+          uploads: localWipeLikePattern
+            ? 0
+            : nonBootstrapUploadCount + plan.cloudDeletes.length,
           conflicts: plan.conflicts.length,
         })
         hasLoggedReplicaAuthCooldown = false

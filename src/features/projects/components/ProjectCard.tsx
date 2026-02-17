@@ -37,6 +37,9 @@ import { Input } from '@/components/ui/input'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
+import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary {
@@ -66,6 +69,7 @@ interface ProjectSummary {
 interface ProjectCardProps {
     project: ProjectSummary
     userId?: Id<'users'>
+    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -116,7 +120,7 @@ type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
-export function ProjectCard({ project, userId }: ProjectCardProps) {
+export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCardProps) {
   const navigate = useViewTransitionNavigate()
   const cardRef = useRef<HTMLDivElement | null>(null)
   const isInViewport = useInViewportOnce(cardRef)
@@ -130,12 +134,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
   const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [localPath, setLocalPath] = useState<string | null>(null)
-
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
 
     // Get preview image URL
     const previewImageUrl = useQuery(
@@ -219,34 +217,57 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
+            let gateSyncScreen = false
+            let openCheck: ProjectOpenReplicaCheckResult | null = null
+
+            // Pre-open sync plan check so we can gate project UI when conflicts
+            // or local-wipe recovery is needed.
+            if (effectiveLocalPath) {
+                setSyncMessage('Checking sync status...')
+                const check = await runProjectOpenReplicaCheck({
+                    projectId: String(project._id),
                     projectPath: effectiveLocalPath,
-                    debugSource: `project-card:${project._id}`,
                 })
+                openCheck = check
+                gateSyncScreen = check.gateSyncScreen
 
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
+                if (check.totalChanges > 0) {
                     setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
-                    // Let the actual sync happen after navigation
+                    if (check.hasConflicts) {
+                        setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
+                    } else if (check.likelyLocalWipe) {
+                        setSyncMessage('Local files missing. Opening recovery...')
+                    } else {
+                        setSyncMessage('Sync changes detected')
+                    }
                 }
             }
 
-            // Navigate to project
             setSyncState('ready')
-            setSyncMessage('Opening project...')
+            setSyncMessage(gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
             // Small delay to show the ready state
             setTimeout(() => {
+                if (gateSyncScreen && effectiveLocalPath && onRequireSyncReview && openCheck) {
+                    void onRequireSyncReview({
+                        projectId: project._id,
+                        projectSlug: project.slug,
+                        projectName: project.name,
+                        projectTemplate: project.template ?? undefined,
+                        projectPath: effectiveLocalPath,
+                        check: openCheck,
+                    })
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    return
+                }
+
                 navigate(`/projects/${project.slug}`, {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        gateSyncScreen,
                     },
                 })
             }, 200)
@@ -262,7 +283,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
+    }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const handleDelete = async () => {
         if (!userId || deleteConfirmName !== project.name) return
@@ -426,14 +447,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                 <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={(e) => {
                                     e.stopPropagation()
-                                    preloadProjectDetailPage()
-                                    navigate(`/projects/${project.slug}`, {
-                                        state: {
-                                            projectSlug: project.slug,
-                                            projectName: project.name,
-                                            projectTemplate: project.template ?? undefined,
-                                        },
-                                    })
+                                    void handleCardClick()
                                 }}>
                                     Open Project
                                 </DropdownMenuItem>

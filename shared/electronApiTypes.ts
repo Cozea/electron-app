@@ -447,7 +447,7 @@ export interface GitReplicaBootstrapResult {
   success: boolean
   canonicalRef?: string
   headCommit?: string
-  seededFrom?: 'canonical' | 'projectFiles' | 'local' | 'empty'
+  seededFrom?: 'canonical' | 'local' | 'empty'
   error?: string
 }
 
@@ -826,8 +826,6 @@ export interface ElectronAPI {
   }
   sync: {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
-      Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
     writeFiles: (options: {
       projectPath: string
       files: SyncWriteFile[]

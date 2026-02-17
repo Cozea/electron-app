@@ -237,8 +237,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   sync: {
     hashFile: (options: { filePath: string }) => ipcRenderer.invoke('sync:hashFile', options),
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
-      ipcRenderer.invoke('sync:getLocalManifest', options),
     writeFiles: (options: {
       projectPath: string
       files: SyncWriteFile[]
