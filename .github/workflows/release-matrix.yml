@@ -203,7 +203,42 @@ jobs:
         run: npm run typecheck
 
       - name: Build and Package
-        run: npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          max_attempts=2
+          success=0
+          for attempt in $(seq 1 "${max_attempts}"); do
+            log_file="$(mktemp)"
+            echo "Build/package attempt ${attempt}/${max_attempts}"
+
+            if npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }} 2>&1 | tee "${log_file}"; then
+              success=1
+              break
+            fi
+
+            is_last_attempt=0
+            if [[ "${attempt}" -ge "${max_attempts}" ]]; then
+              is_last_attempt=1
+            fi
+
+            # Retry only transient notarization/network failures from Apple services.
+            if [[ "${is_last_attempt}" -eq 0 ]] && grep -Eqi 'NSURLErrorDomain Code=-1009|Internet connection appears to be offline|appstoreconnect\.apple\.com/notary|Failed to notarize via notarytool' "${log_file}"; then
+              echo "::warning::Transient notarization/network failure detected on attempt ${attempt}/${max_attempts}. Retrying build/package once."
+              rm -rf dist
+              sleep 20
+              continue
+            fi
+
+            echo "::error::Build/package failed on attempt ${attempt}/${max_attempts}."
+            exit 1
+          done
+
+          if [[ "${success}" -ne 1 ]]; then
+            echo "::error::Build/package did not succeed after ${max_attempts} attempts."
+            exit 1
+          fi
 
       - name: Verify macOS Signature and Notarization
         if: runner.os == 'macOS' && steps.publish_mode.outputs.mode == 'always'
