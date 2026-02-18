@@ -60,6 +60,11 @@ module.exports = {
     binaries: [...macGitBinaries, ...macRuntimeBinaries],
     target: ["dmg", "zip"],
   },
+  dmg: {
+    // Automatic DMG sizing can under-estimate large/sparse app bundles on x64,
+    // which leads to truncated app contents and notarization failures.
+    size: "4g",
+  },
   win: {
     icon: "build/icon.ico",
     target: ["nsis"],
