@@ -67,7 +67,12 @@ module.exports = {
   },
   win: {
     icon: "build/icon.ico",
-    target: ["nsis"],
+    target: [
+      {
+        target: "nsis",
+        arch: ["x64"],
+      },
+    ],
   },
   linux: {
     icon: "build/icon.png",
