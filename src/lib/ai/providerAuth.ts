@@ -3,7 +3,6 @@ import type { ProviderAuthProvider } from '@shared/electronApiTypes'
 export function inferProviderFromModelId(modelId: string): ProviderAuthProvider | null {
   const normalized = modelId.toLowerCase()
   if (normalized.includes('gpt')) return 'openai'
-  if (normalized.includes('claude')) return 'anthropic'
   if (normalized.includes('gemini')) return 'google'
   return null
 }

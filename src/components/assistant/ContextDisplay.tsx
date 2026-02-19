@@ -32,19 +32,6 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "o1-mini": 128_000,
   "o1-preview": 128_000,
   "o3-mini": 200_000,
-  // Anthropic - Claude 4.5 series (200K context)
-  "claude-haiku-4-5": 200_000,
-  "claude-sonnet-4-5": 200_000,
-  "claude-opus-4-5": 200_000,
-  "claude-opus-4-6": 200_000,
-  // Anthropic - Legacy models
-  "claude-3-5-sonnet-20241022": 200_000,
-  "claude-3-5-haiku-20241022": 200_000,
-  "claude-3-opus-20240229": 200_000,
-  "claude-3-sonnet-20240229": 200_000,
-  "claude-3-haiku-20240307": 200_000,
-  "claude-sonnet-4-20250514": 200_000,
-  "claude-opus-4-20250514": 200_000,
   // Google - Gemini 3 series (1M context)
   "gemini-3-flash": 1_000_000,
   "gemini-3-pro": 1_000_000,

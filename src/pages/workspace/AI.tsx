@@ -42,7 +42,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-type Provider = 'anthropic' | 'openai' | 'google'
+type Provider = 'openai' | 'google'
+const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'google', 'xai'] as const
 
 interface LocalProviderStatus {
   provider: Provider
@@ -56,15 +57,10 @@ interface LocalProviderStatus {
 }
 
 const providerInfo: Record<Provider, { name: string; description: string; models: number }> = {
-  anthropic: {
-    name: 'Anthropic',
-    description: 'Claude Pro/Max local OAuth',
-    models: 3,
-  },
   openai: {
     name: 'OpenAI',
     description: 'ChatGPT Plus/Pro local OAuth',
-    models: 2,
+    models: 5,
   },
   google: {
     name: 'Google AI',
@@ -76,12 +72,6 @@ const providerInfo: Record<Provider, { name: string; description: string; models
 // Provider icons
 const ProviderIcon = ({ provider, className }: { provider: Provider; className?: string }) => {
   switch (provider) {
-    case 'anthropic':
-      return (
-        <svg viewBox="0 0 256 176" className={className} fill="currentColor">
-          <path d="M147.487 0 256 176h-51.627l-22.593-38.652H123.51L147.487 0ZM66.41 0h46.592l77.166 176h-52.142L66.409 0ZM0 176 66.41 0l27.024 61.746L41.1 176H0Z" />
-        </svg>
-      )
     case 'openai':
       return (
         <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -150,7 +140,6 @@ export function AI() {
   const [isSaving, setIsSaving] = useState<Provider | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [providerStatuses, setProviderStatuses] = useState<Record<Provider, LocalProviderStatus>>({
-    anthropic: { provider: 'anthropic', connected: false },
     openai: { provider: 'openai', connected: false },
     google: { provider: 'google', connected: false },
   })
@@ -167,7 +156,6 @@ export function AI() {
     try {
       const statuses = await window.electronAPI.providerAuth.getStatus()
       const next: Record<Provider, LocalProviderStatus> = {
-        anthropic: { provider: 'anthropic', connected: false },
         openai: { provider: 'openai', connected: false },
         google: { provider: 'google', connected: false },
       }
@@ -518,7 +506,7 @@ export function AI() {
                         userId: convexUserId,
                         aiSettings: {
                           ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
+                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
                           allowWebSearch: checked,
                         },
                       })
@@ -547,7 +535,7 @@ export function AI() {
                         userId: convexUserId,
                         aiSettings: {
                           ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
+                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
                           allowProviderTools: checked,
                         },
                       })
@@ -576,7 +564,7 @@ export function AI() {
                         userId: convexUserId,
                         aiSettings: {
                           ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
+                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
                           maxReasoningDepth: value as 'low' | 'medium' | 'high',
                         },
                       })
@@ -626,7 +614,7 @@ export function AI() {
                 </Select>
               </div>
             )}
-            {(selectedProvider === 'anthropic' || selectedProvider === 'google') && manualAuthUrl && (
+            {selectedProvider === 'google' && manualAuthUrl && (
               <div className="space-y-2 rounded-md border p-3">
                 <p className="text-sm font-medium">Manual code fallback</p>
                 <p className="text-xs text-muted-foreground">
@@ -637,7 +625,7 @@ export function AI() {
                   size="sm"
                   onClick={() => void window.electronAPI.shell.openExternal(manualAuthUrl)}
                 >
-                  Open {selectedProvider === 'google' ? 'Google' : 'Anthropic'} Auth Page
+                  Open Google Auth Page
                 </Button>
                 <input
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -681,16 +669,12 @@ export function AI() {
                   void connectProvider('google', googleMethod)
                   return
                 }
-                if (selectedProvider === 'anthropic' && manualAuthUrl && manualCode.trim()) {
-                  void connectProvider('anthropic', 'manual_code', manualCode.trim())
-                  return
-                }
                 void connectProvider(selectedProvider, 'oauth')
               }}
               disabled={
                 !selectedProvider ||
                 isSaving === selectedProvider ||
-                ((selectedProvider === 'anthropic' || selectedProvider === 'google') &&
+                (selectedProvider === 'google' &&
                   !!manualAuthUrl &&
                   manualCode.trim().length === 0)
               }

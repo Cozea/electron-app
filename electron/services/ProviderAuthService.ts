@@ -112,6 +112,12 @@ const GOOGLE_GEMINI_CODE_ASSIST_HEADERS = {
   'X-Goog-Api-Client': 'gl-node/22.17.0',
   'Client-Metadata': 'ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI',
 } as const
+const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'google'] as const
+const ENABLED_PROVIDER_AUTH_PROVIDER_SET = new Set<ProviderAuthProvider>(ENABLED_PROVIDER_AUTH_PROVIDERS)
+
+function isProviderEnabled(provider: ProviderAuthProvider): provider is (typeof ENABLED_PROVIDER_AUTH_PROVIDERS)[number] {
+  return ENABLED_PROVIDER_AUTH_PROVIDER_SET.has(provider)
+}
 
 interface GoogleGeminiManualAuthSession {
   verifier: string
@@ -395,7 +401,10 @@ export class ProviderAuthService {
 
   private emitStatusChanged(provider?: ProviderAuthProvider): void {
     const store = this.loadStore()
-    const providers: ProviderAuthProvider[] = provider ? [provider] : ['openai', 'anthropic', 'google']
+    const providers: ProviderAuthProvider[] = provider
+      ? (isProviderEnabled(provider) ? [provider] : [])
+      : [...ENABLED_PROVIDER_AUTH_PROVIDERS]
+    if (providers.length === 0) return
     const statuses = providers.map((id) => this.toStatus(id, store.providers[id]))
     const payload = {
       provider,
@@ -1858,14 +1867,16 @@ export class ProviderAuthService {
   async listProviders(): Promise<Array<{ provider: ProviderAuthProvider; methods: ProviderAuthMethod[] }>> {
     return [
       { provider: 'openai', methods: ['oauth', 'device'] },
-      { provider: 'anthropic', methods: ['oauth', 'manual_code'] },
       { provider: 'google', methods: ['vertex', 'gemini'] },
     ]
   }
 
   async getStatus(provider?: ProviderAuthProvider): Promise<ProviderAuthStatus[]> {
+    if (provider && !isProviderEnabled(provider)) {
+      return []
+    }
     const store = this.loadStore()
-    const providers: ProviderAuthProvider[] = provider ? [provider] : ['openai', 'anthropic', 'google']
+    const providers: ProviderAuthProvider[] = provider ? [provider] : [...ENABLED_PROVIDER_AUTH_PROVIDERS]
     return providers.map((id) => this.toStatus(id, store.providers[id]))
   }
 
@@ -1882,11 +1893,8 @@ export class ProviderAuthService {
       return this.connectOpenAiOAuth()
     }
 
-    if (params.provider === 'anthropic') {
-      return this.connectAnthropic({
-        method: params.method,
-        authorizationCode: params.authorizationCode,
-      })
+    if (!isProviderEnabled(params.provider)) {
+      return { success: false, error: 'This provider is disabled in this app build.' }
     }
 
     if (params.provider === 'google') {
@@ -1900,6 +1908,10 @@ export class ProviderAuthService {
   }
 
   async disconnect(provider: ProviderAuthProvider): Promise<ProviderAuthDisconnectResult> {
+    if (!isProviderEnabled(provider)) {
+      this.removeProviderCredential(provider)
+      return { success: true }
+    }
     if (provider === 'google') {
       this.pendingGoogleGeminiManualAuth = null
     }
@@ -1913,6 +1925,9 @@ export class ProviderAuthService {
     organizationId: string
   }): Promise<ProviderAuthRequestAuthResult> {
     void params.modelId
+    if (!isProviderEnabled(params.provider)) {
+      return { success: false, code: 'invalid', error: 'This provider is disabled in this app build.' }
+    }
 
     const store = this.loadStore()
     const current = store.providers[params.provider]

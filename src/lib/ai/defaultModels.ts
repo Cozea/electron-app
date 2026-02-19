@@ -11,14 +11,6 @@ export interface ModelOption {
 export const DEFAULT_MODELS: ModelOption[] = [
   // Fast tier
   {
-    id: 'claude-haiku-4-5',
-    name: 'Claude Haiku 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'fast',
-    providers: ['anthropic'],
-  },
-  {
     id: 'gemini-3-flash',
     name: 'Gemini 3 Flash',
     chef: 'Google',
@@ -34,14 +26,6 @@ export const DEFAULT_MODELS: ModelOption[] = [
     chefSlug: 'openai',
     tier: 'standard',
     providers: ['openai'],
-  },
-  {
-    id: 'claude-sonnet-4-5',
-    name: 'Claude Sonnet 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'standard',
-    providers: ['anthropic'],
   },
   // Powerful tier
   {
@@ -75,22 +59,6 @@ export const DEFAULT_MODELS: ModelOption[] = [
     chefSlug: 'openai',
     tier: 'powerful',
     providers: ['openai'],
-  },
-  {
-    id: 'claude-opus-4-5',
-    name: 'Claude Opus 4.5',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'powerful',
-    providers: ['anthropic'],
-  },
-  {
-    id: 'claude-opus-4-6',
-    name: 'Claude Opus 4.6',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    tier: 'powerful',
-    providers: ['anthropic'],
   },
   {
     id: 'gemini-3-pro',

@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderAuthProvider, ProviderAuthStatus } from '@shared/electronApiTypes'
 
-export type ConnectedProvider = Extract<ProviderAuthProvider, 'anthropic' | 'openai' | 'google'>
+export type ConnectedProvider = Extract<ProviderAuthProvider, 'openai' | 'google'>
 
-export const CONNECTED_PROVIDER_ORDER: ConnectedProvider[] = ['anthropic', 'openai', 'google']
+export const CONNECTED_PROVIDER_ORDER: ConnectedProvider[] = ['openai', 'google']
 
 export const isConnectedProvider = (value: string): value is ConnectedProvider =>
-  value === 'anthropic' || value === 'openai' || value === 'google'
+  value === 'openai' || value === 'google'
 
-export const CONNECTED_PROVIDER_DISPLAY_NAME: Record<ConnectedProvider, 'Anthropic' | 'OpenAI' | 'Google'> = {
-  anthropic: 'Anthropic',
+export const CONNECTED_PROVIDER_DISPLAY_NAME: Record<ConnectedProvider, 'OpenAI' | 'Google'> = {
   openai: 'OpenAI',
   google: 'Google',
 }
