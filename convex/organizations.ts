@@ -14,6 +14,8 @@ import {
 } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+const DEFAULT_ALLOWED_PROVIDERS = ["openai", "google", "xai"] as const
+type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -118,6 +120,23 @@ function assertGatewaySecret(secret: string | undefined) {
   }
 }
 
+function sanitizeAllowedProviders(
+  providers: Array<"anthropic" | "openai" | "google" | "xai"> | undefined
+): SupportedAiProvider[] {
+  const input = providers ?? [...DEFAULT_ALLOWED_PROVIDERS]
+  const sanitized: SupportedAiProvider[] = []
+  const seen = new Set<SupportedAiProvider>()
+  for (const provider of input) {
+    if (provider !== "openai" && provider !== "google" && provider !== "xai") {
+      continue
+    }
+    if (seen.has(provider)) continue
+    seen.add(provider)
+    sanitized.push(provider)
+  }
+  return sanitized.length > 0 ? sanitized : [...DEFAULT_ALLOWED_PROVIDERS]
+}
+
 // Sync organization from WorkOS
 export const syncFromWorkOS = mutation({
   args: {
@@ -143,7 +162,7 @@ export const syncFromWorkOS = mutation({
 
       if (!existingOrg.aiSettings) {
         updates.aiSettings = {
-          allowedProviders: ["anthropic", "openai", "google", "xai"],
+          allowedProviders: [...DEFAULT_ALLOWED_PROVIDERS],
           allowProviderTools: false,
           allowWebSearch: false,
           maxReasoningDepth: "high",
@@ -176,7 +195,7 @@ export const syncFromWorkOS = mutation({
       name: args.name,
       slug,
       aiSettings: {
-        allowedProviders: ["anthropic", "openai", "google", "xai"],
+        allowedProviders: [...DEFAULT_ALLOWED_PROVIDERS],
         allowProviderTools: false,
         allowWebSearch: false,
         maxReasoningDepth: "high",
@@ -527,7 +546,7 @@ export const create = mutation({
       name: args.name,
       slug: resolvedSlug,
       aiSettings: {
-        allowedProviders: ["anthropic", "openai", "google", "xai"],
+        allowedProviders: [...DEFAULT_ALLOWED_PROVIDERS],
         allowProviderTools: false,
         allowWebSearch: false,
         maxReasoningDepth: "high",
@@ -624,11 +643,14 @@ export const updateAiSettings = mutation({
     const org = await ctx.db.get(args.orgId)
     if (!org) throw new Error("Organization not found")
 
+    const sanitizedAllowedProviders = sanitizeAllowedProviders(args.aiSettings.allowedProviders)
+
     const now = Date.now()
     await ctx.db.patch(args.orgId, {
       aiSettings: {
         ...(org.aiSettings || {}),
         ...args.aiSettings,
+        allowedProviders: sanitizedAllowedProviders,
       },
       updatedAt: now,
     })
@@ -639,7 +661,10 @@ export const updateAiSettings = mutation({
       action: "ai_settings.updated",
       resourceType: "organization",
       resourceId: args.orgId,
-      metadata: args.aiSettings,
+      metadata: {
+        ...args.aiSettings,
+        allowedProviders: sanitizedAllowedProviders,
+      },
       timestamp: now,
     })
   },

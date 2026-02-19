@@ -172,7 +172,6 @@ async function updateSubscriptionHandler(
     aiSettings: {
       ...org.aiSettings,
       allowedProviders: org.aiSettings?.allowedProviders ?? [
-        "anthropic",
         "openai",
         "google",
         "xai",

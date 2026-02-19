@@ -54,17 +54,16 @@ const BUILDER_LOCAL_TOOLS = new Set([
   'apply_patch',
 ])
 
-const FALLBACK_MODEL_BY_PROVIDER: Record<'anthropic' | 'openai' | 'google', string> = {
-  anthropic: 'claude-sonnet-4-5',
+const FALLBACK_MODEL_BY_PROVIDER: Record<'openai' | 'google', string> = {
   openai: 'gpt-5.2-codex',
   google: 'gemini-3-pro',
 }
 
 function resolveFallbackModel(aiProvider?: string): string {
-  if (aiProvider === 'anthropic' || aiProvider === 'openai' || aiProvider === 'google') {
+  if (aiProvider === 'openai' || aiProvider === 'google') {
     return FALLBACK_MODEL_BY_PROVIDER[aiProvider]
   }
-  return DEFAULT_MODELS[0]?.id ?? 'claude-sonnet-4-5'
+  return DEFAULT_MODELS[0]?.id ?? 'gpt-5.2-codex'
 }
 
 // Project type from Convex
@@ -128,7 +127,7 @@ interface ToolMeta extends MessageToolMeta {
   requiresApproval: boolean
   riskLevel: 'safe' | 'moderate' | 'dangerous'
   executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
+  provider?: 'openai' | 'google'
   toolType?: 'function' | 'provider' | 'dynamic'
   providerToolId?: string
   providerToolArgs?: Record<string, unknown>
@@ -485,7 +484,7 @@ export function BuilderConversation({
     const planContext = {
       name: project.name,
       template: project.template || 'custom',
-      stack: project.stack || { backend: 'supabase', hosting: 'vercel', aiProvider: 'anthropic' },
+      stack: project.stack || { backend: 'supabase', hosting: 'vercel', aiProvider: 'openai' },
       visuals: project.visuals || { uiLibrary: 'shadcn', primaryColor: '#6366f1' },
       pages: project.generatedPlan?.pages || [],
       entities: project.generatedPlan?.entities || [],

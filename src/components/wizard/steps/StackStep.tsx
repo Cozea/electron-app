@@ -30,7 +30,7 @@ const HOSTING_OPTIONS = [
 
 const AI_PROVIDER_OPTIONS = [
   { id: 'openai', name: 'OpenAI', icon: '🤖', description: 'GPT-4 & DALL-E' },
-  { id: 'anthropic', name: 'Anthropic', icon: '🧠', description: 'Claude Sonnet/Opus' },
+  { id: 'google', name: 'Google AI', icon: '🔍', description: 'Gemini models' },
   { id: 'none', name: 'No AI', icon: '🚫', description: 'Standard application' },
   { id: 'byok', name: 'BYOK', icon: '🔑', description: 'Bring your own keys' },
 ]

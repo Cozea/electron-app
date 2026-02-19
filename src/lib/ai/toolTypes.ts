@@ -1,4 +1,4 @@
-export type AIProvider = 'anthropic' | 'openai' | 'google'
+export type AIProvider = 'openai' | 'google'
 
 export interface ToolMetaShape {
   name: string

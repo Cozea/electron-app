@@ -21,7 +21,7 @@ export type VariantId =
   | 'xhigh'
   | 'max'
 
-export type RuntimeProvider = 'anthropic' | 'openai' | 'google' | 'xai'
+export type RuntimeProvider = 'openai' | 'google' | 'xai'
 
 export interface RuntimeModelCapabilities {
   supportsExtendedThinking?: boolean
@@ -170,16 +170,6 @@ export function getSupportedVariantsForModel(
     return modelDeclaredVariants
   }
 
-  if (provider === 'anthropic') {
-    if (!capabilities.supportsExtendedThinking) {
-      return [DEFAULT_VARIANT_ID]
-    }
-    if (capabilities.supportsEffortParameter) {
-      return ['low', 'medium', 'high', 'max']
-    }
-    return ['high', 'max']
-  }
-
   if (provider === 'google') {
     if (capabilities.reasoningType === 'level') {
       return ['low', 'high']
@@ -221,7 +211,7 @@ export function normalizeVariantForModel(
   if (requested && supported.includes(requested as VariantId)) {
     return requested as VariantId
   }
-  if ((args.provider === 'google' || args.provider === 'anthropic') && supported.includes('high')) {
+  if (args.provider === 'google' && supported.includes('high')) {
     return 'high'
   }
   if (supported.includes(DEFAULT_VARIANT_ID)) {

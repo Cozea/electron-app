@@ -192,7 +192,7 @@ const DEFAULT_INTENT: WizardIntent = {
 const DEFAULT_STACK: WizardStack = {
   backend: 'supabase',
   hosting: 'vercel',
-  aiProvider: 'anthropic',
+  aiProvider: 'openai',
 }
 
 const DEFAULT_SOURCE_CONTROL: WizardSourceControl = {
