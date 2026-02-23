@@ -146,6 +146,37 @@ interface ProjectLayoutLocationState {
     skipInitialSyncCheck?: boolean
 }
 
+const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
+
+interface SidebarFullscreenSyncProps {
+    assistantPanelMode: 'closed' | 'panel' | 'fullscreen'
+}
+
+function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProps) {
+    const { isMobile, open, setOpen, setOpenMobile } = useSidebar()
+
+    useEffect(() => {
+        if (assistantPanelMode !== 'fullscreen') return
+
+        if (isMobile) {
+            setOpenMobile(false)
+            return
+        }
+
+        if (!open) return
+
+        const collapseTimer = window.setTimeout(() => {
+            setOpen(false)
+        }, FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS)
+
+        return () => {
+            window.clearTimeout(collapseTimer)
+        }
+    }, [assistantPanelMode, isMobile, open, setOpen, setOpenMobile])
+
+    return null
+}
+
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
@@ -622,6 +653,7 @@ export function ProjectLayout({
 
     const layoutContent = (
         <SidebarProvider>
+            <SidebarFullscreenSync assistantPanelMode={assistantPanelMode} />
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
                 {/* Main content */}
                 <div className="flex-1 flex min-h-0 overflow-hidden relative">
