@@ -33,10 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
 import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  Check,
 } from 'lucide-react'
 import { normalizeWorkspacePlanForPricing, type WorkspacePricingPlanId } from '@/lib/billing/planLabels'
 import { scheduleTask } from '@/lib/scheduler'
@@ -47,60 +49,129 @@ const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crossco
 
 type PlanId = WorkspacePricingPlanId
 
-interface PlanInfo {
-  id: PlanId
-  name: string
-  price: string
-  period: string
-  description: string
-  features: string[]
+interface PlanFeature {
+  text: string
+  included: boolean
 }
 
-const plans: PlanInfo[] = [
+interface StandardPlanInfo {
+  id: PlanId
+  name: string
+  description: string
+  price: string
+  period: string
+  trial?: string
+  features: PlanFeature[]
+  conclusion: string
+  buttonLabel: string
+  footerText: string
+}
+
+interface EnterprisePlanInfo {
+  id: 'team'
+  name: string
+  description: string
+  priceLabel: string
+  features: PlanFeature[]
+  buttonLabel: string
+  footerText: string
+}
+
+const standardPlans: StandardPlanInfo[] = [
   {
     id: 'free',
-    name: 'Free',
-    price: '',
+    name: 'Starter',
+    description: 'For builders testing ideas locally.',
+    price: 'Free',
     period: '',
-    description: 'Solo usage with your own connected AI provider accounts.',
     features: [
-      '1 member, 1 GB cloud storage, 1 project.',
-      'Realtime collaboration and auto-sync not included.',
+      { text: '1 user', included: true },
+      { text: 'Local-only projects', included: true },
+      { text: '25 tool integrations', included: true },
+      { text: 'Connect OpenAI, Gemini, and more', included: true },
+      { text: 'No cloud sync', included: false },
+      { text: 'No collaboration', included: false },
     ],
+    conclusion: 'Build alone. Upgrade when you\'re ready to ship with others.',
+    buttonLabel: 'Download Free',
+    footerText: 'Upgrade anytime to collaborate with your team.',
   },
   {
     id: 'pro',
-    name: 'Power Duo',
-    price: '$15',
-    period: '/month',
-    description: 'Infrastructure plan for a 2-person workspace.',
+    name: 'Founders Plan',
+    description: 'For founders who want to ship fast.',
+    price: '15 USD',
+    period: '/ month',
+    trial: '7 day free trial',
     features: [
-      'Up to 2 members, 5 GB cloud storage, up to 5 projects.',
-      'Unlimited realtime collaboration and auto sync (Git engine).',
+      { text: 'Up to 2 users', included: true },
+      { text: '5 GB cloud workspace', included: true },
+      { text: '5 shared projects', included: true },
+      { text: '25 tool integrations', included: true },
+      { text: 'Live Collaboration', included: true },
+      { text: 'Connect OpenAI, Gemini, and more', included: true },
+      { text: 'Built-in AI version control', included: true },
+      { text: 'Priority support', included: true },
     ],
+    conclusion: 'Go from idea to product without friction.',
+    buttonLabel: 'Start Free Trial',
+    footerText: 'Cancel anytime.',
   },
   {
     id: 'max',
-    name: 'Winning Team',
-    price: '$49',
-    period: '/month',
-    description: 'Scaled collaborative workspace for teams up to 10.',
+    name: 'Team Scale',
+    description: 'For teams building at serious speed.',
+    price: '49 USD',
+    period: '/ month',
+    trial: '7 day free trial',
     features: [
-      'Up to 10 members, 30 GB cloud storage, up to 20 projects.',
-      'Unlimited realtime collaboration, auto sync, and premium support.',
+      { text: 'Up to 10 users', included: true },
+      { text: '30 GB cloud workspace', included: true },
+      { text: '20 shared projects', included: true },
+      { text: '25+ tool integrations', included: true },
+      { text: 'Advanced collaboration', included: true },
+      { text: 'Connect any AI provider available', included: true },
+      { text: 'Advanced AI traffic control', included: true },
+      { text: 'Priority support', included: true },
     ],
+    conclusion: 'Ship faster than teams 10x your size.',
+    buttonLabel: 'Start Free Trial',
+    footerText: 'Upgrade anytime as your team grows.',
   },
-  {
-    id: 'team',
-    name: 'Custom',
-    price: 'Custom',
-    period: '',
-    description: 'Custom limits and infrastructure terms for larger workspaces.',
-    features: [
-      'Custom member, storage, and project limits.',
-      'Priority onboarding and support SLA.',
-    ],
-  },
+]
+
+/** Badge shown on a plan card based on current user plan. Starter: Founders = Most Popular; Founders: Team Scale = Recommended; Team Scale: Team Scale = Keep Going. */
+function getPlanBadge(planId: PlanId, currentPlan: PlanId): string | null {
+  if (currentPlan === 'free' && planId === 'pro') return 'Most Popular'
+  if (currentPlan === 'pro' && planId === 'max') return 'Recommended'
+  if (currentPlan === 'max' && planId === 'max') return 'Keep Going'
+  return null
+}
+
+const enterprisePlan: EnterprisePlanInfo = {
+  id: 'team',
+  name: 'Custom Enterprise',
+  description: 'Built for scale, security, and flexibility.',
+  priceLabel: 'Custom Pricing',
+  features: [
+    { text: 'Custom number of users', included: true },
+    { text: 'Flexible storage options', included: true },
+    { text: 'Dedicated onboarding', included: true },
+    { text: 'Priority support', included: true },
+    { text: 'Advanced security options', included: true },
+    { text: 'Private deployment options', included: true },
+    { text: 'Connect OpenAI, Gemini, or custom models', included: true },
+  ],
+  buttonLabel: 'Contact Sales',
+  footerText: "We tailor pricing to your team's needs.",
+}
+
+/** Legacy shape for current plan display and upgrade logic */
+const plans: { id: PlanId; name: string; price: string; period: string; description: string }[] = [
+  { id: 'free', name: 'Starter', price: '', period: '', description: standardPlans[0].description },
+  { id: 'pro', name: 'Founders Plan', price: '15 USD', period: '/ month', description: standardPlans[1].description },
+  { id: 'max', name: 'Team Scale', price: '49 USD', period: '/ month', description: standardPlans[2].description },
+  { id: 'team', name: 'Custom Enterprise', price: 'Custom', period: '', description: enterprisePlan.description },
 ]
 
 interface StripeInvoice {
@@ -222,10 +293,7 @@ export function Billing() {
   const chartConfig: ChartConfig = {
     tokens: {
       label: 'Tokens',
-      theme: {
-        light: 'hsl(217 91% 60%)',
-        dark: 'hsl(217 91% 70%)',
-      },
+      color: 'var(--chart-1)',
     },
   }
 
@@ -350,7 +418,7 @@ export function Billing() {
     }
 
     if (planId === 'team') {
-      await window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Custom%20Workspace%20Plan')
+      await window.electronAPI.shell.openExternal('https://cozea.app/contact?topic=custom-pricing')
       return
     }
 
@@ -494,8 +562,8 @@ export function Billing() {
                   const memberSlot = visibleMembers[index]
                   if (!memberSlot) {
                     return (
-                      <Avatar key={`placeholder-${index}`} className="ring-secondary/80 dark:ring-secondary/40 ring-2">
-                        <AvatarFallback className="text-xs font-medium bg-zinc-200 dark:bg-zinc-700 text-foreground">--</AvatarFallback>
+                      <Avatar key={`placeholder-${index}`} className="ring-2 ring-border shrink-0">
+                        <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">--</AvatarFallback>
                       </Avatar>
                     )
                   }
@@ -505,9 +573,9 @@ export function Billing() {
                     : memberSlot.user?.email
 
                   return (
-                    <Avatar key={memberSlot._id} className="ring-secondary/80 dark:ring-secondary/40 ring-2">
+                    <Avatar key={memberSlot._id} className="ring-2 ring-border shrink-0">
                       <AvatarImage src={memberSlot.user?.profileImageUrl} alt={displayName} />
-                      <AvatarFallback className="text-xs font-medium bg-zinc-200 dark:bg-zinc-700 text-foreground">
+                      <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">
                         {(displayName || '?').slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -532,6 +600,64 @@ export function Billing() {
           </CardContent>
         </Card>
 
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Invoice</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {stripeInvoices.length > 0 ? (
+                    stripeInvoices.map((invoice) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell>{formatDate(invoice.date)}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {invoice.description}
+                        </TableCell>
+                        <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
+                            className="capitalize"
+                          >
+                            {invoice.status || 'unknown'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {invoice.hostedInvoiceUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1"
+                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                            >
+                              View
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
+                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
         <div
           className={`grid transition-all duration-300 ease-in-out ${showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
             }`}
@@ -545,57 +671,100 @@ export function Billing() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {plans.map((plan, index) => {
-                    const isCurrent = plan.id === currentPlan
-                    const isDowngrade = plans.findIndex((p) => p.id === plan.id) < currentPlanIndex
+                <Tabs defaultValue="standard" className="w-full">
+                  <TabsList className="mb-6 h-10 rounded-lg bg-muted p-1 w-fit">
+                    <TabsTrigger value="standard" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                      Standard Plans
+                    </TabsTrigger>
+                    <TabsTrigger value="enterprise" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                      Enterprise
+                    </TabsTrigger>
+                  </TabsList>
 
-                    return (
+                  <TabsContent value="standard" className="mt-0">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {standardPlans.map((plan, index) => {
+                        const isCurrent = plan.id === currentPlan
+                        const isDowngrade = plans.findIndex((p) => p.id === plan.id) < currentPlanIndex
+                        const badge = getPlanBadge(plan.id, currentPlan)
+                        return (
+                          <div
+                            key={plan.id}
+                            className={`relative flex flex-col rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ${showUpgradeOptions ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'} ${badge ? 'ring-2 ring-primary/20' : ''}`}
+                            style={{
+                              transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(standardPlans.length - 1 - index) * 50}ms`,
+                            }}
+                          >
+                            {badge && (
+                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                                {badge}
+                              </div>
+                            )}
+                            <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
+                            <div className="mt-4 flex items-baseline gap-1">
+                              <span className="text-3xl font-bold text-foreground">{plan.price}</span>
+                              {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
+                            </div>
+                            {plan.trial && (
+                              <p className="mt-1 text-sm text-green-600 dark:text-green-400">{plan.trial}</p>
+                            )}
+                            <ul className="mt-5 flex-1 space-y-2.5">
+                              {plan.features.map((f, i) => (
+                                <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  {f.included ? (
+                                    <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                                  )}
+                                  <span>{f.text}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-4 text-sm text-muted-foreground">{plan.conclusion}</p>
+                            <Button
+                              className="mt-5 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                              disabled={isCurrent || isUpgrading}
+                              onClick={() => handleUpgrade(plan.id)}
+                            >
+                              {isCurrent ? 'Current Plan' : isDowngrade ? 'Downgrade' : plan.buttonLabel}
+                            </Button>
+                            <p className="mt-2 text-center text-xs text-muted-foreground">{plan.footerText}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="enterprise" className="mt-0">
+                    <div className="flex justify-center">
                       <div
-                        key={plan.id}
-                        className={`relative rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5 flex flex-col transition-all duration-300 shadow-none ${showUpgradeOptions
-                          ? 'opacity-100 translate-y-0'
-                          : 'opacity-0 -translate-y-4'
-                          }`}
-                        style={{
-                          transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(plans.length - 1 - index) * 50}ms`,
-                        }}
+                        className={`relative flex w-full max-w-md flex-col rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ${showUpgradeOptions ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
+                        style={{ transitionDelay: showUpgradeOptions ? '0ms' : '0ms' }}
                       >
-                        <div className="flex items-baseline gap-2 mb-3">
-                          <span className="text-lg font-semibold">{plan.name}</span>
-                          {(plan.price || plan.period) && (
-                            <span className="text-muted-foreground">
-                              {plan.price}{plan.period}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          {plan.description}
-                        </p>
-                        <div className="text-xs text-muted-foreground space-y-1.5 mb-4 flex-1">
-                          {plan.features.map((feature) => (
-                            <p key={feature}>{feature}</p>
+                        <h3 className="text-lg font-semibold text-foreground">{enterprisePlan.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{enterprisePlan.description}</p>
+                        <p className="mt-4 text-3xl font-bold text-foreground">{enterprisePlan.priceLabel}</p>
+                        <ul className="mt-5 flex-1 space-y-2.5">
+                          {enterprisePlan.features.map((f, i) => (
+                            <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                              <span>{f.text}</span>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-fit bg-foreground/14 hover:bg-foreground/18 disabled:opacity-100 disabled:bg-foreground/14"
-                          disabled={isCurrent || isUpgrading}
-                          onClick={() => handleUpgrade(plan.id)}
+                          className="mt-6 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          disabled={isUpgrading}
+                          onClick={() => handleUpgrade(enterprisePlan.id)}
                         >
-                          {isCurrent
-                            ? 'Current Plan'
-                            : plan.id === 'team'
-                              ? 'Contact Sales'
-                              : isDowngrade
-                                ? 'Downgrade'
-                                : `Upgrade to ${plan.name}`}
+                          {enterprisePlan.buttonLabel}
                         </Button>
+                        <p className="mt-2 text-center text-xs text-muted-foreground">{enterprisePlan.footerText}</p>
                       </div>
-                    )
-                  })}
-                </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </div>
@@ -681,70 +850,6 @@ export function Billing() {
                 <p className="text-sm text-muted-foreground">All workspace AI requests</p>
                 <p className="text-3xl font-bold mt-1">{chartTotals.requests.toLocaleString()}</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader className="pt-0">
-            <CardTitle>Invoice History</CardTitle>
-            <CardDescription>
-              View and download your past invoices
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-              <Table className="[&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Invoice</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {stripeInvoices.length > 0 ? (
-                    stripeInvoices.map((invoice) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell>{formatDate(invoice.date)}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {invoice.description}
-                        </TableCell>
-                        <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
-                            className="capitalize"
-                          >
-                            {invoice.status || 'unknown'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {invoice.hostedInvoiceUrl && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 gap-1"
-                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
-                            >
-                              View
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
-                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
             </div>
           </CardContent>
         </Card>

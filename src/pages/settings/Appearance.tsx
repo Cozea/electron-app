@@ -29,9 +29,9 @@ const themes: { value: Theme; label: string; colors: { bg: string; card: string;
     colors: { bg: '#2a1520', card: '#321a24', primary: '#d64074', muted: '#3d2430' }
   },
   {
-    value: 'sunny',
-    label: 'Sunny',
-    colors: { bg: '#fffef5', card: '#fffbeb', primary: '#e6b800', muted: '#fef3c7' }
+    value: 'clay',
+    label: 'Clay',
+    colors: { bg: '#1c1814', card: '#252019', primary: '#c4956a', muted: '#2e2822' }
   },
   {
     value: 'forest',

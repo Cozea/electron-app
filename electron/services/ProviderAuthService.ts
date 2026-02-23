@@ -308,6 +308,180 @@ function parseGoogleGeminiCallbackInput(input: string): { code?: string; state?:
   return { code: trimmed }
 }
 
+/** Escape for use in HTML text content to avoid XSS */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/** Logo data URL for OAuth callback page (white logo on dark background = logo_dark_mode.png per Logo.tsx). Cached after first read. */
+let oauthCallbackLogoDataUrl: string | null = null
+function getOAuthCallbackLogoDataUrl(): string | null {
+  if (oauthCallbackLogoDataUrl !== null) return oauthCallbackLogoDataUrl
+  const appRoot = process.env.APP_ROOT || app.getAppPath()
+  const candidates = [
+    join(appRoot, 'src', 'assets', 'logos', 'logo_dark_mode.png'),
+    join(appRoot, 'out', 'assets', 'logo_dark_mode.png'),
+    join(app.getAppPath(), 'out', 'assets', 'logo_dark_mode.png'),
+  ]
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      try {
+        const buf = readFileSync(p)
+        oauthCallbackLogoDataUrl = `data:image/png;base64,${buf.toString('base64')}`
+        return oauthCallbackLogoDataUrl
+      } catch {
+        break
+      }
+    }
+  }
+  return null
+}
+
+/** Shared OAuth callback page styles (refined dark theme, depth, polish) */
+const OAUTH_CALLBACK_STYLES = `
+  * { box-sizing: border-box; }
+  html, body {
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    min-height: 100vh;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(165deg, #1a1a1a 0%, #252525 50%, #1e1e1e 100%);
+    color: #f4f4f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    gap: 2.5rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  .logo-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.875rem;
+  }
+  .logo-wrap img {
+    height: 56px;
+    width: auto;
+    display: block;
+    opacity: 0.95;
+  }
+  .logo {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: rgba(255,255,255,0.92);
+    margin: 0;
+  }
+  .card {
+    background: linear-gradient(180deg, rgba(38,38,38,0.95) 0%, rgba(32,32,32,0.98) 100%);
+    border-radius: 1.25rem;
+    padding: 2.75rem 3rem;
+    max-width: 28rem;
+    width: 100%;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.2) inset,
+      0 4px 6px -1px rgba(0,0,0,0.3),
+      0 24px 48px -12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+  }
+  .card .icon { margin-bottom: 1.5rem; }
+  .card h1 {
+    font-size: 1.375rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    color: rgba(255,255,255,0.95);
+    letter-spacing: -0.01em;
+  }
+  .card p {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: rgba(161,161,170,0.95);
+    line-height: 1.55;
+  }
+`
+
+/** Cozea-styled OAuth callback success page (app theme, centered, logo, elegant container) */
+function getOAuthCallbackSuccessHtml(): string {
+  const logoDataUrl = getOAuthCallbackLogoDataUrl()
+  const logoHtml = logoDataUrl
+    ? `<div class="logo-wrap"><img src="${logoDataUrl}" alt="Cozea" /><span class="logo">Cozea</span></div>`
+    : '<div class="logo" aria-hidden="true">Cozea</div>'
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Authorization complete – Cozea</title>
+  <style>${OAUTH_CALLBACK_STYLES}
+  .card.card-success { border-color: rgba(59,130,246,0.35); box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset, 0 4px 6px -1px rgba(0,0,0,0.3), 0 24px 48px -12px rgba(0,0,0,0.5), 0 0 40px -8px rgba(59,130,246,0.2); }
+  .card-success .icon { color: #60a5fa; filter: drop-shadow(0 0 12px rgba(96,165,250,0.3)); }
+  </style>
+</head>
+<body>
+  ${logoHtml}
+  <div class="card card-success">
+    <div class="icon" aria-hidden="true">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto; display: block;">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    </div>
+    <h1>Authorization complete</h1>
+    <p>You can close this tab and return to Cozea.</p>
+  </div>
+</body>
+</html>`
+}
+
+/** Cozea-styled OAuth callback error page (app theme, centered, logo, elegant container) */
+function getOAuthCallbackErrorHtml(message: string): string {
+  const safe = escapeHtml(message)
+  const logoDataUrl = getOAuthCallbackLogoDataUrl()
+  const logoHtml = logoDataUrl
+    ? `<div class="logo-wrap"><img src="${logoDataUrl}" alt="Cozea" /><span class="logo">Cozea</span></div>`
+    : '<div class="logo" aria-hidden="true">Cozea</div>'
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Authorization failed – Cozea</title>
+  <style>${OAUTH_CALLBACK_STYLES}
+  .card.card-error { border-color: rgba(248,113,113,0.3); box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset, 0 4px 6px -1px rgba(0,0,0,0.3), 0 24px 48px -12px rgba(0,0,0,0.5), 0 0 40px -8px rgba(248,113,113,0.12); }
+  .card-error .icon { color: #f87171; filter: drop-shadow(0 0 10px rgba(248,113,113,0.2)); }
+  .card-error p { color: rgba(250,204,204,0.9); }
+  </style>
+</head>
+<body>
+  ${logoHtml}
+  <div class="card card-error">
+    <div class="icon" aria-hidden="true">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto; display: block;">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15"/>
+        <line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+    </div>
+    <h1>Authorization failed</h1>
+    <p>${safe}</p>
+  </div>
+</body>
+</html>`
+}
+
 export class ProviderAuthService {
   private static instance: ProviderAuthService
   private storagePath: string | null = null
@@ -484,7 +658,7 @@ export class ProviderAuthService {
           const message = errorDescription || error
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end(`<html><body><h1>Authorization failed</h1><p>${message}</p></body></html>`)
+          res.end(getOAuthCallbackErrorHtml(message))
           if (!settled) {
             settled = true
             reject(new Error(message))
@@ -495,7 +669,7 @@ export class ProviderAuthService {
         if (!code) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Missing authorization code.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
           if (!settled) {
             settled = true
             reject(new Error('Missing authorization code'))
@@ -506,7 +680,7 @@ export class ProviderAuthService {
         if (!state || state !== expectedState) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Invalid state.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Invalid state.'))
           if (!settled) {
             settled = true
             reject(new Error('Invalid oauth state'))
@@ -516,9 +690,7 @@ export class ProviderAuthService {
 
         res.statusCode = 200
         res.setHeader('content-type', 'text/html')
-        res.end(
-          '<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Cozea.</p></body></html>'
-        )
+        res.end(getOAuthCallbackSuccessHtml())
         if (!settled) {
           settled = true
           resolve({ code })
@@ -603,7 +775,7 @@ export class ProviderAuthService {
           const message = errorDescription || error
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end(`<html><body><h1>Authorization failed</h1><p>${message}</p></body></html>`)
+          res.end(getOAuthCallbackErrorHtml(message))
           if (!settled) {
             settled = true
             reject(new Error(message))
@@ -614,7 +786,7 @@ export class ProviderAuthService {
         if (!code) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Missing authorization code.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
           if (!settled) {
             settled = true
             reject(new Error('Missing authorization code'))
@@ -625,7 +797,7 @@ export class ProviderAuthService {
         if (!state || state !== expectedState) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Invalid state.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Invalid state.'))
           if (!settled) {
             settled = true
             reject(new Error('Invalid oauth state'))
@@ -635,9 +807,7 @@ export class ProviderAuthService {
 
         res.statusCode = 200
         res.setHeader('content-type', 'text/html')
-        res.end(
-          '<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Cozea.</p></body></html>'
-        )
+        res.end(getOAuthCallbackSuccessHtml())
         if (!settled) {
           settled = true
           resolve({ code })
@@ -719,7 +889,7 @@ export class ProviderAuthService {
           const message = errorDescription || error
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end(`<html><body><h1>Authorization failed</h1><p>${message}</p></body></html>`)
+          res.end(getOAuthCallbackErrorHtml(message))
           if (!settled) {
             settled = true
             reject(new Error(message))
@@ -730,7 +900,7 @@ export class ProviderAuthService {
         if (!code) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Missing authorization code.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
           if (!settled) {
             settled = true
             reject(new Error('Missing authorization code'))
@@ -741,7 +911,7 @@ export class ProviderAuthService {
         if (!state || state !== expectedState) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Invalid state.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Invalid state.'))
           if (!settled) {
             settled = true
             reject(new Error('Invalid oauth state'))
@@ -751,9 +921,7 @@ export class ProviderAuthService {
 
         res.statusCode = 200
         res.setHeader('content-type', 'text/html')
-        res.end(
-          '<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Cozea.</p></body></html>'
-        )
+        res.end(getOAuthCallbackSuccessHtml())
         if (!settled) {
           settled = true
           resolve({ code })
@@ -848,7 +1016,7 @@ export class ProviderAuthService {
           const message = errorDescription || error
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end(`<html><body><h1>Authorization failed</h1><p>${message}</p></body></html>`)
+          res.end(getOAuthCallbackErrorHtml(message))
           if (!settled) {
             settled = true
             reject(new Error(message))
@@ -859,7 +1027,7 @@ export class ProviderAuthService {
         if (!code) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Missing authorization code.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
           if (!settled) {
             settled = true
             reject(new Error('Missing authorization code'))
@@ -870,7 +1038,7 @@ export class ProviderAuthService {
         if (!state || state !== expectedState) {
           res.statusCode = 400
           res.setHeader('content-type', 'text/html')
-          res.end('<html><body><h1>Authorization failed</h1><p>Invalid state.</p></body></html>')
+          res.end(getOAuthCallbackErrorHtml('Invalid state.'))
           if (!settled) {
             settled = true
             reject(new Error('Invalid oauth state'))
@@ -880,9 +1048,7 @@ export class ProviderAuthService {
 
         res.statusCode = 200
         res.setHeader('content-type', 'text/html')
-        res.end(
-          '<html><body><h1>Authorization complete</h1><p>You can close this tab and return to Cozea.</p></body></html>'
-        )
+        res.end(getOAuthCallbackSuccessHtml())
         if (!settled) {
           settled = true
           resolve({ code })

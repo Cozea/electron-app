@@ -355,38 +355,39 @@ body {
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
-.sunny {
-  --background: hsl(48 100% 98%);
-  --foreground: hsl(45 90% 8%);
-  --card: hsl(48 92% 97%);
-  --card-foreground: hsl(45 90% 8%);
-  --popover: hsl(48 92% 97%);
-  --popover-foreground: hsl(45 90% 8%);
-  --primary: hsl(45 100% 55%);
-  --primary-foreground: hsl(0 0% 8%);
-  --secondary: hsl(46 70% 94%);
-  --secondary-foreground: hsl(45 90% 10%);
-  --muted: hsl(46 60% 94%);
-  --muted-foreground: hsl(45 20% 40%);
-  --accent: hsl(46 78% 92%);
-  --accent-foreground: hsl(45 90% 10%);
-  --destructive: hsl(0 84% 62%);
-  --border: hsl(44 70% 86%);
-  --input: hsl(44 72% 90%);
-  --ring: hsl(45 100% 55%);
-  --chart-1: hsl(45 100% 55%);
-  --chart-2: hsl(30 90% 55%);
-  --chart-3: hsl(15 80% 55%);
-  --chart-4: hsl(60 70% 45%);
-  --chart-5: hsl(75 60% 40%);
-  --sidebar: hsl(46 76% 93%);
-  --sidebar-foreground: hsl(45 90% 10%);
-  --sidebar-primary: hsl(45 100% 60%);
-  --sidebar-primary-foreground: hsl(0 0% 8%);
-  --sidebar-accent: hsl(44 74% 88%);
-  --sidebar-accent-foreground: hsl(45 90% 12%);
-  --sidebar-border: hsl(44 70% 83%);
-  --sidebar-ring: hsl(42 100% 60%);
+.clay {
+  --background: hsl(25 30% 10%);
+  --foreground: hsl(35 25% 94%);
+  --card: hsl(25 28% 12%);
+  --card-foreground: hsl(35 25% 94%);
+  --popover: hsl(25 28% 12%);
+  --popover-foreground: hsl(35 25% 94%);
+  --primary: hsl(28 65% 52%);
+  --primary-foreground: hsl(25 30% 8%);
+  --secondary: hsl(25 22% 16%);
+  --secondary-foreground: hsl(35 25% 94%);
+  --muted: hsl(26 20% 16%);
+  --muted-foreground: hsl(35 18% 65%);
+  --accent: hsl(25 24% 18%);
+  --accent-foreground: hsl(35 25% 94%);
+  --destructive: hsl(0 65% 55%);
+  --border: hsl(25 22% 28%);
+  --input: hsl(25 20% 18%);
+  --ring: hsl(28 65% 52%);
+  --chart-1: hsl(28 65% 52%);
+  --chart-2: hsl(25 55% 48%);
+  --chart-3: hsl(35 45% 55%);
+  --chart-4: hsl(20 50% 50%);
+  --chart-5: hsl(40 40% 52%);
+  --sidebar: hsl(25 26% 14%);
+  --sidebar-foreground: hsl(35 25% 94%);
+  --sidebar-primary: hsl(28 65% 52%);
+  --sidebar-primary-foreground: hsl(25 30% 8%);
+  --sidebar-accent: hsl(25 24% 20%);
+  --sidebar-accent-foreground: hsl(35 25% 94%);
+  --sidebar-border: hsl(25 22% 26%);
+  --sidebar-ring: hsl(28 65% 52%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
 }
 
 .forest {
@@ -452,14 +453,41 @@ body {
   .dark .invert-on-dark,
   .navy .invert-on-dark,
   .wine .invert-on-dark,
-  .forest .invert-on-dark {
+  .forest .invert-on-dark,
+  .clay .invert-on-dark {
     filter: invert(1);
+  }
+
+  /* Switch: visible connect toggles in navy, wine, forest, clay (thumb uses foreground like in dark theme) */
+  .navy [data-slot="switch"] [data-slot="switch-thumb"][data-state="unchecked"],
+  .wine [data-slot="switch"] [data-slot="switch-thumb"][data-state="unchecked"],
+  .forest [data-slot="switch"] [data-slot="switch-thumb"][data-state="unchecked"],
+  .clay [data-slot="switch"] [data-slot="switch-thumb"][data-state="unchecked"] {
+    background-color: var(--foreground);
+  }
+
+  /* Outline buttons (e.g. Details): visible in navy, wine, forest, clay */
+  .navy [data-slot="button"][data-variant="outline"],
+  .wine [data-slot="button"][data-variant="outline"],
+  .forest [data-slot="button"][data-variant="outline"],
+  .clay [data-slot="button"][data-variant="outline"] {
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--border);
+    background-color: color-mix(in oklch, var(--muted) 55%, transparent);
+  }
+  .navy [data-slot="button"][data-variant="outline"]:hover,
+  .wine [data-slot="button"][data-variant="outline"]:hover,
+  .forest [data-slot="button"][data-variant="outline"]:hover,
+  .clay [data-slot="button"][data-variant="outline"]:hover {
+    background-color: color-mix(in oklch, var(--muted) 75%, transparent);
   }
 
   .dark .bg-foreground-on-dark,
   .navy .bg-foreground-on-dark,
   .wine .bg-foreground-on-dark,
-  .forest .bg-foreground-on-dark {
+  .forest .bg-foreground-on-dark,
+  .clay .bg-foreground-on-dark {
     background-color: var(--foreground);
   }
 
@@ -653,7 +681,8 @@ body {
 .dark .bg-sidebar, 
 .navy .bg-sidebar,
 .wine .bg-sidebar,
-.forest .bg-sidebar {
+.forest .bg-sidebar,
+.clay .bg-sidebar {
   /* Slightly more opaque on dark modes for readability */
   --sidebar-opacity: 0.7;
 }

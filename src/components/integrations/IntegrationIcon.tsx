@@ -41,7 +41,7 @@ const BRAND_COLORS: Record<IntegrationProvider, string> = {
   neon: '#00E699',
   vercel: '#000000',
   netlify: '#00C7B7',
-  railway: '#0B0D0E',
+  railway: '#8B5CF6',
   fly: '#7B3FE4',
   clerk: '#6C47FF',
   auth0: '#EB5424',
@@ -59,6 +59,15 @@ const BRAND_COLORS: Record<IntegrationProvider, string> = {
   clickup: '#7B68EE',
   coda: '#F46A54',
 }
+
+/** Providers whose brand color is black/dark; use theme foreground so they're visible in both light and dark themes */
+const FOREGROUND_PROVIDERS: Set<IntegrationProvider> = new Set([
+  'github',
+  'planetscale',
+  'vercel',
+  'resend',
+  'notion',
+])
 
 type IconComponent = React.FC<{ className?: string }>
 
@@ -140,11 +149,14 @@ export function IntegrationIcon({
   size = 'md',
 }: IntegrationIconProps) {
   const IconComponent = ProviderIcons[provider]
+  const color = FOREGROUND_PROVIDERS.has(provider)
+    ? 'var(--foreground)'
+    : BRAND_COLORS[provider]
 
   return (
     <div
       className={cn(SIZE_CLASSES[size], className)}
-      style={{ color: BRAND_COLORS[provider] }}
+      style={{ color }}
     >
       <IconComponent className="h-full w-full" />
     </div>

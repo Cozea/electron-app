@@ -63,15 +63,22 @@ export function LayoutToggles() {
                 <PanelLeftIcon active={state === 'expanded'} className="h-4 w-4" />
             </Button>
 
-            <Button
-                variant="ghost"
-                size="icon"
-                disabled={!canToggleTerminal}
-                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
-                onClick={toggleTerminal}
+            {/* Terminal button: only visible where terminal is available; collapse animates spacing */}
+            <div
+                className={cn(
+                    'overflow-hidden transition-[width,opacity] duration-200 ease-out',
+                    canToggleTerminal ? 'w-7 opacity-100' : 'w-0 min-w-0 opacity-0'
+                )}
             >
-                <PanelBottomIcon active={isTerminalOpen} className="h-4 w-4" />
-            </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
+                    onClick={toggleTerminal}
+                >
+                    <PanelBottomIcon active={isTerminalOpen} className="h-4 w-4" />
+                </Button>
+            </div>
 
             <Button
                 variant="ghost"
