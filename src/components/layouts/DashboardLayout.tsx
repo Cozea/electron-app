@@ -1,4 +1,4 @@
-import { type ReactNode } from "react"
+import { type ReactNode, useEffect } from "react"
 import { useLocation } from "react-router-dom"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { featureFlags } from "@/lib/featureFlags"
+import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -30,6 +31,7 @@ interface DashboardLayoutProps {
 }
 
 const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
+const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
 
 interface DashboardLayoutContentProps {
   children: ReactNode
@@ -46,6 +48,32 @@ interface DashboardLayoutContentProps {
     profileImageUrl?: string | null
   } | null
   onLogout?: () => void
+}
+
+function SidebarFullscreenSync() {
+  const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
+  const { isMobile, open, setOpen, setOpenMobile } = useSidebar()
+
+  useEffect(() => {
+    if (assistantPanelMode !== 'fullscreen') return
+
+    if (isMobile) {
+      setOpenMobile(false)
+      return
+    }
+
+    if (!open) return
+
+    const collapseTimer = window.setTimeout(() => {
+      setOpen(false)
+    }, FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(collapseTimer)
+    }
+  }, [assistantPanelMode, isMobile, open, setOpen, setOpenMobile])
+
+  return null
 }
 
 function DashboardLayoutContent({
@@ -70,6 +98,7 @@ function DashboardLayoutContent({
 
   return (
     <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+      <SidebarFullscreenSync />
       {/* Main Content with Sidebar */}
       <div className="flex flex-1 overflow-hidden relative">
         <AppSidebar user={user} onLogout={onLogout} />

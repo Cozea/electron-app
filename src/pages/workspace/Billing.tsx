@@ -503,9 +503,16 @@ export function Billing() {
           <CardContent className="pt-0 space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold">{planInfo.name} plan</h3>
+                <h3 className="text-3xl font-semibold tracking-tight">{planInfo.name} plan</h3>
                 {subscription?.status === 'active' && (
-                  <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20">
+                  <Badge
+                    variant="secondary"
+                    className={
+                      currentPlan === 'free'
+                        ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/20'
+                        : 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20'
+                    }
+                  >
                     Active
                   </Badge>
                 )}
@@ -519,8 +526,8 @@ export function Billing() {
 
             {(planInfo.price || planInfo.period) && (
               <div>
-                <span className="text-3xl font-bold">{planInfo.price}</span>
-                {planInfo.period && <span className="text-muted-foreground">{planInfo.period}</span>}
+                <span className="text-xl font-medium text-muted-foreground">{planInfo.price}</span>
+                {planInfo.period && <span className="text-muted-foreground/90">{planInfo.period}</span>}
               </div>
             )}
 
@@ -597,64 +604,6 @@ export function Billing() {
             <p className="text-xs text-muted-foreground">
               AI tokens are tracked for visibility only. AI provider charges are billed directly by each connected provider account.
             </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="pt-0">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-              <Table className="[&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Invoice</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {stripeInvoices.length > 0 ? (
-                    stripeInvoices.map((invoice) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell>{formatDate(invoice.date)}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {invoice.description}
-                        </TableCell>
-                        <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
-                            className="capitalize"
-                          >
-                            {invoice.status || 'unknown'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {invoice.hostedInvoiceUrl && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 gap-1"
-                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
-                            >
-                              View
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
-                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
           </CardContent>
         </Card>
 
@@ -850,6 +799,70 @@ export function Billing() {
                 <p className="text-sm text-muted-foreground">All workspace AI requests</p>
                 <p className="text-3xl font-bold mt-1">{chartTotals.requests.toLocaleString()}</p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader className="pt-0 pb-4">
+            <CardTitle>Invoice History</CardTitle>
+            <CardDescription>
+              Review your recent workspace invoices and payment statuses.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Invoice</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {stripeInvoices.length > 0 ? (
+                    stripeInvoices.map((invoice) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell>{formatDate(invoice.date)}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {invoice.description}
+                        </TableCell>
+                        <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={invoice.status === 'paid' ? 'secondary' : 'outline'}
+                            className="capitalize"
+                          >
+                            {invoice.status || 'unknown'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {invoice.hostedInvoiceUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1"
+                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                            >
+                              View
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
+                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
