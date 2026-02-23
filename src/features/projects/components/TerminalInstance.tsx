@@ -110,7 +110,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         // Get CSS variable value and convert to hex
         const getThemeColor = (cssVar: string, fallback: string): string => {
             const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
-            const themeRoot = container.closest('.dark, .navy, .wine, .sunny, .forest') || document.documentElement
+            const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
             const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
             const computed = localComputed || rootComputed
 

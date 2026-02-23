@@ -174,6 +174,13 @@ export function AI() {
     void refreshProviderStatuses()
   }, [])
 
+  // Refresh status on focus so expired tokens show as disconnected (matches useConnectedProviders used by chat)
+  useEffect(() => {
+    const onFocus = () => void refreshProviderStatuses()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+
   const handleOpenConnectDialog = (provider: Provider) => {
     setSelectedProvider(provider)
     setGoogleMethod('gemini')
@@ -230,8 +237,12 @@ export function AI() {
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
   const totalTrackedUnits = aggregate?.totalTrackedUnits ?? 0
+  const now = Date.now()
   const connectedProviders = (Object.keys(providerInfo) as Provider[]).reduce((count, provider) => {
-    return count + (providerStatuses[provider]?.connected ? 1 : 0)
+    const status = providerStatuses[provider]
+    const effectiveConnected =
+      (status?.connected ?? false) && (status?.expiresAt == null || status.expiresAt > now)
+    return count + (effectiveConnected ? 1 : 0)
   }, 0)
 
   return (
@@ -240,7 +251,7 @@ export function AI() {
       onLogout={logout}
       breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
     >
-      <div className="space-y-6">
+      <div className="space-y-6 pb-10">
         {/* Usage Overview */}
         <div className="px-4">
           <div className="flex flex-wrap md:flex-nowrap divide-x divide-border w-full">
@@ -306,7 +317,10 @@ export function AI() {
                   {(Object.keys(providerInfo) as Provider[]).map((provider) => {
                     const info = providerInfo[provider]
                     const status = providerStatuses[provider]
-                    const isConnected = status?.connected || false
+                    // Use same logic as useConnectedProviders: connected only if not expired (so AI page matches chat model list)
+                    const isConnected =
+                      (status?.connected ?? false) &&
+                      (status?.expiresAt == null || status.expiresAt > now)
                     const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
 
                     return (
@@ -335,11 +349,6 @@ export function AI() {
                             {!isAllowed && (
                               <Badge variant="outline" className="text-amber-500 ml-2">
                                 Disabled
-                              </Badge>
-                            )}
-                            {provider === 'google' && status?.googleMode && (
-                              <Badge variant="outline" className="ml-1">
-                                {status.googleMode === 'vertex' ? 'Vertex' : 'Gemini'}
                               </Badge>
                             )}
                           </div>

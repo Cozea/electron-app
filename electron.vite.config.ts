@@ -2,6 +2,7 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import fs from 'node:fs'
 
 function readBooleanFlag(name: string, fallback: boolean): boolean {
   const raw = process.env[name]
@@ -59,6 +60,20 @@ export default defineConfig({
           entryFileNames: '[name].js',
         },
       },
+      plugins: [
+        {
+          name: 'copy-oauth-callback-logo',
+          closeBundle() {
+            const src = path.join(__dirname, 'src', 'assets', 'logos', 'logo_dark_mode.png')
+            const outDir = path.join(__dirname, 'out', 'assets')
+            const dest = path.join(outDir, 'logo_dark_mode.png')
+            if (fs.existsSync(src)) {
+              fs.mkdirSync(outDir, { recursive: true })
+              fs.copyFileSync(src, dest)
+            }
+          },
+        },
+      ],
     },
   },
   preload: {

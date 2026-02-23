@@ -56,7 +56,7 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
     // Get CSS variable value and convert to hex
     const getThemeColor = (cssVar: string, fallback: string): string => {
       // Use the terminal container's parent to get correct theme context
-      const themeRoot = container.closest('.dark, .navy, .wine, .sunny, .forest') || document.documentElement
+      const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
       const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
 
       if (!computed) {

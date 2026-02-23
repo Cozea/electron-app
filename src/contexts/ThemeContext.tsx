@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
-export type Theme = 'light' | 'dark' | 'navy' | 'wine' | 'sunny' | 'forest' | 'system'
+export type Theme = 'light' | 'dark' | 'navy' | 'wine' | 'clay' | 'forest' | 'system'
 
 interface ThemeContextType {
   theme: Theme
@@ -10,7 +10,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 const STORAGE_KEY = 'cozea-theme'
-const ALL_THEMES = ['light', 'dark', 'navy', 'wine', 'sunny', 'forest'] as const
+const ALL_THEMES = ['light', 'dark', 'navy', 'wine', 'clay', 'forest'] as const
 
 function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light'
@@ -21,6 +21,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'system'
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+    if (stored === 'sunny') {
+      localStorage.setItem(STORAGE_KEY, 'clay')
+      return 'clay'
+    }
     if (stored && (ALL_THEMES.includes(stored as typeof ALL_THEMES[number]) || stored === 'system')) {
       return stored
     }
@@ -36,7 +40,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement
     // Remove all theme classes
-    root.classList.remove('light', 'dark', 'navy', 'wine', 'sunny', 'forest')
+    root.classList.remove('light', 'dark', 'navy', 'wine', 'clay', 'forest')
 
     if (theme === 'system') {
       const systemTheme = getSystemTheme()

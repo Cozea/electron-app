@@ -8,7 +8,7 @@ interface LogoProps {
 }
 
 // Light themes use the dark logo, dark themes use the light logo
-const LIGHT_THEMES = ['light', 'sunny']
+const LIGHT_THEMES = ['light']
 
 export function Logo({ className = '', size = 24 }: LogoProps) {
   const { theme } = useTheme()

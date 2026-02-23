@@ -1,12 +1,12 @@
 export type WorkspacePlanId = 'free' | 'pro' | 'max' | 'team' | 'enterprise'
 export type WorkspacePricingPlanId = 'free' | 'pro' | 'max' | 'team'
 
-export const WORKSPACE_PLAN_LABELS: Record<WorkspacePlanId, 'Free' | 'Power Duo' | 'Winning Team' | 'Custom'> = {
-  free: 'Free',
-  pro: 'Power Duo',
-  max: 'Winning Team',
-  team: 'Custom',
-  enterprise: 'Custom',
+export const WORKSPACE_PLAN_LABELS: Record<WorkspacePlanId, 'Starter' | 'Founders Plan' | 'Team Scale' | 'Custom Enterprise'> = {
+  free: 'Starter',
+  pro: 'Founders Plan',
+  max: 'Team Scale',
+  team: 'Custom Enterprise',
+  enterprise: 'Custom Enterprise',
 }
 
 export function getWorkspacePlanLabel(plan?: string | null): string {
