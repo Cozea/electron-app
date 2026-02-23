@@ -147,6 +147,13 @@ const NAV_GROUPS = [
     }
 ] as const
 
+function isMacClient(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+    return /mac/i.test(platformHint)
+}
+
 export function ProjectSidebar({
     user,
     onLogout,
@@ -162,6 +169,7 @@ export function ProjectSidebar({
     className,
     ...props
 }: ProjectSidebarProps) {
+    const applyWindowControlsInset = isMacClient()
     const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
     const location = useLocation()
@@ -418,13 +426,18 @@ export function ProjectSidebar({
                     className="w-56 shrink-0 z-20 h-screen sidebar-glass"
                     {...props}
                 >
-                    <SidebarHeader className="mt-9 titlebar-drag-region">
+                    <SidebarHeader className={cn("titlebar-drag-region", applyWindowControlsInset && "mt-9")}>
                         <div className="titlebar-no-drag">
                             <ContextSwitcher />
                         </div>
                     </SidebarHeader>
 
-                    <SidebarContent className="titlebar-no-drag group-data-[collapsible=icon]:mt-9">
+                    <SidebarContent
+                        className={cn(
+                            "titlebar-no-drag",
+                            applyWindowControlsInset && "group-data-[collapsible=icon]:mt-9"
+                        )}
+                    >
                         {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>

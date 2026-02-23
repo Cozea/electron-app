@@ -62,6 +62,13 @@ interface TerminalTabBarProps {
 
 const LEGACY_PORT_SUFFIX_PATTERN = /^(.*?)\s*\((\d{2,5})\)\s*$/
 
+function isWindowsClient(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+    return /win/i.test(platformHint)
+}
+
 function getTerminalTabDisplay(term: TerminalInstance): { label: string; port?: number } {
     if (term.label && typeof term.port === 'number') {
         return { label: term.label, port: term.port }
@@ -136,15 +143,16 @@ export function TerminalTabBar({
 
     // Create a new terminal
     const handleCreateTerminal = useCallback(async (profileId?: string) => {
+        const resolvedProfileId = profileId ?? (isWindowsClient() ? 'cmd' : undefined)
         const result = await window.electronAPI.terminal.create({
             projectPath,
-            profileId,
+            profileId: resolvedProfileId,
             cols: 80,
             rows: 24,
         })
 
         if (result.success && result.terminalId) {
-            const profile = profiles.find((p) => p.id === profileId) || profiles[0]
+            const profile = profiles.find((p) => p.id === resolvedProfileId) || profiles[0]
             const label = profile?.name || 'Terminal'
             addTerminal({
                 id: result.terminalId,

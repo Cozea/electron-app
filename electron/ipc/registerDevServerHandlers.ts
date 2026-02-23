@@ -2,6 +2,7 @@ import type { BrowserWindow, IpcMain } from 'electron'
 import * as pty from 'node-pty'
 import * as fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
@@ -13,6 +14,7 @@ interface RegisterDevServerHandlersDeps {
 
 const SPAWN_HELPER_EXEC_MODE = 0o755
 const spawnHelperFixCache = new Map<string, boolean>()
+const windowsExecutableCache = new Map<string, boolean>()
 
 function getNodePtySpawnHelperCandidates(): string[] {
   const target = `${process.platform}-${process.arch}`
@@ -45,8 +47,25 @@ function ensureNodePtySpawnHelperExecutable(): void {
   }
 }
 
-function resolvePtyShell(): string {
-  if (process.platform === 'win32') return 'powershell.exe'
+function isWindowsExecutableAvailable(executable: string): boolean {
+  if (process.platform !== 'win32') return false
+  const cached = windowsExecutableCache.get(executable)
+  if (cached !== undefined) return cached
+
+  try {
+    const result = spawnSync('where', [executable], { stdio: 'ignore' })
+    const available = result.status === 0
+    windowsExecutableCache.set(executable, available)
+    return available
+  } catch {
+    const available = executable !== 'pwsh.exe'
+    windowsExecutableCache.set(executable, available)
+    return available
+  }
+}
+
+function resolveUnixPtyShell(): string {
+  if (process.platform === 'win32') return 'cmd.exe'
 
   const envShell = process.env.SHELL?.trim()
   const candidates = [
@@ -68,6 +87,22 @@ function resolvePtyShell(): string {
   }
 
   return '/bin/sh'
+}
+
+function resolvePtyInvocation(command: string): { shell: string; args: string[] } {
+  if (process.platform === 'win32') {
+    if (isWindowsExecutableAvailable('cmd.exe')) {
+      // Deterministic automation shell on Windows.
+      return { shell: 'cmd.exe', args: ['/d', '/s', '/c', command] }
+    }
+    if (isWindowsExecutableAvailable('pwsh.exe')) {
+      return { shell: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-Command', command] }
+    }
+    return { shell: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-Command', command] }
+  }
+
+  const shell = resolveUnixPtyShell()
+  return { shell, args: ['-c', command] }
 }
 
 function toPtyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -127,7 +162,7 @@ export function registerDevServerHandlers(
 
         console.log(`[DevServer] Starting PTY: ${command} in ${projectPath} (${cols}x${rows})`)
         ensureNodePtySpawnHelperExecutable()
-        const shell = resolvePtyShell()
+        const invocation = resolvePtyInvocation(command)
         const runtimeEnv = createRuntimeEnv(
           getRuntimePathPrefixes(),
           {
@@ -138,7 +173,7 @@ export function registerDevServerHandlers(
           }
         )
 
-        const ptyProcess = pty.spawn(shell, ['-c', command], {
+        const ptyProcess = pty.spawn(invocation.shell, invocation.args, {
           name: 'xterm-256color',
           cols,
           rows,

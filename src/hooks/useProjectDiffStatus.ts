@@ -9,6 +9,7 @@ import {
 
 const MIN_CHECK_INTERVAL = 30 * 1000
 const REPLICA_AUTH_COOLDOWN_MS = 60 * 1000
+const REPLICA_TRANSIENT_COOLDOWN_MS = 90 * 1000
 const INTERACTIVE_LOGIN_COOLDOWN_MS = 2 * 60 * 1000
 const REPLICA_CHECK_TIMEOUT_MS = 20 * 1000
 const AUTH_RECOVERY_TIMEOUT_MS = 12 * 1000
@@ -16,6 +17,8 @@ const INITIAL_CHECK_MAX_STAGGER_MS = 1200
 const inFlightBySlug = new Set<string>()
 let replicaAuthBlockedUntil = 0
 let hasLoggedReplicaAuthCooldown = false
+let replicaTransientBlockedUntil = 0
+let hasLoggedReplicaTransientCooldown = false
 let authRecoveryPromise: Promise<"refreshed" | "login_started" | "failed"> | null = null
 let lastInteractiveLoginAt = 0
 
@@ -117,11 +120,17 @@ export function useProjectDiffStatus({
 
     const isUnauthorizedError = (message: string): boolean =>
       /\b401\b/.test(message) || /unauthorized/i.test(message)
+    const isTransientReplicaError = (message: string): boolean =>
+      /\b5\d{2}\b/.test(message) ||
+      /unexpected eof while reading/i.test(message) ||
+      /varnish/i.test(message) ||
+      /timed out/i.test(message)
 
     async function checkDiff(force = false) {
       if (!localPath) return
 
       if (Date.now() < replicaAuthBlockedUntil) return
+      if (Date.now() < replicaTransientBlockedUntil) return
 
       const currentStatus = useProjectDiffStore.getState().diffs[projectSlug]
       if (currentStatus?.isChecking) return
@@ -197,6 +206,8 @@ export function useProjectDiffStatus({
           conflicts: plan.conflicts.length,
         })
         hasLoggedReplicaAuthCooldown = false
+        replicaTransientBlockedUntil = 0
+        hasLoggedReplicaTransientCooldown = false
       }
 
       try {
@@ -225,6 +236,25 @@ export function useProjectDiffStatus({
           }
 
           replicaAuthBlockedUntil = Date.now() + REPLICA_AUTH_COOLDOWN_MS
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
+            error: message,
+          })
+          return
+        }
+
+        if (isTransientReplicaError(message)) {
+          replicaTransientBlockedUntil = Date.now() + REPLICA_TRANSIENT_COOLDOWN_MS
+          if (!hasLoggedReplicaTransientCooldown) {
+            console.warn(
+              `[ProjectDiffStatus] Replica API transient failure; pausing checks for ${Math.round(
+                REPLICA_TRANSIENT_COOLDOWN_MS / 1000
+              )}s.`
+            )
+            hasLoggedReplicaTransientCooldown = true
+          }
           setDiffStatus(projectSlug, {
             downloads: 0,
             uploads: 0,

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import * as pty from 'node-pty'
 import * as fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
@@ -73,6 +74,7 @@ const TERMINAL_HISTORY_MAX_ENTRIES = 500
 const SPAWN_HELPER_EXEC_MODE = 0o755
 
 const spawnHelperFixCache = new Map<string, boolean>()
+const windowsExecutableCache = new Map<string, boolean>()
 
 function getNodePtySpawnHelperCandidates(): string[] {
     const target = `${process.platform}-${process.arch}`
@@ -129,6 +131,24 @@ function toPtyEnv(env: NodeJS.ProcessEnv, extra?: Record<string, string>): Recor
     return normalized
 }
 
+function isWindowsExecutableAvailable(executable: string): boolean {
+    if (process.platform !== 'win32') return false
+    const cached = windowsExecutableCache.get(executable)
+    if (cached !== undefined) return cached
+
+    try {
+        const result = spawnSync('where', [executable], { stdio: 'ignore' })
+        const available = result.status === 0
+        windowsExecutableCache.set(executable, available)
+        return available
+    } catch {
+        // Keep classic shells available even if `where` fails unexpectedly.
+        const available = executable !== 'pwsh.exe'
+        windowsExecutableCache.set(executable, available)
+        return available
+    }
+}
+
 export class TerminalService {
     private static instance: TerminalService
     private terminals = new Map<string, ManagedTerminal>()
@@ -180,8 +200,15 @@ export class TerminalService {
 
         // Windows shells
         if (process.platform === 'win32') {
-            profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
-            profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
+            if (isWindowsExecutableAvailable('pwsh.exe')) {
+                profiles.push({ id: 'pwsh', name: 'PowerShell 7', path: 'pwsh.exe', icon: 'terminal-powershell' })
+            }
+            if (isWindowsExecutableAvailable('cmd.exe')) {
+                profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
+            }
+            if (isWindowsExecutableAvailable('powershell.exe')) {
+                profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
+            }
         }
 
         // Node.js (cross-platform)
