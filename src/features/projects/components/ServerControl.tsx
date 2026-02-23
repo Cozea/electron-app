@@ -51,6 +51,13 @@ const persistDevCommand = (projectPath: string, command: string) => {
     localStorage.setItem(key, command.trim())
 }
 
+const isWindowsClient = (): boolean => {
+    if (typeof navigator === 'undefined') return false
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+    return /win/i.test(platformHint)
+}
+
 interface ServerControlProps {
     projectPath?: string | null
     // Optional stored framework info from Convex (uses detection as fallback)
@@ -332,6 +339,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
         const result = await window.electronAPI.terminal.create({
             projectPath: projectPathValue,
+            profileId: isWindowsClient() ? 'cmd' : undefined,
             cols: 80,
             rows: 24,
         })
@@ -364,7 +372,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         setTimeout(() => {
             void window.electronAPI.terminal.input({
                 terminalId: result.terminalId!,
-                data: `${command}\r`
+                data: `${command}\r\n`
             })
         }, 100)
 

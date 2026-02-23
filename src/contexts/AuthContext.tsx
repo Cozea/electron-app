@@ -14,6 +14,16 @@ interface TokenPayload {
   iat?: number
 }
 
+function decodeBase64Url(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return atob(padded)
+  } catch {
+    return null
+  }
+}
+
 function normalizeOrganizations(input: OrganizationMembership[]): OrganizationMembership[] {
   const byOrganizationId = new Map<string, OrganizationMembership>()
 
@@ -62,7 +72,9 @@ function decodeToken(token: string): TokenPayload | null {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return null
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const rawPayload = decodeBase64Url(parts[1])
+    if (!rawPayload) return null
+    const payload = JSON.parse(rawPayload)
     return payload
   } catch {
     return null
@@ -77,7 +89,8 @@ function decodeToken(token: string): TokenPayload | null {
 function isTokenExpired(token: string | null, bufferSeconds = 30): boolean {
   if (!token) return true
   const payload = decodeToken(token)
-  if (!payload?.exp) return true
+  // Opaque/non-JWT tokens can be valid but undecodable here.
+  if (!payload?.exp) return false
   const expiresAt = payload.exp * 1000 // Convert to ms
   const bufferMs = bufferSeconds * 1000
   return Date.now() >= expiresAt - bufferMs
@@ -86,10 +99,10 @@ function isTokenExpired(token: string | null, bufferSeconds = 30): boolean {
 /**
  * Get time until token expires in milliseconds
  */
-function getTokenTimeToExpiry(token: string | null): number {
+function getTokenTimeToExpiry(token: string | null): number | null {
   if (!token) return 0
   const payload = decodeToken(token)
-  if (!payload?.exp) return 0
+  if (!payload?.exp) return null
   return Math.max(0, payload.exp * 1000 - Date.now())
 }
 
@@ -125,6 +138,8 @@ const STORAGE_KEY_TOKEN = 'auth_token'
 const STORAGE_KEY_ORGS = 'auth_orgs'
 const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
 const LOGIN_FLOW_TIMEOUT_MS = 90_000
+const MIN_TOKEN_REFRESH_INTERVAL_MS = 30_000
+const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 10 * 60 * 1000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -378,7 +393,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           // Token is still valid
           const ttl = getTokenTimeToExpiry(session.accessToken)
-          console.log(`[Auth] Token valid, expires in ${Math.round(ttl / 1000)}s`)
+          if (ttl === null) {
+            console.log('[Auth] Token valid, expiry unknown')
+          } else {
+            console.log(`[Auth] Token valid, expires in ${Math.round(ttl / 1000)}s`)
+          }
           handleSession(session, 'startup')
         }
       } catch (error) {
@@ -460,32 +479,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
   }, [clearLoginTimeout])
 
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null)
+  const lastRefreshAttemptAtRef = useRef<number>(0)
+
   // Refresh the access token using the refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const newSession = await window.electronAPI.auth.refresh()
-      if (newSession) {
-        setAccessToken(newSession.accessToken)
-        localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
-        return true
-      }
-      // Refresh failed - session expired, need to re-login
-      setUser(null)
-      setConvexUserId(null)
-      setAccessToken(null)
-      localStorage.removeItem(STORAGE_KEY_TOKEN)
-      setOrganizationsState([])
-      setCurrentOrganization(null)
-      setWorkspaceSelectionRequired(false)
-      return false
-    } catch (err) {
-      console.error('Token refresh failed:', err)
-      return false
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current
     }
-  }, [])
 
-  // Smart auto-refresh: refresh when 80% of token lifetime has passed
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingRefresh = (async (): Promise<boolean> => {
+      try {
+        const newSession = await window.electronAPI.auth.refresh()
+        if (newSession) {
+          setAccessToken(newSession.accessToken)
+          localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
+          return true
+        }
+        // Refresh failed - session expired, need to re-login
+        setUser(null)
+        setConvexUserId(null)
+        setAccessToken(null)
+        localStorage.removeItem(STORAGE_KEY_TOKEN)
+        setOrganizationsState([])
+        setCurrentOrganization(null)
+        setWorkspaceSelectionRequired(false)
+        return false
+      } catch (err) {
+        console.error('Token refresh failed:', err)
+        return false
+      } finally {
+        refreshInFlightRef.current = null
+      }
+    })()
+
+    refreshInFlightRef.current = pendingRefresh
+    return pendingRefresh
+  }, [])
 
   useEffect(() => {
     if (accessToken && user) {
@@ -494,28 +525,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(refreshTimeoutRef.current)
       }
 
-      // Calculate when to refresh:
-      // - around 80% of token lifetime
-      // - but never later than 30 seconds before expiry
-      const timeToExpiry = getTokenTimeToExpiry(accessToken)
-      const refreshIn = Math.min(
-        timeToExpiry * 0.8,
-        timeToExpiry - 30000
-      )
-
-      if (refreshIn > 0) {
-        console.log(`[Auth] Scheduling token refresh in ${Math.round(refreshIn / 1000)}s`)
+      const scheduleRefresh = (delayMs: number) => {
         refreshTimeoutRef.current = setTimeout(async () => {
+          const elapsed = Date.now() - lastRefreshAttemptAtRef.current
+          if (elapsed < MIN_TOKEN_REFRESH_INTERVAL_MS) {
+            scheduleRefresh(MIN_TOKEN_REFRESH_INTERVAL_MS - elapsed)
+            return
+          }
+          lastRefreshAttemptAtRef.current = Date.now()
           console.log('[Auth] Auto-refreshing token...')
           const success = await refreshToken()
           if (!success) {
             console.log('[Auth] Auto-refresh failed')
           }
-        }, refreshIn)
+        }, delayMs)
+      }
+
+      const timeToExpiry = getTokenTimeToExpiry(accessToken)
+      let refreshIn: number
+      if (timeToExpiry === null) {
+        console.log('[Auth] Token expiry unknown, scheduling conservative refresh cadence')
+        refreshIn = UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS
       } else {
+        // Refresh around 80% of lifetime, but no later than 30 seconds pre-expiry.
+        refreshIn = Math.min(timeToExpiry * 0.8, timeToExpiry - 30000)
+      }
+
+      if (refreshIn > 0) {
+        console.log(`[Auth] Scheduling token refresh in ${Math.round(refreshIn / 1000)}s`)
+        scheduleRefresh(refreshIn)
+      } else if (timeToExpiry !== null) {
         // Token is already expired or about to expire, refresh immediately
         console.log('[Auth] Token expiring, refreshing immediately...')
-        refreshToken()
+        scheduleRefresh(0)
       }
 
       return () => {

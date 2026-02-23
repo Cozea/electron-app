@@ -419,8 +419,15 @@ function createWindow() {
     vibrancy: isMac ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
     visualEffectState: isMac ? 'active' : undefined,
     backgroundMaterial: isWindows ? 'mica' : undefined,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 15, y: 10 },
+    titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
+    titleBarOverlay: isWindows
+      ? {
+          color: '#00000000',
+          symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827',
+          height: 36,
+        }
+      : false,
+    trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
   })
 
   // Set application menu
@@ -454,6 +461,21 @@ function createWindow() {
         ((input.control || input.meta) && input.shift && key === 'i')
       if (isReloadShortcut || isDevToolsShortcut) {
         event.preventDefault()
+      }
+    })
+  } else {
+    // Keep a local shortcut handler in dev so DevTools can be toggled
+    // even when focus is inside embedded terminals.
+    win.webContents.on('before-input-event', (event, input) => {
+      const key = input.key.toLowerCase()
+      const isDevToolsShortcut =
+        input.key === 'F12' ||
+        ((input.control || input.meta) && input.alt && key === 'i') ||
+        ((input.control || input.meta) && input.shift && key === 'i')
+
+      if (isDevToolsShortcut) {
+        event.preventDefault()
+        win?.webContents.toggleDevTools()
       }
     })
   }

@@ -44,6 +44,15 @@ type RepoIntegrationProvider = 'github' | 'gitlab'
 
 const INSTALL_TIMEOUT_MS = 12 * 60 * 1000
 
+function isWindowsClient(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+  return /win/i.test(platformHint)
+}
+
 function getRepoDisplayName(repoUrl: string): string {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
   if (!trimmed) return 'Imported Project'
@@ -220,6 +229,7 @@ export function NewProject() {
     async (projectPath: string, command: string): Promise<{ success: boolean; error?: string }> => {
       const createResult = await window.electronAPI.terminal.create({
         projectPath,
+        profileId: isWindowsClient() ? 'cmd' : undefined,
         cwd: projectPath,
         cols: 100,
         rows: 30,
@@ -285,7 +295,7 @@ export function NewProject() {
         commandDispatchTimer = window.setTimeout(() => {
           window.electronAPI.terminal.input({
             terminalId,
-            data: `${command}; exit\r`,
+            data: `${command}\r\nexit\r\n`,
           }).catch((error) => {
             if (settled) return
             updateTerminalStatus(terminalId, 'error')

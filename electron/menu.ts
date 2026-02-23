@@ -4,6 +4,12 @@ export function createApplicationMenu() {
     const isMac = process.platform === 'darwin'
     const isReleaseBuild = app.isPackaged
 
+    // Keep macOS menu intact, but hide the native menu bar on non-mac platforms.
+    if (!isMac) {
+        Menu.setApplicationMenu(null)
+        return
+    }
+
     const template: MenuItemConstructorOptions[] = [
         // { role: 'appMenu' }
         ...(isMac

@@ -149,6 +149,7 @@ interface ProjectLayoutLocationState {
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
+    const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
     const { user, logout, currentOrganization } = useAuth()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
@@ -649,7 +650,13 @@ export function ProjectLayout({
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
                                 rightAddon={rightHeaderAddon ?? undefined}
-                                className={isPagesView ? "bg-transparent backdrop-blur-xl" : undefined}
+                                className={
+                                    isPagesView
+                                        ? isWindowsClient
+                                            ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
+                                            : "bg-transparent backdrop-blur-xl"
+                                        : undefined
+                                }
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}
@@ -663,6 +670,7 @@ export function ProjectLayout({
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}
+                                style={isWindowsClient ? { scrollbarGutter: "auto" } : undefined}
                             >
                                 {children || <Outlet />}
                             </div>

@@ -1,11 +1,18 @@
 import { Activity, lazy, Suspense, useRef, useCallback, useState, useEffect } from 'react'
-import { Plus, History } from 'lucide-react'
+import { Plus, History, Menu } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
+import { useWindowsCaptionControlsWidth } from '@/hooks/useWindowsCaptionControlsWidth'
 import { cn } from '@/lib/utils'
 
 const AIConversation = lazy(() => import('./AIConversation').then((module) => ({ default: module.AIConversation })))
@@ -40,6 +47,9 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
 
   const { currentOrganization } = useAuth()
   const isOpen = mode !== 'closed'
+  const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
+  const shouldShowWindowsCaptionSpacer = isWindowsClient && isOpen
+  const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
 
   const [hasMountedConversation, setHasMountedConversation] = useState(isOpen)
 
@@ -157,27 +167,50 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-accent"
-              onClick={requestClearChat}
-              aria-label="New Conversation"
-              title="New Conversation"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-accent"
-              onClick={openHistory}
-              aria-label="Conversation History"
-              title="Conversation History"
-            >
-              <History className="h-3.5 w-3.5" />
-            </Button>
+          <div className="titlebar-no-drag flex items-center gap-1 shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+                  aria-label="Chat actions"
+                  title="Chat actions"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    requestClearChat()
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  <span>New Chat</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    openHistory()
+                  }}
+                >
+                  <History className="mr-2 h-4 w-4" />
+                  <span>History</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {shouldShowWindowsCaptionSpacer ? (
+              <>
+                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div
+                  aria-hidden="true"
+                  className="h-7 shrink-0 flex-none"
+                  style={{ width: windowsCaptionSpacerWidth }}
+                />
+              </>
+            ) : null}
           </div>
         </div>
 

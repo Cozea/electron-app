@@ -437,16 +437,33 @@ export async function detectPackageManager(projectPath: string): Promise<Package
   return detectPackageManagerFromRoot(projectPath)
 }
 
+function isWindowsClient(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+  return /win/i.test(platformHint)
+}
+
 /**
  * Get the install command for a package manager
  */
 export function getInstallCommand(pm: PackageManager): string {
-  const commands: Record<PackageManager, string> = {
-    bun: 'bun install',
-    pnpm: 'pnpm install',
-    yarn: 'yarn install',
-    npm: 'npm install',
-  }
+  const windows = isWindowsClient()
+  const commands: Record<PackageManager, string> = windows
+    ? {
+      bun: 'bun install',
+      pnpm: 'pnpm.cmd install',
+      yarn: 'yarn.cmd install',
+      npm: 'npm.cmd install',
+    }
+    : {
+      bun: 'bun install',
+      pnpm: 'pnpm install',
+      yarn: 'yarn install',
+      npm: 'npm install',
+    }
   return commands[pm]
 }
 

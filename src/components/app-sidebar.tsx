@@ -59,7 +59,16 @@ const WORKSPACE_ITEMS: NavMainItem[] = [
   { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true, preload: preloadSyncPage },
 ]
 
+function isMacClient(): boolean {
+  if (typeof navigator === "undefined") return false
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+  return /mac/i.test(platformHint)
+}
+
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
+  const applyWindowControlsInset = isMacClient()
+
   return (
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
       <Sidebar
@@ -67,12 +76,17 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         className={cn("w-56 shrink-0 z-20 h-screen sidebar-glass", className)}
         {...props}
       >
-        <SidebarHeader className="mt-9 titlebar-drag-region">
+        <SidebarHeader className={cn("titlebar-drag-region", applyWindowControlsInset && "mt-9")}>
           <div className="titlebar-no-drag">
             <ContextSwitcher />
           </div>
         </SidebarHeader>
-        <SidebarContent className="titlebar-no-drag group-data-[collapsible=icon]:mt-9">
+        <SidebarContent
+          className={cn(
+            "titlebar-no-drag",
+            applyWindowControlsInset && "group-data-[collapsible=icon]:mt-9"
+          )}
+        >
           <NavMain label="Platform" items={PLATFORM_ITEMS} />
           <NavMain label="Team" items={TEAM_ITEMS} />
           <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
