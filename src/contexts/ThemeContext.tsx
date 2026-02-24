@@ -20,13 +20,13 @@ function getSystemTheme(): 'light' | 'dark' {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'system'
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+    const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === 'sunny') {
       localStorage.setItem(STORAGE_KEY, 'clay')
       return 'clay'
     }
-    if (stored && (ALL_THEMES.includes(stored as typeof ALL_THEMES[number]) || stored === 'system')) {
-      return stored
+    if (stored && (stored === 'system' || ALL_THEMES.includes(stored as (typeof ALL_THEMES)[number]))) {
+      return stored as Theme
     }
     return 'dark'
   })

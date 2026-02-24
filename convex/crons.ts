@@ -44,6 +44,14 @@ crons.cron(
   internal.identityRepair.runInvariantCheckDaily
 )
 
+// Cleanup stale Yjs awareness records (every 15 minutes)
+crons.interval(
+  "cleanup yjs awareness",
+  { minutes: 15 },
+  internal.yjsAwareness.cleanupExpiredAwarenessInternal,
+  {}
+)
+
 // ============================================
 // STORAGE TRACKING CRON JOBS
 // ============================================

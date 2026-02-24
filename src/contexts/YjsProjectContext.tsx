@@ -2,29 +2,32 @@ import {
   createContext,
   useContext,
   useEffect,
-  useState,
+  useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from 'react'
 import * as Y from 'yjs'
-import { useQuery, useConvex } from 'convex/react'
+import { useConvex, useQuery } from 'convex/react'
+import type { Awareness } from 'y-protocols/awareness'
+
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
-import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
-import { YConvexProvider } from '@/lib/yjs/YConvexProvider'
-import { ProjectFilesPersistence } from '@/lib/yjs/ProjectFilesPersistence'
-import { YConvexAwarenessProvider } from '@/lib/yjs/YConvexAwarenessProvider'
-import { YjsIndexedDBProvider } from '@/lib/yjs/IndexedDBPersistence'
 import { useReconnectionSync, type DeleteConflict } from '@/hooks/useReconnectionSync'
-import type { Awareness } from 'y-protocols/awareness'
+import { CollabWsProvider, type CollabSessionDescriptor } from '@/lib/yjs/CollabWsProvider'
+import { YConvexAwarenessProvider } from '@/lib/yjs/YConvexAwarenessProvider'
+import { YConvexProvider } from '@/lib/yjs/YConvexProvider'
+import { YjsIndexedDBProvider } from '@/lib/yjs/IndexedDBPersistence'
+import { ProjectFilesPersistence } from '@/lib/yjs/ProjectFilesPersistence'
+import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
+
+type CollabTransport = 'convex' | 'ws'
 
 interface YjsProjectContextValue {
   yjsDoc: YjsProjectDoc | null
   awareness: Awareness | null
   isConnected: boolean
-  /** Delete-vs-edit conflicts that need user resolution */
   deleteConflicts: DeleteConflict[]
-  /** Resolve a delete conflict */
   resolveDeleteConflict: (filePath: string, keepLocal: boolean) => Promise<void>
 }
 
@@ -47,109 +50,121 @@ const YjsProjectContext = createContext<YjsProjectContextValue>({
   resolveDeleteConflict: async () => {},
 })
 
-/**
- * Generate a consistent color from a string (user ID).
- */
+function normalizeCollabTransport(raw: string | undefined): CollabTransport {
+  const normalized = raw?.trim().toLowerCase()
+  if (normalized === 'convex') return 'convex'
+  return 'ws'
+}
+
 function generateColor(id: string): string {
-  const colors = [
-    '#f87171', // red
-    '#fb923c', // orange
-    '#facc15', // yellow
-    '#4ade80', // green
-    '#22d3ee', // cyan
-    '#818cf8', // indigo
-    '#e879f9', // pink
-  ]
+  const colors = ['#f87171', '#fb923c', '#facc15', '#4ade80', '#22d3ee', '#818cf8', '#e879f9']
   const hash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
   return colors[hash % colors.length]
 }
 
 interface YjsProjectProviderProps {
-  projectId: Id<"projects">
-  userId: Id<"users">
+  projectId: Id<'projects'>
+  userId: Id<'users'>
   userName: string
   projectPath: string | null
+  collabSession?: CollabSessionDescriptor | null
   children: ReactNode
 }
 
-/**
- * YjsProjectProvider - Manages Yjs document for a project.
- *
- * Initializes the Y.Doc, sets up awareness with user info,
- * and syncs updates via Convex subscriptions.
- */
 export function YjsProjectProvider({
   projectId,
   userId,
   userName,
   projectPath,
+  collabSession = null,
   children,
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
-  const providerRef = useRef<YConvexProvider | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+
+  const convexProviderRef = useRef<YConvexProvider | null>(null)
   const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
+  const wsProviderRef = useRef<CollabWsProvider | null>(null)
   const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
   const indexedDBProviderRef = useRef<YjsIndexedDBProvider | null>(null)
   const lastAppliedTimestampRef = useRef(0)
   const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
   const convex = useConvex()
 
-  // Subscribe to Yjs updates since lastSyncTime.
-  // Note: Convex query is `timestamp > since`, so we overlap by 1ms and dedupe by update _id
-  // to avoid missing updates that share the same millisecond timestamp.
-  const updatesSince = lastSyncTime === null ? null : Math.max(0, lastSyncTime - 1)
+  const collabTransport = useMemo(
+    () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
+    []
+  )
+  const shouldUseWsTransport = collabTransport === 'ws' && !!collabSession
+  const shouldUseConvexTail = !shouldUseWsTransport
+
+  const updatesSince = shouldUseConvexTail && lastSyncTime !== null ? Math.max(0, lastSyncTime - 1) : null
   const updates = useQuery(
     api.yjs.getUpdatesSince,
     updatesSince === null ? 'skip' : { projectId, since: updatesSince }
   )
+  const awarenessEntries = useQuery(
+    api.yjsAwareness.getActiveAwareness,
+    shouldUseConvexTail ? { projectId } : 'skip'
+  )
 
-  const awarenessEntries = useQuery(api.yjsAwareness.getActiveAwareness, { projectId })
-
-  // Initialize Y.Doc and provider on mount
   useEffect(() => {
+    let disposed = false
+    let docInstance: YjsProjectDoc | null = null
+
     const initDoc = async () => {
       const doc = new YjsProjectDoc(projectId)
+      docInstance = doc
 
-      // 1. First, load from IndexedDB (offline-first)
-      // This restores any edits made while offline or before crash
       indexedDBProviderRef.current = new YjsIndexedDBProvider(projectId, doc.doc)
       await indexedDBProviderRef.current.waitForSync()
 
-      // 2. Perform state-vector-first handshake to get remote delta.
       const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
         projectId,
         clientId: doc.doc.clientID.toString(),
+        roomId: shouldUseWsTransport ? collabSession?.roomId : undefined,
       })) as InitialSyncResponse
 
       if (initialSync.deltaUpdate && initialSync.deltaUpdate.byteLength > 0) {
-        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.deltaUpdate), "state-vector")
+        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.deltaUpdate), 'state-vector')
       } else if (initialSync.serverSnapshot) {
-        // Legacy fallback while all clients are migrated.
-        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.serverSnapshot), "snapshot")
+        Y.applyUpdate(doc.doc, new Uint8Array(initialSync.serverSnapshot), 'snapshot')
         for (const update of initialSync.recentUpdates) {
           if (update.clientId === doc.doc.clientID.toString()) continue
-          Y.applyUpdate(doc.doc, new Uint8Array(update.update), "snapshot")
+          Y.applyUpdate(doc.doc, new Uint8Array(update.update), 'snapshot')
         }
       }
 
-      // Set local awareness state with user info
       doc.awareness.setLocalStateField('user', {
         id: userId,
         name: userName,
         color: generateColor(userId),
       })
 
-      // Create provider to sync with Convex
-      providerRef.current = new YConvexProvider(doc.doc, projectId, convex)
-      awarenessProviderRef.current = new YConvexAwarenessProvider(
-        doc.doc,
-        doc.awareness,
-        projectId,
-        convex
-      )
+      if (shouldUseWsTransport && collabSession) {
+        wsProviderRef.current = new CollabWsProvider({
+          doc: doc.doc,
+          awareness: doc.awareness,
+          session: collabSession,
+          clientType: 'electron',
+          onStateChange: (state) => {
+            if (disposed) return
+            setIsConnected(state === 'connected')
+          },
+        })
+        wsProviderRef.current.start()
+      } else {
+        convexProviderRef.current = new YConvexProvider(doc.doc, projectId, convex)
+        awarenessProviderRef.current = new YConvexAwarenessProvider(
+          doc.doc,
+          doc.awareness,
+          projectId,
+          convex
+        )
+        setIsConnected(true)
+      }
 
-      // Create persistence provider to sync with projectFiles
       persistenceRef.current = new ProjectFilesPersistence(
         doc.files,
         projectId,
@@ -159,6 +174,21 @@ export function YjsProjectProvider({
         userName
       )
 
+      if (disposed) {
+        wsProviderRef.current?.destroy()
+        wsProviderRef.current = null
+        convexProviderRef.current?.destroy()
+        convexProviderRef.current = null
+        awarenessProviderRef.current?.destroy()
+        awarenessProviderRef.current = null
+        persistenceRef.current?.destroy()
+        persistenceRef.current = null
+        indexedDBProviderRef.current?.destroy()
+        indexedDBProviderRef.current = null
+        doc.destroy()
+        return
+      }
+
       setYjsDoc(doc)
       const initialSince = initialSync.serverTimestamp ?? Date.now()
       lastAppliedTimestampRef.current = initialSince
@@ -166,21 +196,33 @@ export function YjsProjectProvider({
       setLastSyncTime(initialSince)
     }
 
-    initDoc()
+    void initDoc().catch((error) => {
+      if (disposed) return
+      console.error('[YjsProjectProvider] Failed to initialize Yjs project provider:', error)
+      setIsConnected(false)
+    })
 
     return () => {
-      providerRef.current?.destroy()
+      disposed = true
+      wsProviderRef.current?.destroy()
+      wsProviderRef.current = null
+      convexProviderRef.current?.destroy()
+      convexProviderRef.current = null
       awarenessProviderRef.current?.destroy()
+      awarenessProviderRef.current = null
       persistenceRef.current?.destroy()
+      persistenceRef.current = null
       indexedDBProviderRef.current?.destroy()
+      indexedDBProviderRef.current = null
+      setIsConnected(false)
+      setYjsDoc(null)
+      docInstance?.destroy()
     }
-  }, [projectId, userId, userName, projectPath, convex])
+  }, [collabSession, convex, projectId, projectPath, shouldUseWsTransport, userId, userName])
 
-  // Apply remote updates when they arrive from Convex
   useEffect(() => {
-    if (!updates || updates.length === 0 || !providerRef.current) return
+    if (!shouldUseConvexTail || !updates || updates.length === 0 || !convexProviderRef.current) return
 
-    // Ensure a stable ordering for cursor updates.
     const sorted = [...updates].sort((a, b) => a.timestamp - b.timestamp)
     const toApply: typeof updates = []
 
@@ -189,38 +231,33 @@ export function YjsProjectProvider({
 
     for (const update of sorted) {
       if (update.timestamp < lastTimestamp) continue
-
       if (update.timestamp > lastTimestamp) {
         lastTimestamp = update.timestamp
         seenIds = new Set()
       }
-
       if (seenIds.has(update._id)) continue
       seenIds.add(update._id)
       toApply.push(update)
     }
 
     if (toApply.length > 0) {
-      providerRef.current.applyRemoteUpdates(toApply)
+      convexProviderRef.current.applyRemoteUpdates(toApply)
       lastAppliedTimestampRef.current = lastTimestamp
       seenUpdateIdsAtLastTimestampRef.current = seenIds
       setLastSyncTime(lastTimestamp)
     }
-  }, [updates])
+  }, [shouldUseConvexTail, updates])
 
-  // Apply remote awareness updates (live cursors) when they arrive from Convex
   useEffect(() => {
-    if (!awarenessEntries || !awarenessProviderRef.current) return
+    if (!shouldUseConvexTail || !awarenessEntries || !awarenessProviderRef.current) return
     awarenessProviderRef.current.applyRemoteAwareness(awarenessEntries)
-  }, [awarenessEntries])
+  }, [awarenessEntries, shouldUseConvexTail])
 
-  // Periodic snapshot saving
   useEffect(() => {
     if (!yjsDoc) return
 
     const saveSnapshot = async () => {
       const snapshot = Y.encodeStateAsUpdate(yjsDoc.doc)
-      // Create a clean ArrayBuffer copy to avoid SharedArrayBuffer type issues
       const snapshotBuffer = new ArrayBuffer(snapshot.byteLength)
       new Uint8Array(snapshotBuffer).set(snapshot)
       await convex.mutation(api.yjs.saveSnapshot, {
@@ -228,24 +265,22 @@ export function YjsProjectProvider({
         snapshot: snapshotBuffer,
         version: Date.now(),
       })
-
-      // Cleanup old updates
       await convex.mutation(api.yjs.cleanupOldUpdates, {
         projectId,
-        olderThan: Date.now() - 5 * 60 * 1000, // 5 minutes ago
+        olderThan: Date.now() - 5 * 60 * 1000,
       })
     }
 
-    // Save every 5 minutes
-    const interval = setInterval(saveSnapshot, 5 * 60 * 1000)
+    const interval = window.setInterval(() => {
+      void saveSnapshot().catch(() => undefined)
+    }, 5 * 60 * 1000)
 
     return () => {
-      clearInterval(interval)
-      saveSnapshot() // Save on unmount
+      window.clearInterval(interval)
+      void saveSnapshot().catch(() => undefined)
     }
-  }, [yjsDoc, projectId, convex])
+  }, [convex, projectId, yjsDoc])
 
-  // Handle reconnection sync (merges local offline changes with server)
   const { deleteConflicts, resolveConflict } = useReconnectionSync(projectId, yjsDoc)
 
   return (
@@ -253,7 +288,7 @@ export function YjsProjectProvider({
       value={{
         yjsDoc,
         awareness: yjsDoc?.awareness ?? null,
-        isConnected: !!providerRef.current,
+        isConnected,
         deleteConflicts,
         resolveDeleteConflict: resolveConflict,
       }}
@@ -263,9 +298,6 @@ export function YjsProjectProvider({
   )
 }
 
-/**
- * Hook to access the Yjs project context.
- */
 export function useYjsProject() {
   return useContext(YjsProjectContext)
 }
