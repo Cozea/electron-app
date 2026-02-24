@@ -1134,18 +1134,27 @@ export default defineSchema({
   // Yjs incremental updates for real-time collaboration
   yjsUpdates: defineTable({
     projectId: v.id("projects"),
+    // Backward-compatible: older rows may not have roomId/seq yet.
+    roomId: v.optional(v.string()),
+    seq: v.optional(v.number()),
     update: v.bytes(), // Binary Yjs update
     clientId: v.string(), // Y.Doc clientID as string
     origin: v.optional(v.string()), // "user", "agent", "init", etc.
+    idempotencyKey: v.optional(v.string()),
     timestamp: v.number(),
   })
-    .index("by_project_and_time", ["projectId", "timestamp"]),
+    .index("by_project_and_time", ["projectId", "timestamp"])
+    .index("by_project_and_seq", ["projectId", "seq"])
+    .index("by_project_and_idempotency", ["projectId", "idempotencyKey"]),
 
   // Yjs document snapshots for recovery/initialization
   yjsDocuments: defineTable({
     projectId: v.id("projects"),
     snapshot: v.bytes(), // Full Y.Doc state as binary
     version: v.number(),
+    snapshotBaseSeq: v.optional(v.number()),
+    byteSize: v.optional(v.number()),
+    createdByClientId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])
@@ -1157,6 +1166,7 @@ export default defineSchema({
     clientId: v.string(), // Y.Doc clientID as string
     update: v.bytes(), // Awareness update bytes
     updatedAt: v.number(),
+    expiresAt: v.optional(v.number()),
   })
     .index("by_project_and_client", ["projectId", "clientId"])
     .index("by_project_and_updated", ["projectId", "updatedAt"])
@@ -1349,5 +1359,35 @@ export default defineSchema({
     .searchIndex("search_assets", {
       searchField: "name",
       filterFields: ["projectId"],
-    }),
+  }),
+
+  // ============================================
+  // DEPLOYMENT JOBS
+  // ============================================
+  deploymentJobs: defineTable({
+    projectId: v.id("projects"),
+    requestedBy: v.id("users"),
+    target: v.union(v.literal("preview"), v.literal("production")),
+    provider: v.union(v.literal("railway")),
+    commitSha: v.optional(v.string()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("canceled")
+    ),
+    providerDeploymentId: v.optional(v.string()),
+    statusUrl: v.optional(v.string()),
+    error: v.optional(v.string()),
+    logs: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_status", ["projectId", "status"])
+    .index("by_requested_by", ["requestedBy"])
+    .index("by_updated_at", ["updatedAt"]),
 })

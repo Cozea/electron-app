@@ -204,11 +204,13 @@ async function signDarwinTargetBinaries(target) {
 }
 
 async function archiveTarget(target) {
-  const targetDir = path.join(bundledGitRoot, target.id)
-  const archivePath = path.join(archiveRoot, `git-bundle-${target.id}.tar.gz`)
+  const archiveName = `git-bundle-${target.id}.tar.gz`
+  const archivePath = path.join(archiveRoot, archiveName)
   await mkdir(archiveRoot, { recursive: true })
 
-  const result = run('tar', ['-czf', archivePath, '-C', targetDir, '.'])
+  // Use repo-relative tar paths so Windows drive letters (e.g. D:) are not parsed
+  // as remote archive syntax by GNU tar.
+  const result = run('tar', ['-czf', `packs/${archiveName}`, '-C', target.id, '.'], bundledGitRoot)
   if (!result.ok) {
     throw new Error(`Failed to archive ${target.id}: ${result.stderr.trim()}`)
   }

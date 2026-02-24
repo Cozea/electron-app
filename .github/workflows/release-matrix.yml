@@ -26,18 +26,27 @@ jobs:
             runs_on: macos-15-xlarge
             electron_target: mac
             arch: arm64
-            bundle_targets: darwin-arm64
+            git_bundle_targets: darwin-arm64
+            runtime_bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
             runs_on: macos-15-large
             electron_target: mac
             arch: x64
-            bundle_targets: darwin-x64
+            git_bundle_targets: darwin-x64
+            runtime_bundle_targets: darwin-x64
+          - name: Windows x64
+            artifact_name: windows-x64
+            runs_on: windows-2022
+            electron_target: win
+            arch: x64
+            git_bundle_targets: win32-x64
+            runtime_bundle_targets: ''
     env:
       CI: true
       NODE_OPTIONS: --max-old-space-size=4096
-      COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
-      COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.bundle_targets }}
+      COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
+      COZEA_RUNTIME_BUNDLE_TARGETS: ${{ matrix.runtime_bundle_targets }}
       COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
       COZEA_RUNTIME_RELEASE_TAG: ${{ github.ref_name }}
       COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
@@ -332,7 +341,7 @@ jobs:
           set -euo pipefail
           repo="Cozea/cozea-prod"
           tag="${GITHUB_REF_NAME}"
-          target="${{ matrix.bundle_targets }}"
+          target="${{ matrix.git_bundle_targets }}"
           tmp_dir="$(mktemp -d)"
           assets=()
 

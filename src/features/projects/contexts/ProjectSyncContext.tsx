@@ -14,8 +14,10 @@ import type { SyncProgress, SyncPlan, SyncOperation } from "@/lib/sync/types"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
+import { useCollabSession } from "@/hooks/useCollabSession"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
@@ -28,6 +30,7 @@ import type {
   GitReplicaConflictDecision,
   GitReplicaPlanResult,
 } from "@shared/electronApiTypes"
+import type { CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
 
 function createLocalPlaceholder(pathValue: string): SyncOperation["localEntry"] {
   return {
@@ -315,6 +318,7 @@ export function ProjectSyncProvider({
   onFilesChanged,
 }: ProjectSyncProviderProps) {
   const navigate = useNavigate()
+  const { accessToken } = useAuth()
   const [isSynced, setIsSynced] = useState(skipInitialSyncCheck)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
     initialLastSyncAt ?? null
@@ -351,6 +355,23 @@ export function ProjectSyncProvider({
   const clearDiff = useProjectDiffStore((state) => state.clearDiff)
 
   const [replicaPlan, setReplicaPlan] = useState<GitReplicaPlanResult | null>(null)
+
+  const { status: collabSessionStatus, session: collabSession } = useCollabSession({
+    projectId: String(projectId),
+    accessToken,
+    enabled: Boolean(accessToken),
+  })
+
+  const activeCollabSession: CollabSessionDescriptor | null =
+    collabSessionStatus === 'ready' && collabSession
+      ? {
+          projectId: String(projectId),
+          roomId: collabSession.roomId,
+          collabWsUrl: collabSession.collabWsUrl,
+          token: collabSession.token,
+          protocolVersion: collabSession.protocolVersion,
+        }
+      : null
 
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   // Use per-user local path (stored in projectMembers, not projects)
@@ -835,6 +856,7 @@ export function ProjectSyncProvider({
         userId={userId}
         userName={userName}
         projectPath={currentLocalPath}
+        collabSession={activeCollabSession}
       >
         <DeleteConflictDialog />
         {isBlockingSyncScreen ? (
