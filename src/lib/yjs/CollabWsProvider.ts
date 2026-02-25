@@ -74,6 +74,8 @@ type IncomingWireMessage =
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 10_000
 const RECONNECT_FACTOR = 2
+const INITIAL_CONNECT_FAILURE_LIMIT = 6
+const INITIAL_CONNECT_FAILURE_WINDOW_MS = 2_500
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -112,10 +114,14 @@ export class CollabWsProvider {
   private readonly clientType: 'web' | 'electron'
   private readonly clientId: string
   private readonly onStateChange?: (state: ConnectionState, error?: string | null) => void
+  private readonly onPermanentFailure?: (reason: string) => void
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
-  private knownSeq = 0
+  private currentConnectStartedAt = 0
+  private hasConnectedOnce = false
+  private consecutiveInitialFailures = 0
+  private knownSeq: number
   private isDestroyed = false
   private readonly pendingUpdates: Array<{
     updateBinary: string
@@ -128,14 +134,21 @@ export class CollabWsProvider {
     awareness: Awareness
     session: CollabSessionDescriptor
     clientType?: 'web' | 'electron'
+    initialKnownSeq?: number
     onStateChange?: (state: ConnectionState, error?: string | null) => void
+    onPermanentFailure?: (reason: string) => void
   }) {
     this.doc = args.doc
     this.awareness = args.awareness
     this.session = args.session
     this.clientType = args.clientType ?? 'electron'
     this.clientId = String(this.doc.clientID)
+    this.knownSeq =
+      typeof args.initialKnownSeq === 'number' && Number.isFinite(args.initialKnownSeq)
+        ? Math.max(0, Math.floor(args.initialKnownSeq))
+        : 0
     this.onStateChange = args.onStateChange
+    this.onPermanentFailure = args.onPermanentFailure
   }
 
   start(): void {
@@ -149,9 +162,25 @@ export class CollabWsProvider {
     this.doc.off('update', this.handleLocalUpdate)
     this.awareness.off('update', this.handleAwarenessUpdate)
     this.clearReconnectTimer()
-    if (this.socket) {
-      this.socket.close()
-      this.socket = null
+    const socket = this.socket
+    this.socket = null
+    if (!socket) return
+
+    socket.onmessage = null
+    socket.onerror = null
+    socket.onclose = null
+
+    // Closing a CONNECTING socket triggers noisy browser warnings in dev.
+    // Defer close until after open to avoid false-positive "connection failed" noise.
+    if (socket.readyState === WebSocket.CONNECTING) {
+      socket.onopen = () => {
+        socket.close(1000, 'Provider destroyed')
+      }
+      return
+    }
+
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.close(1000, 'Provider destroyed')
     }
   }
 
@@ -184,6 +213,10 @@ export class CollabWsProvider {
 
   private connect(): void {
     if (this.isDestroyed) return
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) return
+    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) return
+
+    this.currentConnectStartedAt = Date.now()
     this.onStateChange?.('connecting', null)
 
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
@@ -191,6 +224,8 @@ export class CollabWsProvider {
 
     socket.onopen = () => {
       this.reconnectAttempt = 0
+      this.hasConnectedOnce = true
+      this.consecutiveInitialFailures = 0
       this.onStateChange?.('connected', null)
       socket.send(
         JSON.stringify({
@@ -225,9 +260,35 @@ export class CollabWsProvider {
       this.onStateChange?.('error', 'Collaboration websocket error')
     }
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.isDestroyed) return
-      this.scheduleReconnect('Collaboration websocket disconnected')
+      if (this.socket === socket) {
+        this.socket = null
+      }
+
+      const connectLifetimeMs = Date.now() - this.currentConnectStartedAt
+      const initialHandshakeFailure =
+        !this.hasConnectedOnce && connectLifetimeMs <= INITIAL_CONNECT_FAILURE_WINDOW_MS
+
+      if (initialHandshakeFailure) {
+        this.consecutiveInitialFailures += 1
+      } else if (this.hasConnectedOnce) {
+        this.consecutiveInitialFailures = 0
+      }
+
+      if (this.consecutiveInitialFailures >= INITIAL_CONNECT_FAILURE_LIMIT) {
+        const message =
+          'Collaboration websocket is unavailable after repeated failed handshakes. Switching to fallback sync transport.'
+        this.onStateChange?.('error', message)
+        this.onPermanentFailure?.(message)
+        return
+      }
+
+      const closeDetails =
+        typeof event.code === 'number'
+          ? `Collaboration websocket disconnected (code ${event.code})`
+          : 'Collaboration websocket disconnected'
+      this.scheduleReconnect(closeDetails)
     }
   }
 

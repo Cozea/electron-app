@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile)
 
 interface ProviderCredential {
   provider: ProviderAuthProvider
-  authType: 'oauth' | 'local_token'
+  authType: 'oauth' | 'local_token' | 'api_key'
   accessToken: string
   refreshToken?: string
   expiresAt?: number
@@ -70,6 +70,7 @@ const OPENAI_SCOPE = process.env.COZEA_OPENAI_OAUTH_SCOPE || 'openid profile ema
 const OPENAI_ORIGINATOR = process.env.COZEA_OPENAI_OAUTH_ORIGINATOR || 'opencode'
 const OPENAI_CODEX_BASE_URL =
   process.env.COZEA_OPENAI_REQUEST_BASE_URL || 'https://chatgpt.com/backend-api/codex'
+const OPENAI_API_BASE_URL = 'https://api.openai.com'
 const OPENAI_REQUEST_ORIGINATOR =
   process.env.COZEA_OPENAI_REQUEST_ORIGINATOR || OPENAI_ORIGINATOR
 const DEFAULT_OAUTH_TIMEOUT_MS = 2 * 60 * 1000
@@ -112,7 +113,24 @@ const GOOGLE_GEMINI_CODE_ASSIST_HEADERS = {
   'X-Goog-Api-Client': 'gl-node/22.17.0',
   'Client-Metadata': 'ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI',
 } as const
-const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'google'] as const
+const ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com'
+const ANTHROPIC_API_VERSION = '2023-06-01'
+const XAI_API_BASE_URL = 'https://api.x.ai'
+const GITHUB_COPILOT_CLIENT_ID = process.env.COZEA_GITHUB_COPILOT_CLIENT_ID || 'Ov23li8tweQw6odWQebz'
+const GITHUB_COPILOT_DEVICE_CODE_URL =
+  process.env.COZEA_GITHUB_COPILOT_DEVICE_CODE_URL || 'https://github.com/login/device/code'
+const GITHUB_COPILOT_ACCESS_TOKEN_URL =
+  process.env.COZEA_GITHUB_COPILOT_ACCESS_TOKEN_URL || 'https://github.com/login/oauth/access_token'
+const GITHUB_COPILOT_SCOPE = process.env.COZEA_GITHUB_COPILOT_SCOPE || 'read:user'
+const GITHUB_COPILOT_API_BASE_URL = process.env.COZEA_GITHUB_COPILOT_API_BASE_URL || 'https://api.githubcopilot.com'
+const GITLAB_CLIENT_ID = process.env.COZEA_GITLAB_OAUTH_CLIENT_ID
+const GITLAB_CLIENT_SECRET = process.env.COZEA_GITLAB_OAUTH_CLIENT_SECRET
+const GITLAB_AUTHORIZE_URL = process.env.COZEA_GITLAB_OAUTH_AUTHORIZE_URL || 'https://gitlab.com/oauth/authorize'
+const GITLAB_TOKEN_URL = process.env.COZEA_GITLAB_OAUTH_TOKEN_URL || 'https://gitlab.com/oauth/token'
+const GITLAB_SCOPE = process.env.COZEA_GITLAB_OAUTH_SCOPE || 'read_user api'
+const GITLAB_API_BASE_URL = process.env.COZEA_GITLAB_API_BASE_URL || 'https://gitlab.com'
+
+const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
 const ENABLED_PROVIDER_AUTH_PROVIDER_SET = new Set<ProviderAuthProvider>(ENABLED_PROVIDER_AUTH_PROVIDERS)
 
 function isProviderEnabled(provider: ProviderAuthProvider): provider is (typeof ENABLED_PROVIDER_AUTH_PROVIDERS)[number] {
@@ -634,68 +652,69 @@ export class ProviderAuthService {
   }> {
     let settled = false
     let timeoutId: NodeJS.Timeout | null = null
-    let server: Server
-    let rejectPending: ((reason?: unknown) => void) | null = null
+    const server: Server = createServer((req, res) => {
+      const requestUrl = req.url || '/'
+      const url = new URL(requestUrl, 'http://127.0.0.1')
 
-    const waitForCode = new Promise<OAuthCallbackResult>((resolve, reject) => {
-      rejectPending = reject
-      server = createServer((req, res) => {
-        const requestUrl = req.url || '/'
-        const url = new URL(requestUrl, 'http://127.0.0.1')
+      if (url.pathname !== '/auth/callback') {
+        res.statusCode = 404
+        res.end('Not found')
+        return
+      }
 
-        if (url.pathname !== '/auth/callback') {
-          res.statusCode = 404
-          res.end('Not found')
-          return
-        }
+      const error = url.searchParams.get('error')
+      const errorDescription = url.searchParams.get('error_description')
+      const code = url.searchParams.get('code')
+      const state = url.searchParams.get('state')
 
-        const error = url.searchParams.get('error')
-        const errorDescription = url.searchParams.get('error_description')
-        const code = url.searchParams.get('code')
-        const state = url.searchParams.get('state')
-
-        if (error) {
-          const message = errorDescription || error
-          res.statusCode = 400
-          res.setHeader('content-type', 'text/html')
-          res.end(getOAuthCallbackErrorHtml(message))
-          if (!settled) {
-            settled = true
-            reject(new Error(message))
-          }
-          return
-        }
-
-        if (!code) {
-          res.statusCode = 400
-          res.setHeader('content-type', 'text/html')
-          res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
-          if (!settled) {
-            settled = true
-            reject(new Error('Missing authorization code'))
-          }
-          return
-        }
-
-        if (!state || state !== expectedState) {
-          res.statusCode = 400
-          res.setHeader('content-type', 'text/html')
-          res.end(getOAuthCallbackErrorHtml('Invalid state.'))
-          if (!settled) {
-            settled = true
-            reject(new Error('Invalid oauth state'))
-          }
-          return
-        }
-
-        res.statusCode = 200
+      if (error) {
+        const message = errorDescription || error
+        res.statusCode = 400
         res.setHeader('content-type', 'text/html')
-        res.end(getOAuthCallbackSuccessHtml())
+        res.end(getOAuthCallbackErrorHtml(message))
         if (!settled) {
           settled = true
-          resolve({ code })
+          rejectPending?.(new Error(message))
         }
-      })
+        return
+      }
+
+      if (!code) {
+        res.statusCode = 400
+        res.setHeader('content-type', 'text/html')
+        res.end(getOAuthCallbackErrorHtml('Missing authorization code.'))
+        if (!settled) {
+          settled = true
+          rejectPending?.(new Error('Missing authorization code'))
+        }
+        return
+      }
+
+      if (!state || state !== expectedState) {
+        res.statusCode = 400
+        res.setHeader('content-type', 'text/html')
+        res.end(getOAuthCallbackErrorHtml('Invalid state.'))
+        if (!settled) {
+          settled = true
+          rejectPending?.(new Error('Invalid oauth state'))
+        }
+        return
+      }
+
+      res.statusCode = 200
+      res.setHeader('content-type', 'text/html')
+      res.end(getOAuthCallbackSuccessHtml())
+      if (!settled) {
+        settled = true
+        resolvePending?.({ code })
+      }
+    })
+    let rejectPending: ((reason?: unknown) => void) | null = null
+    let resolvePending: ((value: OAuthCallbackResult) => void) | null = null
+
+    const waitForCode = new Promise<OAuthCallbackResult>((resolve, reject) => {
+      resolvePending = resolve
+      rejectPending = reject
     })
 
     const listen = async (port: number) =>
@@ -1754,6 +1773,50 @@ export class ProviderAuthService {
     }
   }
 
+  private async connectOpenAiApiKey(apiKeyInput?: string): Promise<ProviderAuthConnectResult> {
+    const apiKey = apiKeyInput?.trim()
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'OpenAI API key is required.',
+      }
+    }
+
+    try {
+      const probe = await fetch(`${OPENAI_API_BASE_URL}/v1/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+
+      if (!probe.ok) {
+        const detail = await probe.text().catch(() => '')
+        return {
+          success: false,
+          error: detail
+            ? `OpenAI API key validation failed (${probe.status}): ${detail}`
+            : `OpenAI API key validation failed (${probe.status}).`,
+        }
+      }
+
+      const now = Date.now()
+      const status = this.updateProviderCredential('openai', {
+        provider: 'openai',
+        authType: 'api_key',
+        accessToken: apiKey,
+        updatedAt: now,
+      })
+
+      return { success: true, status }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'OpenAI API key validation failed.',
+      }
+    }
+  }
+
   private async connectAnthropic(params: {
     method?: ProviderAuthMethod
     authorizationCode?: string
@@ -2030,10 +2093,334 @@ export class ProviderAuthService {
     }
   }
 
+  private async connectGoogleGeminiApiKey(apiKeyInput?: string): Promise<ProviderAuthConnectResult> {
+    const apiKey = apiKeyInput?.trim()
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'Gemini API key is required.',
+      }
+    }
+
+    try {
+      const probeUrl = new URL('https://generativelanguage.googleapis.com/v1beta/models')
+      probeUrl.searchParams.set('key', apiKey)
+
+      const probe = await fetch(probeUrl.toString(), { method: 'GET' })
+      if (!probe.ok) {
+        const detail = await probe.text().catch(() => '')
+        return {
+          success: false,
+          error: detail
+            ? `Gemini API key validation failed (${probe.status}): ${detail}`
+            : `Gemini API key validation failed (${probe.status}).`,
+        }
+      }
+
+      const now = Date.now()
+      const status = this.updateProviderCredential('google', {
+        provider: 'google',
+        authType: 'api_key',
+        accessToken: apiKey,
+        googleMode: 'gemini',
+        updatedAt: now,
+      })
+
+      this.pendingGoogleGeminiManualAuth = null
+      return { success: true, status }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Gemini API key validation failed.',
+      }
+    }
+  }
+
+  private async connectAnthropicApiKey(apiKeyInput?: string): Promise<ProviderAuthConnectResult> {
+    const apiKey = apiKeyInput?.trim()
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'Anthropic API key is required.',
+      }
+    }
+
+    try {
+      const probe = await fetch(`${ANTHROPIC_API_BASE_URL}/v1/models`, {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': ANTHROPIC_API_VERSION,
+        },
+      })
+
+      if (!probe.ok) {
+        const detail = await probe.text().catch(() => '')
+        return {
+          success: false,
+          error: detail
+            ? `Anthropic API key validation failed (${probe.status}): ${detail}`
+            : `Anthropic API key validation failed (${probe.status}).`,
+        }
+      }
+
+      const now = Date.now()
+      const status = this.updateProviderCredential('anthropic', {
+        provider: 'anthropic',
+        authType: 'api_key',
+        accessToken: apiKey,
+        updatedAt: now,
+      })
+
+      return { success: true, status }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Anthropic API key validation failed.',
+      }
+    }
+  }
+
+  private async connectXaiApiKey(apiKeyInput?: string): Promise<ProviderAuthConnectResult> {
+    const apiKey = apiKeyInput?.trim()
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'xAI API key is required.',
+      }
+    }
+
+    try {
+      const probe = await fetch(`${XAI_API_BASE_URL}/v1/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+
+      if (!probe.ok) {
+        const detail = await probe.text().catch(() => '')
+        return {
+          success: false,
+          error: detail
+            ? `xAI API key validation failed (${probe.status}): ${detail}`
+            : `xAI API key validation failed (${probe.status}).`,
+        }
+      }
+
+      const now = Date.now()
+      const status = this.updateProviderCredential('xai', {
+        provider: 'xai',
+        authType: 'api_key',
+        accessToken: apiKey,
+        updatedAt: now,
+      })
+
+      return { success: true, status }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'xAI API key validation failed.',
+      }
+    }
+  }
+
+  private async connectGitHubCopilotOAuth(): Promise<ProviderAuthConnectResult> {
+    try {
+      const deviceResponse = await fetch(GITHUB_COPILOT_DEVICE_CODE_URL, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'user-agent': 'cozea-desktop',
+        },
+        body: JSON.stringify({
+          client_id: GITHUB_COPILOT_CLIENT_ID,
+          scope: GITHUB_COPILOT_SCOPE,
+        }),
+      })
+
+      if (!deviceResponse.ok) {
+        const detail = await deviceResponse.text().catch(() => '')
+        return {
+          success: false,
+          error: detail
+            ? `Copilot device authorization failed (${deviceResponse.status}): ${detail}`
+            : `Copilot device authorization failed (${deviceResponse.status}).`,
+        }
+      }
+
+      const deviceData = (await deviceResponse.json()) as {
+        verification_uri?: string
+        user_code?: string
+        device_code?: string
+        interval?: number
+        expires_in?: number
+      }
+
+      if (!deviceData.verification_uri || !deviceData.device_code) {
+        return {
+          success: false,
+          error: 'Copilot device authorization response was missing required fields.',
+        }
+      }
+
+      await shell.openExternal(deviceData.verification_uri)
+
+      const intervalMs = Math.max((deviceData.interval || 5) * 1000, 1000)
+      const expiresMs = Math.max((deviceData.expires_in || 900) * 1000, 60_000)
+      const startedAt = Date.now()
+
+      while (Date.now() - startedAt < expiresMs) {
+        const pollResponse = await fetch(GITHUB_COPILOT_ACCESS_TOKEN_URL, {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            'content-type': 'application/json',
+            'user-agent': 'cozea-desktop',
+          },
+          body: JSON.stringify({
+            client_id: GITHUB_COPILOT_CLIENT_ID,
+            device_code: deviceData.device_code,
+            grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          }),
+        })
+
+        if (!pollResponse.ok) {
+          const detail = await pollResponse.text().catch(() => '')
+          return {
+            success: false,
+            error: detail
+              ? `Copilot token polling failed (${pollResponse.status}): ${detail}`
+              : `Copilot token polling failed (${pollResponse.status}).`,
+          }
+        }
+
+        const pollData = (await pollResponse.json()) as {
+          access_token?: string
+          error?: string
+          interval?: number
+        }
+
+        if (pollData.access_token) {
+          const now = Date.now()
+          const status = this.updateProviderCredential('github-copilot', {
+            provider: 'github-copilot',
+            authType: 'oauth',
+            accessToken: pollData.access_token,
+            refreshToken: pollData.access_token,
+            baseUrl: GITHUB_COPILOT_API_BASE_URL,
+            headers: {
+              'openai-intent': 'conversation-edits',
+            },
+            updatedAt: now,
+          })
+          return { success: true, status }
+        }
+
+        if (pollData.error === 'authorization_pending') {
+          await new Promise((resolve) => setTimeout(resolve, intervalMs + OPENAI_DEVICE_AUTH_POLLING_SAFETY_MARGIN_MS))
+          continue
+        }
+
+        if (pollData.error === 'slow_down') {
+          const serverIntervalMs =
+            typeof pollData.interval === 'number' && pollData.interval > 0
+              ? pollData.interval * 1000
+              : intervalMs + 5000
+          await new Promise((resolve) => setTimeout(resolve, serverIntervalMs + OPENAI_DEVICE_AUTH_POLLING_SAFETY_MARGIN_MS))
+          continue
+        }
+
+        if (pollData.error) {
+          return {
+            success: false,
+            error: `Copilot authorization failed: ${pollData.error}`,
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs + OPENAI_DEVICE_AUTH_POLLING_SAFETY_MARGIN_MS))
+      }
+
+      return {
+        success: false,
+        error: 'Copilot device authorization timed out. Please retry and complete the browser step sooner.',
+      }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Copilot OAuth failed.',
+      }
+    }
+  }
+
+  private async connectGitlabOAuth(): Promise<ProviderAuthConnectResult> {
+    if (!GITLAB_CLIENT_ID) {
+      return {
+        success: false,
+        error: 'GitLab OAuth is not configured. Set COZEA_GITLAB_OAUTH_CLIENT_ID and retry.',
+      }
+    }
+
+    const pkce = this.buildPkce()
+    const state = this.createState()
+    const callback = await this.startOAuthCallbackServer(state)
+
+    try {
+      const authUrl = new URL(GITLAB_AUTHORIZE_URL)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', GITLAB_CLIENT_ID)
+      authUrl.searchParams.set('redirect_uri', callback.redirectUri)
+      authUrl.searchParams.set('scope', GITLAB_SCOPE)
+      authUrl.searchParams.set('code_challenge', pkce.challenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('state', state)
+
+      await shell.openExternal(authUrl.toString())
+      const callbackResult = await callback.waitForCode
+
+      const tokenResponse = await this.exchangeAuthorizationCode({
+        tokenUrl: GITLAB_TOKEN_URL,
+        clientId: GITLAB_CLIENT_ID,
+        clientSecret: GITLAB_CLIENT_SECRET,
+        code: callbackResult.code,
+        redirectUri: callback.redirectUri,
+        codeVerifier: pkce.verifier,
+      })
+
+      const now = Date.now()
+      const status = this.updateProviderCredential('gitlab', {
+        provider: 'gitlab',
+        authType: 'oauth',
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        expiresAt: tokenResponse.expires_in ? now + tokenResponse.expires_in * 1000 : undefined,
+        tokenEndpoint: GITLAB_TOKEN_URL,
+        clientId: GITLAB_CLIENT_ID,
+        clientSecret: GITLAB_CLIENT_SECRET,
+        baseUrl: GITLAB_API_BASE_URL,
+        updatedAt: now,
+      })
+
+      return { success: true, status }
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'GitLab OAuth failed.',
+      }
+    } finally {
+      await callback.close()
+    }
+  }
+
   async listProviders(): Promise<Array<{ provider: ProviderAuthProvider; methods: ProviderAuthMethod[] }>> {
     return [
-      { provider: 'openai', methods: ['oauth', 'device'] },
-      { provider: 'google', methods: ['vertex', 'gemini'] },
+      { provider: 'openai', methods: ['oauth', 'device', 'api_key'] },
+      { provider: 'anthropic', methods: ['oauth', 'api_key'] },
+      { provider: 'google', methods: ['vertex', 'gemini', 'gemini_api_key'] },
+      { provider: 'xai', methods: ['api_key'] },
+      { provider: 'github-copilot', methods: ['oauth'] },
+      { provider: 'gitlab', methods: ['oauth'] },
     ]
   }
 
@@ -2051,8 +2438,12 @@ export class ProviderAuthService {
     method?: ProviderAuthMethod
     authorizationCode?: string
     credentialPath?: string
+    apiKey?: string
   }): Promise<ProviderAuthConnectResult> {
     if (params.provider === 'openai') {
+      if (params.method === 'api_key') {
+        return this.connectOpenAiApiKey(params.apiKey)
+      }
       if (params.method === 'device') {
         return this.connectOpenAiDeviceAuth()
       }
@@ -2064,10 +2455,38 @@ export class ProviderAuthService {
     }
 
     if (params.provider === 'google') {
+      if (params.method === 'gemini_api_key') {
+        return this.connectGoogleGeminiApiKey(params.apiKey)
+      }
       if (params.method === 'gemini') {
         return this.connectGoogleGemini(params.authorizationCode)
       }
       return this.connectGoogleVertex()
+    }
+
+    if (params.provider === 'anthropic') {
+      if (params.method === 'api_key') {
+        return this.connectAnthropicApiKey(params.apiKey)
+      }
+      return this.connectAnthropic({
+        method: params.method,
+        authorizationCode: params.authorizationCode,
+      })
+    }
+
+    if (params.provider === 'xai') {
+      if (params.method !== 'api_key') {
+        return { success: false, error: 'xAI currently supports API key auth in this build.' }
+      }
+      return this.connectXaiApiKey(params.apiKey)
+    }
+
+    if (params.provider === 'github-copilot') {
+      return this.connectGitHubCopilotOAuth()
+    }
+
+    if (params.provider === 'gitlab') {
+      return this.connectGitlabOAuth()
     }
 
     return { success: false, error: 'Unsupported provider' }
@@ -2130,6 +2549,20 @@ export class ProviderAuthService {
         code: 'invalid',
         error: 'Google connection is missing source mode. Reconnect and choose Vertex or Gemini.',
       }
+    }
+
+    if (
+      params.provider === 'google' &&
+      credential.authType === 'api_key' &&
+      credential.googleMode === 'gemini' &&
+      credential.baseUrl === 'https://generativelanguage.googleapis.com'
+    ) {
+      credential = {
+        ...credential,
+        baseUrl: undefined,
+        updatedAt: Date.now(),
+      }
+      this.updateProviderCredential(params.provider, credential)
     }
 
     if (params.provider === 'google' && credential.googleMode === 'gemini' && credential.authType === 'oauth') {
@@ -2197,9 +2630,10 @@ export class ProviderAuthService {
     }
 
     const isOpenAi = params.provider === 'openai'
+    const useOpenAiCodexHeaders = isOpenAi && credential.authType !== 'api_key'
     const resolvedBaseUrl =
-      isOpenAi ? credential.baseUrl || OPENAI_CODEX_BASE_URL : credential.baseUrl
-    const resolvedHeaders = isOpenAi
+      useOpenAiCodexHeaders ? credential.baseUrl || OPENAI_CODEX_BASE_URL : credential.baseUrl
+    const resolvedHeaders = useOpenAiCodexHeaders
       ? {
           ...buildOpenAiRequestHeaders(),
           ...(credential.headers ?? {}),
@@ -2242,6 +2676,7 @@ export class ProviderAuthService {
           method?: ProviderAuthMethod
           authorizationCode?: string
           credentialPath?: string
+          apiKey?: string
         }
       ) => this.connect(options)
     )

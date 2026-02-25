@@ -27,6 +27,8 @@ import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { reportLocalUsage } from '@/lib/ai/localUsage'
+import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
@@ -167,6 +169,21 @@ interface BuilderConversationProps {
   onError: (error: string) => void
   onBillingError?: (error: BillingErrorData | null) => void
   className?: string
+}
+
+interface UsageDataPart {
+  data?: {
+    model?: string
+    promptTokens?: number
+    completionTokens?: number
+    totalTokens?: number
+    reasoningTokens?: number
+    cachedInputTokens?: number
+    runtime?: 'local' | 'remote'
+    durationMs?: number
+    finishReason?: string
+    rawFinishReason?: string
+  }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -469,6 +486,12 @@ export function BuilderConversation({
     providerAuthHeader,
   })
 
+  const localRuntimeStatus = useLocalAiRuntimeStatus(true)
+  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
+  const localRuntimeProvider = inferProviderFromModelId(model)
+  const canUseLocalRuntimeEndpoint =
+    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
+
   useEffect(() => {
     requestConfigRef.current = {
       accessToken,
@@ -518,8 +541,11 @@ Now begin by defining your task list with todowrite, then start working through 
 
   // Chat transport
   const chatTransport = useMemo(() => {
+    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+    const baseApi = chatApi.replace(/\/chat$/, '')
+
     return new DefaultChatTransport({
-      api: AI_API_URL,
+      api: chatApi,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
         const providerHeader = requestConfigRef.current.providerAuthHeader
@@ -539,6 +565,7 @@ Now begin by defining your task list with todowrite, then start working through 
         projectContext: {
           name: project.name,
           slug: project.slug,
+          runtime: 'local',
           localPath: localPath || undefined,
           currentPage: null,
           inspectedElement: null,
@@ -552,7 +579,7 @@ Now begin by defining your task list with todowrite, then start working through 
         ...(providerOptions ? { providerOptions } : {}),
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/chat`
+        const api = `${baseApi}/chat`
         const requestBody = body ?? {}
         const nextBody = {
           ...requestBody,
@@ -562,7 +589,18 @@ Now begin by defining your task list with todowrite, then start working through 
         return { api, body: nextBody }
       },
     })
-  }, [model, enableTools, enableWebSearch, variantId, providerOptions, project.name, project.slug, localPath])
+  }, [
+    model,
+    enableTools,
+    enableWebSearch,
+    variantId,
+    providerOptions,
+    project.name,
+    project.slug,
+    localPath,
+    canUseLocalRuntimeEndpoint,
+    localRuntimeEndpoint,
+  ])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -1427,6 +1465,42 @@ Now begin by defining your task list with todowrite, then start working through 
   })
 
   addToolOutputRef.current = addToolOutput
+
+  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId) return
+
+    for (const message of messages) {
+      for (let index = 0; index < message.parts.length; index += 1) {
+        const part = message.parts[index]
+        if (part.type !== 'data-usage') continue
+
+        const data = (part as UsageDataPart).data
+        if (!data || data.runtime !== 'local') continue
+
+        const key = `${message.id}:${index}`
+        if (reportedLocalUsageRef.current.has(key)) continue
+        reportedLocalUsageRef.current.add(key)
+
+        void reportLocalUsage(accessToken, {
+          organizationId: currentOrganization.organizationId,
+          model: data.model || model,
+          conversationId,
+          feature: 'project-builder',
+          actionType: 'build',
+          promptTokens: data.promptTokens ?? 0,
+          completionTokens: data.completionTokens ?? 0,
+          totalTokens: data.totalTokens,
+          reasoningTokens: data.reasoningTokens,
+          cachedInputTokens: data.cachedInputTokens,
+          durationMs: data.durationMs,
+          finishReason: data.finishReason,
+          rawFinishReason: data.rawFinishReason,
+        })
+      }
+    }
+  }, [accessToken, conversationId, currentOrganization?.organizationId, messages, model])
 
   const cancelPendingToolOutputs = useCallback((reasonText: string) => {
     const addToolOutput = addToolOutputRef.current

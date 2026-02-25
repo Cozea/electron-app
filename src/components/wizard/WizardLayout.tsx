@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { WizardStepDef } from '@/hooks/useWizardState'
 
@@ -53,11 +52,9 @@ export function WizardLayout({
           </div>
           {/* Progress Line */}
           <div className="h-0.5 w-full bg-muted overflow-hidden">
-            <motion.div
-              className="h-full bg-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
+            <div
+              className="h-full bg-primary transition-all duration-300 ease-linear"
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
@@ -77,23 +74,17 @@ export function WizardLayout({
             // No animation wrapper in fullHeight mode to preserve flex layout
             children
           ) : (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentStep}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className={cn(
-                  "w-full flex flex-col min-h-0",
-                  // Entry step wants to be vertically centered via the parent container's `justify-center`.
-                  // Don't force the motion wrapper to consume all vertical space.
-                  !isEntryStep && "flex-1"
-                )}
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
+            <div
+              key={currentStep}
+              className={cn(
+                "w-full flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-300",
+                // Entry step wants to be vertically centered via the parent container's `justify-center`.
+                // Don't force the motion wrapper to consume all vertical space.
+                !isEntryStep && "flex-1"
+              )}
+            >
+              {children}
+            </div>
           )}
         </div>
       </div>

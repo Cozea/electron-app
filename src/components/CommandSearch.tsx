@@ -86,6 +86,11 @@ export function CommandSearch({ className }: CommandSearchProps) {
   }, [])
 
   const handleNavigate = (href: string) => {
+    if (href.startsWith('/settings/')) {
+      void window.electronAPI.window.openSettings(href)
+      return
+    }
+
     if (location.pathname !== href) {
       navigate(href)
     }
@@ -97,7 +102,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         navigate('/projects/new')
         break
       case 'connect-integration':
-        navigate('/workspace/integrations')
+        handleNavigate('/workspace/integrations')
         break
     }
   }

@@ -14,7 +14,7 @@ import {
 } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
-const DEFAULT_ALLOWED_PROVIDERS = ["openai", "google", "xai"] as const
+const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai"] as const
 type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
 
 function normalizeEmail(value: string): string {
@@ -127,7 +127,7 @@ function sanitizeAllowedProviders(
   const sanitized: SupportedAiProvider[] = []
   const seen = new Set<SupportedAiProvider>()
   for (const provider of input) {
-    if (provider !== "openai" && provider !== "google" && provider !== "xai") {
+    if (provider !== "openai" && provider !== "anthropic" && provider !== "google" && provider !== "xai") {
       continue
     }
     if (seen.has(provider)) continue

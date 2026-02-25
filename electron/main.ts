@@ -18,6 +18,7 @@ import { DatabaseService } from './services/DatabaseService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
 import { ProviderAuthService } from './services/ProviderAuthService'
+import { LocalAiRuntimeService } from './services/LocalAiRuntimeService'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
@@ -509,8 +510,9 @@ function createWindow() {
 // IPC Handlers
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
-ProviderAuthService.getInstance().registerIpcHandlers()
-TerminalService.getInstance().registerIpcHandlers()
+  ProviderAuthService.getInstance().registerIpcHandlers()
+  LocalAiRuntimeService.getInstance().registerIpcHandlers()
+  TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()

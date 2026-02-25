@@ -1,4 +1,4 @@
-import { memo, type ComponentType, useCallback, useRef } from "react"
+import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, useCallback, useRef } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 import {
@@ -16,6 +16,7 @@ export interface NavMainItem {
   icon?: ComponentType<{ className?: string }>
   alpha?: boolean
   preload?: () => Promise<unknown>
+  openInSettingsWindow?: boolean
 }
 
 interface NavMainProps {
@@ -65,6 +66,13 @@ export const NavMain = memo(function NavMain({
     })
   }, [])
 
+  const handleItemClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>, item: NavMainItem) => {
+    if (!item.openInSettingsWindow) return
+    if (!window.electronAPI?.window?.openSettings) return
+    event.preventDefault()
+    void window.electronAPI.window.openSettings(item.url)
+  }, [])
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
@@ -78,6 +86,7 @@ export const NavMain = memo(function NavMain({
             >
               <Link
                 to={item.url}
+                onClick={(event) => handleItemClick(event, item)}
                 onMouseEnter={() => preloadItem(item)}
                 onFocus={() => preloadItem(item)}
                 onPointerDown={() => preloadItem(item)}
