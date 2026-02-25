@@ -14,6 +14,12 @@ import { LegacyRouterApp } from './router/LegacyRouterApp'
 
 initJankDiagnostics()
 
+const platform = window.electronAPI?.platform
+if (platform) {
+  document.documentElement.dataset.platform = platform
+  document.documentElement.classList.add(`platform-${platform}`)
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConvexProvider>

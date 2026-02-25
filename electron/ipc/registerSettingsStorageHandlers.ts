@@ -96,6 +96,12 @@ export function registerSettingsStorageHandlers(
     return { success: true, path: result.filePaths[0] }
   })
 
+  ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
+    const win = deps.getMainWindow()
+    if (!win) return dialog.showMessageBox(options)
+    return dialog.showMessageBox(win, options)
+  })
+
   ipcMain.handle('storage:getUsage', async (): Promise<StorageUsage> => {
     const settings = deps.loadSettings()
     const projectsDir = settings.projectsDirectory

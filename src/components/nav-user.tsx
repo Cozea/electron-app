@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react"
+import { useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   BadgeCheck,
@@ -45,12 +45,6 @@ interface FormattedUser {
   avatar: string
 }
 
-const settingsRoutePreloaders: Record<string, () => Promise<unknown>> = {
-  "/settings/account": () => import("@/pages/settings/Account"),
-  "/settings/appearance": () => import("@/pages/settings/Appearance"),
-  "/settings/storage": () => import("@/pages/settings/Storage"),
-}
-
 // Helper to format user data
 function formatUserData(user: RawUser | FormattedUser | null | undefined): FormattedUser {
   if (!user) {
@@ -84,16 +78,10 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
   const userData = formatUserData(user)
-  const preloadedRoutesRef = useRef<Set<string>>(new Set())
-  const preloadSettingsRoute = useCallback((route: string) => {
-    const preloader = settingsRoutePreloaders[route]
-    if (!preloader) return
-    if (preloadedRoutesRef.current.has(route)) return
-
-    preloadedRoutesRef.current.add(route)
-    void preloader().catch(() => {
-      preloadedRoutesRef.current.delete(route)
-    })
+  const handleSettingsLinkClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>, route: string) => {
+    if (!window.electronAPI?.window?.openSettings) return
+    event.preventDefault()
+    void window.electronAPI.window.openSettings(route)
   }, [])
 
   return (
@@ -143,9 +131,7 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link
                   to="/settings/account"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/account")}
-                  onFocus={() => preloadSettingsRoute("/settings/account")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/account")}
+                  onClick={(event) => handleSettingsLinkClick(event, "/settings/account")}
                 >
                   <BadgeCheck className="mr-2 h-4 w-4" />
                   Account
@@ -154,9 +140,7 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link
                   to="/settings/appearance"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/appearance")}
-                  onFocus={() => preloadSettingsRoute("/settings/appearance")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/appearance")}
+                  onClick={(event) => handleSettingsLinkClick(event, "/settings/appearance")}
                 >
                   <Palette className="mr-2 h-4 w-4" />
                   Appearance
@@ -165,16 +149,17 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link
                   to="/settings/storage"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/storage")}
-                  onFocus={() => preloadSettingsRoute("/settings/storage")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/storage")}
+                  onClick={(event) => handleSettingsLinkClick(event, "/settings/storage")}
                 >
                   <HardDrive className="mr-2 h-4 w-4" />
                   Storage
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link to="/settings/tooling">
+                <Link
+                  to="/settings/tooling"
+                  onClick={(event) => handleSettingsLinkClick(event, "/settings/tooling")}
+                >
                   <Terminal className="mr-2 h-4 w-4" />
                   Tooling
                 </Link>

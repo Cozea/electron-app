@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { WizardTeamMember, ProjectRole } from '@/hooks/useWizardState'
-import { motion } from 'framer-motion'
 
 export interface OrgMember {
   id: string
@@ -120,10 +119,8 @@ export function TeamStep({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="app-scrollbar flex-1 min-h-0 overflow-y-auto py-2"
+      <div
+        className="app-scrollbar flex-1 min-h-0 overflow-y-auto py-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
       >
         <div className="space-y-10">
           <div className="space-y-8 max-w-2xl mx-auto">
@@ -375,7 +372,7 @@ export function TeamStep({
         </div>
       </div>
         </div>
-      </motion.div>
+      </div>
 
       <div className="flex items-center justify-end px-3 pt-1 pb-2">
         <Button

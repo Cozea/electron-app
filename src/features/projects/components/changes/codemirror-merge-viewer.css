@@ -13,12 +13,17 @@
 .changes-codemirror-merge .cm-editor {
   height: 100%;
   min-height: 100%;
-  background: transparent;
+  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
 }
 
 .changes-codemirror-merge .cm-scroller {
   height: 100%;
   overflow: auto;
+  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
+}
+
+.changes-codemirror-merge .cm-content {
+  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
 }
 
 .changes-codemirror-merge .cm-gutters {

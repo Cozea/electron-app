@@ -23,17 +23,6 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Input } from '@/components/ui/input'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
@@ -124,10 +113,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
   const navigate = useViewTransitionNavigate()
   const cardRef = useRef<HTMLDivElement | null>(null)
   const isInViewport = useInViewportOnce(cardRef)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteConfirmName, setDeleteConfirmName] = useState('')
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
@@ -286,23 +272,42 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const handleDelete = async () => {
-        if (!userId || deleteConfirmName !== project.name) return
+        if (!userId) return
+
+        const result = await window.electronAPI.dialog.showMessageBox({
+            type: 'warning',
+            buttons: ['Cancel', 'Delete Project'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Delete Project',
+            message: `Delete ${project.name}?`,
+            detail: `This action cannot be undone. This will permanently delete the project and all associated data.`,
+        })
+
+        if (result.response !== 1) {
+            return
+        }
+
         setIsDeleting(true)
-        setDeleteError(null)
         try {
             await deleteProject({
                 projectId: project._id,
                 userId,
-                confirmName: deleteConfirmName,
+                confirmName: project.name, // Since we bypass typing, pass the exact name
             })
-            setShowDeleteDialog(false)
-            setDeleteConfirmName('')
         } catch (error) {
             console.error('Failed to delete project:', error)
             const message = error instanceof Error ? error.message : 'Failed to delete project'
             // Extract the actual error message from Convex error format
             const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
-            setDeleteError(cleanMessage)
+            
+            // Show error in another native dialog since we don't have the UI anymore
+            await window.electronAPI.dialog.showMessageBox({
+                type: 'error',
+                title: 'Delete Failed',
+                message: 'Failed to delete project',
+                detail: cleanMessage
+            })
         } finally {
             setIsDeleting(false)
         }
@@ -467,16 +472,17 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                                         </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setShowDeleteDialog(true)
-                                        }}
-                                        className="text-destructive focus:text-destructive"
-                                    >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                    </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    void handleDelete()
+                                }}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                                disabled={isDeleting}
+                            >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                            </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
@@ -517,53 +523,6 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                     </CardContent>
                 </div>
             </Card>
-
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
-                setShowDeleteDialog(open)
-                if (!open) {
-                    setDeleteConfirmName('')
-                    setDeleteError(null)
-                }
-            }}>
-                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Project</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the project
-                            <span className="font-semibold"> {project.name}</span> and all associated data.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <div className="py-4">
-                        <p className="text-sm text-muted-foreground mb-2">
-                            Type <span className="font-mono font-semibold">{project.name}</span> to confirm:
-                        </p>
-                        <Input
-                            value={deleteConfirmName}
-                            onChange={(e) => setDeleteConfirmName(e.target.value)}
-                            placeholder="Project name"
-                            className="w-full"
-                        />
-                        {deleteError && (
-                            <p className="text-sm text-destructive mt-2">
-                                {deleteError}
-                            </p>
-                        )}
-                    </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>
-                            Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleDelete}
-                            disabled={deleteConfirmName !== project.name || isDeleting}
-                            className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete Project'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     )
 }

@@ -84,6 +84,8 @@ import { MessageBubble, type MessageToolMeta } from '@/components/assistant/Mess
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { reportLocalUsage } from '@/lib/ai/localUsage'
+import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
@@ -144,11 +146,17 @@ interface ToolPart {
 }
 
 interface UsageData {
+  model?: string
+  provider?: string
   promptTokens?: number
   completionTokens?: number
   totalTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  runtime?: 'local' | 'remote'
+  durationMs?: number
+  finishReason?: string
+  rawFinishReason?: string
 }
 
 // Tool categories for diagnostics + file locking.
@@ -547,6 +555,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return {
       name: fallbackName,
       slug: normalizedProjectSlug,
+      runtime: 'local' as const,
       localPath: projectPath ?? undefined,
       // Current page context (invisible to user, sent to AI)
       currentPage: currentPage ?? undefined,
@@ -554,6 +563,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       inspectedElement: inspectedElement ?? undefined,
     }
   }, [projectPath, projectName, projectSlug, normalizedProjectSlug, currentPage, inspectedElement])
+
+  const localRuntimeStatus = useLocalAiRuntimeStatus(Boolean(projectPath))
+  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
+  const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
+  const canUseLocalRuntimeEndpoint =
+    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
 
   const requestConfigRef = useRef({
     accessToken,
@@ -592,8 +607,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   ])
 
   const chatTransport = useMemo(() => {
+    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+    const baseApi = chatApi.replace(/\/chat$/, '')
+
     return new DefaultChatTransport({
-      api: AI_API_URL,
+      api: chatApi,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
         const providerHeader = requestConfigRef.current.providerAuthHeader
@@ -621,7 +639,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         projectContext: requestConfigRef.current.projectContext,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/chat`
+        const api = `${baseApi}/chat`
         const requestBody = body ?? {}
         const nextBody = {
           ...requestBody,
@@ -631,7 +649,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         return { api, body: nextBody }
       },
     })
-  }, [])
+  }, [canUseLocalRuntimeEndpoint, localRuntimeEndpoint])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -994,12 +1012,21 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (project && storedConversation.projectId !== project._id) return
 
     // Convert stored messages to UIMessage format
-    const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => ({
-      id: msg.id,
-      role: msg.role,
-      parts: [{ type: 'text' as const, text: msg.content }],
-      createdAt: new Date(msg.createdAt),
-    }))
+    const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => {
+      const persistedParts = Array.isArray(msg.toolInvocations)
+        ? (msg.toolInvocations as UIMessage['parts'])
+        : null
+
+      return {
+        id: msg.id,
+        role: msg.role,
+        parts:
+          persistedParts && persistedParts.length > 0
+            ? persistedParts
+            : [{ type: 'text' as const, text: msg.content }],
+        createdAt: new Date(msg.createdAt),
+      }
+    })
 
     const dedupedMessages = uiMessages.filter((message, index, all) => {
       if (!message.id) return true
@@ -1074,14 +1101,14 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       try {
         // Convert UIMessages to storage format
         const storedMessages = uniqueMessages.map((msg) => {
-          const textParts = msg.parts.filter((p) => p.type === 'text')
-          const content = textParts.map((p) => (p as { text: string }).text).join('')
+          const content = getMessageText(msg)
 
           return {
             id: msg.id,
             role: msg.role as 'user' | 'assistant' | 'system',
             content,
             createdAt: getMessageCreatedAt(msg),
+            toolInvocations: msg.parts,
           }
         })
 
@@ -1188,6 +1215,49 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       },
     }
   }, [uniqueMessages])
+
+  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId) return
+
+    for (const message of uniqueMessages) {
+      for (let index = 0; index < message.parts.length; index += 1) {
+        const part = message.parts[index]
+        if (part.type !== 'data-usage') continue
+
+        const data = (part as { data?: UsageData }).data
+        if (!data || data.runtime !== 'local') continue
+
+        const key = `${message.id}:${index}`
+        if (reportedLocalUsageRef.current.has(key)) continue
+
+        reportedLocalUsageRef.current.add(key)
+        void reportLocalUsage(accessToken, {
+          organizationId: currentOrganization.organizationId,
+          model: data.model || model,
+          conversationId,
+          feature: normalizedAgentId,
+          actionType: normalizedAgentId,
+          promptTokens: data.promptTokens ?? 0,
+          completionTokens: data.completionTokens ?? 0,
+          totalTokens: data.totalTokens,
+          reasoningTokens: data.reasoningTokens,
+          cachedInputTokens: data.cachedInputTokens,
+          durationMs: data.durationMs,
+          finishReason: data.finishReason,
+          rawFinishReason: data.rawFinishReason,
+        })
+      }
+    }
+  }, [
+    accessToken,
+    conversationId,
+    currentOrganization?.organizationId,
+    model,
+    normalizedAgentId,
+    uniqueMessages,
+  ])
 
   const replyPermissionRequest = useCallback(async (
     requestId: string,
@@ -1397,11 +1467,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     } else {
       useAssistantPanelStore.getState().setChatTitle("New Chat")
     }
-  }, [uniqueMessages])
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [uniqueMessages])
 
   const handleSubmit = async (e?: React.FormEvent) => {

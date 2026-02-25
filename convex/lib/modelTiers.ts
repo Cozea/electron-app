@@ -68,6 +68,8 @@ export const MODEL_CREDITS_PER_1K: Record<string, ModelCreditsPerK> = {
   "claude-opus-4-5": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "claude-opus-4-6": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gemini-3-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gemini-3.1-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gemini-3.1-pro-customtools": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
 }
 
 // Model catalog - maps our model IDs to provider model IDs and tiers
@@ -172,6 +174,22 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
     provider: "google",
     tier: "powerful",
     providerModelId: "gemini-3-pro-preview",
+    isAvailable: true,
+  },
+  "gemini-3.1-pro": {
+    id: "gemini-3.1-pro",
+    displayName: "Gemini 3.1 Pro",
+    provider: "google",
+    tier: "powerful",
+    providerModelId: "gemini-3.1-pro-preview",
+    isAvailable: true,
+  },
+  "gemini-3.1-pro-customtools": {
+    id: "gemini-3.1-pro-customtools",
+    displayName: "Gemini 3.1 Pro (Custom Tools)",
+    provider: "google",
+    tier: "powerful",
+    providerModelId: "gemini-3.1-pro-preview-customtools",
     isAvailable: true,
   },
 }

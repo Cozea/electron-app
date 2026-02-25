@@ -92,6 +92,10 @@ body {
   isolation: auto;
 }
 
+:root[data-platform="darwin"] .sidebar-glass [data-slot="sidebar-inner"] {
+  background-color: transparent !important;
+}
+
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar-glass [data-slot="sidebar-inner"] {
     background-color: var(--main-nav-sidebar-surface) !important;
@@ -427,21 +431,18 @@ body {
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-    cursor: default;
-    user-select: none;
+    @apply border-border;
+    -webkit-user-drag: none;
   }
 
   /* Re-enable text selection for specific elements if needed */
   input, textarea, [contenteditable] {
     cursor: text;
     user-select: text;
+    -webkit-user-drag: auto;
   }
 
-  /* Keep default cursor for chrome interactions (native desktop feel). */
-  a, button, [role="button"] {
-    cursor: default;
-  }
+  /* Removed a, button cursor resets to preserve standard web behaviors or native ones where appropriate. */
 
   body {
     @apply bg-background text-foreground;
@@ -533,58 +534,28 @@ body {
     border: 2px solid transparent;
     background-clip: content-box;
   }
+
+  :root[data-platform="darwin"] .app-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar {
+    width: auto;
+    height: auto;
+  }
+
+  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-track,
+  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb,
+  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb:hover,
+  :root[data-platform="darwin"] .app-scrollbar::-webkit-scrollbar-thumb:active {
+    background: initial;
+    border: none;
+    background-clip: border-box;
+  }
 }
 
-@layer base {
-  /* Custom Scrollbars */
-  ::-webkit-scrollbar {
-    width: var(--app-scrollbar-size);
-    height: var(--app-scrollbar-size);
-  }
-
-  ::-webkit-scrollbar-track {
-    background: var(--app-scrollbar-track);
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--app-scrollbar-thumb);
-    border-radius: var(--app-scrollbar-radius);
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--app-scrollbar-thumb-hover);
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
-
-  ::-webkit-scrollbar-thumb:active {
-    background: var(--app-scrollbar-thumb-active);
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
-
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  /* Monaco uses custom scrollbar DOM; match app rounded scrollbar styling. */
-  .monaco-scrollable-element > .scrollbar {
-    background: transparent !important;
-  }
-
-  .monaco-scrollable-element > .scrollbar > .slider {
-    border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-    transition: background-color 120ms ease;
-  }
-
-  .monaco-scrollable-element > .scrollbar > .slider.active {
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
+  /* Custom Scrollbars removed to allow native OS scrollbars (with elasticity) to show. */
 
   /* xterm uses a native viewport scrollbar; make it match the app's modern style. */
   .xterm .xterm-viewport {
@@ -624,6 +595,32 @@ body {
     background: transparent;
   }
 
+  .xterm,
+  .xterm .xterm-screen,
+  .xterm .xterm-helper-textarea {
+    cursor: text;
+  }
+
+  :root[data-platform="darwin"] .xterm .xterm-viewport {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar {
+    width: auto;
+    height: auto;
+  }
+
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar-track,
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar-thumb,
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover,
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar-thumb:active,
+  :root[data-platform="darwin"] .xterm .xterm-viewport::-webkit-scrollbar-corner {
+    background: initial;
+    border: none;
+    background-clip: border-box;
+  }
+
   /* Hide native scrollbar in Radix ScrollArea to prevent double/persistent scrollbars */
   [data-radix-scroll-area-viewport]::-webkit-scrollbar {
     display: none;
@@ -647,8 +644,6 @@ body {
   .app-scroll-area [data-slot="scroll-area-scrollbar"] [data-slot="scroll-area-thumb"]:active {
     background: var(--app-scrollbar-thumb-active);
   }
-}
-
 /* ============================================
    macOS Native Utilities
    ============================================ */
@@ -960,13 +955,4 @@ body {
 .bdry-divider-x,
 .bdry-divider-y {
   background: transparent;
-}
-
-/* Native cursor policy: avoid web-style hand cursors in app chrome. */
-a,
-button,
-[role="button"],
-.cursor-pointer,
-.cursor-not-allowed {
-  cursor: default !important;
 }

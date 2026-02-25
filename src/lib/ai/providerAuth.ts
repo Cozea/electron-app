@@ -2,7 +2,11 @@ import type { ProviderAuthProvider } from '@shared/electronApiTypes'
 
 export function inferProviderFromModelId(modelId: string): ProviderAuthProvider | null {
   const normalized = modelId.toLowerCase()
+  if (normalized.includes('copilot')) return 'github-copilot'
+  if (normalized.includes('gitlab')) return 'gitlab'
+  if (normalized.includes('grok')) return 'xai'
   if (normalized.includes('gpt')) return 'openai'
+  if (normalized.includes('claude')) return 'anthropic'
   if (normalized.includes('gemini')) return 'google'
   return null
 }

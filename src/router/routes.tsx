@@ -3,6 +3,15 @@ import { Navigate, type RouteObject } from 'react-router-dom'
 
 import { AppRoot } from '@/App'
 import { Projects } from '@/pages/Projects'
+import { General } from '@/pages/workspace/General'
+import { Billing } from '@/pages/workspace/Billing'
+import { AI } from '@/pages/workspace/AI'
+import { Integrations } from '@/pages/workspace/Integrations'
+import { Sync } from '@/pages/workspace/Sync'
+import { Account } from '@/pages/settings/Account'
+import { Appearance } from '@/pages/settings/Appearance'
+import { Storage } from '@/pages/settings/Storage'
+import { Tooling } from '@/pages/settings/Tooling'
 
 const ProjectLayout = lazy(() =>
   import('@/features/projects/layouts/ProjectLayout').then((module) => ({
@@ -64,37 +73,6 @@ const MemberDetails = lazy(() =>
 const Roles = lazy(() =>
   import('@/pages/teams/Roles').then((module) => ({ default: module.Roles }))
 )
-const General = lazy(() =>
-  import('@/pages/workspace/General').then((module) => ({ default: module.General }))
-)
-const Billing = lazy(() =>
-  import('@/pages/workspace/Billing').then((module) => ({ default: module.Billing }))
-)
-const AI = lazy(() =>
-  import('@/pages/workspace/AI').then((module) => ({ default: module.AI }))
-)
-const Integrations = lazy(() =>
-  import('@/pages/workspace/Integrations').then((module) => ({
-    default: module.Integrations,
-  }))
-)
-const Sync = lazy(() =>
-  import('@/pages/workspace/Sync').then((module) => ({ default: module.Sync }))
-)
-const Account = lazy(() =>
-  import('@/pages/settings/Account').then((module) => ({ default: module.Account }))
-)
-const Appearance = lazy(() =>
-  import('@/pages/settings/Appearance').then((module) => ({
-    default: module.Appearance,
-  }))
-)
-const Storage = lazy(() =>
-  import('@/pages/settings/Storage').then((module) => ({ default: module.Storage }))
-)
-const Tooling = lazy(() =>
-  import('@/pages/settings/Tooling').then((module) => ({ default: module.Tooling }))
-)
 const AcceptInvitation = lazy(() =>
   import('@/pages/AcceptInvitation').then((module) => ({
     default: module.AcceptInvitation,
@@ -152,4 +130,3 @@ export const appRoutes: RouteObject[] = [
     ],
   },
 ]
-

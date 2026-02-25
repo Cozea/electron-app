@@ -35,6 +35,8 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // Google - Gemini 3 series (1M context)
   "gemini-3-flash": 1_000_000,
   "gemini-3-pro": 1_000_000,
+  "gemini-3.1-pro": 1_048_576,
+  "gemini-3.1-pro-customtools": 1_048_576,
   // DeepSeek
   "deepseek-chat": 64_000,
   "deepseek-reasoner": 64_000,

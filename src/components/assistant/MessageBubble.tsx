@@ -465,20 +465,7 @@ function MessageBubbleComponent({
   )
 }
 
-function areMessageBubblePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
-  return (
-    prev.message === next.message &&
-    prev.toolsByName === next.toolsByName &&
-    prev.status === next.status &&
-    prev.shouldRequireLocalApproval === next.shouldRequireLocalApproval &&
-    prev.onApproveTool === next.onApproveTool &&
-    prev.onDenyTool === next.onDenyTool &&
-    prev.terminalSessions === next.terminalSessions &&
-    prev.projectPath === next.projectPath
-  )
-}
-
-export const MessageBubble = memo(MessageBubbleComponent, areMessageBubblePropsEqual)
+export const MessageBubble = memo(MessageBubbleComponent)
 
 function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
   const textParts = parts

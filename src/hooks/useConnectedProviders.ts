@@ -1,16 +1,32 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderAuthProvider, ProviderAuthStatus } from '@shared/electronApiTypes'
 
-export type ConnectedProvider = Extract<ProviderAuthProvider, 'openai' | 'google'>
+export type ConnectedProvider = Extract<ProviderAuthProvider, 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'>
 
-export const CONNECTED_PROVIDER_ORDER: ConnectedProvider[] = ['openai', 'google']
+export const CONNECTED_PROVIDER_ORDER: ConnectedProvider[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'github-copilot',
+  'gitlab',
+]
 
 export const isConnectedProvider = (value: string): value is ConnectedProvider =>
-  value === 'openai' || value === 'google'
+  value === 'openai' ||
+  value === 'anthropic' ||
+  value === 'google' ||
+  value === 'xai' ||
+  value === 'github-copilot' ||
+  value === 'gitlab'
 
-export const CONNECTED_PROVIDER_DISPLAY_NAME: Record<ConnectedProvider, 'OpenAI' | 'Google'> = {
+export const CONNECTED_PROVIDER_DISPLAY_NAME: Record<ConnectedProvider, 'OpenAI' | 'Anthropic' | 'Google' | 'xAI' | 'GitHub Copilot' | 'GitLab'> = {
   openai: 'OpenAI',
+  anthropic: 'Anthropic',
   google: 'Google',
+  xai: 'xAI',
+  'github-copilot': 'GitHub Copilot',
+  gitlab: 'GitLab',
 }
 
 export function useConnectedProviders() {

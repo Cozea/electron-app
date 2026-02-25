@@ -40,11 +40,6 @@ const PLATFORM_ITEMS: NavMainItem[] = [
 ]
 
 const preloadRolesPage = () => import("@/pages/teams/Roles")
-const preloadGeneralPage = () => import("@/pages/workspace/General")
-const preloadBillingPage = () => import("@/pages/workspace/Billing")
-const preloadAiPage = () => import("@/pages/workspace/AI")
-const preloadIntegrationsPage = () => import("@/pages/workspace/Integrations")
-const preloadSyncPage = () => import("@/pages/workspace/Sync")
 
 const TEAM_ITEMS: NavMainItem[] = [
   { title: "Members", url: "/teams", icon: Users },
@@ -52,11 +47,11 @@ const TEAM_ITEMS: NavMainItem[] = [
 ]
 
 const WORKSPACE_ITEMS: NavMainItem[] = [
-  { title: "General", url: "/workspace/general", icon: Settings, preload: preloadGeneralPage },
-  { title: "Billing", url: "/workspace/billing", icon: CreditCard, preload: preloadBillingPage },
-  { title: "AI", url: "/workspace/ai", icon: Bot, preload: preloadAiPage },
-  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal, preload: preloadIntegrationsPage },
-  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true, preload: preloadSyncPage },
+  { title: "General", url: "/workspace/general", icon: Settings },
+  { title: "Billing", url: "/workspace/billing", icon: CreditCard },
+  { title: "AI", url: "/workspace/ai", icon: Bot },
+  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
+  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
 ]
 
 function isMacClient(): boolean {
