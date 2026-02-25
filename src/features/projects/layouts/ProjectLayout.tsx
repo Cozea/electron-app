@@ -28,6 +28,8 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
 import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
+import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices"
+import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
@@ -442,6 +444,16 @@ export function ProjectLayout({
     useDiagnosticsBridge(effectiveLocalPath)
     useDependenciesMonitor(effectiveLocalPath)
 
+    useEffect(() => {
+        setVscodeWorkspaceProjectPath(effectiveLocalPath)
+        if (effectiveLocalPath) {
+            void ensureVscodeServicesInitialized()
+        }
+        return () => {
+            setVscodeWorkspaceProjectPath(null)
+        }
+    }, [effectiveLocalPath])
+
     // Ensure project-scoped runtime processes don't leak across navigation.
     // - Stops any dev server PTY (devServer API)
     // - Kills any terminals started for this projectPath (terminal API)
@@ -669,7 +681,10 @@ export function ProjectLayout({
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
                     />
-                    <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
+                    <SidebarInset
+                        color="currentColor"
+                        className="flex flex-row flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
+                    >
                         <div
                             className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
                             style={{
@@ -698,11 +713,11 @@ export function ProjectLayout({
                                 className={cn(
                                     // `min-w-0` prevents the main content from overflowing under the right panels
                                     // when it contains wide children (iframes, editors, etc.).
-                                    "app-scrollbar flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}
-                                style={isWindowsClient ? { scrollbarGutter: "auto" } : undefined}
+                                style={undefined}
                             >
                                 {children || <Outlet />}
                             </div>

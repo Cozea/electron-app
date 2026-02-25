@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
-import { motion } from 'framer-motion'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
@@ -1314,12 +1313,9 @@ export function ProjectPagesPage() {
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (
                             /* Empty State */
-                            <motion.div
+                            <div
                                 key="pages-empty"
-                                initial={{ opacity: 0, y: 8, scale: 0.996 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                className="app-scrollbar flex-1 overflow-y-auto p-6"
+                                className="app-scrollbar flex-1 overflow-y-auto p-6 animate-in fade-in slide-in-from-bottom-2 duration-300"
                             >
                                 <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                                     <FileText className="h-10 w-10 mb-3 opacity-20" />
@@ -1351,17 +1347,14 @@ export function ProjectPagesPage() {
                                         )}
                                     </Button>
                                 </div>
-                            </motion.div>
+                            </div>
                         ) : (
                             <div className="relative flex-1 min-h-0 min-w-0 bg-sidebar/60">
                                 {!isFocusedPreview && (
-                                <motion.div
-                                    initial={false}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6"
+                                <div
+                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6 animate-in fade-in duration-300"
                                 >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
                                         {routes.map((route, index) => {
                                             const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
                                             return (
@@ -1456,15 +1449,12 @@ export function ProjectPagesPage() {
                                             )
                                         })}
                                     </div>
-                                </motion.div>
+                                </div>
                                 )}
 
                                 {isFocusedPreview && previewRoute && (
-                                    <motion.div
-                                        initial={false}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0"
+                                    <div
+                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0 animate-in fade-in duration-300"
                                     >
                                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                             {/* Preview area */}
@@ -1646,7 +1636,7 @@ export function ProjectPagesPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 )}
                             </div>
                         )}

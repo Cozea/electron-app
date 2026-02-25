@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sparkles, Upload, Check } from 'lucide-react'
 import type { WizardVisuals } from '@/hooks/useWizardState'
-import { motion, type Variants } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 interface VisualsStepProps {
@@ -35,25 +34,9 @@ export function VisualsStep({ visuals, onUpdate }: VisualsStepProps) {
     setTimeout(() => setIsGenerating(false), 1500)
   }
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.05 }
-    }
-  }
-
-  const item = {
-    hidden: { opacity: 0, y: 10 },
-    show: { opacity: 1, y: 0 }
-  }
-
   return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="space-y-12"
+    <div
+      className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
 
 
@@ -72,7 +55,6 @@ export function VisualsStep({ visuals, onUpdate }: VisualsStepProps) {
                 description={option.description}
                 selected={visuals.uiLibrary === option.id}
                 onClick={() => onUpdate({ uiLibrary: option.id })}
-                variants={item}
               />
             ))}
           </div>
@@ -177,7 +159,7 @@ export function VisualsStep({ visuals, onUpdate }: VisualsStepProps) {
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -186,23 +168,20 @@ function OptionCard({
   title,
   description,
   selected,
-  onClick,
-  variants
+  onClick
 }: {
   icon?: string,
   title: string,
   description: string,
   selected: boolean,
-  onClick: () => void,
-  variants?: Variants
+  onClick: () => void
 }) {
   return (
-    <motion.button
-      variants={variants}
+    <button
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex flex-col items-start text-left p-5 h-full rounded-xl border-2 transition-all duration-200 outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+        "relative flex flex-col items-start text-left p-5 h-full rounded-xl border-2 outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
         selected
           ? "border-primary bg-primary/5 shadow-sm"
           : "border-muted bg-card hover:border-primary/50 hover:bg-accent/50"
@@ -223,6 +202,6 @@ function OptionCard({
       <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
         {description}
       </p>
-    </motion.button>
+    </button>
   )
 }

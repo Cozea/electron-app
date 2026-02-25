@@ -19,6 +19,7 @@ interface RegisterCoreHandlersDeps {
   setUpdateError: (message: string) => void
   openExternal: (url: string) => Promise<void>
   isWindowFullScreen: () => boolean
+  openSettingsWindow: (route?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandlersDeps): void {
@@ -67,5 +68,9 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
 
   ipcMain.handle('window:isFullScreen', () => {
     return deps.isWindowFullScreen()
+  })
+
+  ipcMain.handle('window:openSettings', async (_event, payload?: { route?: string }) => {
+    return deps.openSettingsWindow(payload?.route)
   })
 }

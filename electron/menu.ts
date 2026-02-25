@@ -1,6 +1,10 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 
-export function createApplicationMenu() {
+interface CreateApplicationMenuOptions {
+    onOpenSettings?: () => void
+}
+
+export function createApplicationMenu(options?: CreateApplicationMenuOptions) {
     const isMac = process.platform === 'darwin'
     const isReleaseBuild = app.isPackaged
 
@@ -24,6 +28,12 @@ export function createApplicationMenu() {
                         { role: 'hide' },
                         { role: 'hideOthers' },
                         { role: 'unhide' },
+                        { type: 'separator' },
+                        {
+                            label: 'Settings...',
+                            accelerator: 'CmdOrCtrl+,',
+                            click: () => options?.onOpenSettings?.(),
+                        },
                         { type: 'separator' },
                         { role: 'quit' },
                     ],

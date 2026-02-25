@@ -4,10 +4,12 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AI_BASE_URL } from '../../lib/ai/apiEndpoints'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import { Switch } from '../../components/ui/switch'
+import { Input } from '../../components/ui/input'
 import {
   Table,
   TableBody,
@@ -42,11 +44,24 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-type Provider = 'openai' | 'google'
-const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'google', 'xai'] as const
+type ConnectableProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
+const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const
+
+const CONNECTABLE_PROVIDER_SET = new Set<ConnectableProvider>([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'github-copilot',
+  'gitlab',
+])
+
+function isConnectableProvider(providerId: string): providerId is ConnectableProvider {
+  return CONNECTABLE_PROVIDER_SET.has(providerId as ConnectableProvider)
+}
 
 interface LocalProviderStatus {
-  provider: Provider
+  provider: string
   connected: boolean
   expiresAt?: number
   accountId?: string
@@ -56,21 +71,107 @@ interface LocalProviderStatus {
   lastError?: string
 }
 
-const providerInfo: Record<Provider, { name: string; description: string; models: number }> = {
-  openai: {
+interface ProviderCatalogRow {
+  id: string
+  name: string
+  modelCount: number
+  envKeys: string[]
+  authStrategies: Array<'api_key' | 'oauth' | 'cloud_credentials'>
+  localConnectSupported: boolean
+  description: string
+}
+
+interface ProvidersApiResponse {
+  providers: ProviderCatalogRow[]
+  pagination?: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
+  source?: 'models.dev' | 'cache' | 'fallback'
+  updatedAt?: number
+}
+
+type ProviderAuthMethod =
+  | 'oauth'
+  | 'api_key'
+  | 'device'
+  | 'manual_code'
+  | 'vertex'
+  | 'gemini'
+  | 'gemini_api_key'
+
+const FALLBACK_PROVIDER_ROWS: ProviderCatalogRow[] = [
+  {
+    id: 'openai',
     name: 'OpenAI',
-    description: 'ChatGPT Plus/Pro local OAuth',
-    models: 5,
+    modelCount: 0,
+    envKeys: ['OPENAI_API_KEY'],
+    authStrategies: ['oauth', 'api_key'],
+    localConnectSupported: true,
+    description: 'OAuth + API key',
   },
-  google: {
-    name: 'Google AI',
-    description: 'Vertex local token source or Gemini OAuth',
-    models: 2,
+  {
+    id: 'google',
+    name: 'Google',
+    modelCount: 0,
+    envKeys: ['GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key / Gemini OAuth / Vertex token',
   },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    modelCount: 0,
+    envKeys: ['ANTHROPIC_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key',
+  },
+  {
+    id: 'xai',
+    name: 'xAI',
+    modelCount: 0,
+    envKeys: ['XAI_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key',
+  },
+  {
+    id: 'github-copilot',
+    name: 'GitHub Copilot',
+    modelCount: 0,
+    envKeys: [],
+    authStrategies: ['oauth'],
+    localConnectSupported: true,
+    description: 'OAuth',
+  },
+  {
+    id: 'gitlab',
+    name: 'GitLab',
+    modelCount: 0,
+    envKeys: [],
+    authStrategies: ['oauth'],
+    localConnectSupported: true,
+    description: 'OAuth',
+  },
+]
+
+function formatAuthStrategies(strategies: Array<'api_key' | 'oauth' | 'cloud_credentials'>): string {
+  if (strategies.length === 0) return 'Unknown'
+  return strategies
+    .map((strategy) => {
+      if (strategy === 'api_key') return 'API key'
+      if (strategy === 'oauth') return 'OAuth'
+      return 'Cloud credentials'
+    })
+    .join(' + ')
 }
 
 // Provider icons
-const ProviderIcon = ({ provider, className }: { provider: Provider; className?: string }) => {
+const ProviderIcon = ({ provider, className }: { provider: string; className?: string }) => {
   switch (provider) {
     case 'openai':
       return (
@@ -85,6 +186,30 @@ const ProviderIcon = ({ provider, className }: { provider: Provider; className?:
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
           <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
           <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+        </svg>
+      )
+    case 'anthropic':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+          <path d="M4.2 20.4 10.8 3.6h2.5l6.5 16.8h-2.8l-1.5-4.1H8.7l-1.6 4.1H4.2Zm5.2-6.5h5.3L12 6.8l-2.6 7.1Z" />
+        </svg>
+      )
+    case 'xai':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+          <path d="M5.2 4.2h3.1l3.7 5.2 3.7-5.2h3.1l-5.2 7.2 5.5 8.4h-3.2L12 14.1l-3.9 5.7H4.9l5.5-8.4-5.2-7.2Z" />
+        </svg>
+      )
+    case 'github-copilot':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+          <path d="M12 3.2c-4.9 0-8.8 3.9-8.8 8.7 0 2.6 1.2 5.1 3.2 6.7v2.8c0 .8.6 1.4 1.4 1.4h8.4c.8 0 1.4-.6 1.4-1.4V18.6c2-1.6 3.2-4.1 3.2-6.7 0-4.8-3.9-8.7-8.8-8.7Zm4.5 13.5-.6.4v2.3H8.1v-2.3l-.6-.4a6.1 6.1 0 1 1 9 0Z" />
+        </svg>
+      )
+    case 'gitlab':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+          <path d="M12 21.6 7.8 8.4h8.4L12 21.6Zm4.2-13.2 1.4 4.3L12 21.6l7.1-8.9 1.4-4.3h-4.3ZM3.5 12.7 12 21.6 6.4 8.4H2.1l1.4 4.3Z" />
         </svg>
       )
     default:
@@ -104,7 +229,7 @@ const formatTokens = (tokens: number): string => {
 }
 
 export function AI() {
-  const { user, logout, currentOrganization, convexUserId } = useAuth()
+  const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
 
   // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
   const freshOrg = useQuery(
@@ -133,16 +258,19 @@ export function AI() {
 
   // Dialog state for provider connection
   const [connectDialogOpen, setConnectDialogOpen] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
-  const [googleMethod, setGoogleMethod] = useState<'vertex' | 'gemini'>('gemini')
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
+  const [openaiMethod, setOpenaiMethod] = useState<'oauth' | 'device' | 'api_key'>('oauth')
+  const [anthropicMethod, setAnthropicMethod] = useState<'oauth' | 'api_key'>('api_key')
+  const [googleMethod, setGoogleMethod] = useState<'vertex' | 'gemini' | 'gemini_api_key'>('gemini')
+  const [providerApiKey, setProviderApiKey] = useState('')
   const [manualCode, setManualCode] = useState('')
   const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState<Provider | null>(null)
+  const [isSaving, setIsSaving] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [providerStatuses, setProviderStatuses] = useState<Record<Provider, LocalProviderStatus>>({
-    openai: { provider: 'openai', connected: false },
-    google: { provider: 'google', connected: false },
-  })
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, LocalProviderStatus>>({})
+  const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogRow[]>([])
+  const [availableProviderMethods, setAvailableProviderMethods] = useState<Record<string, ProviderAuthMethod[]>>({})
+  const [providersError, setProvidersError] = useState<string | null>(null)
 
   // Settings state
   const [isUpdatingSettings, setIsUpdatingSettings] = useState(false)
@@ -151,24 +279,75 @@ export function AI() {
   const [usagePage, setUsagePage] = useState(0)
   const usagePageSize = 5
 
+  // Provider table pagination
+  const [providerPage, setProviderPage] = useState(0)
+  const providerPageSize = 10
+
   const refreshProviderStatuses = async () => {
     if (!window.electronAPI?.providerAuth) return
     try {
       const statuses = await window.electronAPI.providerAuth.getStatus()
-      const next: Record<Provider, LocalProviderStatus> = {
-        openai: { provider: 'openai', connected: false },
-        google: { provider: 'google', connected: false },
-      }
+      const next: Record<string, LocalProviderStatus> = {}
       for (const status of statuses) {
-        if (status.provider in next) {
-          next[status.provider as Provider] = status as LocalProviderStatus
-        }
+        next[status.provider] = status as LocalProviderStatus
       }
       setProviderStatuses(next)
     } catch (err) {
       console.error('Failed to load provider status:', err)
     }
   }
+
+  useEffect(() => {
+    if (!accessToken) return
+
+    const controller = new AbortController()
+    setProvidersError(null)
+
+    fetch(`${AI_BASE_URL}/providers?page=1&pageSize=500`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load providers (${response.status})`)
+        }
+        return (await response.json()) as ProvidersApiResponse
+      })
+      .then((payload) => {
+        if (!payload?.providers?.length) {
+          setProviderCatalog(FALLBACK_PROVIDER_ROWS)
+          return
+        }
+        setProviderCatalog(payload.providers)
+      })
+      .catch((error) => {
+        if ((error as { name?: string }).name === 'AbortError') return
+        console.warn('Failed to fetch provider catalog:', error)
+        setProvidersError(error instanceof Error ? error.message : 'Failed to load provider catalog')
+        setProviderCatalog(FALLBACK_PROVIDER_ROWS)
+      })
+
+    return () => controller.abort()
+  }, [accessToken])
+
+  useEffect(() => {
+    if (!window.electronAPI?.providerAuth) return
+
+    window.electronAPI.providerAuth
+      .listProviders()
+      .then((providers) => {
+        const next: Record<string, ProviderAuthMethod[]> = {}
+        for (const provider of providers) {
+          next[provider.provider] = provider.methods as ProviderAuthMethod[]
+        }
+        setAvailableProviderMethods(next)
+      })
+      .catch((error) => {
+        console.warn('Failed to load provider auth methods:', error)
+      })
+  }, [])
 
   useEffect(() => {
     void refreshProviderStatuses()
@@ -181,9 +360,13 @@ export function AI() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
-  const handleOpenConnectDialog = (provider: Provider) => {
+  const handleOpenConnectDialog = (provider: string) => {
+    if (!isConnectableProvider(provider)) return
     setSelectedProvider(provider)
+    setOpenaiMethod('oauth')
+    setAnthropicMethod('api_key')
     setGoogleMethod('gemini')
+    setProviderApiKey('')
     setManualCode('')
     setManualAuthUrl(null)
     setSaveError(null)
@@ -191,9 +374,10 @@ export function AI() {
   }
 
   const connectProvider = async (
-    provider: Provider,
-    method?: 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini',
-    authorizationCode?: string
+    provider: ConnectableProvider,
+    method?: ProviderAuthMethod,
+    authorizationCode?: string,
+    apiKey?: string
   ) => {
     if (!window.electronAPI?.providerAuth) return
     setIsSaving(provider)
@@ -203,6 +387,7 @@ export function AI() {
         provider,
         method,
         authorizationCode,
+        apiKey,
       })
       if (!result.success) {
         setManualAuthUrl(result.authorizationUrl || null)
@@ -219,7 +404,7 @@ export function AI() {
     }
   }
 
-  const handleDisconnect = async (provider: Provider) => {
+  const handleDisconnect = async (provider: ConnectableProvider) => {
     if (!window.electronAPI?.providerAuth) return
     setIsSaving(provider)
     setSaveError(null)
@@ -238,12 +423,62 @@ export function AI() {
   const totalTokens = aggregate?.totalTokens || 0
   const totalTrackedUnits = aggregate?.totalTrackedUnits ?? 0
   const now = Date.now()
-  const connectedProviders = (Object.keys(providerInfo) as Provider[]).reduce((count, provider) => {
-    const status = providerStatuses[provider]
+  const providerRows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
+  const selectedProviderInfo = selectedProvider
+    ? providerRows.find((provider) => provider.id === selectedProvider)
+    : undefined
+  const selectedProviderMethods = selectedProvider
+    ? availableProviderMethods[selectedProvider] ?? []
+    : []
+
+  const providerSupportsMethod = (method: ProviderAuthMethod): boolean => {
+    if (selectedProviderMethods.length === 0) return true
+    return selectedProviderMethods.includes(method)
+  }
+
+  useEffect(() => {
+    if (selectedProvider === 'openai') {
+      const fallback: Array<typeof openaiMethod> = ['oauth', 'device', 'api_key']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(openaiMethod)) {
+        setOpenaiMethod(supported[0])
+      }
+    }
+
+    if (selectedProvider === 'anthropic') {
+      const fallback: Array<typeof anthropicMethod> = ['api_key', 'oauth']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(anthropicMethod)) {
+        setAnthropicMethod(supported[0])
+      }
+    }
+
+    if (selectedProvider === 'google') {
+      const fallback: Array<typeof googleMethod> = ['gemini', 'gemini_api_key', 'vertex']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(googleMethod)) {
+        setGoogleMethod(supported[0])
+      }
+    }
+  }, [anthropicMethod, googleMethod, openaiMethod, selectedProvider, selectedProviderMethods])
+
+  const connectedProviders = providerRows.reduce((count, provider) => {
+    const status = providerStatuses[provider.id]
     const effectiveConnected =
       (status?.connected ?? false) && (status?.expiresAt == null || status.expiresAt > now)
     return count + (effectiveConnected ? 1 : 0)
   }, 0)
+  const pagedProviderRows = providerRows.slice(
+    providerPage * providerPageSize,
+    (providerPage + 1) * providerPageSize
+  )
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(providerRows.length / providerPageSize) - 1)
+    if (providerPage > maxPage) {
+      setProviderPage(maxPage)
+    }
+  }, [providerPage, providerRows.length])
 
   return (
     <DashboardLayout
@@ -284,7 +519,7 @@ export function AI() {
               <div className="flex items-center gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Connected Providers</p>
-                  <p className="text-2xl font-semibold">{connectedProviders}/{Object.keys(providerInfo).length}</p>
+                  <p className="text-2xl font-semibold">{connectedProviders}/{providerRows.length}</p>
                 </div>
               </div>
             </div>
@@ -301,6 +536,9 @@ export function AI() {
             <CardDescription>
               Provider auth is stored only on this device. No provider secrets are saved to workspace/server storage.
             </CardDescription>
+            {providersError && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">{providersError}</p>
+            )}
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
@@ -314,23 +552,31 @@ export function AI() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {(Object.keys(providerInfo) as Provider[]).map((provider) => {
-                    const info = providerInfo[provider]
-                    const status = providerStatuses[provider]
+                  {pagedProviderRows.map((provider) => {
+                    const status = providerStatuses[provider.id]
+                    const isConnectable = provider.localConnectSupported && isConnectableProvider(provider.id)
                     // Use same logic as useConnectedProviders: connected only if not expired (so AI page matches chat model list)
                     const isConnected =
+                      isConnectable &&
                       (status?.connected ?? false) &&
                       (status?.expiresAt == null || status.expiresAt > now)
-                    const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
+                    const isPolicyManagedProvider =
+                      provider.id === 'openai' ||
+                      provider.id === 'anthropic' ||
+                      provider.id === 'google' ||
+                      provider.id === 'xai'
+                    const isAllowed =
+                      !isPolicyManagedProvider ||
+                      (convexOrg?.aiSettings?.allowedProviders?.includes(provider.id as 'openai' | 'anthropic' | 'google' | 'xai') ?? true)
 
                     return (
-                      <TableRow key={provider}>
+                      <TableRow key={provider.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                              <ProviderIcon provider={provider} className="h-4 w-4" />
+                              <ProviderIcon provider={provider.id} className="h-4 w-4" />
                             </div>
-                            <span className="font-medium">{info.name}</span>
+                            <span className="font-medium">{provider.name}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -351,6 +597,11 @@ export function AI() {
                                 Disabled
                               </Badge>
                             )}
+                            {!isConnectable && (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                Coming soon
+                              </Badge>
+                            )}
                           </div>
                           {status?.lastError && (
                             <p className="text-xs text-amber-500 mt-1">{status.lastError}</p>
@@ -358,30 +609,40 @@ export function AI() {
                         </TableCell>
                         <TableCell>
                           <div className="text-muted-foreground">
-                            <p>{info.models} models</p>
-                            <p className="text-xs">{info.description}</p>
+                            <p>{provider.modelCount.toLocaleString()} models</p>
+                            <p className="text-xs">{provider.description || formatAuthStrategies(provider.authStrategies)}</p>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {isConnected ? (
+                            {isConnectable ? (
+                              isConnected ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => void handleDisconnect(provider.id as ConnectableProvider)}
+                                  disabled={isSaving === provider.id}
+                                >
+                                  Disconnect
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleOpenConnectDialog(provider.id)}
+                                  disabled={isSaving === provider.id}
+                                >
+                                  Connect
+                                </Button>
+                              )
+                            ) : (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => void handleDisconnect(provider)}
-                                disabled={isSaving === provider}
+                                disabled
                               >
-                                Disconnect
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleOpenConnectDialog(provider)}
-                                disabled={isSaving === provider}
-                              >
-                                Connect
+                                Coming soon
                               </Button>
                             )}
                           </div>
@@ -392,6 +653,34 @@ export function AI() {
                 </TableBody>
               </Table>
             </div>
+            {providerRows.length > providerPageSize && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
+                <span className="text-sm text-muted-foreground">
+                  {providerPage * providerPageSize + 1}-
+                  {Math.min((providerPage + 1) * providerPageSize, providerRows.length)} of {providerRows.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setProviderPage((p) => p - 1)}
+                    disabled={providerPage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setProviderPage((p) => p + 1)}
+                    disabled={(providerPage + 1) * providerPageSize >= providerRows.length}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -433,7 +722,7 @@ export function AI() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <ProviderIcon
-                                provider={usage.provider as Provider}
+                                provider={usage.provider}
                                 className="h-4 w-4"
                               />
                               <span className="capitalize">{usage.provider}</span>
@@ -602,28 +891,104 @@ export function AI() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Connect {selectedProvider ? providerInfo[selectedProvider]?.name : 'Provider'}
+              Connect {selectedProviderInfo?.name || 'Provider'}
             </DialogTitle>
             <DialogDescription>
               Auth is stored locally on this device using OS-backed encryption.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {selectedProvider === 'google' && (
+            {selectedProvider === 'openai' && (
               <div className="space-y-2">
-                <p className="text-sm font-medium">Google source</p>
-                <Select value={googleMethod} onValueChange={(value) => setGoogleMethod(value as 'vertex' | 'gemini')}>
+                <p className="text-sm font-medium">OpenAI method</p>
+                <Select
+                  value={openaiMethod}
+                  onValueChange={(value) => setOpenaiMethod(value as 'oauth' | 'device' | 'api_key')}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gemini">Gemini OAuth (Google account)</SelectItem>
-                    <SelectItem value="vertex">Vertex local token source</SelectItem>
+                    {providerSupportsMethod('oauth') && (
+                      <SelectItem value="oauth">OAuth (ChatGPT account)</SelectItem>
+                    )}
+                    {providerSupportsMethod('device') && (
+                      <SelectItem value="device">Device code (no callback)</SelectItem>
+                    )}
+                    {providerSupportsMethod('api_key') && (
+                      <SelectItem value="api_key">API key (local)</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             )}
-            {selectedProvider === 'google' && manualAuthUrl && (
+            {selectedProvider === 'anthropic' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Anthropic method</p>
+                <Select
+                  value={anthropicMethod}
+                  onValueChange={(value) => setAnthropicMethod(value as 'oauth' | 'api_key')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerSupportsMethod('api_key') && (
+                      <SelectItem value="api_key">API key (local)</SelectItem>
+                    )}
+                    {providerSupportsMethod('oauth') && (
+                      <SelectItem value="oauth">OAuth</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {selectedProvider === 'google' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Google source</p>
+                <Select
+                  value={googleMethod}
+                  onValueChange={(value) =>
+                    setGoogleMethod(value as 'vertex' | 'gemini' | 'gemini_api_key')
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerSupportsMethod('gemini') && (
+                      <SelectItem value="gemini">Gemini OAuth (Google account)</SelectItem>
+                    )}
+                    {providerSupportsMethod('gemini_api_key') && (
+                      <SelectItem value="gemini_api_key">API key (local)</SelectItem>
+                    )}
+                    {providerSupportsMethod('vertex') && (
+                      <SelectItem value="vertex">Vertex local token source</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {((selectedProvider === 'openai' && openaiMethod === 'api_key') ||
+              (selectedProvider === 'google' && googleMethod === 'gemini_api_key') ||
+              (selectedProvider === 'anthropic' && anthropicMethod === 'api_key') ||
+              selectedProvider === 'xai') && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">API key</p>
+                <p className="text-xs text-muted-foreground pb-1">
+                  Stored only on this device with OS-backed encryption.
+                </p>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Paste API key"
+                  className="bg-secondary/60 border-border/50"
+                  value={providerApiKey}
+                  onChange={(e) => setProviderApiKey(e.target.value)}
+                />
+              </div>
+            )}
+            {(selectedProvider === 'google' || (selectedProvider === 'anthropic' && anthropicMethod === 'oauth')) && manualAuthUrl && (
               <div className="space-y-2 rounded-md border p-3">
                 <p className="text-sm font-medium">Manual code fallback</p>
                 <p className="text-xs text-muted-foreground">
@@ -634,7 +999,7 @@ export function AI() {
                   size="sm"
                   onClick={() => void window.electronAPI.shell.openExternal(manualAuthUrl)}
                 >
-                  Open Google Auth Page
+                  Open {selectedProvider === 'google' ? 'Google' : 'Anthropic'} Auth Page
                 </Button>
                 <input
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -670,7 +1035,19 @@ export function AI() {
             <Button
               onClick={() => {
                 if (!selectedProvider) return
+                if (selectedProvider === 'openai') {
+                  if (openaiMethod === 'api_key') {
+                    void connectProvider('openai', 'api_key', undefined, providerApiKey.trim())
+                    return
+                  }
+                  void connectProvider('openai', openaiMethod)
+                  return
+                }
                 if (selectedProvider === 'google') {
+                  if (googleMethod === 'gemini_api_key') {
+                    void connectProvider('google', 'gemini_api_key', undefined, providerApiKey.trim())
+                    return
+                  }
                   if (manualAuthUrl && manualCode.trim()) {
                     void connectProvider('google', 'gemini', manualCode.trim())
                     return
@@ -678,11 +1055,37 @@ export function AI() {
                   void connectProvider('google', googleMethod)
                   return
                 }
-                void connectProvider(selectedProvider, 'oauth')
+                if (selectedProvider === 'anthropic') {
+                  if (anthropicMethod === 'api_key') {
+                    void connectProvider('anthropic', 'api_key', undefined, providerApiKey.trim())
+                    return
+                  }
+                  if (manualAuthUrl && manualCode.trim()) {
+                    void connectProvider('anthropic', 'manual_code', manualCode.trim())
+                    return
+                  }
+                  void connectProvider('anthropic', 'oauth')
+                  return
+                }
+                if (selectedProvider === 'xai') {
+                  void connectProvider('xai', 'api_key', undefined, providerApiKey.trim())
+                  return
+                }
+                if (isConnectableProvider(selectedProvider)) {
+                  void connectProvider(selectedProvider, 'oauth')
+                }
               }}
               disabled={
                 !selectedProvider ||
+                !isConnectableProvider(selectedProvider) ||
                 isSaving === selectedProvider ||
+                (selectedProvider === 'openai' && openaiMethod === 'api_key' && providerApiKey.trim().length === 0) ||
+                (selectedProvider === 'anthropic' && anthropicMethod === 'api_key' && providerApiKey.trim().length === 0) ||
+                (selectedProvider === 'anthropic' && anthropicMethod === 'oauth' && !!manualAuthUrl && manualCode.trim().length === 0) ||
+                (selectedProvider === 'xai' && providerApiKey.trim().length === 0) ||
+                (selectedProvider === 'google' &&
+                  googleMethod === 'gemini_api_key' &&
+                  providerApiKey.trim().length === 0) ||
                 (selectedProvider === 'google' &&
                   !!manualAuthUrl &&
                   manualCode.trim().length === 0)
