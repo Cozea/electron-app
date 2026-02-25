@@ -581,10 +581,23 @@ export interface IntegrationToolResult {
   error?: string
 }
 
-export type ProviderAuthProvider = 'openai' | 'anthropic' | 'google'
-export type ProviderAuthMethod = 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini'
+export type ProviderAuthProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'xai'
+  | 'github-copilot'
+  | 'gitlab'
+export type ProviderAuthMethod =
+  | 'oauth'
+  | 'api_key'
+  | 'device'
+  | 'manual_code'
+  | 'vertex'
+  | 'gemini'
+  | 'gemini_api_key'
 export type ProviderAuthGoogleMode = 'vertex' | 'gemini'
-export type ProviderAuthType = 'oauth' | 'local_token'
+export type ProviderAuthType = 'oauth' | 'local_token' | 'api_key'
 
 export interface ProviderAuthRequestEnvelope {
   provider: ProviderAuthProvider
@@ -686,6 +699,7 @@ export interface ElectronAPI {
       method?: ProviderAuthMethod
       authorizationCode?: string
       credentialPath?: string
+      apiKey?: string
     }) => Promise<ProviderAuthConnectResult>
     disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
     getRequestAuth: (options: {
@@ -769,6 +783,7 @@ export interface ElectronAPI {
   }
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    showMessageBox: (options: import('electron').MessageBoxOptions) => Promise<import('electron').MessageBoxReturnValue>
   }
   storage: {
     getUsage: () => Promise<StorageUsage>
@@ -777,6 +792,7 @@ export interface ElectronAPI {
   window: {
     isFullScreen: () => Promise<boolean>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
+    openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
@@ -819,6 +835,9 @@ export interface ElectronAPI {
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
     getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+  }
+  localAiRuntime: {
+    getStatus: () => Promise<{ enabled: boolean; running: boolean; endpoint?: string }>
   }
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>
@@ -944,6 +963,13 @@ export interface ElectronAPI {
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
+    showNative: (options: {
+      x: number
+      y: number
+      editable?: boolean
+      selectionText?: string
+      linkUrl?: string
+    }) => Promise<{ shown: boolean }>
   }
   updates: {
     check: () => Promise<UpdateState>
@@ -1024,39 +1050,5 @@ export interface ElectronAPI {
         related?: Array<{ message: string; file?: string; line?: number; column?: number }>
       }>
     }>
-    onDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => () => void
-    onDidChangeDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => () => void
   }
 }

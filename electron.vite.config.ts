@@ -93,6 +93,25 @@ export default defineConfig({
   renderer: {
     root: '.',
     plugins: [
+      {
+        name: 'load-vscode-css-as-string',
+        enforce: 'pre',
+        async resolveId(source, importer, options) {
+          const resolved = await this.resolve(source, importer, options)
+          if (!resolved) {
+            return undefined
+          }
+
+          if (resolved.id.match(/node_modules\/(@codingame\/monaco-vscode|vscode|monaco-editor).*\.css$/)) {
+            return {
+              ...resolved,
+              id: `${resolved.id}?inline`,
+            }
+          }
+
+          return undefined
+        },
+      },
       react({
         babel: reactCompilerEnabled
           ? {
@@ -113,6 +132,11 @@ export default defineConfig({
     server: {
       host: 'localhost',
       port: 5183,
+      headers: {
+        'Cross-Origin-Embedder-Policy': 'credentialless',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+      },
       proxy: {
         // Keep AI requests same-origin in dev to avoid browser CORS.
         '/ai': {
@@ -122,10 +146,27 @@ export default defineConfig({
       },
     },
     resolve: {
+      dedupe: ['vscode'],
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@shared': path.resolve(__dirname, './shared'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        '@codingame/monaco-vscode-api',
+        '@codingame/monaco-vscode-api/extensions',
+        'vscode/localExtensionHost',
+      ],
+      exclude: [
+        '@codingame/monaco-vscode-theme-defaults-default-extension',
+        '@codingame/monaco-vscode-typescript-language-features-default-extension',
+        '@codingame/monaco-vscode-typescript-basics-default-extension',
+        '@codingame/monaco-vscode-javascript-default-extension',
+        '@codingame/monaco-vscode-json-default-extension',
+        '@codingame/monaco-vscode-css-default-extension',
+        '@codingame/monaco-vscode-html-default-extension',
+      ],
     },
     build: {
       rollupOptions: {

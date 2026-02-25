@@ -40,6 +40,7 @@ interface InitialSyncResponse {
   deltaByteLength?: number
   serverStateVector?: ArrayBuffer
   serverTimestamp?: number
+  serverSeq?: number
 }
 
 const YjsProjectContext = createContext<YjsProjectContextValue>({
@@ -82,6 +83,7 @@ export function YjsProjectProvider({
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [wsCircuitOpen, setWsCircuitOpen] = useState(false)
 
   const convexProviderRef = useRef<YConvexProvider | null>(null)
   const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
@@ -92,12 +94,33 @@ export function YjsProjectProvider({
   const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
   const convex = useConvex()
 
+  const wsSession = useMemo<CollabSessionDescriptor | null>(() => {
+    if (!collabSession) return null
+    return {
+      projectId: collabSession.projectId,
+      roomId: collabSession.roomId,
+      collabWsUrl: collabSession.collabWsUrl,
+      token: collabSession.token,
+      protocolVersion: collabSession.protocolVersion,
+    }
+  }, [
+    collabSession?.projectId,
+    collabSession?.roomId,
+    collabSession?.collabWsUrl,
+    collabSession?.token,
+    collabSession?.protocolVersion,
+  ])
+
   const collabTransport = useMemo(
     () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
     []
   )
-  const shouldUseWsTransport = collabTransport === 'ws' && !!collabSession
+  const shouldUseWsTransport = collabTransport === 'ws' && !!wsSession && !wsCircuitOpen
   const shouldUseConvexTail = !shouldUseWsTransport
+
+  useEffect(() => {
+    setWsCircuitOpen(false)
+  }, [projectId, wsSession?.roomId, wsSession?.collabWsUrl])
 
   const updatesSince = shouldUseConvexTail && lastSyncTime !== null ? Math.max(0, lastSyncTime - 1) : null
   const updates = useQuery(
@@ -123,7 +146,7 @@ export function YjsProjectProvider({
       const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
         projectId,
         clientId: doc.doc.clientID.toString(),
-        roomId: shouldUseWsTransport ? collabSession?.roomId : undefined,
+        roomId: shouldUseWsTransport ? wsSession?.roomId : undefined,
       })) as InitialSyncResponse
 
       if (initialSync.deltaUpdate && initialSync.deltaUpdate.byteLength > 0) {
@@ -142,15 +165,26 @@ export function YjsProjectProvider({
         color: generateColor(userId),
       })
 
-      if (shouldUseWsTransport && collabSession) {
+      if (shouldUseWsTransport && wsSession) {
+        const initialKnownSeq =
+          typeof initialSync.serverSeq === 'number' && Number.isFinite(initialSync.serverSeq)
+            ? Math.max(0, Math.floor(initialSync.serverSeq))
+            : 0
+
         wsProviderRef.current = new CollabWsProvider({
           doc: doc.doc,
           awareness: doc.awareness,
-          session: collabSession,
+          session: wsSession,
           clientType: 'electron',
+          initialKnownSeq,
           onStateChange: (state) => {
             if (disposed) return
             setIsConnected(state === 'connected')
+          },
+          onPermanentFailure: () => {
+            if (disposed) return
+            setWsCircuitOpen(true)
+            setIsConnected(false)
           },
         })
         wsProviderRef.current.start()
@@ -218,7 +252,7 @@ export function YjsProjectProvider({
       setYjsDoc(null)
       docInstance?.destroy()
     }
-  }, [collabSession, convex, projectId, projectPath, shouldUseWsTransport, userId, userName])
+  }, [convex, projectId, projectPath, shouldUseWsTransport, userId, userName, wsSession])
 
   useEffect(() => {
     if (!shouldUseConvexTail || !updates || updates.length === 0 || !convexProviderRef.current) return

@@ -21,7 +21,7 @@ export type VariantId =
   | 'xhigh'
   | 'max'
 
-export type RuntimeProvider = 'openai' | 'google' | 'xai'
+export type RuntimeProvider = 'anthropic' | 'openai' | 'google' | 'xai'
 
 export interface RuntimeModelCapabilities {
   supportsExtendedThinking?: boolean

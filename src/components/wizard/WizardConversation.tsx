@@ -109,6 +109,8 @@ import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { reportLocalUsage } from '@/lib/ai/localUsage'
+import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
@@ -170,6 +172,10 @@ interface UsageData {
   totalTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  runtime?: 'local' | 'remote'
+  durationMs?: number
+  finishReason?: string
+  rawFinishReason?: string
 }
 
 interface SourcePart {
@@ -543,10 +549,19 @@ export function WizardConversation({
     }
   }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, normalizedVariantId, providerAuthHeader])
 
+  const localRuntimeStatus = useLocalAiRuntimeStatus(true)
+  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
+  const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
+  const canUseLocalRuntimeEndpoint =
+    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
+
   // Chat transport (same pattern as AIConversation)
   const chatTransport = useMemo(() => {
+    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+    const baseApi = chatApi.replace(/\/chat$/, '')
+
     return new DefaultChatTransport({
-      api: AI_API_URL,
+      api: chatApi,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
         const providerHeader = requestConfigRef.current.providerAuthHeader
@@ -567,11 +582,16 @@ export function WizardConversation({
         agentId: requestConfigRef.current.agentId,
         surface: requestConfigRef.current.surface,
         variantId: requestConfigRef.current.variantId,
+        projectContext: {
+          name: projectId || 'wizard-project',
+          slug: (projectId || 'wizard-project').toLowerCase(),
+          runtime: 'local',
+        },
         enableTools: true, // Always enabled - gated client-side based on planning phase
         enableWebSearch: true, // Always enabled
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/chat`
+        const api = `${baseApi}/chat`
         const requestBody = body ?? {}
         const nextBody = {
           ...requestBody,
@@ -581,7 +601,7 @@ export function WizardConversation({
         return { api, body: nextBody }
       },
     })
-  }, [])
+  }, [canUseLocalRuntimeEndpoint, localRuntimeEndpoint, projectId])
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -917,6 +937,42 @@ export function WizardConversation({
       },
     }
   }, [messages])
+
+  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId) return
+
+    for (const message of messages) {
+      for (let index = 0; index < message.parts.length; index += 1) {
+        const part = message.parts[index]
+        if (part.type !== 'data-usage') continue
+
+        const data = (part as { data?: UsageData }).data
+        if (!data || data.runtime !== 'local') continue
+
+        const key = `${message.id}:${index}`
+        if (reportedLocalUsageRef.current.has(key)) continue
+        reportedLocalUsageRef.current.add(key)
+
+        void reportLocalUsage(accessToken, {
+          organizationId: currentOrganization.organizationId,
+          model: data.model || model,
+          conversationId,
+          feature: 'project-wizard',
+          actionType: 'plan',
+          promptTokens: data.promptTokens ?? 0,
+          completionTokens: data.completionTokens ?? 0,
+          totalTokens: data.totalTokens,
+          reasoningTokens: data.reasoningTokens,
+          cachedInputTokens: data.cachedInputTokens,
+          durationMs: data.durationMs,
+          finishReason: data.finishReason,
+          rawFinishReason: data.rawFinishReason,
+        })
+      }
+    }
+  }, [accessToken, conversationId, currentOrganization?.organizationId, messages, model])
 
   const isLoading = status === 'streaming' || status === 'submitted'
 

@@ -39,18 +39,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   providerAuth: {
     listProviders: () => ipcRenderer.invoke('providerAuth:listProviders'),
-    getStatus: (provider?: 'openai' | 'anthropic' | 'google') =>
+    getStatus: (provider?: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab') =>
       ipcRenderer.invoke('providerAuth:getStatus', provider),
     connect: (options: {
-      provider: 'openai' | 'anthropic' | 'google'
-      method?: 'oauth' | 'device' | 'manual_code' | 'vertex' | 'gemini'
+      provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
+      method?: 'oauth' | 'api_key' | 'device' | 'manual_code' | 'vertex' | 'gemini' | 'gemini_api_key'
       authorizationCode?: string
       credentialPath?: string
+      apiKey?: string
     }) => ipcRenderer.invoke('providerAuth:connect', options),
-    disconnect: (provider: 'openai' | 'anthropic' | 'google') =>
+    disconnect: (provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab') =>
       ipcRenderer.invoke('providerAuth:disconnect', provider),
     getRequestAuth: (options: {
-      provider: 'openai' | 'anthropic' | 'google'
+      provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
       modelId: string
       organizationId: string
     }) => ipcRenderer.invoke('providerAuth:getRequestAuth', options),
@@ -167,6 +168,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+    showMessageBox: (options: any) => ipcRenderer.invoke('dialog:showMessageBox', options),
   },
   storage: {
     getUsage: () => ipcRenderer.invoke('storage:getUsage'),
@@ -179,6 +181,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('window:fullscreen-change', handler)
       return () => ipcRenderer.removeListener('window:fullscreen-change', handler)
     },
+    openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),
@@ -230,6 +233,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('runtime:ensureRuntime', options),
     getRuntimeStatus: (options?: { projectPath?: string }) =>
       ipcRenderer.invoke('runtime:getRuntimeStatus', options ?? {}),
+  },
+  localAiRuntime: {
+    getStatus: () => ipcRenderer.invoke('localAiRuntime:getStatus'),
   },
   fs: {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
@@ -426,6 +432,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('contextMenu:showTerminalSelection', options),
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showFileTreeMenu', options),
+    showNative: (options: {
+      x: number
+      y: number
+      editable?: boolean
+      selectionText?: string
+      linkUrl?: string
+    }) => ipcRenderer.invoke('contextMenu:showNative', options),
   },
   updates: {
     check: () => ipcRenderer.invoke('updates:check'),
@@ -503,79 +516,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('diagnostics:getSnapshot', options),
     checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) =>
       ipcRenderer.invoke('diagnostics:checkFiles', options),
-    onDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: {
-        projectPath: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        diagnostics: Array<{
-          id?: string
-          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-          severity: 'error' | 'warning' | 'info'
-          message: string
-          file?: string
-          line?: number
-          column?: number
-          endLine?: number
-          endColumn?: number
-          code?: string
-          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-        }>
-      }) => callback(payload)
-      ipcRenderer.on('diagnostics:publish', handler)
-      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
-    },
-    onDidChangeDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: {
-        projectPath: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        diagnostics: Array<{
-          id?: string
-          source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-          severity: 'error' | 'warning' | 'info'
-          message: string
-          file?: string
-          line?: number
-          column?: number
-          endLine?: number
-          endColumn?: number
-          code?: string
-          related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-        }>
-      }) => callback(payload)
-      ipcRenderer.on('diagnostics:publish', handler)
-      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
-    },
   },
 } satisfies ElectronAPI)
