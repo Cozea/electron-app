@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useChat } from '@ai-sdk/react'
+import { useCozeaChat } from '@/hooks/useCozeaChat'
 import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
 } from 'ai'
 import { Button } from '@/components/ui/button'
@@ -102,12 +100,11 @@ import {
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { PlanSelector, type PlanOption } from './PlanSelector'
-import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { BillingError } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
-import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
-import { getRetryHintMessage, readLatestRetryHint } from '@/lib/ai/retryHints'
+import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
@@ -185,7 +182,7 @@ interface SourcePart {
   source?: { url?: string; title?: string }
 }
 
-type ChatHookResult = ReturnType<typeof useChat>
+type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -272,7 +269,6 @@ export function WizardConversation({
   const conversationId = initialConversationIdRef.current
   const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
-  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const hasSentInitialMessageRef = useRef(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -525,26 +521,6 @@ export function WizardConversation({
   const canUseLocalRuntimeEndpoint =
     localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
   const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
-  const { transport: chatTransport } = useAiChatTransport({
-    accessToken,
-    organizationId: currentOrganization?.organizationId,
-    model,
-    conversationId,
-    agentId: 'plan',
-    surface: 'wizard',
-    variantId: normalizedVariantId,
-    enableTools: true,
-    enableWebSearch: true,
-    extraBody: {
-      projectContext: {
-        name: projectId || 'wizard-project',
-        slug: (projectId || 'wizard-project').toLowerCase(),
-        runtime: 'local',
-      },
-    },
-    providerAuthHeader,
-    api: chatApi,
-  })
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -633,19 +609,35 @@ export function WizardConversation({
     sendMessage,
     stop,
     addToolOutput,
-  } = useChat({
-    transport: chatTransport,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onToolCall: handleToolCall,
-    onError: (err: unknown) => {
-      console.error('Chat error:', err)
-      const billingErr = parseBillingError(err)
-      if (billingErr) {
-        setBillingError(billingErr)
-      }
+    dedupedMessages,
+    retryHint,
+    billingError,
+    setBillingError,
+  } = useCozeaChat({
+    transportArgs: {
+      accessToken,
+      organizationId: currentOrganization?.organizationId,
+      model,
+      conversationId,
+      agentId: 'plan',
+      surface: 'wizard',
+      variantId,
+      enableTools: true,
+      enableWebSearch: true,
+      extraBody: {
+        projectContext: {
+          name: projectId || 'wizard-project',
+          slug: (projectId || 'wizard-project').toLowerCase(),
+          runtime: 'local',
+        },
+      },
+      providerAuthHeader,
+      api: chatApi,
     },
+    chatOptions: {
+      onToolCall: handleToolCall,
+    },
+    onBillingError: (err) => setBillingError(err as any),
   })
 
   addToolOutputRef.current = addToolOutput
@@ -656,7 +648,7 @@ export function WizardConversation({
 
     const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
 
-    for (const message of messages) {
+    for (const message of dedupedMessages) {
       if (message.role !== 'assistant') continue
       if (!Array.isArray(message.parts)) continue
 
@@ -692,20 +684,17 @@ export function WizardConversation({
         errorText: 'Cancelled by the current user.',
       })
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   const genericErrorMessage = useMemo(() => {
-    if (!error) return null
-    const retryHint = readLatestRetryHint(
-      messages as Array<{ parts: Array<{ type: string } & Record<string, unknown>> }>
-    )
+    if (!error || billingError) return null
     const retryHintMessage = getRetryHintMessage(retryHint)
     if (retryHintMessage) return retryHintMessage
     const message = (error as { message?: string }).message
     if (typeof message === 'string' && message.trim()) return message
     if (typeof error === 'string' && (error as string).trim()) return error as string
     return 'Something went wrong'
-  }, [error, messages])
+  }, [error, billingError, retryHint])
 
   const serviceErrorMessage = modelsError || toolsError || providerAuthError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
@@ -840,7 +829,7 @@ export function WizardConversation({
         }
       }
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   // Compute token usage
   const accumulatedUsage = useMemo(() => {
@@ -884,7 +873,7 @@ export function WizardConversation({
         },
       },
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   const reportedLocalUsageRef = useRef<Set<string>>(new Set())
 
@@ -992,7 +981,7 @@ export function WizardConversation({
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
-              error={billingError}
+              error={billingError as any}
               onAction={(href) => navigate(href)}
               className="border-0 border-b rounded-none p-3"
             />
