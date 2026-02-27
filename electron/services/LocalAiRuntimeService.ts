@@ -2,24 +2,17 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net'
 import { ipcMain } from 'electron'
 import {
-  convertToModelMessages,
   createUIMessageStream,
   pipeUIMessageStreamToResponse,
-  stepCountIs,
-  streamText,
   type UIMessage,
 } from 'ai'
 
 import { getModelInfo } from '../../server/src/routes/ai/modelCatalog.js'
 import { normalizeModelVariant } from '../../server/src/routes/ai/modelVariants.js'
-import {
-  createProviderModelFromEnvelope,
-} from '../../server/src/routes/ai/providerHelpers.js'
-import { transformProviderMessages, withProviderDefaults } from '../../server/src/routes/ai/runtime/providerTransform.js'
-import { getRequestMessages } from '../../server/src/routes/ai/runtime/messagePipeline.js'
-import { composeSystemPrompt } from '../../server/src/routes/ai/runtime/promptComposer.js'
 import { resolveAgentPolicy } from '../../server/src/routes/ai/runtime/profiles.js'
-import { resolveRuntimeTooling } from '../../server/src/routes/ai/runtime/toolResolver.js'
+import { createProviderModelFromEnvelope } from '../../server/src/routes/ai/providerHelpers.js'
+import { parseChatRequestBody } from '../../server/src/routes/ai/runtime/chatContract.js'
+import { executeChatPipeline, mergePipelineResultToWriter } from '../../server/src/routes/ai/runtime/chatExecutor.js'
 import type { ChatRequestBody, ProviderAuthEnvelope } from '../../server/src/routes/ai/types.js'
 
 interface LocalAiRuntimeStatus {
@@ -123,15 +116,29 @@ export class LocalAiRuntimeService {
 
       try {
         const rawBody = await readRequestBody(req)
-        const parsedBody = JSON.parse(rawBody) as ChatRequestBody
+        let decodedBody: unknown
+        try {
+          decodedBody = JSON.parse(rawBody) as unknown
+        } catch {
+          sendJson(res, 400, {
+            error: 'invalid_payload',
+            message: 'Request body must be valid JSON.',
+          })
+          return
+        }
+
+        const contract = parseChatRequestBody(decodedBody)
+        if (!contract.ok) {
+          sendJson(res, contract.error.statusCode, contract.error.payload)
+          return
+        }
+
+        const parsedBody = contract.value
         const messages = parsedBody.messages
         const model = parsedBody.model
         const organizationId = parsedBody.organizationId
-
-        if (!Array.isArray(messages) || !model || !organizationId) {
-          sendJson(res, 400, { error: 'messages, model, and organizationId are required' })
-          return
-        }
+        const enableTools = parsedBody.enableTools ?? true
+        const enableWebSearch = parsedBody.enableWebSearch ?? false
 
         const modelInfo = getModelInfo(model)
         if (!modelInfo || (modelInfo.provider !== 'openai' && modelInfo.provider !== 'google')) {
@@ -153,7 +160,8 @@ export class LocalAiRuntimeService {
         const policyResult = resolveAgentPolicy({
           requestedAgentId: parsedBody.agentId,
           requestedSurface: parsedBody.surface,
-          requestedVariant: parsedBody.variantId,
+          requestedVariantId: parsedBody.variantId,
+          hasProjectContext: !!parsedBody.projectContext,
         })
 
         if (!policyResult.ok) {
@@ -166,7 +174,7 @@ export class LocalAiRuntimeService {
           requestedVariant: resolvedPolicyBase.variantId,
           provider: modelInfo.provider,
           modelId: model,
-          reasoningRange: modelInfo.capabilities.reasoningRange,
+          capabilities: modelInfo.capabilities,
         })
         const resolvedPolicy = {
           ...resolvedPolicyBase,
@@ -179,61 +187,27 @@ export class LocalAiRuntimeService {
           envelope
         )
 
-        const { requestMessages } = getRequestMessages(messages as UIMessage[], modelInfo.provider, model)
-        const systemPrompt = composeSystemPrompt(
-          resolvedPolicy.feature,
-          parsedBody.projectContext,
-          resolvedPolicy.agentId,
-          resolvedPolicy.surface
-        )
-
-        const resolvedTooling = resolveRuntimeTooling({
-          enabledTools: [],
-          enableTools: parsedBody.enableTools,
-          enableWebSearch: parsedBody.enableWebSearch,
-          provider: modelInfo.provider,
-          modelId: model,
-          capabilities: modelInfo.capabilities,
-          agentPolicy: resolvedPolicy,
-          hasProjectContext: !!parsedBody.projectContext,
-          orgAiSettings: undefined,
-          variantId: resolvedPolicy.variantId,
-          requestProviderOptions: parsedBody.providerOptions,
-          apiKey: envelope.accessToken,
-          exaWebSearch: undefined,
-        })
-
-        const providerOptions = withProviderDefaults({
-          provider: modelInfo.provider,
-          systemPrompt,
-          providerOptions: resolvedTooling.providerOptions,
-        })
-
-        const modelMessages = await convertToModelMessages(requestMessages, {
-          tools: resolvedTooling.toolSet,
-          ignoreIncompleteToolCalls: true,
-        })
-
-        const normalizedModelMessages = transformProviderMessages(
-          modelInfo.provider,
-          modelInfo.providerModelId,
-          modelMessages
-        )
-
         const startedAt = Date.now()
         const stream = createUIMessageStream<UIMessage>({
-          originalMessages: requestMessages,
-          execute: ({ writer }) => {
-            const result = streamText({
-              model: aiModel,
-              system: systemPrompt,
-              messages: normalizedModelMessages,
-              maxOutputTokens: resolvedTooling.maxOutputTokens,
-              tools: Object.keys(resolvedTooling.toolSet).length > 0 ? resolvedTooling.toolSet : undefined,
-              toolChoice: Object.keys(resolvedTooling.toolSet).length > 0 ? 'auto' : 'none',
-              providerOptions: providerOptions as any,
-              stopWhen: stepCountIs(resolvedPolicy.maxSteps),
-              onFinish: async (event) => {
+          originalMessages: messages,
+          execute: async ({ writer }) => {
+            const pipeline = await executeChatPipeline({
+              aiModel,
+              messages: messages as UIMessage[],
+              model,
+              modelInfo,
+              organizationId,
+              conversationId: parsedBody.conversationId,
+              requestProviderOptions: parsedBody.providerOptions,
+              projectContext: parsedBody.projectContext,
+              resolvedPolicy,
+              enabledTools: [],
+              enableTools,
+              enableWebSearch,
+              orgAiSettings: null,
+              apiKey: envelope.accessToken,
+              exaWebSearch: undefined,
+              onFinish: async (event: any) => {
                 const usage = event.totalUsage
                 const promptTokens = usage.inputTokens ?? 0
                 const completionTokens = usage.outputTokens ?? 0
@@ -257,13 +231,13 @@ export class LocalAiRuntimeService {
               },
             })
 
-            writer.merge(
-              result.toUIMessageStream({
-                originalMessages: requestMessages,
-                sendReasoning: true,
-                onError: (error) => (error instanceof Error ? error.message : 'Local AI stream failed'),
-              })
-            )
+            mergePipelineResultToWriter({
+              result: pipeline.result,
+              requestMessages: pipeline.requestMessages,
+              continuationStateInput: pipeline.continuationStateInput,
+              writer,
+              providerHint: pipeline.providerHint,
+            })
           },
         })
 

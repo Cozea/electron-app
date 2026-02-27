@@ -127,9 +127,7 @@ export function EntryChoice({
   const [model, setModel] = useState(initialGlobalModelSettings.model ?? defaultModels[0]?.id ?? '')
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
-  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(
-    initialGlobalModelSettings.variantId ?? 'medium'
-  )
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId)
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )

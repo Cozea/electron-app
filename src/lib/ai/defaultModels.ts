@@ -51,6 +51,22 @@ export const DEFAULT_MODELS: ModelOption[] = [
     tier: 'standard',
     providers: ['openai'],
   },
+  {
+    id: 'copilot-gpt-4.1',
+    name: 'GitHub Copilot GPT-4.1',
+    chef: 'GitHub Copilot',
+    chefSlug: 'github-copilot',
+    tier: 'standard',
+    providers: ['github-copilot'],
+  },
+  {
+    id: 'gitlab-duo-agentic',
+    name: 'GitLab Duo Agentic Chat',
+    chef: 'GitLab',
+    chefSlug: 'gitlab',
+    tier: 'standard',
+    providers: ['gitlab'],
+  },
   // Powerful tier
   {
     id: 'gpt-5.3-codex',

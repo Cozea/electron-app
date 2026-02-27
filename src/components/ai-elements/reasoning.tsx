@@ -99,7 +99,10 @@ export const Reasoning = memo(
         value={{ isStreaming, isOpen: isOpen ?? false, setIsOpen, duration }}
       >
         <Collapsible
-          className={cn("group/reasoning-row not-prose mb-4", className)}
+          className={cn(
+            "group/reasoning-row not-prose data-[state=closed]:mb-1 data-[state=open]:mb-4",
+            className
+          )}
           onOpenChange={handleOpenChange}
           open={isOpen}
           {...props}

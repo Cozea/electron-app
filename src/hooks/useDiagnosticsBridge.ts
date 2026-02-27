@@ -3,21 +3,18 @@ import * as monaco from 'monaco-editor'
 import { getService, IMarkerService } from '@codingame/monaco-vscode-api/services'
 import { useProblemsStore } from '@/stores/useProblemsStore'
 import { ensureVscodeServicesInitialized } from '@/lib/editor/vscodeServices'
+import {
+  DIAGNOSTICS_REFRESH_EVENT_NAME,
+  requestEditorDiagnosticsRefresh,
+} from '@/lib/editor/diagnosticsRefresh'
 
-const DIAGNOSTICS_REFRESH_EVENT_NAME = 'vscode-diagnostics:refresh'
+export { requestEditorDiagnosticsRefresh }
 
 function isDiagnosticsDebugEnabled(): boolean {
   if (typeof window === 'undefined') {
     return false
   }
   return window.localStorage?.getItem('vscodeDiagnosticsDebug') === '1'
-}
-
-export function requestEditorDiagnosticsRefresh(): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.dispatchEvent(new Event(DIAGNOSTICS_REFRESH_EVENT_NAME))
 }
 
 export function useDiagnosticsBridge(projectPath: string | null) {

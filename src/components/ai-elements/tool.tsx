@@ -49,7 +49,6 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   apply_patch: GitCompareIcon,
   // Web
   web_search: GlobeIcon,
-  google_search: GlobeIcon,
   // Workflow
   plan_write: ListChecksIcon,
   todowrite: ListChecksIcon,
@@ -72,7 +71,6 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   bash: { present: "Running", past: "Ran" },
   apply_patch: { present: "Applying patch", past: "Applied patch" },
   web_search: { present: "Searching", past: "Searched" },
-  google_search: { present: "Searching", past: "Searched" },
   plan_write: { present: "Writing plans", past: "Wrote plans" },
   todowrite: { present: "Updating tasks", past: "Updated tasks" },
   build_complete: { present: "Finalizing build", past: "Finalized build" },
@@ -131,7 +129,6 @@ const getToolTarget = (
         value: String(input.command || ""),
       };
     case "web_search":
-    case "google_search":
       return {
         type: "query",
         value: String(input.query || ""),
@@ -251,7 +248,10 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group/tool-row not-prose mb-2 w-full rounded-md", className)}
+    className={cn(
+      "group/tool-row not-prose w-full rounded-md data-[state=closed]:mb-1 data-[state=open]:mb-2",
+      className
+    )}
     {...props}
   />
 );
@@ -333,7 +333,7 @@ export const ToolStatic = ({
 
   return (
     <div
-      className={cn("not-prose mb-2 w-full rounded-md", className)}
+      className={cn("not-prose mb-1 w-full rounded-md", className)}
       {...props}
     >
       <div className="inline-flex max-w-full items-center gap-2 py-1.5">

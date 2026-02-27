@@ -47,7 +47,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfileDefinition> = {
     description: 'Planning/spec generation',
     requiresProjectContext: false,
     autoApproveLocalTools: false,
-    localToolPolicy: 'none',
+    localToolPolicy: 'read',
     allowWebSearch: true,
   },
   build: {
@@ -100,8 +100,8 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfileDefinition> = {
 export const DEFAULT_AGENT_BY_SURFACE: Record<AISurface, AgentId> = {
   wizard: 'plan',
   builder: 'build',
-  assistant_panel: 'assistant_general',
-  assistant_project: 'assistant_project',
+  assistant_panel: 'plan',
+  assistant_project: 'build',
 }
 
 export interface RuntimeVariantDefinition {
@@ -162,7 +162,7 @@ export function getSupportedVariantsForModel(
   const { provider, capabilities } = args
 
   if (!capabilities || capabilities.reasoningType === 'none') {
-    return [DEFAULT_VARIANT_ID]
+    return []
   }
 
   const modelDeclaredVariants = variantsFromReasoningRange(capabilities.reasoningRange)
@@ -172,7 +172,7 @@ export function getSupportedVariantsForModel(
 
   if (provider === 'google') {
     if (capabilities.reasoningType === 'level') {
-      return ['low', 'high']
+      return modelDeclaredVariants.length > 0 ? modelDeclaredVariants : ['low', 'high']
     }
     if (capabilities.reasoningType === 'budget') {
       return ['high', 'max']
@@ -204,15 +204,16 @@ export function normalizeVariantForModel(
     if (requested && isVariantId(requested)) {
       return requested
     }
-    return DEFAULT_VARIANT_ID
+    return undefined as any // Fallback to undefined for unknown models
   }
 
   const supported = getSupportedVariantsForModel(args)
   if (requested && supported.includes(requested as VariantId)) {
     return requested as VariantId
   }
-  if (args.provider === 'google' && supported.includes('high')) {
-    return 'high'
+  if (args.provider === 'google') {
+    if (supported.includes(DEFAULT_VARIANT_ID)) return DEFAULT_VARIANT_ID
+    if (supported.includes('high')) return 'high'
   }
   if (supported.includes(DEFAULT_VARIANT_ID)) {
     return DEFAULT_VARIANT_ID
@@ -228,13 +229,13 @@ export function getAvailableAgentsForSurface(
   if (surface === 'builder') return ['build']
 
   if (surface === 'assistant_project') {
-    return ['assistant_project', 'explore', 'review', 'build']
+    return ['plan', 'build']
   }
 
   if (hasProjectContext) {
-    return ['assistant_project', 'explore', 'review', 'build']
+    return ['plan', 'build']
   }
-  return ['assistant_general']
+  return ['plan']
 }
 
 export function normalizeAgentForSurface(
