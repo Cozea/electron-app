@@ -186,7 +186,7 @@ export const getContinuationStateForServer = query({
   args: {
     organizationId: v.string(),
     conversationId: v.string(),
-    provider: v.union(v.literal("openai"), v.literal("github-copilot")),
+    provider: v.string(),
     model: v.string(),
     serverSecret: v.string(),
   },
@@ -227,7 +227,7 @@ export const upsertContinuationStateForServer = mutation({
   args: {
     organizationId: v.string(),
     conversationId: v.string(),
-    provider: v.union(v.literal("openai"), v.literal("github-copilot")),
+    provider: v.string(),
     model: v.string(),
     previousResponseId: v.string(),
     expiresAt: v.optional(v.number()),
@@ -293,7 +293,7 @@ export const clearContinuationStateForServer = mutation({
   args: {
     organizationId: v.string(),
     conversationId: v.string(),
-    provider: v.union(v.literal("openai"), v.literal("github-copilot")),
+    provider: v.string(),
     model: v.string(),
     serverSecret: v.string(),
   },

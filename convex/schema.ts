@@ -287,12 +287,7 @@ export default defineSchema({
     // Request details
     model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.3-codex"
     modelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
-    provider: v.union(
-      v.literal("anthropic"),
-      v.literal("openai"),
-      v.literal("google"),
-      v.literal("xai")
-    ),
+    provider: v.string(),
 
     // Token counts from AI SDK response.usage
     promptTokens: v.number(),
@@ -1289,7 +1284,7 @@ export default defineSchema({
   aiContinuationState: defineTable({
     organizationId: v.string(), // WorkOS org id from AI runtime request
     conversationId: v.string(),
-    provider: v.union(v.literal("openai"), v.literal("github-copilot")),
+    provider: v.string(),
     model: v.string(),
     previousResponseId: v.string(),
     updatedAt: v.number(),

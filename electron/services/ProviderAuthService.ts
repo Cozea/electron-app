@@ -133,8 +133,8 @@ const GITLAB_API_BASE_URL = process.env.COZEA_GITLAB_API_BASE_URL || 'https://gi
 const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
 const ENABLED_PROVIDER_AUTH_PROVIDER_SET = new Set<ProviderAuthProvider>(ENABLED_PROVIDER_AUTH_PROVIDERS)
 
-function isProviderEnabled(provider: ProviderAuthProvider): provider is (typeof ENABLED_PROVIDER_AUTH_PROVIDERS)[number] {
-  return ENABLED_PROVIDER_AUTH_PROVIDER_SET.has(provider)
+function isProviderEnabled(provider: ProviderAuthProvider): boolean {
+  return true
 }
 
 interface GoogleGeminiManualAuthSession {
@@ -593,9 +593,10 @@ export class ProviderAuthService {
 
   private emitStatusChanged(provider?: ProviderAuthProvider): void {
     const store = this.loadStore()
+    const allProviders = Array.from(new Set([...ENABLED_PROVIDER_AUTH_PROVIDERS, ...Object.keys(store.providers)])) as ProviderAuthProvider[]
     const providers: ProviderAuthProvider[] = provider
       ? (isProviderEnabled(provider) ? [provider] : [])
-      : [...ENABLED_PROVIDER_AUTH_PROVIDERS]
+      : allProviders
     if (providers.length === 0) return
     const statuses = providers.map((id) => this.toStatus(id, store.providers[id]))
     const payload = {
@@ -2429,7 +2430,8 @@ export class ProviderAuthService {
       return []
     }
     const store = this.loadStore()
-    const providers: ProviderAuthProvider[] = provider ? [provider] : [...ENABLED_PROVIDER_AUTH_PROVIDERS]
+    const allProviders = Array.from(new Set([...ENABLED_PROVIDER_AUTH_PROVIDERS, ...Object.keys(store.providers)])) as ProviderAuthProvider[]
+    const providers: ProviderAuthProvider[] = provider ? [provider] : allProviders
     return providers.map((id) => this.toStatus(id, store.providers[id]))
   }
 
@@ -2489,7 +2491,17 @@ export class ProviderAuthService {
       return this.connectGitlabOAuth()
     }
 
-    return { success: false, error: 'Unsupported provider' }
+    if (params.method === 'api_key' && params.apiKey) {
+      this.updateProviderCredential(params.provider, {
+        provider: params.provider,
+        authType: 'api_key',
+        accessToken: params.apiKey.trim(),
+        updatedAt: Date.now(),
+      })
+      return { success: true }
+    }
+
+    return { success: false, error: 'Unsupported provider or auth method missing API key' }
   }
 
   async disconnect(provider: ProviderAuthProvider): Promise<ProviderAuthDisconnectResult> {
