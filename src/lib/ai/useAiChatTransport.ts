@@ -5,7 +5,7 @@ import { AI_API_URL } from '@/lib/ai/apiEndpoints'
 import type { AgentId, AISurface, VariantId } from '@/lib/ai/runtimeProfiles'
 import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 
-interface UseAiChatTransportArgs {
+export interface UseAiChatTransportArgs {
   accessToken: string | null
   organizationId: string | null | undefined
   model: string
@@ -20,7 +20,7 @@ interface UseAiChatTransportArgs {
   api?: string
 }
 
-interface ChatMessageLike {
+export interface ChatMessageLike {
   id?: string
 }
 

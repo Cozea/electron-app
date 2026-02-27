@@ -47,15 +47,6 @@ import {
 type ConnectableProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
 const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const
 
-const CONNECTABLE_PROVIDER_SET = new Set<ConnectableProvider>([
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'github-copilot',
-  'gitlab',
-])
-
 const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
   'openai',
   'anthropic',
@@ -68,10 +59,6 @@ const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
 const RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
   RECOMMENDED_PROVIDER_ORDER.map((providerId, index) => [providerId, index])
 )
-
-function isConnectableProvider(providerId: string): providerId is ConnectableProvider {
-  return CONNECTABLE_PROVIDER_SET.has(providerId as ConnectableProvider)
-}
 
 interface LocalProviderStatus {
   provider: string
@@ -364,7 +351,7 @@ export function AI() {
   }, [])
 
   const handleOpenConnectDialog = (provider: string) => {
-    if (!isConnectableProvider(provider)) return
+    if (!provider) return
     setSelectedProvider(provider)
     setOpenaiMethod('oauth')
     setAnthropicMethod('api_key')
@@ -566,7 +553,7 @@ export function AI() {
                 <TableBody className="[&_tr]:border-border/60 [&_tr:last-child]:border-b-0">
                   {pagedProviderRows.map((provider) => {
                     const status = providerStatuses[provider.id]
-                    const isConnectable = provider.localConnectSupported && isConnectableProvider(provider.id)
+                    const isConnectable = provider.localConnectSupported
                     // Use same logic as useConnectedProviders: connected only if not expired (so AI page matches chat model list)
                     const isConnected =
                       isConnectable &&
@@ -1085,18 +1072,21 @@ export function AI() {
                   void connectProvider('xai', 'api_key', undefined, providerApiKey.trim())
                   return
                 }
-                if (isConnectableProvider(selectedProvider)) {
-                  void connectProvider(selectedProvider, 'oauth')
+                const isCustomProvider = !['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'].includes(selectedProvider)
+                if (isCustomProvider) {
+                  void connectProvider(selectedProvider as any, 'api_key', undefined, providerApiKey.trim())
+                  return
                 }
+                void connectProvider(selectedProvider as any, 'oauth')
               }}
               disabled={
                 !selectedProvider ||
-                !isConnectableProvider(selectedProvider) ||
                 isSaving === selectedProvider ||
                 (selectedProvider === 'openai' && openaiMethod === 'api_key' && providerApiKey.trim().length === 0) ||
                 (selectedProvider === 'anthropic' && anthropicMethod === 'api_key' && providerApiKey.trim().length === 0) ||
                 (selectedProvider === 'anthropic' && anthropicMethod === 'oauth' && !!manualAuthUrl && manualCode.trim().length === 0) ||
                 (selectedProvider === 'xai' && providerApiKey.trim().length === 0) ||
+                (!['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'].includes(selectedProvider) && providerApiKey.trim().length === 0) ||
                 (selectedProvider === 'google' &&
                   googleMethod === 'gemini_api_key' &&
                   providerApiKey.trim().length === 0) ||

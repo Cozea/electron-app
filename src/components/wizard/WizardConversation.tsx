@@ -57,8 +57,7 @@ import {
 import { Brain } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  CONNECTED_PROVIDER_DISPLAY_NAME,
-  CONNECTED_PROVIDER_ORDER,
+  getProviderDisplayName,
   isConnectedProvider,
   useConnectedProviders,
   type ConnectedProvider,
@@ -297,10 +296,7 @@ export function WizardConversation({
       ? providerScopedModels
       : providerScopedModels.filter((m) => m.chefSlug === activeProvider)
   const visibleChefs = useMemo(
-    () =>
-      CONNECTED_PROVIDER_ORDER
-        .map((provider) => CONNECTED_PROVIDER_DISPLAY_NAME[provider])
-        .filter((chef) => visibleModels.some((modelOption) => modelOption.chef === chef)),
+    () => Array.from(new Set(visibleModels.map((m) => m.chef))),
     [visibleModels]
   )
   const hasSelectableModel = Boolean(selectedModelData)
@@ -458,7 +454,7 @@ export function WizardConversation({
           .map((m) => ({
             id: m.id,
             name: m.displayName,
-            chef: CONNECTED_PROVIDER_DISPLAY_NAME[m.provider],
+            chef: getProviderDisplayName(m.provider),
             chefSlug: m.provider,
             tier: m.tier,
             providers: [m.provider],

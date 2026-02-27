@@ -588,6 +588,7 @@ export type ProviderAuthProvider =
   | 'xai'
   | 'github-copilot'
   | 'gitlab'
+  | (string & {})
 export type ProviderAuthMethod =
   | 'oauth'
   | 'api_key'

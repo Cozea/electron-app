@@ -1,32 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ProviderAuthProvider, ProviderAuthStatus } from '@shared/electronApiTypes'
+import type { ProviderAuthStatus } from '@shared/electronApiTypes'
 
-export type ConnectedProvider = Extract<ProviderAuthProvider, 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'>
+export type ConnectedProvider = string
 
-export const CONNECTED_PROVIDER_ORDER: ConnectedProvider[] = [
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'github-copilot',
-  'gitlab',
-]
+export const isConnectedProvider = (_value?: string): boolean => true
 
-export const isConnectedProvider = (value: string): value is ConnectedProvider =>
-  value === 'openai' ||
-  value === 'anthropic' ||
-  value === 'google' ||
-  value === 'xai' ||
-  value === 'github-copilot' ||
-  value === 'gitlab'
-
-export const CONNECTED_PROVIDER_DISPLAY_NAME: Record<ConnectedProvider, 'OpenAI' | 'Anthropic' | 'Google' | 'xAI' | 'GitHub Copilot' | 'GitLab'> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  google: 'Google',
-  xai: 'xAI',
-  'github-copilot': 'GitHub Copilot',
-  gitlab: 'GitLab',
+export function getProviderDisplayName(providerId: string): string {
+  const defaults: Record<string, string> = {
+    openai: 'OpenAI',
+    anthropic: 'Anthropic',
+    google: 'Google',
+    xai: 'xAI',
+    'github-copilot': 'GitHub Copilot',
+    gitlab: 'GitLab',
+  }
+  if (defaults[providerId]) return defaults[providerId]
+  
+  // Format custom provider id
+  return providerId
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
 export function useConnectedProviders() {
@@ -54,7 +48,6 @@ export function useConnectedProviders() {
       const connectedSet = new Set<ConnectedProvider>()
 
       for (const status of statuses) {
-        if (!isConnectedProvider(status.provider)) continue
         nextStatuses[status.provider] = status
         if (!status.connected) continue
         if (typeof status.expiresAt === 'number' && status.expiresAt <= now) continue
@@ -62,9 +55,7 @@ export function useConnectedProviders() {
       }
 
       setProviderStatuses(nextStatuses)
-      setConnectedProviders(
-        CONNECTED_PROVIDER_ORDER.filter((provider) => connectedSet.has(provider))
-      )
+      setConnectedProviders(Array.from(connectedSet))
     } catch (error) {
       console.warn('Failed to load provider connection status:', error)
       setConnectedProviders([])
