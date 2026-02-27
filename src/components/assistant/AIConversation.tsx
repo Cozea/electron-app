@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useChat } from '@ai-sdk/react'
+import { useCozeaChat } from '@/hooks/useCozeaChat'
 import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
 } from 'ai'
 import { Button } from '@/components/ui/button'
@@ -85,8 +83,7 @@ import { MessageBubble, type MessageToolMeta } from '@/components/assistant/Mess
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
-import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
-import { getRetryHintMessage, readLatestRetryHint } from '@/lib/ai/retryHints'
+import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
@@ -109,7 +106,7 @@ import {
   ContextContentHeader,
   ContextContentFooter,
 } from '@/components/ai-elements/context'
-import { BillingError, parseBillingError, type BillingErrorData } from './BillingError'
+import { BillingError } from './BillingError'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -162,10 +159,6 @@ interface UsageData {
   rawFinishReason?: string
 }
 
-interface ChatMessageLike {
-  id?: string
-}
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -180,23 +173,7 @@ function getMessageCreatedAt(message: UIMessage): number {
   return Date.now()
 }
 
-function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
-  if (messages.length <= 1) return messages
-
-  const lastIndexById = new Map<string, number>()
-  for (let index = 0; index < messages.length; index += 1) {
-    const messageId = messages[index]?.id
-    if (!messageId) continue
-    lastIndexById.set(messageId, index)
-  }
-
-  return messages.filter((message, index) => {
-    if (!message.id) return true
-    return lastIndexById.get(message.id) === index
-  })
-}
-
-type ChatHookResult = ReturnType<typeof useChat>
+type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 // Model catalog comes from shared defaults and server model metadata.
 const defaultModels: ModelOption[] = DEFAULT_MODELS
@@ -262,7 +239,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
-  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [ephemeralConversationId, setEphemeralConversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -593,23 +569,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const canUseLocalRuntimeEndpoint =
     localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
   const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
-  const { transport: chatTransport, setConversationId: setTransportConversationId } =
-    useAiChatTransport({
-      accessToken,
-      organizationId: currentOrganization?.organizationId,
-      model,
-      conversationId: transportConversationId,
-      agentId: normalizedAgentId,
-      surface,
-      variantId: normalizedVariantId,
-      enableTools: true,
-      enableWebSearch: true,
-      extraBody: {
-        projectContext: projectContextPayload,
-      },
-      providerAuthHeader,
-      api: chatApi,
-    })
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -838,7 +797,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Chat hook with auth transport
   const {
-    messages,
     status,
     error,
     sendMessage,
@@ -846,26 +804,35 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     setMessages,
     addToolOutput,
     addToolApprovalResponse,
-  } = useChat({
-    transport: chatTransport,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onToolCall: handleToolCall,
-    onError: (err: unknown) => {
-      console.error('Chat error:', err)
-      // Try to parse as billing error for nice display
-      const billingErr = parseBillingError(err)
-      if (billingErr) {
-        setBillingError(billingErr)
-      }
+    dedupedMessages: uniqueMessages,
+    retryHint,
+    billingError,
+    setBillingError,
+    setConversationId: setTransportConversationId,
+  } = useCozeaChat({
+    transportArgs: {
+      accessToken,
+      organizationId: currentOrganization?.organizationId,
+      model,
+      conversationId: transportConversationId,
+      agentId: normalizedAgentId,
+      surface,
+      variantId: normalizedVariantId,
+      enableTools: true,
+      enableWebSearch: true,
+      extraBody: {
+        projectContext: projectContextPayload,
+      },
+      providerAuthHeader,
+      api: chatApi,
+    },
+    chatOptions: {
+      onToolCall: handleToolCall,
     },
   })
 
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
-
-  const uniqueMessages = useMemo(() => dedupeMessagesById(messages), [messages])
 
   const hasPendingToolCalls = useMemo(() => {
     for (const message of uniqueMessages) {
@@ -1066,9 +1033,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
-    const retryHint = readLatestRetryHint(
-      uniqueMessages as Array<{ parts: Array<{ type: string } & Record<string, unknown>> }>
-    )
     const retryHintMessage = getRetryHintMessage(retryHint)
     if (retryHintMessage) return retryHintMessage
     const message = (error as { message?: string }).message
@@ -1076,7 +1040,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     const errorStr = error as unknown
     if (typeof errorStr === 'string' && errorStr.trim()) return errorStr
     return 'Something went wrong'
-  }, [error, billingError, uniqueMessages])
+  }, [error, billingError, retryHint])
 
   const serviceErrorMessage = modelsError || toolsError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
@@ -1528,7 +1492,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
-              error={billingError}
+              error={billingError as any}
               className="border-0 border-b rounded-none p-3"
             />
           ) : showGenericError && surfaceBannerMessage && (

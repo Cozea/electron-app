@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useChat } from '@ai-sdk/react'
+import { useCozeaChat } from '@/hooks/useCozeaChat'
 import { useMutation } from 'convex/react'
-import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
-} from 'ai'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
@@ -13,7 +9,6 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import type { BuildTask } from './BuildTaskList'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
-import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
 
 // AI Elements components
 import {
@@ -29,7 +24,7 @@ import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
-import { readLatestRetryHint, type RetryHint } from '@/lib/ai/retryHints'
+import { type RetryHint } from '@/lib/ai/retryHints'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
@@ -187,10 +182,6 @@ interface UsageDataPart {
   }
 }
 
-interface ChatMessageLike {
-  id?: string
-}
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -209,21 +200,6 @@ const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
   /\bswift\b/i,
 ]
 
-function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
-  if (messages.length <= 1) return messages
-
-  const lastIndexById = new Map<string, number>()
-  for (let index = 0; index < messages.length; index += 1) {
-    const messageId = messages[index]?.id
-    if (!messageId) continue
-    lastIndexById.set(messageId, index)
-  }
-
-  return messages.filter((message, index) => {
-    if (!message.id) return true
-    return lastIndexById.get(message.id) === index
-  })
-}
 
 function isDuplicateResponseItemError(message: string): boolean {
   return /duplicate item found with id/i.test(message)
@@ -286,7 +262,7 @@ function getTerminalExecutionState(args: {
   return { success: true, status: 'completed' }
 }
 
-type ChatHookResult = ReturnType<typeof useChat>
+type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 export function BuilderConversation({
   project,
@@ -555,23 +531,7 @@ Now begin by defining your task list with todowrite, then start working through 
     currentPage: null,
     inspectedElement: null,
   }), [project.name, project.slug, localPath])
-  const { transport: chatTransport } = useAiChatTransport({
-    accessToken,
-    organizationId: currentOrganization?.organizationId,
-    model,
-    conversationId,
-    agentId: 'build',
-    surface: 'builder',
-    variantId,
-    enableTools,
-    enableWebSearch,
-    extraBody: {
-      projectContext: projectContextPayload,
-      ...(providerOptions ? { providerOptions } : {}),
-    },
-    providerAuthHeader,
-    api: chatApi,
-  })
+
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -1386,63 +1346,65 @@ Now begin by defining your task list with todowrite, then start working through 
     sendMessage,
     stop,
     addToolOutput,
-  } = useChat({
-    transport: chatTransport,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onToolCall: handleToolCall,
-    onError: (err: unknown) => {
-      console.error('Builder chat error:', err)
+    dedupedMessages,
+    retryHint: hookRetryHint,
+  } = useCozeaChat({
+    transportArgs: {
+      accessToken,
+      organizationId: currentOrganization?.organizationId,
+      model,
+      conversationId,
+      agentId: 'build',
+      surface: 'builder',
+      variantId,
+      enableTools,
+      enableWebSearch,
+      extraBody: {
+        projectContext: projectContextPayload,
+        ...(providerOptions ? { providerOptions } : {}),
+      },
+      providerAuthHeader,
+      api: chatApi,
+    },
+    chatOptions: {
+      onToolCall: handleToolCall,
+      onError: (err: unknown) => {
+        console.error('Builder chat error:', err)
+        const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Build failed'
+        lastErrorRef.current = message
 
-      const billingErr = parseBillingError(err)
-      if (billingErr) {
-        // Billing errors are always fatal
-        setBillingError(billingErr)
-        onBillingError?.(billingErr)
-        onError(billingErr.title || 'Billing Error')
-        return
-      }
+        const currentRetryHint = latestRetryHintRef.current
+        if (currentRetryHint?.code === 'duplicate_response_item_id' || isDuplicateResponseItemError(message)) {
+          autoContinueBlockedRef.current = 'duplicate-response-item-id'
+          onError('Build paused: provider rejected duplicated response item IDs. Retry once to continue.')
+          return
+        }
 
-      const message = err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-          ? err
-          : 'Build failed'
-      lastErrorRef.current = message
-      const retryHint = latestRetryHintRef.current
+        if (currentRetryHint && !currentRetryHint.retryable) {
+          onError(message)
+          return
+        }
 
-      if (retryHint?.code === 'duplicate_response_item_id' || isDuplicateResponseItemError(message)) {
-        autoContinueBlockedRef.current = 'duplicate-response-item-id'
-        onError('Build paused: provider rejected duplicated response item IDs. Retry once to continue.')
-        return
-      }
-
-      if (retryHint && !retryHint.retryable) {
+        if (shouldAllowRecovery()) {
+          console.log('[Builder] Error occurred but allowing recovery via auto-continue:', message)
+          isRecoveringRef.current = true
+          return
+        }
         onError(message)
-        return
-      }
-
-      // Check if we should let auto-continue recover from this error
-      if (shouldAllowRecovery()) {
-        console.log('[Builder] Error occurred but allowing recovery via auto-continue:', message)
-        isRecoveringRef.current = true
-        // Don't propagate error yet - auto-continue will try to recover
-        return
-      }
-
-      onError(message)
+      },
+    },
+    onBillingError: (err) => {
+      onBillingError?.(err as any)
+      onError(err.title || 'Billing Error')
     },
   })
-
-  const dedupedMessages = useMemo(() => dedupeMessagesById(messages), [messages])
-
+  
   useEffect(() => {
-    const typedMessages = dedupedMessages as Array<{
-      parts: Array<{ type: string } & Record<string, unknown>>
-    }>
-    latestRetryHintRef.current = readLatestRetryHint(typedMessages)
-  }, [dedupedMessages])
+    latestRetryHintRef.current = hookRetryHint
+  }, [hookRetryHint])
+
+  
+
 
   addToolOutputRef.current = addToolOutput
 
