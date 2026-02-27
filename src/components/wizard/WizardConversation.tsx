@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useChat } from '@ai-sdk/react'
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
@@ -106,9 +105,10 @@ import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-di
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
+import { getRetryHintMessage, readLatestRetryHint } from '@/lib/ai/retryHints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
@@ -260,16 +260,17 @@ export function WizardConversation({
   const [providerAuthLoading, setProviderAuthLoading] = useState(false)
   const [providerAuthError, setProviderAuthError] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(
-    initialGlobalModelSettings.variantId ?? promptSettings.variantId ?? 'medium'
-  )
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId ?? promptSettings?.variantId)
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
-  const [conversationId] = useState(() => crypto.randomUUID())
+  const initialConversationIdRef = useRef<string>(
+    projectId ? `wizard:${projectId}` : crypto.randomUUID()
+  )
+  const conversationId = initialConversationIdRef.current
   const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
@@ -522,86 +523,32 @@ export function WizardConversation({
     return () => controller.abort()
   }, [accessToken, currentOrganization?.organizationId, headers, model])
 
-  // Request config ref (projectId is optional - may not exist during planning phase)
-  const requestConfigRef = useRef({
-    accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    projectId: projectId || null,
-    model,
-    conversationId,
-    agentId: 'plan' as const,
-    surface: 'wizard' as const,
-    variantId: normalizedVariantId,
-    providerAuthHeader,
-  })
-
-  useEffect(() => {
-    requestConfigRef.current = {
-      accessToken,
-      organizationId: currentOrganization?.organizationId || null,
-      projectId: projectId || null,
-      model,
-      conversationId,
-      agentId: 'plan',
-      surface: 'wizard',
-      variantId: normalizedVariantId,
-      providerAuthHeader,
-    }
-  }, [accessToken, currentOrganization?.organizationId, projectId, model, conversationId, normalizedVariantId, providerAuthHeader])
-
   const localRuntimeStatus = useLocalAiRuntimeStatus(true)
   const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
   const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
   const canUseLocalRuntimeEndpoint =
     localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
-
-  // Chat transport (same pattern as AIConversation)
-  const chatTransport = useMemo(() => {
-    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
-    const baseApi = chatApi.replace(/\/chat$/, '')
-
-    return new DefaultChatTransport({
-      api: chatApi,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        const providerHeader = requestConfigRef.current.providerAuthHeader
-        const next: Record<string, string> = {}
-        if (token) {
-          next.Authorization = `Bearer ${token}`
-        }
-        if (providerHeader) {
-          next['x-cozea-provider-auth'] = providerHeader
-        }
-        Object.assign(next, getAiTimezoneHeaders())
-        return next
+  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+  const { transport: chatTransport } = useAiChatTransport({
+    accessToken,
+    organizationId: currentOrganization?.organizationId,
+    model,
+    conversationId,
+    agentId: 'plan',
+    surface: 'wizard',
+    variantId: normalizedVariantId,
+    enableTools: true,
+    enableWebSearch: true,
+    extraBody: {
+      projectContext: {
+        name: projectId || 'wizard-project',
+        slug: (projectId || 'wizard-project').toLowerCase(),
+        runtime: 'local',
       },
-      body: () => ({
-        model: requestConfigRef.current.model,
-        organizationId: requestConfigRef.current.organizationId,
-        conversationId: requestConfigRef.current.conversationId,
-        agentId: requestConfigRef.current.agentId,
-        surface: requestConfigRef.current.surface,
-        variantId: requestConfigRef.current.variantId,
-        projectContext: {
-          name: projectId || 'wizard-project',
-          slug: (projectId || 'wizard-project').toLowerCase(),
-          runtime: 'local',
-        },
-        enableTools: true, // Always enabled - gated client-side based on planning phase
-        enableWebSearch: true, // Always enabled
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${baseApi}/chat`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
-    })
-  }, [canUseLocalRuntimeEndpoint, localRuntimeEndpoint, projectId])
+    },
+    providerAuthHeader,
+    api: chatApi,
+  })
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -753,11 +700,16 @@ export function WizardConversation({
 
   const genericErrorMessage = useMemo(() => {
     if (!error) return null
+    const retryHint = readLatestRetryHint(
+      messages as Array<{ parts: Array<{ type: string } & Record<string, unknown>> }>
+    )
+    const retryHintMessage = getRetryHintMessage(retryHint)
+    if (retryHintMessage) return retryHintMessage
     const message = (error as { message?: string }).message
     if (typeof message === 'string' && message.trim()) return message
     if (typeof error === 'string' && (error as string).trim()) return error as string
     return 'Something went wrong'
-  }, [error])
+  }, [error, messages])
 
   const serviceErrorMessage = modelsError || toolsError || providerAuthError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage

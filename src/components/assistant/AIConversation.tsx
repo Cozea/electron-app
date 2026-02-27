@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   type UIMessage,
@@ -78,12 +77,17 @@ import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachme
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
-import { attachToolDiagnosticsToOutput, collectToolDiagnosticsSummary } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import {
+  attachToolDiagnosticsToOutput,
+  collectMutatingToolDiagnosticsSummary,
+} from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import { getMutatingToolFilePaths, isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
+import { getRetryHintMessage, readLatestRetryHint } from '@/lib/ai/retryHints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
@@ -159,11 +163,9 @@ interface UsageData {
   rawFinishReason?: string
 }
 
-// Tool categories for diagnostics + file locking.
-const WRITE_TOOLS = new Set([
-  'write', 'edit',
-  'multiedit', 'bash', 'apply_patch',
-])
+interface ChatMessageLike {
+  id?: string
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -177,6 +179,22 @@ function getMessageCreatedAt(message: UIMessage): number {
     if (!Number.isNaN(parsed)) return parsed
   }
   return Date.now()
+}
+
+function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
+  if (messages.length <= 1) return messages
+
+  const lastIndexById = new Map<string, number>()
+  for (let index = 0; index < messages.length; index += 1) {
+    const messageId = messages[index]?.id
+    if (!messageId) continue
+    lastIndexById.set(messageId, index)
+  }
+
+  return messages.filter((message, index) => {
+    if (!message.id) return true
+    return lastIndexById.get(message.id) === index
+  })
 }
 
 type ChatHookResult = ReturnType<typeof useChat>
@@ -238,9 +256,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId>(
     DEFAULT_AGENT_BY_SURFACE.assistant_panel
   )
-  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(
-    initialGlobalModelSettings.variantId ?? 'medium'
-  )
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId)
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
@@ -249,7 +265,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
-  const [conversationId] = useState(() => crypto.randomUUID())
+  const [ephemeralConversationId, setEphemeralConversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
@@ -259,6 +275,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const conversationInitializedRef = useRef<string | null>(null)
   const isSavingRef = useRef(false)
   const lastProjectSlugRef = useRef<string | null>(null)
+  const previousStoredConversationIdRef = useRef(currentConversationId)
+
+  const transportConversationId = currentConversationId ?? ephemeralConversationId
+
+  useEffect(() => {
+    const previousConversationId = previousStoredConversationIdRef.current
+    if (previousConversationId && currentConversationId === null) {
+      setEphemeralConversationId(crypto.randomUUID())
+    }
+    previousStoredConversationIdRef.current = currentConversationId
+  }, [currentConversationId])
 
   const providerScopedModels = useMemo(() => {
     const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
@@ -569,87 +596,24 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
   const canUseLocalRuntimeEndpoint =
     localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
-
-  const requestConfigRef = useRef({
-    accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    model,
-    conversationId,
-    agentId: normalizedAgentId,
-    surface,
-    variantId: normalizedVariantId,
-    projectContext: projectContextPayload,
-    providerAuthHeader,
-  })
-
-  useEffect(() => {
-    requestConfigRef.current = {
+  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+  const { transport: chatTransport, setConversationId: setTransportConversationId } =
+    useAiChatTransport({
       accessToken,
-      organizationId: currentOrganization?.organizationId || null,
+      organizationId: currentOrganization?.organizationId,
       model,
-      conversationId,
+      conversationId: transportConversationId,
       agentId: normalizedAgentId,
       surface,
       variantId: normalizedVariantId,
-      projectContext: projectContextPayload,
+      enableTools: true,
+      enableWebSearch: true,
+      extraBody: {
+        projectContext: projectContextPayload,
+      },
       providerAuthHeader,
-    }
-  }, [
-    accessToken,
-    currentOrganization?.organizationId,
-    model,
-    conversationId,
-    normalizedAgentId,
-    surface,
-    normalizedVariantId,
-    projectContextPayload,
-    providerAuthHeader,
-  ])
-
-  const chatTransport = useMemo(() => {
-    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
-    const baseApi = chatApi.replace(/\/chat$/, '')
-
-    return new DefaultChatTransport({
       api: chatApi,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        const providerHeader = requestConfigRef.current.providerAuthHeader
-        const headers: Record<string, string> = {}
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
-        }
-        if (providerHeader) {
-          headers['x-cozea-provider-auth'] = providerHeader
-        }
-        Object.assign(headers, getAiTimezoneHeaders())
-        return headers
-      },
-      body: () => ({
-        model: requestConfigRef.current.model,
-        organizationId: requestConfigRef.current.organizationId,
-        conversationId: requestConfigRef.current.conversationId,
-        agentId: requestConfigRef.current.agentId,
-        surface: requestConfigRef.current.surface,
-        variantId: requestConfigRef.current.variantId,
-        // Always enable tools and web search - context-based gating happens client-side
-        enableTools: true,
-        enableWebSearch: true,
-        // Project context for AI awareness
-        projectContext: requestConfigRef.current.projectContext,
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${baseApi}/chat`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
     })
-  }, [canUseLocalRuntimeEndpoint, localRuntimeEndpoint])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -668,46 +632,21 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return normalized.replace(/^\/+/, '')
   }, [projectPath])
 
-  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null | undefined): string[] => {
-    if (!input) return []
-
-    if (toolName === 'write' || toolName === 'edit' || toolName === 'read') {
-      const filePath = input.filePath
-      return typeof filePath === 'string' && filePath.trim() ? [filePath] : []
-    }
-
-    if (toolName === 'multiedit') {
-      const edits = Array.isArray(input.edits)
-        ? input.edits
-        : Array.isArray(input.replacements)
-          ? input.replacements
-          : []
-      const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined
-      return edits
-        .filter(isRecord)
-        .map((r) => r.filePath ?? defaultFilePath)
-        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-    }
-
-    return []
-  }, [])
-
   const enrichToolOutputWithDiagnostics = useCallback(async (
     toolName: string,
     input: Record<string, unknown>,
     output: unknown
   ) => {
-    if (!projectPath || !WRITE_TOOLS.has(toolName)) return output
-    const filePaths = getToolFilePaths(toolName, input)
-    if (filePaths.length === 0) return output
+    if (!projectPath || !isFileMutatingTool(toolName)) return output
 
-    const summary = await collectToolDiagnosticsSummary({
+    const summary = await collectMutatingToolDiagnosticsSummary({
       projectPath,
-      filePaths,
+      toolName,
+      toolInput: input,
     })
 
     return attachToolDiagnosticsToOutput(output, summary)
-  }, [getToolFilePaths, projectPath])
+  }, [projectPath])
 
   const formatLockConflictError = useCallback((
     filePath: string,
@@ -840,9 +779,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
 
     try {
-      const toolFilePaths = getToolFilePaths(toolCall.toolName, toolInput)
+      const toolFilePaths = getMutatingToolFilePaths(toolCall.toolName, toolInput)
       const run = () =>
-        localRuntime.requestToolExecution(conversationId, {
+        localRuntime.requestToolExecution(transportConversationId, {
           toolName: toolCall.toolName,
           input: toolInput,
           toolCallId: toolCall.toolCallId,
@@ -850,7 +789,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         })
 
       const result =
-        toolFilePaths.length > 0 && WRITE_TOOLS.has(toolCall.toolName)
+        toolFilePaths.length > 0 && isFileMutatingTool(toolCall.toolName)
           ? await withFileLocks(toolFilePaths, run)
           : await run()
 
@@ -859,10 +798,18 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       }
 
       if (result.success) {
+        const enrichedOutput = await enrichToolOutputWithDiagnostics(
+          toolCall.toolName,
+          toolInput,
+          result.output
+        )
+        if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+          return
+        }
         void addToolOutput({
           tool: toolCall.toolName,
           toolCallId: toolCall.toolCallId,
-          output: result.output,
+          output: enrichedOutput,
         })
       } else {
         void addToolOutput({
@@ -884,8 +831,8 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       })
     }
   }, [
-    conversationId,
-    getToolFilePaths,
+    transportConversationId,
+    enrichToolOutputWithDiagnostics,
     isToolAllowedInContext,
     localRuntime,
     projectPath,
@@ -922,21 +869,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
 
-  const uniqueMessages = useMemo(() => {
-    if (messages.length <= 1) return messages
-
-    const lastIndexById = new Map<string, number>()
-    for (let index = 0; index < messages.length; index += 1) {
-      const messageId = messages[index]?.id
-      if (!messageId) continue
-      lastIndexById.set(messageId, index)
-    }
-
-    return messages.filter((message, index) => {
-      if (!message.id) return true
-      return lastIndexById.get(message.id) === index
-    })
-  }, [messages])
+  const uniqueMessages = useMemo(() => dedupeMessagesById(messages), [messages])
 
   const hasPendingToolCalls = useMemo(() => {
     for (const message of uniqueMessages) {
@@ -1137,12 +1070,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
+    const retryHint = readLatestRetryHint(
+      uniqueMessages as Array<{ parts: Array<{ type: string } & Record<string, unknown>> }>
+    )
+    const retryHintMessage = getRetryHintMessage(retryHint)
+    if (retryHintMessage) return retryHintMessage
     const message = (error as { message?: string }).message
     if (typeof message === 'string' && message.trim()) return message
     const errorStr = error as unknown
     if (typeof errorStr === 'string' && errorStr.trim()) return errorStr
     return 'Something went wrong'
-  }, [error, billingError])
+  }, [error, billingError, uniqueMessages])
 
   const serviceErrorMessage = modelsError || toolsError
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
@@ -1236,7 +1174,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         void reportLocalUsage(accessToken, {
           organizationId: currentOrganization.organizationId,
           model: data.model || model,
-          conversationId,
+          conversationId: transportConversationId,
           feature: normalizedAgentId,
           actionType: normalizedAgentId,
           promptTokens: data.promptTokens ?? 0,
@@ -1252,7 +1190,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [
     accessToken,
-    conversationId,
+    transportConversationId,
     currentOrganization?.organizationId,
     model,
     normalizedAgentId,
@@ -1333,16 +1271,16 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
-    const toolFilePaths = getToolFilePaths(toolName, toolInput)
+    const toolFilePaths = getMutatingToolFilePaths(toolName, toolInput)
     const run = () =>
-      localRuntime.requestToolExecution(conversationId, {
+      localRuntime.requestToolExecution(transportConversationId, {
         toolName,
         input: toolInput,
         toolCallId,
         projectPath: projectPath ?? undefined,
       })
     const result =
-      toolFilePaths.length > 0 && WRITE_TOOLS.has(toolName)
+      toolFilePaths.length > 0 && isFileMutatingTool(toolName)
         ? await withFileLocks(toolFilePaths, run)
         : await run()
 
@@ -1356,6 +1294,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         toolInput,
         result.output
       )
+      if (cancelledToolCallsRef.current.has(toolCallId)) {
+        return
+      }
       void addToolOutput({
         tool: toolName,
         toolCallId,
@@ -1371,8 +1312,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     }
   }, [
     addToolOutput,
-    conversationId,
-    getToolFilePaths,
+    transportConversationId,
     enrichToolOutputWithDiagnostics,
     isToolAllowedInContext,
     localRuntime,
@@ -1485,6 +1425,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
           userId: convexUserId,
           title: input.slice(0, 50) + (input.length > 50 ? '...' : '') || 'New Conversation',
         })
+        setTransportConversationId(newConversationId)
         setCurrentConversationId(newConversationId)
         conversationInitializedRef.current = newConversationId
       } catch (err) {
@@ -1516,7 +1457,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const handleStop = (e: React.MouseEvent) => {
     e.preventDefault()
     cancelPendingToolOutputs()
-    void localRuntime.cancelRun(conversationId)
+    void localRuntime.cancelRun(transportConversationId)
     stop()
   }
 

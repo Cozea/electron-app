@@ -887,114 +887,72 @@ export function ProjectBuild() {
 
         {/* Split Pane Layout: Builder Conversation + Live Preview */}
         <div className="flex-1 overflow-hidden">
-          {showPreview ? (
-            <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
-              {/* Builder Conversation Panel - Left Side */}
-              <ResizablePanel defaultSize={40} minSize={25} id="builder-conversation" className="min-w-0">
-                <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-                  <div className="flex-1 min-h-0 relative">
-                    {localPath && project ? (
-                      <BuilderConversation
-                        project={project}
-                        localPath={localPath}
-                        stopRequestCount={stopRequestCount}
-                        onTasksUpdate={handleTasksUpdate}
-                        onFileCreated={handleFileCreated}
-                        onComplete={handleAIComplete}
-                        onError={handleAIError}
-                        onBillingError={setBillingError}
-                        className="h-full"
-                      />
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        <p>Loading project...</p>
-                      </div>
-                    )}
-                    {/* Floating Controls Pill */}
-                    <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
-                      {billingError && (
-                        <BillingError
-                          error={billingError}
-                          className="mx-auto w-full max-w-2xl"
-                        />
-                      )}
-                      <BuilderControlsPill
-                        statusMessage={statusMessage}
-                        isAIGenerating={isAIGenerating}
-                        isAIComplete={isAIComplete}
-                        hasError={hasError}
-                        isPulling={isPulling}
-                        buildTasks={buildTasks}
-                        onStop={handleAIStop}
-                        onRetry={handleRetry}
-                        onPull={pullFilesFromCloud}
-                        onOpenProject={handleOpenProject}
-                        onStartBuild={startAIBuild}
-                        onCancelProject={handleCancelProject}
-                      />
+          <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
+            {/* Builder Conversation Panel - Left Side */}
+            <ResizablePanel defaultSize={showPreview ? 40 : 100} minSize={25} id="builder-conversation" className="min-w-0">
+              <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+                <div className="flex-1 min-h-0 relative">
+                  {localPath && project ? (
+                    <BuilderConversation
+                      project={project}
+                      localPath={localPath}
+                      stopRequestCount={stopRequestCount}
+                      onTasksUpdate={handleTasksUpdate}
+                      onFileCreated={handleFileCreated}
+                      onComplete={handleAIComplete}
+                      onError={handleAIError}
+                      onBillingError={setBillingError}
+                      className="h-full"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <p>Loading project...</p>
                     </div>
+                  )}
+                  {/* Floating Controls Pill */}
+                  <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
+                    {billingError && (
+                      <BillingError
+                        error={billingError}
+                        className="mx-auto w-full max-w-2xl"
+                      />
+                    )}
+                    <BuilderControlsPill
+                      statusMessage={statusMessage}
+                      isAIGenerating={isAIGenerating}
+                      isAIComplete={isAIComplete}
+                      hasError={hasError}
+                      isPulling={isPulling}
+                      buildTasks={buildTasks}
+                      onStop={handleAIStop}
+                      onRetry={handleRetry}
+                      onPull={pullFilesFromCloud}
+                      onOpenProject={handleOpenProject}
+                      onStartBuild={startAIBuild}
+                      onCancelProject={handleCancelProject}
+                    />
                   </div>
                 </div>
-              </ResizablePanel>
-
-              {/* Resize Handle */}
-              <ResizableHandle withHandle />
-
-              {/* Preview Panel - Right Side */}
-              <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
-                <BuildPreviewPanel
-                  status={devServer.status}
-                  url={devServer.url}
-                  error={devServer.error}
-                  onRefresh={devServer.restart}
-                  onCapture={capturePreviewScreenshot}
-                  className="h-full relative sidebar-fade-border sidebar-fade-border-left"
-                />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          ) : (
-            /* Full-width Builder Conversation when preview is hidden */
-            <div className="h-full flex flex-col overflow-hidden">
-              <div className="flex-1 min-h-0 relative">
-                {localPath && project && (
-                  <BuilderConversation
-                    project={project}
-                    localPath={localPath}
-                    stopRequestCount={stopRequestCount}
-                    onTasksUpdate={handleTasksUpdate}
-                    onFileCreated={handleFileCreated}
-                    onComplete={handleAIComplete}
-                    onError={handleAIError}
-                    onBillingError={setBillingError}
-                    className="h-full"
-                  />
-                )}
-                {/* Floating Controls Pill */}
-                <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
-                  {billingError && (
-                    <BillingError
-                      error={billingError}
-                      className="mx-auto w-full max-w-2xl"
-                    />
-                  )}
-                  <BuilderControlsPill
-                    statusMessage={statusMessage}
-                    isAIGenerating={isAIGenerating}
-                    isAIComplete={isAIComplete}
-                    hasError={hasError}
-                    isPulling={isPulling}
-                    buildTasks={buildTasks}
-                    onStop={handleAIStop}
-                    onRetry={handleRetry}
-                    onPull={pullFilesFromCloud}
-                    onOpenProject={handleOpenProject}
-                    onStartBuild={startAIBuild}
-                    onCancelProject={handleCancelProject}
-                  />
-                </div>
               </div>
-            </div>
-          )}
+            </ResizablePanel>
+
+            {/* Resize Handle and Preview Panel (hidden if not showPreview) */}
+            {showPreview && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
+                  <BuildPreviewPanel
+                    status={devServer.status}
+                    url={devServer.url}
+                    error={devServer.error}
+                    onRefresh={devServer.restart}
+                    onCapture={capturePreviewScreenshot}
+                    className="h-full relative sidebar-fade-border sidebar-fade-border-left"
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         </div>
         </div>
       )}

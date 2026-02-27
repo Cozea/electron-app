@@ -336,32 +336,6 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     isEnabled: false,
   },
   {
-    name: "google_search",
-    displayName: "Google Search",
-    description: "Search the web with Google Search grounding.",
-    category: "web",
-    provider: "google",
-    toolType: "provider",
-    providerToolId: "google.google_search",
-    providerToolArgs: {},
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query.",
-        },
-      },
-      required: ["query"],
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "provider",
-    isBuiltin: true,
-    isEnabled: false,
-  },
-  {
     name: "plan_write",
     displayName: "Present Project Plans",
     description: "Present 3 web project plan options (prototype, beta, mvp).",

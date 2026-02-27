@@ -1284,6 +1284,26 @@ export default defineSchema({
     .index("by_user_and_status", ["userId", "status"])
     .index("by_project_user_status", ["projectId", "userId", "status"]),
 
+  // Conversation continuation linkage for Responses-style providers.
+  // Stores provider response linkage state so continuation survives server restarts.
+  aiContinuationState: defineTable({
+    organizationId: v.string(), // WorkOS org id from AI runtime request
+    conversationId: v.string(),
+    provider: v.union(v.literal("openai"), v.literal("github-copilot")),
+    model: v.string(),
+    previousResponseId: v.string(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_org_conversation_provider_model", [
+      "organizationId",
+      "conversationId",
+      "provider",
+      "model",
+    ])
+    .index("by_org_conversation", ["organizationId", "conversationId"])
+    .index("by_expires_at", ["expiresAt"]),
+
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),

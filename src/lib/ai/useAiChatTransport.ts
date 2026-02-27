@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { DefaultChatTransport } from 'ai'
 
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { AI_API_URL } from '@/lib/ai/apiEndpoints'
 import type { AgentId, AISurface, VariantId } from '@/lib/ai/runtimeProfiles'
 import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 
@@ -16,6 +16,28 @@ interface UseAiChatTransportArgs {
   enableTools: boolean
   enableWebSearch: boolean
   extraBody?: Record<string, unknown>
+  providerAuthHeader?: string | null
+  api?: string
+}
+
+interface ChatMessageLike {
+  id?: string
+}
+
+function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
+  if (messages.length <= 1) return messages
+
+  const lastIndexById = new Map<string, number>()
+  for (let index = 0; index < messages.length; index += 1) {
+    const messageId = messages[index]?.id
+    if (!messageId) continue
+    lastIndexById.set(messageId, index)
+  }
+
+  return messages.filter((message, index) => {
+    if (!message.id) return true
+    return lastIndexById.get(message.id) === index
+  })
 }
 
 export function useAiChatTransport({
@@ -29,7 +51,10 @@ export function useAiChatTransport({
   enableTools,
   enableWebSearch,
   extraBody,
+  providerAuthHeader,
+  api,
 }: UseAiChatTransportArgs) {
+  const chatApi = api ?? AI_API_URL
   const requestConfigRef = useRef({
     accessToken,
     organizationId: organizationId ?? null,
@@ -37,10 +62,11 @@ export function useAiChatTransport({
     conversationId,
     agentId,
     surface,
-    variantId: variantId ?? 'medium',
+    variantId: variantId,
     enableTools,
     enableWebSearch,
     extraBody: extraBody ?? {},
+    providerAuthHeader: providerAuthHeader ?? null,
   })
 
   useEffect(() => {
@@ -51,10 +77,11 @@ export function useAiChatTransport({
       conversationId,
       agentId,
       surface,
-      variantId: variantId ?? 'medium',
+      variantId: variantId,
       enableTools,
       enableWebSearch,
       extraBody: extraBody ?? {},
+      providerAuthHeader: providerAuthHeader ?? null,
     }
   }, [
     accessToken,
@@ -67,16 +94,27 @@ export function useAiChatTransport({
     enableTools,
     enableWebSearch,
     extraBody,
+    providerAuthHeader,
   ])
 
-  return useMemo(() => {
+  const setConversationId = useCallback((nextConversationId: string) => {
+    requestConfigRef.current.conversationId = nextConversationId
+  }, [])
+
+  const transport = useMemo(() => {
+    const baseApi = chatApi.replace(/\/chat$/, '')
+
     return new DefaultChatTransport({
-      api: AI_API_URL,
+      api: chatApi,
       headers: (): Record<string, string> => {
         const token = requestConfigRef.current.accessToken
+        const providerHeader = requestConfigRef.current.providerAuthHeader
         const next: Record<string, string> = {}
         if (token) {
           next.Authorization = `Bearer ${token}`
+        }
+        if (providerHeader) {
+          next['x-cozea-provider-auth'] = providerHeader
         }
         return {
           ...next,
@@ -95,16 +133,22 @@ export function useAiChatTransport({
         ...requestConfigRef.current.extraBody,
       }),
       prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/chat`
+        const api = `${baseApi}/chat`
         const requestBody = body ?? {}
+        const dedupedMessages = dedupeMessagesById(messages)
         const nextBody = {
           ...requestBody,
-          messages,
+          messages: dedupedMessages,
           ...(messageId ? { requestId: messageId } : {}),
         }
 
         return { api, body: nextBody }
       },
     })
-  }, [])
+  }, [chatApi])
+
+  return {
+    transport,
+    setConversationId,
+  }
 }

@@ -10,6 +10,14 @@ crons.interval(
   internal.invitations.cleanupExpired
 )
 
+// Clean up expired AI continuation linkage every hour
+crons.interval(
+  "cleanup expired ai continuation state",
+  { hours: 1 },
+  internal.aiConversations.cleanupExpiredContinuationState,
+  {}
+)
+
 // ============================================
 // SYNC SYSTEM CRON JOBS
 // ============================================

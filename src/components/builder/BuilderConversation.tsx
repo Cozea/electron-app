@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { useMutation } from 'convex/react'
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
 } from 'ai'
@@ -14,6 +13,7 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import type { BuildTask } from './BuildTaskList'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
+import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
 
 // AI Elements components
 import {
@@ -25,19 +25,20 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
+import { readLatestRetryHint, type RetryHint } from '@/lib/ai/retryHints'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
-  collectToolDiagnosticsSummary,
+  collectMutatingToolDiagnosticsSummary,
   summarizeLintDiagnostics,
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import { isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
 
 // Builder-specific tools that should always be executed locally
@@ -186,6 +187,10 @@ interface UsageDataPart {
   }
 }
 
+interface ChatMessageLike {
+  id?: string
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -203,6 +208,26 @@ const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
   /\bflutter\b/i,
   /\bswift\b/i,
 ]
+
+function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
+  if (messages.length <= 1) return messages
+
+  const lastIndexById = new Map<string, number>()
+  for (let index = 0; index < messages.length; index += 1) {
+    const messageId = messages[index]?.id
+    if (!messageId) continue
+    lastIndexById.set(messageId, index)
+  }
+
+  return messages.filter((message, index) => {
+    if (!message.id) return true
+    return lastIndexById.get(message.id) === index
+  })
+}
+
+function isDuplicateResponseItemError(message: string): boolean {
+  return /duplicate item found with id/i.test(message)
+}
 
 function detectUnsupportedNativeBuildCommand(command: string): string | null {
   const normalized = command.trim()
@@ -327,6 +352,7 @@ export function BuilderConversation({
 
   // Auto-continuation refs (defined early for use in error handling)
   const latestTasksRef = useRef<BuildTask[]>([])
+  const latestRetryHintRef = useRef<RetryHint | null>(null)
   const continuationSentRef = useRef(false)
   const continuationCountRef = useRef(0)
   const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
@@ -383,7 +409,7 @@ export function BuilderConversation({
   // Builder execution is pinned to the project prompt settings.
   const enableTools = promptSettings?.toolsEnabled ?? true
   const enableWebSearch = promptSettings?.webSearchEnabled ?? true
-  const variantId = promptSettings?.variantId ?? 'medium'
+  const variantId = promptSettings?.variantId
   const providerOptions = promptSettings?.providerOptions
 
   const headers = useMemo((): Record<string, string> => {
@@ -477,30 +503,11 @@ export function BuilderConversation({
     return () => controller.abort()
   }, [accessToken, currentOrganization?.organizationId, headers, localPath, model])
 
-  // Request config ref
-  const requestConfigRef = useRef({
-    accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    projectId: project._id,
-    conversationId,
-    providerAuthHeader,
-  })
-
   const localRuntimeStatus = useLocalAiRuntimeStatus(true)
   const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
   const localRuntimeProvider = inferProviderFromModelId(model)
   const canUseLocalRuntimeEndpoint =
     localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
-
-  useEffect(() => {
-    requestConfigRef.current = {
-      accessToken,
-      organizationId: currentOrganization?.organizationId || null,
-      projectId: project._id,
-      conversationId,
-      providerAuthHeader,
-    }
-  }, [accessToken, currentOrganization?.organizationId, project._id, conversationId, providerAuthHeader])
 
   // Build initial prompt with full plan context
   const initialPrompt = useMemo(() => {
@@ -539,68 +546,32 @@ Note: If the tool schema expects tasks_json, it MUST be a strict JSON array stri
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
-  // Chat transport
-  const chatTransport = useMemo(() => {
-    const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
-    const baseApi = chatApi.replace(/\/chat$/, '')
-
-    return new DefaultChatTransport({
-      api: chatApi,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        const providerHeader = requestConfigRef.current.providerAuthHeader
-        const next: Record<string, string> = {}
-        if (token) {
-          next.Authorization = `Bearer ${token}`
-        }
-        if (providerHeader) {
-          next['x-cozea-provider-auth'] = providerHeader
-        }
-        Object.assign(next, getAiTimezoneHeaders())
-        return next
-      },
-      body: () => ({
-        model,
-        organizationId: requestConfigRef.current.organizationId,
-        projectContext: {
-          name: project.name,
-          slug: project.slug,
-          runtime: 'local',
-          localPath: localPath || undefined,
-          currentPage: null,
-          inspectedElement: null,
-        },
-        conversationId: requestConfigRef.current.conversationId,
-        agentId: 'build',
-        surface: 'builder',
-        variantId,
-        enableTools,
-        enableWebSearch,
-        ...(providerOptions ? { providerOptions } : {}),
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${baseApi}/chat`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
-    })
-  }, [
+  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
+  const projectContextPayload = useMemo(() => ({
+    name: project.name,
+    slug: project.slug,
+    runtime: 'local' as const,
+    localPath: localPath || undefined,
+    currentPage: null,
+    inspectedElement: null,
+  }), [project.name, project.slug, localPath])
+  const { transport: chatTransport } = useAiChatTransport({
+    accessToken,
+    organizationId: currentOrganization?.organizationId,
     model,
+    conversationId,
+    agentId: 'build',
+    surface: 'builder',
+    variantId,
     enableTools,
     enableWebSearch,
-    variantId,
-    providerOptions,
-    project.name,
-    project.slug,
-    localPath,
-    canUseLocalRuntimeEndpoint,
-    localRuntimeEndpoint,
-  ])
+    extraBody: {
+      projectContext: projectContextPayload,
+      ...(providerOptions ? { providerOptions } : {}),
+    },
+    providerAuthHeader,
+    api: chatApi,
+  })
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -622,27 +593,6 @@ Now begin by defining your task list with todowrite, then start working through 
     return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
   }, [])
 
-  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null): string[] => {
-    if (!input) return []
-    if (toolName === 'write' || toolName === 'edit') {
-      const filePath = input.filePath
-      return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
-    }
-    if (toolName === 'multiedit') {
-      const edits = Array.isArray(input.edits)
-        ? input.edits
-        : Array.isArray(input.replacements)
-          ? input.replacements
-          : []
-      const defaultFilePath = typeof input.filePath === 'string' ? input.filePath : undefined
-      return edits
-        .filter(isRecord)
-        .map((edit) => edit.filePath ?? defaultFilePath)
-        .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
-    }
-    return []
-  }, [])
-
   const enrichToolOutputWithDiagnostics = useCallback(async (
     toolName: string,
     toolInput: Record<string, unknown> | null,
@@ -650,16 +600,16 @@ Now begin by defining your task list with todowrite, then start working through 
   ) => {
     if (!localPath) return output
 
-    const filePaths = getToolFilePaths(toolName, toolInput)
-    if (filePaths.length === 0) return output
+    if (!toolInput || !isFileMutatingTool(toolName)) return output
 
-    const summary = await collectToolDiagnosticsSummary({
+    const summary = await collectMutatingToolDiagnosticsSummary({
       projectPath: localPath,
-      filePaths,
+      toolName,
+      toolInput,
     })
 
     return attachToolDiagnosticsToOutput(output, summary)
-  }, [getToolFilePaths, localPath])
+  }, [localPath])
 
   const getFinalDiagnosticsSummary = useCallback(async () => {
     if (!localPath || !window.electronAPI?.diagnostics) return null
@@ -909,6 +859,7 @@ Now begin by defining your task list with todowrite, then start working through 
             toolInput,
             { success: true, path: filePath }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -998,6 +949,7 @@ Now begin by defining your task list with todowrite, then start working through 
             toolInput,
             { filePath, replacements: 1 }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -1092,6 +1044,7 @@ Now begin by defining your task list with todowrite, then start working through 
             toolInput,
             { results }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -1330,6 +1283,7 @@ Now begin by defining your task list with todowrite, then start working through 
           toolInput,
           runtimeResult.output
         )
+        if (cancelledToolCallsRef.current.has(toolCallId)) return
         void addToolOutput({
           tool: toolName,
           toolCallId,
@@ -1410,9 +1364,14 @@ Now begin by defining your task list with todowrite, then start working through 
   // Track if auto-continue is handling errors (don't propagate to parent during recovery)
   const isRecoveringRef = useRef(false)
   const lastErrorRef = useRef<string | null>(null)
+  const autoContinueBlockedRef = useRef<string | null>(null)
 
   // Check if we should allow auto-continue to handle the error
   const shouldAllowRecovery = useCallback(() => {
+    if (autoContinueBlockedRef.current) return false
+    const retryHint = latestRetryHintRef.current
+    if (retryHint?.code === 'duplicate_response_item_id') return false
+    if (retryHint && !retryHint.retryable) return false
     const tasks = latestTasksRef.current
     const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
     const canContinue = continuationCountRef.current < MAX_CONTINUATIONS
@@ -1451,6 +1410,18 @@ Now begin by defining your task list with todowrite, then start working through 
           ? err
           : 'Build failed'
       lastErrorRef.current = message
+      const retryHint = latestRetryHintRef.current
+
+      if (retryHint?.code === 'duplicate_response_item_id' || isDuplicateResponseItemError(message)) {
+        autoContinueBlockedRef.current = 'duplicate-response-item-id'
+        onError('Build paused: provider rejected duplicated response item IDs. Retry once to continue.')
+        return
+      }
+
+      if (retryHint && !retryHint.retryable) {
+        onError(message)
+        return
+      }
 
       // Check if we should let auto-continue recover from this error
       if (shouldAllowRecovery()) {
@@ -1463,6 +1434,15 @@ Now begin by defining your task list with todowrite, then start working through 
       onError(message)
     },
   })
+
+  const dedupedMessages = useMemo(() => dedupeMessagesById(messages), [messages])
+
+  useEffect(() => {
+    const typedMessages = dedupedMessages as Array<{
+      parts: Array<{ type: string } & Record<string, unknown>>
+    }>
+    latestRetryHintRef.current = readLatestRetryHint(typedMessages)
+  }, [dedupedMessages])
 
   addToolOutputRef.current = addToolOutput
 
@@ -1508,7 +1488,7 @@ Now begin by defining your task list with todowrite, then start working through 
 
     const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
 
-    for (const message of messages) {
+    for (const message of dedupedMessages) {
       if (message.role !== 'assistant') continue
       if (!Array.isArray(message.parts)) continue
 
@@ -1542,7 +1522,7 @@ Now begin by defining your task list with todowrite, then start working through 
         errorText: reasonText,
       })
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   const cancelActiveTerminalSessions = useCallback(async () => {
     const activeEntries = Array.from(terminalSessionsRef.current.entries())
@@ -1647,8 +1627,8 @@ Now begin by defining your task list with todowrite, then start working through 
   useEffect(() => {
     let latestTasks: BuildTask[] | null = null
 
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i]
+    for (let i = dedupedMessages.length - 1; i >= 0; i -= 1) {
+      const message = dedupedMessages[i]
       if (message.role !== 'assistant') continue
       for (const part of message.parts) {
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
@@ -1716,13 +1696,13 @@ Now begin by defining your task list with todowrite, then start working through 
         setTimeout(() => onComplete(), 500)
       }
     }
-  }, [messages, onTasksUpdate, onComplete])
+  }, [dedupedMessages, onTasksUpdate, onComplete])
 
   // Track latest tasks for continuation logic
   useEffect(() => {
     // Extract latest tasks from messages (same logic as above effect)
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i]
+    for (let i = dedupedMessages.length - 1; i >= 0; i -= 1) {
+      const message = dedupedMessages[i]
       if (message.role !== 'assistant') continue
       for (const part of message.parts) {
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
@@ -1743,7 +1723,7 @@ Now begin by defining your task list with todowrite, then start working through 
         }
       }
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
   useEffect(() => {
@@ -1752,6 +1732,11 @@ Now begin by defining your task list with todowrite, then start working through 
       return
     }
     if (preflightDiagnostic) {
+      continuationSentRef.current = false
+      return
+    }
+
+    if (autoContinueBlockedRef.current) {
       continuationSentRef.current = false
       return
     }
@@ -1772,8 +1757,8 @@ Now begin by defining your task list with todowrite, then start working through 
       return
     }
 
-    if (!continuationSentRef.current && messages.length > 0 && hasIncompleteTasks) {
-      const lastMessage = messages[messages.length - 1]
+    if (!continuationSentRef.current && dedupedMessages.length > 0 && hasIncompleteTasks) {
+      const lastMessage = dedupedMessages[dedupedMessages.length - 1]
       if (lastMessage?.role === 'assistant') {
         // Check if message only has reasoning/metadata (no actual output)
         const hasOnlyReasoning = lastMessage.parts.length > 0 &&
@@ -1805,7 +1790,7 @@ Now begin by defining your task list with todowrite, then start working through 
         }, 500)
       }
     }
-  }, [messages, preflightDiagnostic, sendMessage, status])
+  }, [dedupedMessages, preflightDiagnostic, sendMessage, status])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()
@@ -1824,14 +1809,14 @@ Now begin by defining your task list with todowrite, then start working through 
 
   // Filter out the initial plan prompt message (first user message with plan context)
   const visibleMessages = useMemo(() => {
-    return messages.filter((message, index) => {
+    return dedupedMessages.filter((message, index) => {
       // Hide the first user message (the auto-sent plan prompt)
       if (message.role === 'user' && index === 0) {
         return false
       }
       return true
     })
-  }, [messages])
+  }, [dedupedMessages])
 
   return (
     <div className={cn('flex flex-col overflow-hidden w-full', className)}>
