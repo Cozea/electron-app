@@ -107,7 +107,184 @@ function saveSettings(settings: Partial<AppSettings>): void {
   }
 }
 
-let win: InstanceType<typeof BrowserWindow> | null
+type AppBrowserWindow = InstanceType<typeof BrowserWindow>
+
+let win: AppBrowserWindow | null = null
+let settingsWindow: AppBrowserWindow | null = null
+
+const DEFAULT_SETTINGS_ROUTE = '/settings/account'
+const SETTINGS_ROUTES = new Set([
+  '/settings/account',
+  '/settings/appearance',
+  '/settings/storage',
+  '/settings/tooling',
+])
+
+function normalizeSettingsRoute(route?: string): string {
+  if (!route) return DEFAULT_SETTINGS_ROUTE
+  const [pathOnly] = route.split('?')
+  const withLeadingSlash = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`
+  const normalizedPath = withLeadingSlash.replace(/\/+$/, '') || '/'
+  return SETTINGS_ROUTES.has(normalizedPath) ? normalizedPath : DEFAULT_SETTINGS_ROUTE
+}
+
+function navigateRendererWindow(targetWindow: AppBrowserWindow, route: string): void {
+  const sendNavigate = () => {
+    if (targetWindow.isDestroyed()) return
+    targetWindow.webContents.send('navigate', route)
+  }
+
+  if (targetWindow.webContents.isLoadingMainFrame()) {
+    targetWindow.webContents.once('did-finish-load', sendNavigate)
+    return
+  }
+
+  sendNavigate()
+}
+
+function isBrowserWindowAlive(windowRef: AppBrowserWindow | null): windowRef is AppBrowserWindow {
+  return Boolean(windowRef && !windowRef.isDestroyed())
+}
+
+function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main' | 'settings'): void {
+  targetWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const isPreviewLog =
+      message.includes('[PreviewBridge]') ||
+      message.includes('[Bridge]') ||
+      message.includes('[PagesPreview]') ||
+      message.includes('credentialless')
+
+    if (!isPreviewLog) return
+
+    const prefix = `[Renderer:${label}]`
+    const location = sourceId ? `${sourceId}:${line}` : `line:${line}`
+
+    if (level >= 3) {
+      console.error(`${prefix} ${message} (${location})`)
+      return
+    }
+    if (level === 2) {
+      console.warn(`${prefix} ${message} (${location})`)
+      return
+    }
+
+    console.log(`${prefix} ${message} (${location})`)
+  })
+
+  targetWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const isLocalPreview = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+/i.test(validatedURL)
+      if (!isMainFrame && !isLocalPreview) return
+
+      const frameType = isMainFrame ? 'main-frame' : 'sub-frame'
+      console.error(
+        `[Renderer:${label}] did-fail-load (${frameType}) ${errorCode} ${errorDescription} ${validatedURL}`
+      )
+    }
+  )
+}
+
+function createSettingsWindow(initialRoute: string): AppBrowserWindow {
+  const isMac = process.platform === 'darwin'
+  const isWindows = process.platform === 'win32'
+  const isReleaseBuild = app.isPackaged
+  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
+  const parentWindow = isBrowserWindowAlive(win) ? win : undefined
+
+  const nextWindow = new BrowserWindow({
+    width: 940,
+    height: 700,
+    minWidth: 820,
+    minHeight: 580,
+    show: false,
+    parent: parentWindow,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: !isReleaseBuild,
+      additionalArguments: ['--cozea-window=settings'],
+    },
+    transparent: isMac,
+    backgroundColor: isMac ? '#00000000' : themedOpaqueBackground,
+    vibrancy: isMac ? 'sidebar' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
+    backgroundMaterial: isWindows ? 'mica' : undefined,
+    titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
+    titleBarOverlay: isWindows
+      ? {
+          color: '#00000000',
+          symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827',
+          height: 36,
+        }
+      : false,
+    trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
+  })
+
+  settingsWindow = nextWindow
+  attachPreviewDebugLogging(nextWindow, 'settings')
+
+  nextWindow.on('closed', () => {
+    if (settingsWindow === nextWindow) {
+      settingsWindow = null
+    }
+  })
+
+  if (isReleaseBuild) {
+    nextWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        void shell.openExternal(url)
+      }
+      return { action: 'deny' }
+    })
+
+    nextWindow.webContents.on('will-navigate', (event, url) => {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        void shell.openExternal(url)
+      }
+    })
+  }
+
+  nextWindow.once('ready-to-show', () => {
+    nextWindow.show()
+    nextWindow.focus()
+  })
+
+  if (VITE_DEV_SERVER_URL) {
+    void nextWindow.loadURL(`${VITE_DEV_SERVER_URL}${initialRoute}`)
+  } else {
+    void nextWindow.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    nextWindow.webContents.once('did-finish-load', () => {
+      navigateRendererWindow(nextWindow, initialRoute)
+    })
+  }
+
+  return nextWindow
+}
+
+async function openSettingsWindow(route?: string): Promise<{ success: boolean; error?: string }> {
+  const targetRoute = normalizeSettingsRoute(route)
+
+  try {
+    if (isBrowserWindowAlive(settingsWindow)) {
+      if (settingsWindow.isMinimized()) settingsWindow.restore()
+      settingsWindow.show()
+      settingsWindow.focus()
+      navigateRendererWindow(settingsWindow, targetRoute)
+      return { success: true }
+    }
+
+    createSettingsWindow(targetRoute)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
 
 type UpdateStatus =
   | 'idle'
@@ -183,7 +360,7 @@ function registerAutoUpdater(): void {
     setUpdateState({
       status: 'available',
       version: info?.version,
-      releaseName: info?.releaseName,
+      releaseName: info?.releaseName ?? undefined,
       releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
       error: undefined,
     })
@@ -210,7 +387,7 @@ function registerAutoUpdater(): void {
     setUpdateState({
       status: 'downloaded',
       version: info?.version,
-      releaseName: info?.releaseName,
+      releaseName: info?.releaseName ?? undefined,
       releaseNotes: normalizeReleaseNotes(info?.releaseNotes),
       error: undefined,
       progress: undefined,
@@ -411,6 +588,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !isReleaseBuild,
+      additionalArguments: ['--cozea-window=main'],
     },
     // Native material effects:
     // - macOS: transparent window + vibrancy so translucent sidebar can blur behind.
@@ -431,8 +609,14 @@ function createWindow() {
     trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
   })
 
+  attachPreviewDebugLogging(win, 'main')
+
   // Set application menu
-  createApplicationMenu()
+  createApplicationMenu({
+    onOpenSettings: () => {
+      void openSettingsWindow()
+    },
+  })
 
   // Register window state listeners
   mainWindowState.manage(win)
@@ -510,9 +694,9 @@ function createWindow() {
 // IPC Handlers
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
-  ProviderAuthService.getInstance().registerIpcHandlers()
-  LocalAiRuntimeService.getInstance().registerIpcHandlers()
-  TerminalService.getInstance().registerIpcHandlers()
+ProviderAuthService.getInstance().registerIpcHandlers()
+LocalAiRuntimeService.getInstance().registerIpcHandlers()
+TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
@@ -520,11 +704,13 @@ DependenciesService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
   runTool,
-  cancelToolRuns,
+  cancelToolRuns: async (runId) => cancelToolRuns(runId),
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
   checkForUpdates,
-  downloadUpdate: () => autoUpdater.downloadUpdate(),
+  downloadUpdate: async () => {
+    await autoUpdater.downloadUpdate()
+  },
   installUpdate: () => autoUpdater.quitAndInstall(),
   setUpdateError: (message) => {
     setUpdateState({
@@ -534,6 +720,7 @@ registerCoreHandlers(ipcMain, {
   },
   openExternal: (url) => shell.openExternal(url),
   isWindowFullScreen: () => win?.isFullScreen() ?? false,
+  openSettingsWindow,
 })
 
 registerPreviewHandlers(ipcMain, {
@@ -564,6 +751,9 @@ registerContextMenuHandlers(ipcMain, {
 })
 
 app.on('window-all-closed', () => {
+  win = null
+  settingsWindow = null
+
   // Kill all running dev servers when app closes
   for (const [projectPath, ptyProcess] of devServerProcesses) {
     console.log(`[DevServer] Killing PTY for ${projectPath}`)

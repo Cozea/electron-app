@@ -592,13 +592,36 @@ export type ProviderAuthProvider =
 export type ProviderAuthMethod =
   | 'oauth'
   | 'api_key'
+  | 'cloud_credentials'
   | 'device'
   | 'manual_code'
   | 'vertex'
   | 'gemini'
   | 'gemini_api_key'
 export type ProviderAuthGoogleMode = 'vertex' | 'gemini'
-export type ProviderAuthType = 'oauth' | 'local_token' | 'api_key'
+export type ProviderAuthType = 'oauth' | 'local_token' | 'api_key' | 'cloud_credentials'
+
+export interface ProviderCloudCredentials {
+  kind?: string
+  region?: string
+  profile?: string
+  accessKeyId?: string
+  secretAccessKey?: string
+  sessionToken?: string
+  projectId?: string
+  location?: string
+  accountId?: string
+  gatewayId?: string
+  serviceKey?: string
+  audience?: string
+  apiVersion?: string
+  baseUrl?: string
+  apiKey?: string
+  apiToken?: string
+  token?: string
+  headers?: Record<string, string>
+  extras?: Record<string, unknown>
+}
 
 export interface ProviderAuthRequestEnvelope {
   provider: ProviderAuthProvider
@@ -614,6 +637,7 @@ export interface ProviderAuthRequestEnvelope {
   }
   headers?: Record<string, string>
   baseUrl?: string
+  cloud?: ProviderCloudCredentials
 }
 
 export interface ProviderAuthStatus {
@@ -625,6 +649,7 @@ export interface ProviderAuthStatus {
   googleMode?: ProviderAuthGoogleMode
   googleProjectId?: string
   googleLocation?: string
+  cloudKind?: string
   lastError?: string
   updatedAt?: number
 }
@@ -676,8 +701,11 @@ export interface DbFirestoreListDocumentsResult {
   error?: string
 }
 
+export type ElectronWindowContext = 'main' | 'settings'
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
+  windowContext: ElectronWindowContext
   auth: {
     login: () => Promise<{ success: boolean }>
     logout: () => Promise<{ success: boolean }>
@@ -701,6 +729,7 @@ export interface ElectronAPI {
       authorizationCode?: string
       credentialPath?: string
       apiKey?: string
+      cloudCredentials?: ProviderCloudCredentials
     }) => Promise<ProviderAuthConnectResult>
     disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
     getRequestAuth: (options: {

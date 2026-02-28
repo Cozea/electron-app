@@ -3,7 +3,8 @@ import type { ProviderAuthStatus } from '@shared/electronApiTypes'
 
 export type ConnectedProvider = string
 
-export const isConnectedProvider = (_value?: string): boolean => true
+export const isConnectedProvider = (value?: string): value is ConnectedProvider =>
+  typeof value === 'string' && value.trim().length > 0
 
 export function getProviderDisplayName(providerId: string): string {
   const defaults: Record<string, string> = {
@@ -13,6 +14,12 @@ export function getProviderDisplayName(providerId: string): string {
     xai: 'xAI',
     'github-copilot': 'GitHub Copilot',
     gitlab: 'GitLab',
+    'amazon-bedrock': 'Amazon Bedrock',
+    'google-vertex': 'Google Vertex',
+    'google-vertex-anthropic': 'Google Vertex Anthropic',
+    azure: 'Azure OpenAI',
+    'azure-cognitive-services': 'Azure Cognitive Services',
+    'sap-ai-core': 'SAP AI Core',
   }
   if (defaults[providerId]) return defaults[providerId]
   

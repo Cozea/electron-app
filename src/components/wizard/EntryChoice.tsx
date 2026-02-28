@@ -62,9 +62,11 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
-import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { fetchWithAbort } from '@/lib/abort'
+import {
+  getModelCatalog,
+  type ModelApiModel,
+} from '@/lib/ai/modelCatalogClient'
 
 export interface PromptSettings {
   model: string
@@ -91,18 +93,6 @@ const GUIDED_OPTIONS = [
 ]
 
 const defaultModels = DEFAULT_MODELS
-
-interface ModelApiModel {
-  id: string
-  displayName: string
-  provider: string
-  tier: string
-  capabilities?: RuntimeModelCapabilities
-}
-
-interface ModelApiResponse {
-  models: ModelApiModel[]
-}
 
 export function EntryChoice({
   onSelect,
@@ -156,6 +146,10 @@ export function EntryChoice({
     () => modelCapabilities[model] ?? null,
     [model, modelCapabilities]
   )
+  const supportsAttachments =
+    !selectedModelCapabilities ||
+    selectedModelCapabilities.supportsImageInput ||
+    selectedModelCapabilities.supportsPdfInput
   const supportedVariants = useMemo(
     () =>
       getSupportedVariantsForModel({
@@ -204,21 +198,14 @@ export function EntryChoice({
   useEffect(() => {
     if (!accessToken || !currentOrganization?.organizationId) return
 
-    const controller = new AbortController()
+    let cancelled = false
 
-    fetchWithAbort(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      signal: controller.signal,
-    }, { signal: controller.signal, timeoutMs: 15000 })
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error('Failed to load models')
-        }
-        return (await res.json()) as ModelApiResponse
-      })
+    getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+    })
       .then((data) => {
+        if (cancelled) return
         if (!data?.models) return
         const nextCapabilities: Record<string, RuntimeModelCapabilities> = {}
         const mapped = data.models
@@ -242,11 +229,13 @@ export function EntryChoice({
         setModelCapabilities(nextCapabilities)
       })
       .catch((error) => {
-        if ((error as { name?: string }).name === 'AbortError') return
+        if (cancelled) return
         console.warn('Failed to fetch models:', error)
       })
 
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+    }
   }, [accessToken, currentOrganization?.organizationId])
 
   useEffect(() => {
@@ -322,6 +311,7 @@ export function EntryChoice({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                    disabled={!supportsAttachments}
                   >
                     <IconPlus className="size-3" />
                   </Button>
@@ -333,10 +323,11 @@ export function EntryChoice({
                   <DropdownMenuGroup className="space-y-1">
                     <DropdownMenuItem
                       className="rounded-[calc(1rem-6px)] text-xs"
+                      disabled={!supportsAttachments}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <IconPaperclip size={16} className="opacity-60" />
-                      Attach Files
+                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>

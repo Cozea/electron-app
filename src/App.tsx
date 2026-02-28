@@ -65,6 +65,7 @@ function ElectronNavigationBridge() {
 function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding, workspaceSelectionRequired } = useAuth()
   const location = useLocation()
+  const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
@@ -111,7 +112,7 @@ function AppContent() {
   return (
     <>
       <ElectronNavigationBridge />
-      <UpdateMenu />
+      {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
     </>
   )
