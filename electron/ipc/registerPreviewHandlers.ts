@@ -69,6 +69,19 @@ function isAllowedPreviewUrl(url: URL): boolean {
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
 }
 
+function isChromiumErrorDocumentUrl(url: string): boolean {
+  return url.startsWith('chrome-error://')
+}
+
+async function getFrameLocationHref(frame: WebFrameMain): Promise<string | null> {
+  try {
+    const href = await frame.executeJavaScript('window.location.href')
+    return typeof href === 'string' ? href : null
+  } catch {
+    return null
+  }
+}
+
 function summarizePreviewFrames(
   getMainWindow: () => BrowserWindow | null,
   maxFrames = 12
@@ -192,6 +205,21 @@ export function registerPreviewHandlers(
         return { success: false, error: 'Preview frame not found' }
       }
 
+      const frameHref = await getFrameLocationHref(frame)
+      if (frameHref && isChromiumErrorDocumentUrl(frameHref)) {
+        console.warn('[PreviewBridge][Main] Refusing injection into Chromium error document', {
+          requestedUrl: url,
+          requestedFrameName: frameName || '(none)',
+          matchedFrameName: frame.name || '(unnamed)',
+          matchedFrameUrl: frame.url,
+          frameHref,
+        })
+        return {
+          success: false,
+          error: 'Preview frame resolved to Chromium error document (ERR_BLOCKED_BY_RESPONSE)',
+        }
+      }
+
       try {
         console.log('[PreviewBridge][Main] Matched frame', {
           requestedUrl: url,
@@ -213,6 +241,22 @@ export function registerPreviewHandlers(
           } catch {}
         `)
         await frame.executeJavaScript(BRIDGE_SCRIPT)
+
+        const postInjectHref = await getFrameLocationHref(frame)
+        if (postInjectHref && isChromiumErrorDocumentUrl(postInjectHref)) {
+          console.warn('[PreviewBridge][Main] Bridge injection landed on Chromium error document', {
+            requestedUrl: url,
+            requestedFrameName: frameName || '(none)',
+            matchedFrameName: frame.name || '(unnamed)',
+            matchedFrameUrl: frame.url,
+            frameHref: postInjectHref,
+          })
+          return {
+            success: false,
+            error: 'Preview frame is Chromium error document after injection (ERR_BLOCKED_BY_RESPONSE)',
+          }
+        }
+
         console.log('[PreviewBridge][Main] Bridge script injected successfully', {
           matchedFrameName: frame.name || '(unnamed)',
           matchedFrameUrl: frame.url,

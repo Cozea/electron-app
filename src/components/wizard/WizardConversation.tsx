@@ -104,6 +104,11 @@ import { BillingError } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
 import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import {
+  getModelCatalog,
+  type ModelApiModel,
+  type ModelApiResponse,
+} from '@/lib/ai/modelCatalogClient'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
@@ -126,18 +131,6 @@ interface WizardConversationProps {
 }
 
 type ToolMeta = ToolMetaShape
-
-interface ModelApiModel {
-  id: string
-  displayName: string
-  provider: string
-  tier: string
-  capabilities?: RuntimeModelCapabilities
-}
-
-interface ModelApiResponse {
-  models: ModelApiModel[]
-}
 
 type ToolResponse = ToolsApiResponse<ToolMeta>
 
@@ -297,6 +290,10 @@ export function WizardConversation({
   )
   const hasSelectableModel = Boolean(selectedModelData)
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
+  const supportsAttachments =
+    !selectedModelCapabilities ||
+    selectedModelCapabilities.supportsImageInput ||
+    selectedModelCapabilities.supportsPdfInput
   const supportedVariants = useMemo(
     () =>
       getSupportedVariantsForModel({
@@ -428,22 +425,14 @@ export function WizardConversation({
   // Fetch models
   useEffect(() => {
     if (!accessToken || !currentOrganization?.organizationId) return
-    const controller = new AbortController()
+    let cancelled = false
 
-    fetchWithAbort(`${AI_BASE_URL}/models?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
-      headers,
-      signal: controller.signal,
-    }, { signal: controller.signal, timeoutMs: 15000 })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Unauthorized. Please sign in again.')
-          }
-          throw new Error('Failed to load models')
-        }
-        return res.json()
-      })
+    getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+    })
       .then((data: ModelApiResponse) => {
+        if (cancelled) return
         if (!data?.models) return
         const mapped = data.models
           .filter((m): m is ModelApiModel & { provider: ConnectedProvider } => isConnectedProvider(m.provider))
@@ -466,14 +455,16 @@ export function WizardConversation({
         }
       })
       .catch((err) => {
-        if ((err as { name?: string }).name === 'AbortError') return
+        if (cancelled) return
         const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
         setModelsError(message)
         console.warn('Failed to fetch models:', err)
       })
 
-    return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, currentOrganization?.organizationId])
 
   // Fetch tools
   useEffect(() => {
@@ -1034,6 +1025,7 @@ export function WizardConversation({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                    disabled={!supportsAttachments}
                   >
                     <IconPlus className="size-3" />
                   </Button>
@@ -1042,10 +1034,11 @@ export function WizardConversation({
                   <DropdownMenuGroup className="space-y-1">
                     <DropdownMenuItem
                       className="rounded-[calc(1rem-6px)] text-xs"
+                      disabled={!supportsAttachments}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <IconPaperclip size={16} className="opacity-60" />
-                      Attach Files
+                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>

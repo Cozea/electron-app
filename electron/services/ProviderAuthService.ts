@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 import type {
   ProviderAuthConnectResult,
   ProviderAuthDisconnectResult,
+  ProviderCloudCredentials,
   ProviderAuthMethod,
   ProviderAuthProvider,
   ProviderAuthRequestAuthResult,
@@ -20,7 +21,7 @@ const execFileAsync = promisify(execFile)
 
 interface ProviderCredential {
   provider: ProviderAuthProvider
-  authType: 'oauth' | 'local_token' | 'api_key'
+  authType: 'oauth' | 'local_token' | 'api_key' | 'cloud_credentials'
   accessToken: string
   refreshToken?: string
   expiresAt?: number
@@ -33,6 +34,7 @@ interface ProviderCredential {
   googleMode?: 'vertex' | 'gemini'
   googleProjectId?: string
   googleLocation?: string
+  cloud?: ProviderCloudCredentials
   lastError?: string
   updatedAt: number
 }
@@ -132,9 +134,40 @@ const GITLAB_API_BASE_URL = process.env.COZEA_GITLAB_API_BASE_URL || 'https://gi
 
 const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
 const ENABLED_PROVIDER_AUTH_PROVIDER_SET = new Set<ProviderAuthProvider>(ENABLED_PROVIDER_AUTH_PROVIDERS)
+const CLOUD_CREDENTIAL_PROVIDER_SET = new Set<ProviderAuthProvider>([
+  'amazon-bedrock',
+  'google-vertex',
+  'google-vertex-anthropic',
+  'azure',
+  'azure-cognitive-services',
+  'sap-ai-core',
+])
+
+const CLOUD_PROVIDER_DEFAULT_KIND: Record<string, string> = {
+  'amazon-bedrock': 'aws',
+  'google-vertex': 'gcp',
+  'google-vertex-anthropic': 'gcp',
+  azure: 'azure',
+  'azure-cognitive-services': 'azure',
+  'sap-ai-core': 'sap',
+}
 
 function isProviderEnabled(provider: ProviderAuthProvider): boolean {
   return true
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function hasCloudCredentialValues(input: ProviderCloudCredentials): boolean {
+  return Object.values(input).some((value) => {
+    if (typeof value === 'string') return value.trim().length > 0
+    if (value && typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0
+    return value !== undefined && value !== null
+  })
 }
 
 interface GoogleGeminiManualAuthSession {
@@ -631,6 +664,7 @@ export class ProviderAuthService {
       googleMode: credential.googleMode,
       googleProjectId: credential.googleProjectId,
       googleLocation: credential.googleLocation,
+      cloudKind: credential.cloud?.kind,
       lastError: credential.lastError,
       updatedAt: credential.updatedAt,
     }
@@ -2414,6 +2448,134 @@ export class ProviderAuthService {
     }
   }
 
+  private normalizeCloudCredentials(
+    provider: ProviderAuthProvider,
+    input?: ProviderCloudCredentials
+  ): ProviderCloudCredentials | null {
+    if (!input) return null
+
+    const normalized: ProviderCloudCredentials = {
+      ...(normalizeOptionalString(input.kind) ? { kind: normalizeOptionalString(input.kind) } : {}),
+      ...(normalizeOptionalString(input.region) ? { region: normalizeOptionalString(input.region) } : {}),
+      ...(normalizeOptionalString(input.profile) ? { profile: normalizeOptionalString(input.profile) } : {}),
+      ...(normalizeOptionalString(input.accessKeyId) ? { accessKeyId: normalizeOptionalString(input.accessKeyId) } : {}),
+      ...(normalizeOptionalString(input.secretAccessKey)
+        ? { secretAccessKey: normalizeOptionalString(input.secretAccessKey) }
+        : {}),
+      ...(normalizeOptionalString(input.sessionToken)
+        ? { sessionToken: normalizeOptionalString(input.sessionToken) }
+        : {}),
+      ...(normalizeOptionalString(input.projectId) ? { projectId: normalizeOptionalString(input.projectId) } : {}),
+      ...(normalizeOptionalString(input.location) ? { location: normalizeOptionalString(input.location) } : {}),
+      ...(normalizeOptionalString(input.accountId) ? { accountId: normalizeOptionalString(input.accountId) } : {}),
+      ...(normalizeOptionalString(input.gatewayId) ? { gatewayId: normalizeOptionalString(input.gatewayId) } : {}),
+      ...(normalizeOptionalString(input.serviceKey) ? { serviceKey: normalizeOptionalString(input.serviceKey) } : {}),
+      ...(normalizeOptionalString(input.audience) ? { audience: normalizeOptionalString(input.audience) } : {}),
+      ...(normalizeOptionalString(input.apiVersion) ? { apiVersion: normalizeOptionalString(input.apiVersion) } : {}),
+      ...(normalizeOptionalString(input.baseUrl) ? { baseUrl: normalizeOptionalString(input.baseUrl) } : {}),
+      ...(normalizeOptionalString(input.apiKey) ? { apiKey: normalizeOptionalString(input.apiKey) } : {}),
+      ...(normalizeOptionalString(input.apiToken) ? { apiToken: normalizeOptionalString(input.apiToken) } : {}),
+      ...(normalizeOptionalString(input.token) ? { token: normalizeOptionalString(input.token) } : {}),
+      ...(input.headers && Object.keys(input.headers).length > 0 ? { headers: input.headers } : {}),
+      ...(input.extras && Object.keys(input.extras).length > 0 ? { extras: input.extras } : {}),
+    }
+
+    if (!normalized.kind) {
+      const kind = CLOUD_PROVIDER_DEFAULT_KIND[provider]
+      if (kind) normalized.kind = kind
+    }
+
+    return hasCloudCredentialValues(normalized) ? normalized : null
+  }
+
+  private validateCloudCredentials(
+    provider: ProviderAuthProvider,
+    cloud: ProviderCloudCredentials
+  ): string | null {
+    if (provider === 'amazon-bedrock') {
+      if (!cloud.region && !process.env.AWS_REGION) {
+        return 'Amazon Bedrock requires a region (or AWS_REGION env var).'
+      }
+      if (!cloud.profile && !cloud.accessKeyId && !cloud.apiToken && !cloud.token && !process.env.AWS_PROFILE) {
+        return 'Amazon Bedrock requires credentials (profile, access key pair, or bearer token).'
+      }
+      if (cloud.accessKeyId && !cloud.secretAccessKey) {
+        return 'Amazon Bedrock requires secretAccessKey when accessKeyId is provided.'
+      }
+      return null
+    }
+
+    if (provider === 'google-vertex' || provider === 'google-vertex-anthropic') {
+      if (!cloud.projectId && !process.env.GOOGLE_CLOUD_PROJECT && !process.env.GCP_PROJECT && !process.env.GCLOUD_PROJECT) {
+        return 'Google Vertex requires projectId (or GOOGLE_CLOUD_PROJECT env var).'
+      }
+      return null
+    }
+
+    if (provider === 'azure' || provider === 'azure-cognitive-services') {
+      if (!cloud.baseUrl) {
+        return 'Azure requires a base URL (resource endpoint).'
+      }
+      if (!cloud.apiKey && !cloud.token && !cloud.apiToken) {
+        return 'Azure requires an API key or bearer token.'
+      }
+      return null
+    }
+
+    if (provider === 'sap-ai-core') {
+      if (!cloud.serviceKey) {
+        return 'SAP AI Core requires a service key JSON payload.'
+      }
+      return null
+    }
+
+    return null
+  }
+
+  private async connectCloudCredentialProvider(
+    provider: ProviderAuthProvider,
+    input?: ProviderCloudCredentials
+  ): Promise<ProviderAuthConnectResult> {
+    const cloud = this.normalizeCloudCredentials(provider, input)
+    if (!cloud) {
+      return {
+        success: false,
+        error: 'Cloud credentials are required for this provider.',
+      }
+    }
+
+    const validationError = this.validateCloudCredentials(provider, cloud)
+    if (validationError) {
+      return {
+        success: false,
+        error: validationError,
+      }
+    }
+
+    const accessToken =
+      cloud.apiKey ||
+      cloud.apiToken ||
+      cloud.token ||
+      cloud.accessKeyId ||
+      cloud.projectId ||
+      cloud.accountId ||
+      `${provider}-cloud-credentials`
+
+    const now = Date.now()
+    const status = this.updateProviderCredential(provider, {
+      provider,
+      authType: 'cloud_credentials',
+      accessToken,
+      ...(cloud.baseUrl ? { baseUrl: cloud.baseUrl } : {}),
+      ...(cloud.headers ? { headers: cloud.headers } : {}),
+      ...(cloud.accountId ? { accountId: cloud.accountId } : {}),
+      cloud,
+      updatedAt: now,
+    })
+
+    return { success: true, status }
+  }
+
   async listProviders(): Promise<Array<{ provider: ProviderAuthProvider; methods: ProviderAuthMethod[] }>> {
     return [
       { provider: 'openai', methods: ['oauth', 'device', 'api_key'] },
@@ -2422,6 +2584,12 @@ export class ProviderAuthService {
       { provider: 'xai', methods: ['api_key'] },
       { provider: 'github-copilot', methods: ['oauth'] },
       { provider: 'gitlab', methods: ['oauth'] },
+      { provider: 'amazon-bedrock', methods: ['cloud_credentials'] },
+      { provider: 'google-vertex', methods: ['cloud_credentials'] },
+      { provider: 'google-vertex-anthropic', methods: ['cloud_credentials'] },
+      { provider: 'azure', methods: ['cloud_credentials'] },
+      { provider: 'azure-cognitive-services', methods: ['cloud_credentials'] },
+      { provider: 'sap-ai-core', methods: ['cloud_credentials'] },
     ]
   }
 
@@ -2441,6 +2609,7 @@ export class ProviderAuthService {
     authorizationCode?: string
     credentialPath?: string
     apiKey?: string
+    cloudCredentials?: ProviderCloudCredentials
   }): Promise<ProviderAuthConnectResult> {
     if (params.provider === 'openai') {
       if (params.method === 'api_key') {
@@ -2489,6 +2658,10 @@ export class ProviderAuthService {
 
     if (params.provider === 'gitlab') {
       return this.connectGitlabOAuth()
+    }
+
+    if (params.method === 'cloud_credentials' || CLOUD_CREDENTIAL_PROVIDER_SET.has(params.provider)) {
+      return this.connectCloudCredentialProvider(params.provider, params.cloudCredentials)
     }
 
     if (params.method === 'api_key' && params.apiKey) {
@@ -2551,8 +2724,16 @@ export class ProviderAuthService {
       }
     }
 
-    if (!credential.accessToken) {
+    if (!credential.accessToken && credential.authType !== 'cloud_credentials') {
       return { success: false, code: 'invalid', error: 'Provider token is missing.' }
+    }
+
+    if (credential.authType === 'cloud_credentials' && !credential.cloud) {
+      return {
+        success: false,
+        code: 'invalid',
+        error: 'Cloud credential payload is missing. Reconnect this provider.',
+      }
     }
 
     if (params.provider === 'google' && !credential.googleMode) {
@@ -2644,7 +2825,9 @@ export class ProviderAuthService {
     const isOpenAi = params.provider === 'openai'
     const useOpenAiCodexHeaders = isOpenAi && credential.authType !== 'api_key'
     const resolvedBaseUrl =
-      useOpenAiCodexHeaders ? credential.baseUrl || OPENAI_CODEX_BASE_URL : credential.baseUrl
+      useOpenAiCodexHeaders
+        ? credential.baseUrl || OPENAI_CODEX_BASE_URL
+        : credential.baseUrl || credential.cloud?.baseUrl
     const resolvedHeaders = useOpenAiCodexHeaders
       ? {
           ...buildOpenAiRequestHeaders(),
@@ -2655,12 +2838,13 @@ export class ProviderAuthService {
     const envelope: ProviderAuthRequestEnvelope = {
       provider: params.provider,
       authType: credential.authType,
-      accessToken: credential.accessToken,
+      accessToken: credential.accessToken || `${params.provider}-cloud-credentials`,
       organizationId: params.organizationId,
       ...(credential.expiresAt ? { expiresAt: credential.expiresAt } : {}),
       ...(credential.accountId ? { accountId: credential.accountId } : {}),
       ...(resolvedBaseUrl ? { baseUrl: resolvedBaseUrl } : {}),
       ...(resolvedHeaders ? { headers: resolvedHeaders } : {}),
+      ...(credential.cloud ? { cloud: credential.cloud } : {}),
     }
 
     if (params.provider === 'google' && credential.googleMode) {
@@ -2683,14 +2867,15 @@ export class ProviderAuthService {
       'providerAuth:connect',
       async (
         _event,
-        options: {
-          provider: ProviderAuthProvider
-          method?: ProviderAuthMethod
-          authorizationCode?: string
-          credentialPath?: string
-          apiKey?: string
-        }
-      ) => this.connect(options)
+          options: {
+            provider: ProviderAuthProvider
+            method?: ProviderAuthMethod
+            authorizationCode?: string
+            credentialPath?: string
+            apiKey?: string
+            cloudCredentials?: ProviderCloudCredentials
+          }
+        ) => this.connect(options)
     )
     ipcMain.handle('providerAuth:disconnect', async (_event, provider: ProviderAuthProvider) =>
       this.disconnect(provider)

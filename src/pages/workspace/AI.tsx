@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ProviderCloudCredentials } from '@shared/electronApiTypes'
 import { useAuth } from '../../contexts/AuthContext'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { AI_BASE_URL } from '../../lib/ai/apiEndpoints'
+import { clearModelCatalogCache } from '../../lib/ai/modelCatalogClient'
 import { getProviderLogoUrl } from '../../lib/ai/providerLogos'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -44,7 +46,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-type ConnectableProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
+type ConnectableProvider = string
 const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const
 
 const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
@@ -55,6 +57,12 @@ const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
   'github-copilot',
   'gitlab',
 ]
+
+const BUILTIN_PROVIDER_IDS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
+
+function isBuiltinProvider(providerId: string): providerId is (typeof BUILTIN_PROVIDER_IDS)[number] {
+  return BUILTIN_PROVIDER_IDS.includes(providerId as (typeof BUILTIN_PROVIDER_IDS)[number])
+}
 
 const RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
   RECOMMENDED_PROVIDER_ORDER.map((providerId, index) => [providerId, index])
@@ -68,6 +76,7 @@ interface LocalProviderStatus {
   googleMode?: 'vertex' | 'gemini'
   googleProjectId?: string
   googleLocation?: string
+  cloudKind?: string
   lastError?: string
 }
 
@@ -97,6 +106,7 @@ interface ProvidersApiResponse {
 type ProviderAuthMethod =
   | 'oauth'
   | 'api_key'
+  | 'cloud_credentials'
   | 'device'
   | 'manual_code'
   | 'vertex'
@@ -253,6 +263,7 @@ export function AI() {
   const [anthropicMethod, setAnthropicMethod] = useState<'oauth' | 'api_key'>('api_key')
   const [googleMethod, setGoogleMethod] = useState<'vertex' | 'gemini' | 'gemini_api_key'>('gemini')
   const [providerApiKey, setProviderApiKey] = useState('')
+  const [cloudCredentials, setCloudCredentials] = useState<ProviderCloudCredentials>({})
   const [manualCode, setManualCode] = useState('')
   const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState<string | null>(null)
@@ -272,6 +283,13 @@ export function AI() {
   // Provider table pagination
   const [providerPage, setProviderPage] = useState(0)
   const providerPageSize = 6
+
+  const setCloudCredentialField = (key: keyof ProviderCloudCredentials, value: string) => {
+    setCloudCredentials((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  }
 
   const refreshProviderStatuses = async () => {
     if (!window.electronAPI?.providerAuth) return
@@ -357,17 +375,24 @@ export function AI() {
     setAnthropicMethod('api_key')
     setGoogleMethod('gemini')
     setProviderApiKey('')
+    setCloudCredentials({})
     setManualCode('')
     setManualAuthUrl(null)
     setSaveError(null)
     setConnectDialogOpen(true)
   }
 
+  const invalidateModelCatalog = () => {
+    if (!currentOrganization?.organizationId) return
+    clearModelCatalogCache(currentOrganization.organizationId)
+  }
+
   const connectProvider = async (
     provider: ConnectableProvider,
     method?: ProviderAuthMethod,
     authorizationCode?: string,
-    apiKey?: string
+    apiKey?: string,
+    cloudCredentialsInput?: ProviderCloudCredentials
   ) => {
     if (!window.electronAPI?.providerAuth) return
     setIsSaving(provider)
@@ -378,12 +403,14 @@ export function AI() {
         method,
         authorizationCode,
         apiKey,
+        cloudCredentials: cloudCredentialsInput,
       })
       if (!result.success) {
         setManualAuthUrl(result.authorizationUrl || null)
         throw new Error(result.error || 'Provider connection failed')
       }
       await refreshProviderStatuses()
+      invalidateModelCatalog()
       setConnectDialogOpen(false)
       setManualCode('')
       setManualAuthUrl(null)
@@ -401,6 +428,7 @@ export function AI() {
     try {
       await window.electronAPI.providerAuth.disconnect(provider)
       await refreshProviderStatuses()
+      invalidateModelCatalog()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to disconnect provider')
     } finally {
@@ -436,6 +464,37 @@ export function AI() {
   const selectedProviderMethods = selectedProvider
     ? availableProviderMethods[selectedProvider] ?? []
     : []
+  const selectedProviderAuthStrategies = selectedProviderInfo?.authStrategies ?? []
+  const selectedProviderUsesCloudCredentials =
+    selectedProviderAuthStrategies.includes('cloud_credentials') ||
+    selectedProviderMethods.includes('cloud_credentials') ||
+    selectedProvider === 'amazon-bedrock' ||
+    selectedProvider === 'google-vertex' ||
+    selectedProvider === 'google-vertex-anthropic' ||
+    selectedProvider === 'azure' ||
+    selectedProvider === 'azure-cognitive-services' ||
+    selectedProvider === 'sap-ai-core'
+  const isCustomSelectedProvider = selectedProvider ? !isBuiltinProvider(selectedProvider) : false
+  const requiresApiKeyInput =
+    (isCustomSelectedProvider && !selectedProviderUsesCloudCredentials) ||
+    (selectedProvider === 'xai') ||
+    (selectedProvider === 'openai' && openaiMethod === 'api_key') ||
+    (selectedProvider === 'google' && googleMethod === 'gemini_api_key') ||
+    (selectedProvider === 'anthropic' && anthropicMethod === 'api_key')
+
+  const requiresCloudCredentialInput = selectedProviderUsesCloudCredentials
+  const hasCloudValue = (value?: string) => typeof value === 'string' && value.trim().length > 0
+  const hasCloudCredentialsInput =
+    hasCloudValue(cloudCredentials.projectId) ||
+    hasCloudValue(cloudCredentials.region) ||
+    hasCloudValue(cloudCredentials.profile) ||
+    hasCloudValue(cloudCredentials.baseUrl) ||
+    hasCloudValue(cloudCredentials.apiKey) ||
+    hasCloudValue(cloudCredentials.apiToken) ||
+    hasCloudValue(cloudCredentials.token) ||
+    hasCloudValue(cloudCredentials.accessKeyId) ||
+    hasCloudValue(cloudCredentials.secretAccessKey) ||
+    hasCloudValue(cloudCredentials.serviceKey)
 
   const providerSupportsMethod = (method: ProviderAuthMethod): boolean => {
     if (selectedProviderMethods.length === 0) return true
@@ -594,6 +653,9 @@ export function AI() {
                           </div>
                           {status?.lastError && (
                             <p className="text-xs text-amber-500 mt-1">{status.lastError}</p>
+                          )}
+                          {status?.cloudKind && (
+                            <p className="text-xs text-muted-foreground mt-1">Cloud: {status.cloudKind}</p>
                           )}
                         </TableCell>
                         <TableCell>
@@ -970,10 +1032,7 @@ export function AI() {
                 </Select>
               </div>
             )}
-            {((selectedProvider === 'openai' && openaiMethod === 'api_key') ||
-              (selectedProvider === 'google' && googleMethod === 'gemini_api_key') ||
-              (selectedProvider === 'anthropic' && anthropicMethod === 'api_key') ||
-              selectedProvider === 'xai') && (
+            {requiresApiKeyInput && (
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">API key</p>
                 <p className="text-xs text-muted-foreground pb-1">
@@ -987,6 +1046,96 @@ export function AI() {
                   value={providerApiKey}
                   onChange={(e) => setProviderApiKey(e.target.value)}
                 />
+              </div>
+            )}
+            {requiresCloudCredentialInput && (
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium">Cloud credentials</p>
+                {selectedProvider === 'amazon-bedrock' && (
+                  <>
+                    <Input
+                      placeholder="AWS region (for example us-east-1)"
+                      value={cloudCredentials.region || ''}
+                      onChange={(event) => setCloudCredentialField('region', event.target.value)}
+                    />
+                    <Input
+                      placeholder="AWS profile (optional)"
+                      value={cloudCredentials.profile || ''}
+                      onChange={(event) => setCloudCredentialField('profile', event.target.value)}
+                    />
+                    <Input
+                      placeholder="AWS access key id (optional)"
+                      value={cloudCredentials.accessKeyId || ''}
+                      onChange={(event) => setCloudCredentialField('accessKeyId', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="AWS secret access key (optional)"
+                      value={cloudCredentials.secretAccessKey || ''}
+                      onChange={(event) => setCloudCredentialField('secretAccessKey', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="AWS bearer token (optional)"
+                      value={cloudCredentials.token || ''}
+                      onChange={(event) => setCloudCredentialField('token', event.target.value)}
+                    />
+                  </>
+                )}
+                {(selectedProvider === 'google-vertex' || selectedProvider === 'google-vertex-anthropic') && (
+                  <>
+                    <Input
+                      placeholder="Google Cloud project ID"
+                      value={cloudCredentials.projectId || ''}
+                      onChange={(event) => setCloudCredentialField('projectId', event.target.value)}
+                    />
+                    <Input
+                      placeholder="Location (optional, for example us-east5)"
+                      value={cloudCredentials.location || ''}
+                      onChange={(event) => setCloudCredentialField('location', event.target.value)}
+                    />
+                  </>
+                )}
+                {(selectedProvider === 'azure' || selectedProvider === 'azure-cognitive-services') && (
+                  <>
+                    <Input
+                      placeholder="Azure base URL"
+                      value={cloudCredentials.baseUrl || ''}
+                      onChange={(event) => setCloudCredentialField('baseUrl', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Azure API key"
+                      value={cloudCredentials.apiKey || ''}
+                      onChange={(event) => setCloudCredentialField('apiKey', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Azure bearer token (optional)"
+                      value={cloudCredentials.token || ''}
+                      onChange={(event) => setCloudCredentialField('token', event.target.value)}
+                    />
+                    <Input
+                      placeholder="API version (optional)"
+                      value={cloudCredentials.apiVersion || ''}
+                      onChange={(event) => setCloudCredentialField('apiVersion', event.target.value)}
+                    />
+                  </>
+                )}
+                {selectedProvider === 'sap-ai-core' && (
+                  <>
+                    <Input
+                      placeholder="SAP AI Core base URL (optional)"
+                      value={cloudCredentials.baseUrl || ''}
+                      onChange={(event) => setCloudCredentialField('baseUrl', event.target.value)}
+                    />
+                    <Input
+                      placeholder="SAP AI Core service key JSON"
+                      value={cloudCredentials.serviceKey || ''}
+                      onChange={(event) => setCloudCredentialField('serviceKey', event.target.value)}
+                    />
+                  </>
+                )}
               </div>
             )}
             {(selectedProvider === 'google' || (selectedProvider === 'anthropic' && anthropicMethod === 'oauth')) && manualAuthUrl && (
@@ -1072,21 +1221,23 @@ export function AI() {
                   void connectProvider('xai', 'api_key', undefined, providerApiKey.trim())
                   return
                 }
-                const isCustomProvider = !['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'].includes(selectedProvider)
-                if (isCustomProvider) {
-                  void connectProvider(selectedProvider as any, 'api_key', undefined, providerApiKey.trim())
+                if (selectedProviderUsesCloudCredentials) {
+                  void connectProvider(selectedProvider, 'cloud_credentials', undefined, undefined, cloudCredentials)
                   return
                 }
-                void connectProvider(selectedProvider as any, 'oauth')
+                const isCustomProvider = !isBuiltinProvider(selectedProvider)
+                if (isCustomProvider) {
+                  void connectProvider(selectedProvider, 'api_key', undefined, providerApiKey.trim())
+                  return
+                }
+                void connectProvider(selectedProvider, 'oauth')
               }}
               disabled={
                 !selectedProvider ||
                 isSaving === selectedProvider ||
-                (selectedProvider === 'openai' && openaiMethod === 'api_key' && providerApiKey.trim().length === 0) ||
-                (selectedProvider === 'anthropic' && anthropicMethod === 'api_key' && providerApiKey.trim().length === 0) ||
+                (requiresApiKeyInput && providerApiKey.trim().length === 0) ||
+                (requiresCloudCredentialInput && !hasCloudCredentialsInput) ||
                 (selectedProvider === 'anthropic' && anthropicMethod === 'oauth' && !!manualAuthUrl && manualCode.trim().length === 0) ||
-                (selectedProvider === 'xai' && providerApiKey.trim().length === 0) ||
-                (!['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'].includes(selectedProvider) && providerApiKey.trim().length === 0) ||
                 (selectedProvider === 'google' &&
                   googleMethod === 'gemini_api_key' &&
                   providerApiKey.trim().length === 0) ||

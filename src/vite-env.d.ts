@@ -25,3 +25,9 @@ declare module 'monaco-editor/esm/vs/language/typescript/ts.worker?worker' {
     const workerConstructor: new () => Worker
     export default workerConstructor
 }
+
+declare namespace React {
+    interface IframeHTMLAttributes<_T> {
+        credentialless?: string
+    }
+}

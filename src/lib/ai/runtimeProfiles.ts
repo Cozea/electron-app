@@ -28,6 +28,21 @@ export interface RuntimeModelCapabilities {
   reasoningType?: 'effort' | 'budget' | 'level' | 'none' | string
   reasoningRange?: unknown
   supportsEffortParameter?: boolean
+  supportsWebSearch?: boolean
+  supportsFileSearch?: boolean
+  supportsCodeInterpreter?: boolean
+  supportsComputerUse?: boolean
+  supportsShellTool?: boolean
+  supportsTextEditor?: boolean
+  supportsApplyPatch?: boolean
+  supportsToolSearch?: boolean
+  supportsUrlContext?: boolean
+  supportsMapsGrounding?: boolean
+  supportsPdfInput?: boolean
+  supportsImageInput?: boolean
+  supportsImageGeneration?: boolean
+  supportsPredictedOutput?: boolean
+  promptCachingType?: 'automatic' | 'manual' | 'none' | string
 }
 
 export interface AgentProfileDefinition {

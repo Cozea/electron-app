@@ -4,8 +4,12 @@ import type {
   AppSettings,
   ConflictResolutionRecord,
   ElectronAPI,
+  ElectronWindowContext,
   MergeCacheRecord,
   OrganizationMembership,
+  ProviderCloudCredentials,
+  ProviderAuthMethod,
+  ProviderAuthProvider,
   ProviderAuthStatusChangedEvent,
   RuntimeKind,
   Session,
@@ -14,10 +18,21 @@ import type {
   UpdateState,
 } from '../shared/electronApiTypes'
 
+const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
+
+function resolveWindowContext(argv: readonly string[]): ElectronWindowContext {
+  const contextArg = argv.find((value) => value.startsWith(WINDOW_CONTEXT_ARG_PREFIX))
+  const rawContext = contextArg?.slice(WINDOW_CONTEXT_ARG_PREFIX.length)
+  return rawContext === 'settings' ? 'settings' : 'main'
+}
+
+const windowContext = resolveWindowContext(process.argv)
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
+  windowContext,
   auth: {
     login: () => ipcRenderer.invoke('auth:login'),
     logout: () => ipcRenderer.invoke('auth:logout'),
@@ -39,19 +54,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   providerAuth: {
     listProviders: () => ipcRenderer.invoke('providerAuth:listProviders'),
-    getStatus: (provider?: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab') =>
+    getStatus: (provider?: ProviderAuthProvider) =>
       ipcRenderer.invoke('providerAuth:getStatus', provider),
     connect: (options: {
-      provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
-      method?: 'oauth' | 'api_key' | 'device' | 'manual_code' | 'vertex' | 'gemini' | 'gemini_api_key'
+      provider: ProviderAuthProvider
+      method?: ProviderAuthMethod
       authorizationCode?: string
       credentialPath?: string
       apiKey?: string
+      cloudCredentials?: ProviderCloudCredentials
     }) => ipcRenderer.invoke('providerAuth:connect', options),
-    disconnect: (provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab') =>
+    disconnect: (provider: ProviderAuthProvider) =>
       ipcRenderer.invoke('providerAuth:disconnect', provider),
     getRequestAuth: (options: {
-      provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'github-copilot' | 'gitlab'
+      provider: ProviderAuthProvider
       modelId: string
       organizationId: string
     }) => ipcRenderer.invoke('providerAuth:getRequestAuth', options),
