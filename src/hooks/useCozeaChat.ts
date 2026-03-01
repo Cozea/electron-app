@@ -183,13 +183,17 @@ export function useCozeaChat({
         if (
           current.scheduled ||
           current.nextRetryAt !== null ||
-          current.maxAttempts !== autoRetrySettings.maxAttempts
+          current.maxAttempts !== autoRetrySettings.maxAttempts ||
+          current.exhausted !== false
         ) {
           return {
             ...current,
+            attempt: 0,
             scheduled: false,
             nextRetryAt: null,
             maxAttempts: autoRetrySettings.maxAttempts,
+            exhausted: false,
+            reasonCode: undefined,
           }
         }
         return current
