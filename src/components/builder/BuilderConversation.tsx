@@ -1079,16 +1079,34 @@ Now begin by defining your task list with todowrite, then start working through 
         const terminalCwd = requestedWorkdir ? normalizeProjectPath(requestedWorkdir) : localPath
 
         try {
-          // Create a PTY terminal session for interactive command execution
-          const createResult = await window.electronAPI.terminal.create({
+          // Try to create a PTY terminal session for interactive command execution
+          let createResult = await window.electronAPI.terminal.create({
             projectPath: localPath,
             cwd: terminalCwd,
             cols: 120,
             rows: 30,
           })
 
-          if (!createResult.terminalId) {
-            throw new Error('Failed to create terminal session')
+          // Fallback to project root if specified workdir does not exist
+          if (!createResult.success && terminalCwd !== localPath && createResult.error?.includes('does not exist')) {
+            console.warn('[Builder] Terminal working directory does not exist, falling back to project root', { terminalCwd, localPath })
+            createResult = await window.electronAPI.terminal.create({
+              projectPath: localPath,
+              cwd: localPath,
+              cols: 120,
+              rows: 30,
+            })
+          }
+
+          if (!createResult.success || !createResult.terminalId) {
+            const detail = createResult.error?.trim() || 'No terminalId returned from main process'
+            console.error('[Builder][bash] terminal.create failed', {
+              projectPath: localPath,
+              cwd: terminalCwd,
+              command,
+              createResult,
+            })
+            throw new Error(`Failed to create terminal session: ${detail}`)
           }
 
           const terminalId = createResult.terminalId
