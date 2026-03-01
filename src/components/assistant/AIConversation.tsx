@@ -680,6 +680,15 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
     const toolMeta = toolsByNameRef.current[toolCall.toolName]
     if (!toolMeta || toolMeta.executionEnvironment !== 'local') {
+      const addToolOutput = addToolOutputRef.current
+      if (addToolOutput) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          errorText: 'Tool is not available for local execution.',
+        })
+      }
       return
     }
 

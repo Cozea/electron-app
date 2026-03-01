@@ -574,7 +574,7 @@ IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
 
 This updates the progress UI so the user can track your work in real-time. The user sees your progress through the todowrite tool calls, so call it frequently!
 
-Note: Prefer structured task arrays using the tasks field. Compatibility aliases (todos/tasks_json) are accepted, but tasks is preferred.
+Note: Provide structured task arrays using the "todos" field.
 
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
