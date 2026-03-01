@@ -91,7 +91,7 @@ export function UnifiedHeader({
   }, [shouldApplyLeftWindowControlsInset])
 
   const windowControlsInsetPadding = shouldApplyLeftWindowControlsInset
-    ? { paddingLeft: isFullScreen ? 8 : 74 }
+    ? { paddingLeft: isFullScreen ? 8 : 48 }
     : undefined
   const rightFrameInset = shouldShowWindowsCaptionSpacer ? 0 : contentInsetRight
   const headerFrameStyle = {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, nativeTheme, session } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -80,6 +80,7 @@ function getDefaultSettings(): AppSettings {
   if (!_defaultSettings) {
     _defaultSettings = {
       projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
+      previewHeaderCompatibilityEnabled: true,
     }
   }
   return _defaultSettings
@@ -105,6 +106,138 @@ function saveSettings(settings: Partial<AppSettings>): void {
   } catch (err) {
     console.error('Failed to save settings:', err)
   }
+}
+
+type ResponseHeaderMap = Record<string, string | string[]>
+
+function findHeaderKey(headers: ResponseHeaderMap, targetName: string): string | null {
+  const normalizedTargetName = targetName.toLowerCase()
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === normalizedTargetName) {
+      return key
+    }
+  }
+  return null
+}
+
+function removeFrameAncestorsDirective(policy: string): { policy: string | null; removed: boolean } {
+  const directives = policy
+    .split(';')
+    .map((directive) => directive.trim())
+    .filter(Boolean)
+  const nextDirectives = directives.filter((directive) => !directive.toLowerCase().startsWith('frame-ancestors'))
+  return {
+    policy: nextDirectives.length > 0 ? nextDirectives.join('; ') : null,
+    removed: nextDirectives.length !== directives.length,
+  }
+}
+
+function toHeaderValues(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) return value
+  if (typeof value === 'string') return [value]
+  return []
+}
+
+function isLoopbackPreviewUrl(rawUrl: string): boolean {
+  try {
+    const parsedUrl = new URL(rawUrl)
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') return false
+    return (
+      parsedUrl.hostname === 'localhost' ||
+      parsedUrl.hostname === '127.0.0.1' ||
+      parsedUrl.hostname === '[::1]' ||
+      parsedUrl.hostname === '::1'
+    )
+  } catch {
+    return false
+  }
+}
+
+let previewHeaderPolicyInstalled = false
+let previewHeaderCompatDisabledLogged = false
+
+function installPreviewHeaderCompatibilityPolicy(): void {
+  if (previewHeaderPolicyInstalled) return
+  previewHeaderPolicyInstalled = true
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.resourceType !== 'mainFrame' && details.resourceType !== 'subFrame') {
+      callback({})
+      return
+    }
+
+    if (!isLoopbackPreviewUrl(details.url)) {
+      callback({})
+      return
+    }
+
+    const previewHeaderCompatibilityEnabled = loadSettings().previewHeaderCompatibilityEnabled
+    if (!previewHeaderCompatibilityEnabled) {
+      if (!previewHeaderCompatDisabledLogged) {
+        previewHeaderCompatDisabledLogged = true
+        console.log('[PreviewHeaders] Localhost header compatibility policy is disabled by settings')
+      }
+      callback({})
+      return
+    }
+
+    if (previewHeaderCompatDisabledLogged) {
+      previewHeaderCompatDisabledLogged = false
+    }
+
+    if (!details.responseHeaders) {
+      callback({})
+      return
+    }
+
+    const responseHeaders: ResponseHeaderMap = { ...details.responseHeaders }
+    let removedXFrameOptions = false
+    let removedFrameAncestors = false
+
+    const xFrameOptionsKey = findHeaderKey(responseHeaders, 'x-frame-options')
+    if (xFrameOptionsKey) {
+      delete responseHeaders[xFrameOptionsKey]
+      removedXFrameOptions = true
+    }
+
+    const cspKey = findHeaderKey(responseHeaders, 'content-security-policy')
+    if (cspKey) {
+      const rewrittenPolicies: string[] = []
+      for (const value of toHeaderValues(responseHeaders[cspKey])) {
+        const rewritten = removeFrameAncestorsDirective(value)
+        removedFrameAncestors = removedFrameAncestors || rewritten.removed
+        if (rewritten.policy) rewrittenPolicies.push(rewritten.policy)
+      }
+
+      if (removedFrameAncestors) {
+        if (rewrittenPolicies.length > 0) {
+          responseHeaders[cspKey] = rewrittenPolicies
+        } else {
+          delete responseHeaders[cspKey]
+        }
+      }
+    }
+
+    if (!removedXFrameOptions && !removedFrameAncestors) {
+      callback({})
+      return
+    }
+
+    const removedHeaderNames: string[] = []
+    if (removedXFrameOptions) removedHeaderNames.push('x-frame-options')
+    if (removedFrameAncestors) removedHeaderNames.push('content-security-policy:frame-ancestors')
+
+    console.log('[PreviewHeaders] Rewrote localhost preview response headers', {
+      url: details.url,
+      resourceType: details.resourceType,
+      removed: removedHeaderNames,
+    })
+
+    callback({
+      responseHeaders,
+      statusLine: details.statusLine,
+    })
+  })
 }
 
 type AppBrowserWindow = InstanceType<typeof BrowserWindow>
@@ -786,6 +919,7 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
   loadSyncState()
+  installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
   createWindow()
   startUpdateChecks()

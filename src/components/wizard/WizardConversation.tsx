@@ -424,12 +424,13 @@ export function WizardConversation({
 
   // Fetch models
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
     let cancelled = false
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
+      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
     })
       .then((data: ModelApiResponse) => {
         if (cancelled) return
@@ -450,9 +451,7 @@ export function WizardConversation({
         }
         setModelCapabilities(caps)
         setModelsError(null)
-        if (mapped.length > 0) {
-          setAvailableModels(mapped)
-        }
+        setAvailableModels(mapped)
       })
       .catch((err) => {
         if (cancelled) return
@@ -464,7 +463,13 @@ export function WizardConversation({
     return () => {
       cancelled = true
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [
+    accessToken,
+    connectedProviders,
+    currentOrganization?.organizationId,
+    providerAuthAvailable,
+    providerStatusLoaded,
+  ])
 
   // Fetch tools
   useEffect(() => {

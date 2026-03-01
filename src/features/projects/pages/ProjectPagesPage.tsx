@@ -133,6 +133,7 @@ export function ProjectPagesPage() {
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
+    const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
@@ -1129,7 +1130,7 @@ export function ProjectPagesPage() {
         <TooltipProvider delayDuration={300}>
             <div
                 ref={headerRef}
-                className={cn("flex items-center gap-2", focusedPageIndex !== null && "ml-auto")}
+                className={cn("flex items-center gap-2", focusedPageIndex !== null && !isMacClient && "ml-auto")}
             >
                 {focusedPageIndex !== null && (
                     <>
@@ -1446,6 +1447,7 @@ export function ProjectPagesPage() {
         </TooltipProvider>
     ), [
         focusedPageIndex,
+        isMacClient,
         toolbarDensity,
         device,
         zoom,
@@ -1571,7 +1573,7 @@ export function ProjectPagesPage() {
                                                         <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
                                                             {serverStatus === 'running' && serverPort ? (
                                                                 <div className="absolute inset-0">
-                                                                    <div className="w-full h-full bg-white relative overflow-hidden">
+                                                                    <div className="w-full h-full bg-background relative overflow-hidden">
                                                                         <iframe
                                                                             src={`http://localhost:${serverPort}${route.path}`}
                                                                             credentialless={credentiallessAttribute}
@@ -1698,13 +1700,6 @@ export function ProjectPagesPage() {
                                                     )}
 
                                                     {/* Dynamic badge */}
-                                                    {useCredentiallessPreview && (
-                                                        <div className="absolute top-3 left-3 px-2 py-1 rounded text-xs uppercase font-bold tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                                                            Compatibility
-                                                        </div>
-                                                    )}
-
-                                                    {/* Dynamic badge */}
                                                     {previewRoute.type === 'dynamic' && (
                                                         <div className="absolute top-3 right-3 px-2 py-1 rounded text-xs uppercase font-bold tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
                                                             Dynamic
@@ -1799,7 +1794,7 @@ export function ProjectPagesPage() {
                                                                             : "border-border/40 hover:border-border"
                                                                     )}>
                                                                         {serverStatus === 'running' && serverPort ? (
-                                                                            <div className="w-full h-full bg-white relative">
+                                                                            <div className="w-full h-full bg-background relative">
                                                                                 <iframe
                                                                                     src={`http://localhost:${serverPort}${route.path}`}
                                                                                     credentialless={credentiallessAttribute}

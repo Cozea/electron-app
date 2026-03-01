@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
+import { Switch } from '../../components/ui/switch'
 import { cn } from '../../lib/utils'
 import type { RuntimeHealth, RuntimeKind } from '../../types/electron'
 import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
@@ -111,6 +112,9 @@ export function Tooling() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(null)
+  const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
+  const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
+  const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
   const runtimeInstallJobs = useRuntimeInstallStore((state) => state.jobs)
   const ensureRuntimeInstalled = useRuntimeInstallStore((state) => state.ensureRuntimeInstalled)
   const previousStatusesRef = useRef<Partial<Record<RuntimeKind, RuntimeInstallStatus>>>({})
@@ -136,6 +140,25 @@ export function Tooling() {
   useEffect(() => {
     void loadRuntimeStatus()
   }, [loadRuntimeStatus])
+
+  useEffect(() => {
+    const loadPreviewHeaderCompatibilitySetting = async () => {
+      if (!window.electronAPI?.settings) return
+
+      try {
+        const settings = await window.electronAPI.settings.get()
+        setPreviewHeaderCompatibilityEnabled(settings.previewHeaderCompatibilityEnabled)
+      } catch (settingsError) {
+        const message =
+          settingsError instanceof Error
+            ? settingsError.message
+            : 'Failed to load preview compatibility setting.'
+        setPreviewHeaderCompatibilityError(message)
+      }
+    }
+
+    void loadPreviewHeaderCompatibilitySetting()
+  }, [])
 
   useEffect(() => {
     const hasActiveInstall = Object.values(runtimeInstallJobs).some((job) => job?.status === 'installing')
@@ -181,6 +204,33 @@ export function Tooling() {
   const missingRuntimes = useMemo(
     () => (runtimeStatus?.runtimes ?? []).filter((runtime) => !runtime.available),
     [runtimeStatus]
+  )
+
+  const handlePreviewHeaderCompatibilityChange = useCallback(
+    async (checked: boolean) => {
+      if (!window.electronAPI?.settings) return
+
+      const previousValue = previewHeaderCompatibilityEnabled
+      setPreviewHeaderCompatibilityEnabled(checked)
+      setPreviewHeaderCompatibilityError(null)
+      setIsSavingPreviewHeaderCompatibility(true)
+
+      try {
+        await window.electronAPI.settings.set({
+          previewHeaderCompatibilityEnabled: checked,
+        })
+      } catch (settingsError) {
+        const message =
+          settingsError instanceof Error
+            ? settingsError.message
+            : 'Failed to save preview compatibility setting.'
+        setPreviewHeaderCompatibilityEnabled(previousValue)
+        setPreviewHeaderCompatibilityError(message)
+      } finally {
+        setIsSavingPreviewHeaderCompatibility(false)
+      }
+    },
+    [previewHeaderCompatibilityEnabled]
   )
 
   const headerActions = (
@@ -241,6 +291,33 @@ export function Tooling() {
             {error}
           </div>
         )}
+
+        <section className="space-y-3">
+          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-medium">Preview Embed Compatibility</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Enabled by default. Cozea removes frame-blocking headers from localhost preview responses so project pages can load inside the embedded preview.
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  When disabled, preview falls back to credentialless mode and may require opening pages externally.
+                </p>
+              </div>
+              <Switch
+                checked={previewHeaderCompatibilityEnabled}
+                onCheckedChange={(checked) => {
+                  void handlePreviewHeaderCompatibilityChange(checked)
+                }}
+                disabled={isSavingPreviewHeaderCompatibility}
+                aria-label="Toggle preview embed compatibility"
+              />
+            </div>
+            {previewHeaderCompatibilityError && (
+              <p className="mt-3 text-xs text-destructive">{previewHeaderCompatibilityError}</p>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">

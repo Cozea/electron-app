@@ -7,6 +7,14 @@ export interface RetryHint {
   shouldResetContinuation?: boolean
 }
 
+export interface AutoRetryDelayInput {
+  attempt: number
+  hint: RetryHint
+  initialDelayMs?: number
+  maxDelayMs?: number
+  backoffFactor?: number
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -40,6 +48,36 @@ export function readLatestRetryHint(
   }
 
   return null
+}
+
+export function shouldAutoRetryFromHint(hint: RetryHint | null): hint is RetryHint {
+  if (!hint) return false
+  if (!hint.retryable) return false
+  if (hint.code === 'provider_usage_limit') return false
+  return true
+}
+
+export function resolveAutoRetryDelayMs({
+  attempt,
+  hint,
+  initialDelayMs = 2000,
+  maxDelayMs = 30000,
+  backoffFactor = 2,
+}: AutoRetryDelayInput): number {
+  const boundedAttempt = Math.max(1, Math.floor(attempt))
+  const boundedInitial = Math.max(250, Math.floor(initialDelayMs))
+  const boundedMax = Math.max(boundedInitial, Math.floor(maxDelayMs))
+  const boundedBackoff = Math.max(1, backoffFactor)
+
+  if (typeof hint.retryAfterSeconds === 'number' && hint.retryAfterSeconds > 0) {
+    const hintedDelay = Math.ceil(hint.retryAfterSeconds * 1000)
+    return Math.max(250, Math.min(hintedDelay, boundedMax))
+  }
+
+  const exponentialDelay = Math.round(
+    boundedInitial * Math.pow(boundedBackoff, boundedAttempt - 1)
+  )
+  return Math.max(250, Math.min(exponentialDelay, boundedMax))
 }
 
 export function getRetryHintMessage(hint: RetryHint | null): string | null {

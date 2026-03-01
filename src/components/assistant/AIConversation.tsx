@@ -435,13 +435,14 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Fetch allowed models from AI Gateway
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
 
     let cancelled = false
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
+      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
     })
       .then((data) => {
         if (cancelled) return
@@ -465,9 +466,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         }
         setModelCapabilities(caps)
         setModelsError(null)
-        if (mapped.length > 0) {
-          setAvailableModels(mapped)
-        }
+        setAvailableModels(mapped)
       })
       .catch((err) => {
         if (cancelled) return
@@ -479,7 +478,13 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     return () => {
       cancelled = true
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [
+    accessToken,
+    connectedProviders,
+    currentOrganization?.organizationId,
+    providerAuthAvailable,
+    providerStatusLoaded,
+  ])
 
   // Fetch enabled tools from AI Gateway
   useEffect(() => {

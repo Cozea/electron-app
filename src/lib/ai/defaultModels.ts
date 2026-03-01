@@ -11,7 +11,7 @@ export interface ModelOption {
 export const DEFAULT_MODELS: ModelOption[] = [
   // Fast tier
   {
-    id: 'claude-haiku-4-5',
+    id: 'anthropic/claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     chef: 'Anthropic',
     chefSlug: 'anthropic',
@@ -19,7 +19,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['anthropic'],
   },
   {
-    id: 'gemini-3-flash',
+    id: 'google/gemini-3-flash-preview',
     name: 'Gemini 3 Flash',
     chef: 'Google',
     chefSlug: 'google',
@@ -28,7 +28,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
   },
   // Standard tier
   {
-    id: 'claude-sonnet-4-5',
+    id: 'anthropic/claude-sonnet-4-5-20250929',
     name: 'Claude Sonnet 4.5',
     chef: 'Anthropic',
     chefSlug: 'anthropic',
@@ -36,7 +36,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['anthropic'],
   },
   {
-    id: 'grok-code-fast-1',
+    id: 'xai/grok-code-fast-1',
     name: 'Grok Code Fast 1',
     chef: 'xAI',
     chefSlug: 'xai',
@@ -44,15 +44,15 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['xai'],
   },
   {
-    id: 'gpt-5.1-codex-mini',
-    name: 'GPT-5.1-Codex-Mini',
+    id: 'openai/gpt-5.2-codex-mini',
+    name: 'GPT-5.2-Codex-Mini',
     chef: 'OpenAI',
     chefSlug: 'openai',
     tier: 'standard',
     providers: ['openai'],
   },
   {
-    id: 'copilot-gpt-4.1',
+    id: 'github-copilot/gpt-4.1',
     name: 'GitHub Copilot GPT-4.1',
     chef: 'GitHub Copilot',
     chefSlug: 'github-copilot',
@@ -60,7 +60,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['github-copilot'],
   },
   {
-    id: 'gitlab-duo-agentic',
+    id: 'gitlab/duo-chat-sonnet-4-5',
     name: 'GitLab Duo Agentic Chat',
     chef: 'GitLab',
     chefSlug: 'gitlab',
@@ -69,7 +69,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
   },
   // Powerful tier
   {
-    id: 'gpt-5.3-codex',
+    id: 'openai/gpt-5.3-codex',
     name: 'GPT-5.3-Codex',
     chef: 'OpenAI',
     chefSlug: 'openai',
@@ -77,7 +77,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['openai'],
   },
   {
-    id: 'gpt-5.2-codex',
+    id: 'openai/gpt-5.2-codex',
     name: 'GPT-5.2-Codex',
     chef: 'OpenAI',
     chefSlug: 'openai',
@@ -85,15 +85,15 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['openai'],
   },
   {
-    id: 'gpt-5.1-codex-max',
-    name: 'GPT-5.1-Codex-Max',
+    id: 'openai/gpt-5.2-codex-max',
+    name: 'GPT-5.2-Codex-Max',
     chef: 'OpenAI',
     chefSlug: 'openai',
     tier: 'powerful',
     providers: ['openai'],
   },
   {
-    id: 'gpt-5.2',
+    id: 'openai/gpt-5.2',
     name: 'GPT-5.2',
     chef: 'OpenAI',
     chefSlug: 'openai',
@@ -101,7 +101,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['openai'],
   },
   {
-    id: 'claude-opus-4-5',
+    id: 'anthropic/claude-opus-4-5-20251101',
     name: 'Claude Opus 4.5',
     chef: 'Anthropic',
     chefSlug: 'anthropic',
@@ -109,7 +109,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['anthropic'],
   },
   {
-    id: 'claude-opus-4-6',
+    id: 'anthropic/claude-opus-4-6-20260215',
     name: 'Claude Opus 4.6',
     chef: 'Anthropic',
     chefSlug: 'anthropic',
@@ -117,7 +117,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['anthropic'],
   },
   {
-    id: 'gemini-3-pro',
+    id: 'google/gemini-3-pro-preview',
     name: 'Gemini 3 Pro',
     chef: 'Google',
     chefSlug: 'google',
@@ -125,7 +125,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['google'],
   },
   {
-    id: 'gemini-3.1-pro',
+    id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
     chef: 'Google',
     chefSlug: 'google',
@@ -133,15 +133,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['google'],
   },
   {
-    id: 'gemini-3.1-pro-customtools',
-    name: 'Gemini 3.1 Pro (Custom Tools)',
-    chef: 'Google',
-    chefSlug: 'google',
-    tier: 'powerful',
-    providers: ['google'],
-  },
-  {
-    id: 'grok-4-fast',
+    id: 'xai/grok-4-fast',
     name: 'Grok 4 Fast',
     chef: 'xAI',
     chefSlug: 'xai',
@@ -149,7 +141,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     providers: ['xai'],
   },
   {
-    id: 'grok-4-1',
+    id: 'xai/grok-4-1',
     name: 'Grok 4.1',
     chef: 'xAI',
     chefSlug: 'xai',

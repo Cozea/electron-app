@@ -1,11 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import {
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
 } from 'ai'
 import { useAiChatTransport, type UseAiChatTransportArgs, type ChatMessageLike } from '@/lib/ai/useAiChatTransport'
-import { readLatestRetryHint } from '@/lib/ai/retryHints'
+import {
+  readLatestRetryHint,
+  resolveAutoRetryDelayMs,
+  shouldAutoRetryFromHint,
+  type RetryHint,
+} from '@/lib/ai/retryHints'
 
 // Common function for deduplication across the app
 export function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
@@ -51,13 +56,55 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
 export interface UseCozeaChatArgs {
   transportArgs: UseAiChatTransportArgs
   chatOptions?: Omit<Parameters<typeof useChat>[0], 'transport' | 'sendAutomaticallyWhen'>
+  autoRetry?: {
+    enabled?: boolean
+    maxAttempts?: number
+    initialDelayMs?: number
+    maxDelayMs?: number
+    backoffFactor?: number
+  }
   onBillingError?: (error: BillingErrorData) => void
   onError?: (error: Error) => void
 }
 
-export function useCozeaChat({ transportArgs, chatOptions, onBillingError, onError }: UseCozeaChatArgs) {
+export interface ChatAutoRetryState {
+  scheduled: boolean
+  attempt: number
+  maxAttempts: number
+  nextRetryAt: number | null
+  exhausted: boolean
+  reasonCode?: RetryHint['code']
+}
+
+function resolveRetryScopeKey(messages: Array<{ id?: string; role?: string }>): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'user') continue
+    if (typeof message.id === 'string' && message.id.trim().length > 0) {
+      return message.id
+    }
+    return `user-${index}`
+  }
+
+  const lastMessage = messages[messages.length - 1]
+  if (lastMessage && typeof lastMessage.id === 'string' && lastMessage.id.trim().length > 0) {
+    return `fallback-${lastMessage.id}`
+  }
+  return 'conversation'
+}
+
+export function useCozeaChat({
+  transportArgs,
+  chatOptions,
+  autoRetry,
+  onBillingError,
+  onError,
+}: UseCozeaChatArgs) {
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const { transport, setConversationId } = useAiChatTransport(transportArgs)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttemptsByScopeRef = useRef<Map<string, number>>(new Map())
+  const scheduledRetryKeyRef = useRef<string | null>(null)
 
   const chatHook = useChat({
     transport,
@@ -86,10 +133,171 @@ export function useCozeaChat({ transportArgs, chatOptions, onBillingError, onErr
     return readLatestRetryHint(dedupedMessages as any)
   }, [dedupedMessages])
 
+  const retryScopeKey = useMemo(() => {
+    const scopedMessages = dedupedMessages as Array<{ id?: string; role?: string }>
+    return resolveRetryScopeKey(scopedMessages)
+  }, [dedupedMessages])
+
+  const autoRetrySettings = useMemo(() => {
+    const maxAttempts = Math.max(0, Math.floor(autoRetry?.maxAttempts ?? 2))
+    return {
+      enabled: autoRetry?.enabled === true,
+      maxAttempts,
+      initialDelayMs: Math.max(250, Math.floor(autoRetry?.initialDelayMs ?? 2000)),
+      maxDelayMs: Math.max(250, Math.floor(autoRetry?.maxDelayMs ?? 30000)),
+      backoffFactor: Math.max(1, autoRetry?.backoffFactor ?? 2),
+    }
+  }, [
+    autoRetry?.enabled,
+    autoRetry?.maxAttempts,
+    autoRetry?.initialDelayMs,
+    autoRetry?.maxDelayMs,
+    autoRetry?.backoffFactor,
+  ])
+
+  const [autoRetryState, setAutoRetryState] = useState<ChatAutoRetryState>({
+    scheduled: false,
+    attempt: 0,
+    maxAttempts: autoRetrySettings.maxAttempts,
+    nextRetryAt: null,
+    exhausted: false,
+  })
+
+  useEffect(() => {
+    return () => {
+      if (!retryTimerRef.current) return
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+      scheduledRetryKeyRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!autoRetrySettings.enabled || chatHook.status !== 'error') {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      scheduledRetryKeyRef.current = null
+      setAutoRetryState((current) => {
+        if (
+          current.scheduled ||
+          current.nextRetryAt !== null ||
+          current.maxAttempts !== autoRetrySettings.maxAttempts
+        ) {
+          return {
+            ...current,
+            scheduled: false,
+            nextRetryAt: null,
+            maxAttempts: autoRetrySettings.maxAttempts,
+          }
+        }
+        return current
+      })
+      return
+    }
+
+    if (!shouldAutoRetryFromHint(retryHint)) {
+      return
+    }
+
+    const maxAttemptsForHint =
+      retryHint.code === 'duplicate_response_item_id'
+        ? Math.min(1, autoRetrySettings.maxAttempts)
+        : autoRetrySettings.maxAttempts
+
+    if (maxAttemptsForHint <= 0) {
+      setAutoRetryState((current) => ({
+        ...current,
+        scheduled: false,
+        nextRetryAt: null,
+        maxAttempts: maxAttemptsForHint,
+        exhausted: true,
+        reasonCode: retryHint.code,
+      }))
+      return
+    }
+
+    const completedAttempts = retryAttemptsByScopeRef.current.get(retryScopeKey) ?? 0
+    if (completedAttempts >= maxAttemptsForHint) {
+      setAutoRetryState((current) => ({
+        ...current,
+        scheduled: false,
+        nextRetryAt: null,
+        attempt: completedAttempts,
+        maxAttempts: maxAttemptsForHint,
+        exhausted: true,
+        reasonCode: retryHint.code,
+      }))
+      return
+    }
+
+    const nextAttempt = completedAttempts + 1
+    const scheduledRetryKey = `${retryScopeKey}:${retryHint.code}:${nextAttempt}`
+    if (scheduledRetryKeyRef.current === scheduledRetryKey) {
+      return
+    }
+
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+
+    const retryDelayMs = resolveAutoRetryDelayMs({
+      attempt: nextAttempt,
+      hint: retryHint,
+      initialDelayMs: autoRetrySettings.initialDelayMs,
+      maxDelayMs: autoRetrySettings.maxDelayMs,
+      backoffFactor: autoRetrySettings.backoffFactor,
+    })
+    const nextRetryAt = Date.now() + retryDelayMs
+
+    scheduledRetryKeyRef.current = scheduledRetryKey
+    setAutoRetryState({
+      scheduled: true,
+      attempt: nextAttempt,
+      maxAttempts: maxAttemptsForHint,
+      nextRetryAt,
+      exhausted: false,
+      reasonCode: retryHint.code,
+    })
+
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null
+      scheduledRetryKeyRef.current = null
+      retryAttemptsByScopeRef.current.set(retryScopeKey, nextAttempt)
+
+      setAutoRetryState((current) => ({
+        ...current,
+        scheduled: false,
+        nextRetryAt: null,
+        attempt: nextAttempt,
+        maxAttempts: maxAttemptsForHint,
+        exhausted: nextAttempt >= maxAttemptsForHint,
+        reasonCode: retryHint.code,
+      }))
+
+      chatHook.clearError()
+      void chatHook.regenerate().catch((error) => {
+        console.warn('Automatic chat retry failed:', error)
+      })
+    }, retryDelayMs)
+  }, [
+    autoRetrySettings.backoffFactor,
+    autoRetrySettings.enabled,
+    autoRetrySettings.initialDelayMs,
+    autoRetrySettings.maxAttempts,
+    autoRetrySettings.maxDelayMs,
+    chatHook,
+    retryHint,
+    retryScopeKey,
+  ])
+
   return {
     ...chatHook,
     dedupedMessages,
     retryHint,
+    autoRetryState,
     billingError,
     setBillingError,
     setConversationId,
