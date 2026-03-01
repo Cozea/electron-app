@@ -172,8 +172,21 @@ export function useCozeaChat({
     }
   }, [])
 
+  const chatStatus = chatHook.status
+  const clearError = chatHook.clearError
+  const regenerate = chatHook.regenerate
+
   useEffect(() => {
-    if (!autoRetrySettings.enabled || chatHook.status !== 'error') {
+    if (!autoRetrySettings.enabled) {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      scheduledRetryKeyRef.current = null
+      return
+    }
+
+    if (chatStatus !== 'error') {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current)
         retryTimerRef.current = null
@@ -281,8 +294,8 @@ export function useCozeaChat({
         reasonCode: retryHint.code,
       }))
 
-      chatHook.clearError()
-      void chatHook.regenerate().catch((error) => {
+      clearError()
+      void regenerate().catch((error) => {
         console.warn('Automatic chat retry failed:', error)
       })
     }, retryDelayMs)
@@ -292,7 +305,9 @@ export function useCozeaChat({
     autoRetrySettings.initialDelayMs,
     autoRetrySettings.maxAttempts,
     autoRetrySettings.maxDelayMs,
-    chatHook,
+    chatStatus,
+    clearError,
+    regenerate,
     retryHint,
     retryScopeKey,
   ])
