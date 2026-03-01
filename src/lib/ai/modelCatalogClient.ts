@@ -83,6 +83,8 @@ export async function getModelCatalog(args: {
     query.set('providers', providerFilter.join(','))
   }
 
+  let isTransientAuthError = false
+
   const nextPromise = fetchWithAbort(
     `${AI_BASE_URL}/models?${query.toString()}`,
     {
@@ -95,6 +97,7 @@ export async function getModelCatalog(args: {
     .then(async (response) => {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
+          isTransientAuthError = true
           throw new Error('Unauthorized. Please sign in again.')
         }
         throw new Error('Failed to load models')
@@ -108,6 +111,14 @@ export async function getModelCatalog(args: {
     })
     .catch((error) => {
       modelCatalogCache.delete(key)
+      if (isTransientAuthError && !forceRefresh) {
+        console.warn('[ModelCatalog] 401 unauthorized. Token may be expiring. Will retry once in 1.5s.')
+        return new Promise<ModelApiResponse>((resolve, reject) => {
+          setTimeout(() => {
+            getModelCatalog({ ...args, forceRefresh: true }).then(resolve).catch(reject)
+          }, 1500)
+        })
+      }
       throw error
     })
 
