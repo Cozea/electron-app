@@ -196,13 +196,14 @@ export function EntryChoice({
   }, [model, variantId, normalizedVariantId])
 
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
 
     let cancelled = false
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
+      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
     })
       .then((data) => {
         if (cancelled) return
@@ -223,9 +224,7 @@ export function EntryChoice({
               providers: [m.provider],
             }
           })
-        if (mapped.length > 0) {
-          setAvailableModels(mapped)
-        }
+        setAvailableModels(mapped)
         setModelCapabilities(nextCapabilities)
       })
       .catch((error) => {
@@ -236,7 +235,13 @@ export function EntryChoice({
     return () => {
       cancelled = true
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [
+    accessToken,
+    connectedProviders,
+    currentOrganization?.organizationId,
+    providerAuthAvailable,
+    providerStatusLoaded,
+  ])
 
   useEffect(() => {
     if (providerScopedModels.length === 0) return

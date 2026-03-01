@@ -1,6 +1,20 @@
 import type { ProviderAuthProvider } from '@shared/electronApiTypes'
 
+function parseScopedProviderFromModelId(modelId: string): ProviderAuthProvider | null {
+  const trimmed = modelId.trim()
+  const separatorIndex = trimmed.indexOf('/')
+  if (separatorIndex <= 0) return null
+
+  const providerId = trimmed.slice(0, separatorIndex).trim().toLowerCase()
+  if (!providerId) return null
+
+  return providerId as ProviderAuthProvider
+}
+
 export function inferProviderFromModelId(modelId: string): ProviderAuthProvider | null {
+  const scopedProvider = parseScopedProviderFromModelId(modelId)
+  if (scopedProvider) return scopedProvider
+
   const normalized = modelId.toLowerCase()
   if (normalized.includes('copilot')) return 'github-copilot'
   if (normalized.includes('gitlab')) return 'gitlab'

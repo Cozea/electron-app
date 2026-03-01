@@ -24,7 +24,6 @@ import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { reportLocalUsage } from '@/lib/ai/localUsage'
 import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
-import { type RetryHint } from '@/lib/ai/retryHints'
 import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
@@ -36,20 +35,10 @@ import {
 import { isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
 
-// Builder-specific tools that should always be executed locally
-// These are defined inline on the server but not in Convex's tools table
-const BUILDER_LOCAL_TOOLS = new Set([
+// Fallback for workflow tools if metadata is briefly stale during startup.
+const BUILDER_WORKFLOW_FALLBACK_TOOLS = new Set([
   'todowrite',
   'build_complete',
-  'write',
-  'read',
-  'list',
-  'glob',
-  'grep',
-  'bash',
-  'edit',
-  'multiedit',
-  'apply_patch',
 ])
 
 const FALLBACK_MODEL_BY_PROVIDER: Record<'openai' | 'google', string> = {
@@ -185,6 +174,77 @@ interface UsageDataPart {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+function normalizeBuildTaskStatus(value: unknown): BuildTask['status'] | null {
+  if (value === 'pending' || value === 'in_progress' || value === 'completed') {
+    return value
+  }
+  if (value === 'in-progress' || value === 'inprogress' || value === 'active') {
+    return 'in_progress'
+  }
+  if (value === 'complete' || value === 'done') {
+    return 'completed'
+  }
+  return null
+}
+
+function normalizeBuildTaskList(value: unknown): BuildTask[] | null {
+  if (!Array.isArray(value)) return null
+
+  const tasks: BuildTask[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+
+    const content = typeof entry.content === 'string' ? entry.content.trim() : ''
+    const status = normalizeBuildTaskStatus(entry.status)
+    if (!content || !status) continue
+
+    const activeForm =
+      typeof entry.activeForm === 'string' && entry.activeForm.trim().length > 0
+        ? entry.activeForm.trim()
+        : content
+
+    const files = Array.isArray(entry.files)
+      ? entry.files
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim())
+      : undefined
+
+    tasks.push({
+      content,
+      activeForm,
+      status,
+      ...(files && files.length > 0 ? { files } : {}),
+    })
+  }
+
+  if (tasks.length === 0 && value.length > 0) {
+    return null
+  }
+
+  return tasks
+}
+
+function parseTodowriteTasksPayload(input: Record<string, unknown>): BuildTask[] | null {
+  const fromTasks = normalizeBuildTaskList(input.tasks)
+  if (fromTasks !== null) return fromTasks
+
+  const fromTodos = normalizeBuildTaskList(input.todos)
+  if (fromTodos !== null) return fromTodos
+
+  if (typeof input.tasks_json === 'string') {
+    const parsed = parseJsonArrayLoose(input.tasks_json)
+    const fromTasksJson = normalizeBuildTaskList(parsed)
+    if (fromTasksJson !== null) return fromTasksJson
+  }
+
+  return null
+}
+
+function parseTodowriteTasksAny(value: unknown): BuildTask[] | null {
+  if (!isRecord(value)) return null
+  return parseTodowriteTasksPayload(value)
+}
+
 const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
@@ -199,11 +259,6 @@ const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
   /\bflutter\b/i,
   /\bswift\b/i,
 ]
-
-
-function isDuplicateResponseItemError(message: string): boolean {
-  return /duplicate item found with id/i.test(message)
-}
 
 function detectUnsupportedNativeBuildCommand(command: string): string | null {
   const normalized = command.trim()
@@ -282,6 +337,7 @@ export function BuilderConversation({
 
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
+  const [toolsLoaded, setToolsLoaded] = useState(false)
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
   const [providerAuthResolved, setProviderAuthResolved] = useState(false)
   const [providerAuthRevision, setProviderAuthRevision] = useState(0)
@@ -299,7 +355,6 @@ export function BuilderConversation({
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
-  const userStoppedRef = useRef(false)
   const lastStopRequestCountRef = useRef(stopRequestCount)
 
   useEffect(() => {
@@ -325,13 +380,6 @@ export function BuilderConversation({
     })
     return unsubscribe
   }, [])
-
-  // Auto-continuation refs (defined early for use in error handling)
-  const latestTasksRef = useRef<BuildTask[]>([])
-  const latestRetryHintRef = useRef<RetryHint | null>(null)
-  const continuationSentRef = useRef(false)
-  const continuationCountRef = useRef(0)
-  const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const preflightDiagnostic = useMemo(() => {
@@ -449,7 +497,12 @@ export function BuilderConversation({
 
   // Fetch tools
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !currentOrganization?.organizationId) {
+      setToolsLoaded(false)
+      return
+    }
+
+    setToolsLoaded(false)
     const controller = new AbortController()
     const query = new URLSearchParams({
       organizationId: currentOrganization.organizationId,
@@ -474,6 +527,10 @@ export function BuilderConversation({
       .catch((err) => {
         if ((err as { name?: string }).name === 'AbortError') return
         console.warn('Failed to fetch tools:', err)
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        setToolsLoaded(true)
       })
 
     return () => controller.abort()
@@ -517,7 +574,7 @@ IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
 
 This updates the progress UI so the user can track your work in real-time. The user sees your progress through the todowrite tool calls, so call it frequently!
 
-Note: If the tool schema expects tasks_json, it MUST be a strict JSON array string with double quotes, not a JS object literal.
+Note: Prefer structured task arrays using the tasks field. Compatibility aliases (todos/tasks_json) are accepted, but tasks is preferred.
 
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
@@ -691,9 +748,6 @@ Now begin by defining your task list with todowrite, then start working through 
 
     try {
       if (toolName === 'todowrite') {
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        let tasks: BuildTask[] | null = null
-
         if (!toolInput) {
           void addToolOutput({
             state: 'output-error',
@@ -704,27 +758,13 @@ Now begin by defining your task list with todowrite, then start working through 
           return
         }
 
-        if (Array.isArray(toolInput.tasks)) {
-          tasks = toolInput.tasks as BuildTask[]
-        } else if (typeof toolInput.tasks_json === 'string') {
-          const parsed = parseJsonArrayLoose(toolInput.tasks_json)
-          if (parsed) {
-            tasks = parsed as BuildTask[]
-          } else {
-            void addToolOutput({
-              state: 'output-error',
-              tool: toolName,
-              toolCallId,
-              errorText: 'todowrite failed: tasks_json must be a valid JSON array string. Re-read the tool schema and retry with strict JSON.',
-            })
-            return
-          }
-        } else {
+        const tasks = parseTodowriteTasksPayload(toolInput)
+        if (tasks === null) {
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'todowrite failed: missing tasks or tasks_json input.',
+            errorText: 'todowrite failed: provide tasks, todos, or valid tasks_json.',
           })
           return
         }
@@ -1300,43 +1340,43 @@ Now begin by defining your task list with todowrite, then start working through 
     })
   }, [])
 
-  // Handle tool calls - intercept todowrite and file operations
+  // Handle tool calls with assistant-style local execution rules.
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
     const { toolName, input, toolCallId } = toolCall
+    const addToolOutput = addToolOutputRef.current
+    if (!addToolOutput) return
+
     const toolMeta = toolsByNameRef.current[toolName]
+    const isBuilderWorkflowTool = BUILDER_WORKFLOW_FALLBACK_TOOLS.has(toolName)
+    const isLocalTool = isBuilderWorkflowTool || toolMeta?.executionEnvironment === 'local'
 
-    // Check if this is a builder-local tool (may not be in toolsByName)
-    const isBuilderLocalTool = BUILDER_LOCAL_TOOLS.has(toolName)
-    const isLocalTool = isBuilderLocalTool || toolMeta?.executionEnvironment === 'local'
-
-    if (isLocalTool && !isBuilderLocalTool && shouldRequireLocalApproval(toolMeta)) {
+    if (!isLocalTool) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: toolMeta
+          ? 'Tool is not available in the builder local runtime.'
+          : `Unknown tool: ${toolName}`,
+      })
       return
     }
 
-    if (isLocalTool) {
-      await runLocalTool(toolName, toolCallId, input)
+    if (!isBuilderWorkflowTool && shouldRequireLocalApproval(toolMeta)) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: 'Tool execution requires approval and is not supported in this builder flow.',
+      })
+      return
     }
+
+    await runLocalTool(toolName, toolCallId, input)
   }, [runLocalTool, shouldRequireLocalApproval])
-
-  // Track if auto-continue is handling errors (don't propagate to parent during recovery)
-  const isRecoveringRef = useRef(false)
-  const lastErrorRef = useRef<string | null>(null)
-  const autoContinueBlockedRef = useRef<string | null>(null)
-
-  // Check if we should allow auto-continue to handle the error
-  const shouldAllowRecovery = useCallback(() => {
-    if (autoContinueBlockedRef.current) return false
-    const retryHint = latestRetryHintRef.current
-    if (retryHint?.code === 'duplicate_response_item_id') return false
-    if (retryHint && !retryHint.retryable) return false
-    const tasks = latestTasksRef.current
-    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
-    const canContinue = continuationCountRef.current < MAX_CONTINUATIONS
-    return hasIncompleteTasks && canContinue && !completedRef.current
-  }, [])
 
   // useChat hook
   const {
@@ -1348,6 +1388,7 @@ Now begin by defining your task list with todowrite, then start working through 
     addToolOutput,
     dedupedMessages,
     retryHint: hookRetryHint,
+    autoRetryState,
   } = useCozeaChat({
     transportArgs: {
       accessToken,
@@ -1366,45 +1407,21 @@ Now begin by defining your task list with todowrite, then start working through 
       providerAuthHeader,
       api: chatApi,
     },
+    autoRetry: {
+      enabled: true,
+      maxAttempts: 2,
+      initialDelayMs: 2000,
+      maxDelayMs: 30000,
+      backoffFactor: 2,
+    },
     chatOptions: {
       onToolCall: handleToolCall,
-      onError: (err: unknown) => {
-        console.error('Builder chat error:', err)
-        const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Build failed'
-        lastErrorRef.current = message
-
-        const currentRetryHint = latestRetryHintRef.current
-        if (currentRetryHint?.code === 'duplicate_response_item_id' || isDuplicateResponseItemError(message)) {
-          autoContinueBlockedRef.current = 'duplicate-response-item-id'
-          onError('Build paused: provider rejected duplicated response item IDs. Retry once to continue.')
-          return
-        }
-
-        if (currentRetryHint && !currentRetryHint.retryable) {
-          onError(message)
-          return
-        }
-
-        if (shouldAllowRecovery()) {
-          console.log('[Builder] Error occurred but allowing recovery via auto-continue:', message)
-          isRecoveringRef.current = true
-          return
-        }
-        onError(message)
-      },
     },
     onBillingError: (err) => {
       onBillingError?.(err as any)
       onError(err.title || 'Billing Error')
     },
   })
-  
-  useEffect(() => {
-    latestRetryHintRef.current = hookRetryHint
-  }, [hookRetryHint])
-
-  
-
 
   addToolOutputRef.current = addToolOutput
 
@@ -1512,7 +1529,6 @@ Now begin by defining your task list with todowrite, then start working through 
   useEffect(() => {
     if (stopRequestCount === lastStopRequestCountRef.current) return
     lastStopRequestCountRef.current = stopRequestCount
-    userStoppedRef.current = true
 
     cancelPendingToolOutputs('Cancelled by user.')
     void cancelActiveTerminalSessions()
@@ -1524,6 +1540,7 @@ Now begin by defining your task list with todowrite, then start working through 
   useEffect(() => {
     if (preflightDiagnostic) return
     if (!providerAuthResolved) return
+    if (!toolsLoaded) return
     if (!hasSentInitialMessageRef.current && accessToken && currentOrganization?.organizationId && project._id) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
@@ -1535,6 +1552,7 @@ Now begin by defining your task list with todowrite, then start working through 
     preflightDiagnostic,
     project._id,
     providerAuthResolved,
+    toolsLoaded,
     sendMessage,
   ])
 
@@ -1549,41 +1567,47 @@ Now begin by defining your task list with todowrite, then start working through 
     )
   }, [onError, preflightDiagnostic])
 
-  // Track error state - only propagate if recovery isn't possible
+  // Track error state and defer propagation while shared auto-retry is scheduled.
   useEffect(() => {
-    if (error) {
-      const billingErr = parseBillingError(error)
-      if (billingErr) {
-        setBillingError(billingErr)
-        onBillingError?.(billingErr)
-        onError(billingErr.title || 'Billing Error')
-        return
-      }
+    if (!error) return
 
-      // Check if we should let auto-continue recover from this error
-      if (shouldAllowRecovery()) {
-        console.log('[Builder] Error state detected but allowing recovery')
-        isRecoveringRef.current = true
-        return
-      }
-
-      const message = error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : 'Build failed'
-      onError(message)
+    const billingErr = parseBillingError(error)
+    if (billingErr) {
+      setBillingError(billingErr)
+      onBillingError?.(billingErr)
+      onError(billingErr.title || 'Billing Error')
+      return
     }
-  }, [error, onError, onBillingError, shouldAllowRecovery])
 
-  // Clear recovery state when streaming starts (continuation is working)
-  useEffect(() => {
-    if (status === 'streaming' && isRecoveringRef.current) {
-      console.log('[Builder] Recovery successful, clearing error state')
-      isRecoveringRef.current = false
-      lastErrorRef.current = null
+    if (autoRetryState.scheduled) {
+      return
     }
-  }, [status])
+
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : 'Build failed'
+
+    if (hookRetryHint?.code === 'duplicate_response_item_id' && autoRetryState.exhausted) {
+      onError('Build paused: provider rejected duplicated response item IDs. Please retry once to continue.')
+      return
+    }
+
+    if (autoRetryState.exhausted && hookRetryHint?.retryable) {
+      onError(`${message} (automatic retries exhausted)`)
+      return
+    }
+
+    onError(message)
+  }, [
+    autoRetryState.exhausted,
+    autoRetryState.scheduled,
+    error,
+    hookRetryHint,
+    onBillingError,
+    onError,
+  ])
 
   // Fallback: extract todowrite updates directly from streamed messages
   useEffect(() => {
@@ -1602,32 +1626,29 @@ Now begin by defining your task list with todowrite, then start working through 
           : part.type.replace(/^tool-/, '')
         if (toolName !== 'todowrite') continue
 
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        if (toolPart.input?.tasks) {
-          latestTasks = toolPart.input.tasks as BuildTask[]
+        const inputTasks = parseTodowriteTasksAny(toolPart.input)
+        if (inputTasks !== null) {
+          latestTasks = inputTasks
           break
-        }
-        if (toolPart.input?.tasks_json) {
-          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
-          if (parsed) {
-            latestTasks = parsed as BuildTask[]
-            break
-          }
         }
 
         if (typeof toolPart.output === 'string') {
           try {
             const parsed = JSON.parse(toolPart.output)
-            if (parsed?.tasks) {
-              latestTasks = parsed.tasks as BuildTask[]
+            const parsedTasks = parseTodowriteTasksAny(parsed)
+            if (parsedTasks !== null) {
+              latestTasks = parsedTasks
               break
             }
           } catch {
             // ignore parse errors
           }
-        } else if (isRecord(toolPart.output) && Array.isArray(toolPart.output.tasks)) {
-          latestTasks = toolPart.output.tasks as BuildTask[]
-          break
+        } else {
+          const outputTasks = parseTodowriteTasksAny(toolPart.output)
+          if (outputTasks !== null) {
+            latestTasks = outputTasks
+            break
+          }
         }
       }
       if (latestTasks) break
@@ -1660,100 +1681,6 @@ Now begin by defining your task list with todowrite, then start working through 
     }
   }, [dedupedMessages, onTasksUpdate, onComplete])
 
-  // Track latest tasks for continuation logic
-  useEffect(() => {
-    // Extract latest tasks from messages (same logic as above effect)
-    for (let i = dedupedMessages.length - 1; i >= 0; i -= 1) {
-      const message = dedupedMessages[i]
-      if (message.role !== 'assistant') continue
-      for (const part of message.parts) {
-        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
-        const toolPart = part as ToolPart
-        const toolName = part.type === 'dynamic-tool' ? toolPart.toolName : part.type.replace(/^tool-/, '')
-        if (toolName !== 'todowrite') continue
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        if (toolPart.input?.tasks) {
-          latestTasksRef.current = toolPart.input.tasks as BuildTask[]
-          return
-        }
-        if (toolPart.input?.tasks_json) {
-          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
-          if (parsed) {
-            latestTasksRef.current = parsed as BuildTask[]
-            return
-          }
-        }
-      }
-    }
-  }, [dedupedMessages])
-
-  // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
-  useEffect(() => {
-    if (userStoppedRef.current) {
-      continuationSentRef.current = false
-      return
-    }
-    if (preflightDiagnostic) {
-      continuationSentRef.current = false
-      return
-    }
-
-    if (autoContinueBlockedRef.current) {
-      continuationSentRef.current = false
-      return
-    }
-
-    // Only check when not loading and not completed
-    if (status === 'streaming' || status === 'submitted' || completedRef.current) {
-      continuationSentRef.current = false
-      return
-    }
-
-    // Check if there are incomplete tasks
-    const tasks = latestTasksRef.current
-    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
-
-    // Safety check - don't continue forever
-    if (continuationCountRef.current >= MAX_CONTINUATIONS) {
-      console.log('[Builder] Max continuations reached, stopping auto-continue')
-      return
-    }
-
-    if (!continuationSentRef.current && dedupedMessages.length > 0 && hasIncompleteTasks) {
-      const lastMessage = dedupedMessages[dedupedMessages.length - 1]
-      if (lastMessage?.role === 'assistant') {
-        // Check if message only has reasoning/metadata (no actual output)
-        const hasOnlyReasoning = lastMessage.parts.length > 0 &&
-          lastMessage.parts.every(p =>
-            p.type === 'reasoning' ||
-            p.type === 'step-start' ||
-            p.type === 'data-usage' ||
-            (p.type === 'text' && !(p as { type: 'text'; text: string }).text?.trim())
-          )
-
-        // Always continue if there are incomplete tasks and model stopped
-        // This handles both: MALFORMED_FUNCTION_CALL (only reasoning) and normal stops after tool calls
-        console.log('[Builder] Model stopped with incomplete tasks, forcing continuation', {
-          hasOnlyReasoning,
-          taskCount: tasks.length,
-          incompleteTasks: tasks.filter((t: BuildTask) => t.status !== 'completed').length,
-          continuationCount: continuationCountRef.current
-        })
-
-        continuationSentRef.current = true
-        continuationCountRef.current += 1
-
-        const prompt = hasOnlyReasoning
-          ? 'You stopped mid-thought. Continue and use tools to complete the current task.'
-          : 'Continue with the next task. Use tools to create files and update todowrite.'
-
-        setTimeout(() => {
-          void sendMessage({ text: prompt })
-        }, 500)
-      }
-    }
-  }, [dedupedMessages, preflightDiagnostic, sendMessage, status])
-
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()
     for (const tool of availableTools) {
@@ -1767,7 +1694,30 @@ Now begin by defining your task list with todowrite, then start working through 
     return map
   }, [availableTools])
 
-  const isLoading = status === 'streaming' || status === 'submitted'
+  const hasPendingToolCalls = useMemo(() => {
+    for (const message of dedupedMessages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
+          continue
+        }
+
+        const toolPart = part as ToolPart
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        return true
+      }
+    }
+
+    return false
+  }, [dedupedMessages])
+
+  const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
 
   // Filter out the initial plan prompt message (first user message with plan context)
   const visibleMessages = useMemo(() => {

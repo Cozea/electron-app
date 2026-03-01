@@ -92,9 +92,18 @@ function migrateGlobalSettingsFromLegacy(): GlobalModelSettings {
   const entries = Object.entries(legacy)
     .map(([key, value]) => {
       const parsedKey = parseLegacyModelKey(key)
+      let model = parsedKey.model
+      // Basic normalization to scoped ID for legacy hits
+      if (model && !model.includes('/')) {
+        if (model.includes('gpt-')) model = `openai/${model}`
+        else if (model.includes('claude-')) model = `anthropic/${model}`
+        else if (model.includes('gemini-')) model = `google/${model}`
+        else if (model.includes('grok-')) model = `xai/${model}`
+        else if (model.includes('copilot-')) model = `github-copilot/${model}`
+      }
       return {
         surface: parsedKey.surface,
-        model: parsedKey.model,
+        model,
         variantId: value.variantId,
       }
     })

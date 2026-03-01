@@ -4,6 +4,7 @@ export type { OrganizationMembership, Session, User } from './types'
 
 export interface AppSettings {
   projectsDirectory: string
+  previewHeaderCompatibilityEnabled: boolean
 }
 
 export type UpdateStatus =

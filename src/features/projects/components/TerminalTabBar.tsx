@@ -8,7 +8,6 @@ import {
     Maximize2,
     Minimize2,
     X,
-    Circle,
     AlertTriangle,
     Info,
     List,
@@ -215,28 +214,29 @@ export function TerminalTabBar({
                             key={term.id}
                             onClick={() => handleTerminalClick(term.id)}
                             className={cn(
-                                "group flex h-6 shrink-0 items-center rounded-full pl-3 pr-1.5 text-[11px] transition-[padding,background-color,color]",
+                                "group flex h-6 shrink-0 items-center rounded-md pl-2.5 pr-1.5 text-xs font-medium transition-[background-color,color,box-shadow]",
                                 isActive
-                                    ? "bg-foreground/14 text-sidebar-foreground"
-                                    : "text-muted-foreground hover:bg-foreground/10 hover:text-sidebar-foreground"
+                                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                                    : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                             )}
                         >
-                            <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="flex min-w-0 items-center gap-2">
                                 {/* Status indicator */}
-                                <Circle
-                                    className={cn(
-                                        "h-2 w-2 shrink-0",
-                                        term.status === 'running' && "fill-green-500 text-green-500",
-                                        term.status === 'starting' && "fill-yellow-500 text-yellow-500 animate-pulse",
-                                        term.status === 'exited' && "fill-muted-foreground text-muted-foreground",
-                                        term.status === 'error' && "fill-destructive text-destructive"
-                                    )}
-                                />
-                                <span className="truncate max-w-[140px]">{display.label}</span>
+                                <div className={cn(
+                                    "h-1.5 w-1.5 rounded-full shrink-0",
+                                    term.status === 'running' && "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)]",
+                                    term.status === 'starting' && "bg-yellow-500 animate-pulse",
+                                    term.status === 'exited' && "bg-muted-foreground/50",
+                                    term.status === 'error' && "bg-destructive"
+                                )} />
+                                <span className="truncate max-w-[140px] tracking-tight">{display.label}</span>
                                 {portLabel && (
-                                    <span className="shrink-0 rounded-full bg-foreground/12 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/85">
-                                        {portLabel}
-                                    </span>
+                                    <>
+                                        <span className="text-muted-foreground/40 font-normal">·</span>
+                                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                            {portLabel}
+                                        </span>
+                                    </>
                                 )}
                             </span>
                             {/* Close button for individual tab */}
@@ -247,7 +247,7 @@ export function TerminalTabBar({
                                     window.electronAPI.terminal.kill({ terminalId: term.id })
                                     removeTerminal(term.id)
                                 }}
-                                className="pointer-events-none ml-0 grid h-5 w-0 shrink-0 place-items-center overflow-hidden rounded-full opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1 group-hover:w-5 group-hover:opacity-100 hover:bg-accent"
+                                className="pointer-events-none ml-0 grid h-4 w-0 shrink-0 place-items-center overflow-hidden rounded opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1.5 group-hover:w-4 group-hover:opacity-100 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
                             >
                                 <X className="h-3 w-3 shrink-0" />
                             </span>
@@ -259,16 +259,16 @@ export function TerminalTabBar({
                 <button
                     onClick={() => onViewChange("problems")}
                     className={cn(
-                        "flex h-6 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] transition-colors",
+                        "flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-[background-color,color,box-shadow]",
                         activeView === "problems"
-                            ? "bg-foreground/14 text-sidebar-foreground"
-                            : "text-muted-foreground hover:bg-foreground/10 hover:text-sidebar-foreground"
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                            : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                     )}
                 >
-                    <AlertTriangle className="h-3 w-3" />
-                    <span>PROBLEMS</span>
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span className="tracking-tight">PROBLEMS</span>
                     {problemCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive">
+                        <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-destructive/10 text-destructive">
                             {problemCount}
                         </span>
                     )}

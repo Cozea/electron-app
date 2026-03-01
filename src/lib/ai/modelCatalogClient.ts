@@ -22,8 +22,18 @@ interface ModelCatalogCacheEntry {
 
 const modelCatalogCache = new Map<string, ModelCatalogCacheEntry>()
 
-function cacheKey(organizationId: string): string {
-  return organizationId.trim()
+function normalizeProviderFilter(value: string[] | undefined): string[] {
+  if (!Array.isArray(value)) return []
+
+  const normalized = value
+    .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+    .filter((entry) => entry.length > 0)
+
+  return Array.from(new Set(normalized)).sort()
+}
+
+function cacheKey(organizationId: string, providerSegment: string): string {
+  return `${organizationId.trim()}::${providerSegment}`
 }
 
 export function clearModelCatalogCache(organizationId?: string): void {
@@ -32,15 +42,29 @@ export function clearModelCatalogCache(organizationId?: string): void {
     return
   }
 
-  modelCatalogCache.delete(cacheKey(organizationId))
+  const prefix = `${organizationId.trim()}::`
+  for (const key of modelCatalogCache.keys()) {
+    if (key.startsWith(prefix)) {
+      modelCatalogCache.delete(key)
+    }
+  }
 }
 
 export async function getModelCatalog(args: {
   organizationId: string
   accessToken: string
+  connectedProviders?: string[]
   forceRefresh?: boolean
 }): Promise<ModelApiResponse> {
-  const key = cacheKey(args.organizationId)
+  const hasProviderFilter = Array.isArray(args.connectedProviders)
+  const providerFilter = normalizeProviderFilter(args.connectedProviders)
+
+  if (hasProviderFilter && providerFilter.length === 0) {
+    return { models: [] }
+  }
+
+  const providerSegment = hasProviderFilter ? providerFilter.join(',') : '*'
+  const key = cacheKey(args.organizationId, providerSegment)
   const forceRefresh = Boolean(args.forceRefresh)
   const cached = modelCatalogCache.get(key)
 
@@ -52,8 +76,15 @@ export async function getModelCatalog(args: {
     return cached.promise
   }
 
+  const query = new URLSearchParams({
+    organizationId: args.organizationId,
+  })
+  if (hasProviderFilter) {
+    query.set('providers', providerFilter.join(','))
+  }
+
   const nextPromise = fetchWithAbort(
-    `${AI_BASE_URL}/models?organizationId=${encodeURIComponent(args.organizationId)}`,
+    `${AI_BASE_URL}/models?${query.toString()}`,
     {
       headers: {
         Authorization: `Bearer ${args.accessToken}`,
