@@ -73,10 +73,11 @@ export default defineSchema({
     subscription: v.object({
       plan: v.union(
         v.literal("free"),       // Free
-        v.literal("pro"),        // Power Duo
-        v.literal("max"),        // Winning Team
-        v.literal("team"),       // Custom (legacy id)
-        v.literal("enterprise")  // Custom
+        v.literal("pro"),        // Pro
+        v.literal("max"),        // Max
+        v.literal("startup"),    // Startup
+        v.literal("team"),       // Startup (legacy alias)
+        v.literal("enterprise")  // Enterprise
       ),
       status: v.union(
         v.literal("active"),
@@ -499,8 +500,15 @@ export default defineSchema({
     catalogVersion: v.string(),
     mode: v.union(v.literal("test"), v.literal("live")),
     subscriptionPrices: v.object({
-      pro: v.object({ productId: v.string(), priceId: v.string() }),
-      max: v.object({ productId: v.string(), priceId: v.string() }),
+      startupMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      startupYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      proMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      proYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      maxMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      maxYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      // Legacy aliases kept for compatibility with older catalog payloads.
+      pro: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      max: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
       team: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
     }),
     createdAt: v.number(),
@@ -508,6 +516,181 @@ export default defineSchema({
   })
     .index("by_version", ["catalogVersion"])
     .index("by_updated_at", ["updatedAt"]),
+
+  // Account-scoped billing subscription source of truth.
+  accountSubscriptions: defineTable({
+    accountUserId: v.id("users"),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("startup"),
+      v.literal("enterprise")
+    ),
+    status: v.union(
+      v.literal("active"),
+      v.literal("canceled"),
+      v.literal("past_due"),
+      v.literal("trialing")
+    ),
+    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
+    seatQuantity: v.optional(v.number()),
+    trialStart: v.optional(v.number()),
+    trialEnd: v.optional(v.number()),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    stripePriceId: v.optional(v.string()),
+    stripeProductId: v.optional(v.string()),
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    cancelAt: v.optional(v.number()),
+    canceledAt: v.optional(v.number()),
+    legacyOrganizationId: v.optional(v.id("organizations")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_user", ["accountUserId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Maps an organization to the account that owns its paid seat pool.
+  organizationBillingAccounts: defineTable({
+    organizationId: v.id("organizations"),
+    billingUserId: v.id("users"),
+    mode: v.union(v.literal("account")),
+    migratedFromLegacyWorkspaceBilling: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_billing_user", ["billingUserId"])
+    .index("by_organization_and_billing_user", ["organizationId", "billingUserId"]),
+
+  // Explicit paid-seat assignments for a workspace under a billing account.
+  accountSeatAssignments: defineTable({
+    organizationId: v.id("organizations"),
+    billingUserId: v.id("users"),
+    assignedUserId: v.id("users"),
+    assignedByUserId: v.optional(v.id("users")),
+    source: v.optional(v.union(v.literal("owner_auto"), v.literal("manual"), v.literal("migration"))),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    assignedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_billing_user_and_organization", ["billingUserId", "organizationId"])
+    .index("by_billing_org_assigned", ["billingUserId", "organizationId", "assignedUserId"])
+    .index("by_organization_assigned", ["organizationId", "assignedUserId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // AI wallet balances for Cozea-managed provider billing.
+  aiWallets: defineTable({
+    scopeType: v.union(v.literal("organization"), v.literal("user")),
+    scopeKey: v.string(),
+    organizationId: v.optional(v.id("organizations")),
+    ownerUserId: v.optional(v.id("users")),
+    currency: v.string(),
+    balanceCents: v.number(),
+    heldCents: v.number(),
+    totalDebitedCents: v.number(),
+    totalCreditedCents: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_scope_key", ["scopeKey"])
+    .index("by_organization", ["organizationId"])
+    .index("by_owner_user", ["ownerUserId"])
+    .index("by_owner_and_organization", ["ownerUserId", "organizationId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Temporary holds while AI requests are in flight.
+  aiWalletHolds: defineTable({
+    walletId: v.id("aiWallets"),
+    requestId: v.string(),
+    organizationId: v.id("organizations"),
+    actorUserId: v.id("users"),
+    payerUserId: v.id("users"),
+    amountCents: v.number(),
+    capturedCents: v.number(),
+    releasedCents: v.number(),
+    status: v.union(v.literal("held"), v.literal("captured"), v.literal("released")),
+    feature: v.optional(v.string()),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    capturedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_wallet", ["walletId"])
+    .index("by_wallet_and_request", ["walletId", "requestId"])
+    .index("by_request", ["requestId"])
+    .index("by_status", ["status"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  // Immutable wallet ledger entries.
+  aiWalletLedger: defineTable({
+    walletId: v.id("aiWallets"),
+    organizationId: v.id("organizations"),
+    actorUserId: v.optional(v.id("users")),
+    payerUserId: v.id("users"),
+    holdId: v.optional(v.id("aiWalletHolds")),
+    requestId: v.optional(v.string()),
+    kind: v.union(
+      v.literal("credit"),
+      v.literal("debit"),
+      v.literal("hold"),
+      v.literal("release"),
+      v.literal("adjustment")
+    ),
+    amountCents: v.number(),
+    balanceAfterCents: v.number(),
+    availableAfterCents: v.number(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_wallet", ["walletId"])
+    .index("by_wallet_and_created", ["walletId", "createdAt"])
+    .index("by_request", ["requestId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_payer_user", ["payerUserId"])
+    .index("by_created_at", ["createdAt"]),
+
+  // Idempotent cycle/assignment wallet reset records.
+  aiWalletPeriodGrants: defineTable({
+    grantKey: v.string(),
+    walletId: v.id("aiWallets"),
+    organizationId: v.id("organizations"),
+    targetUserId: v.id("users"),
+    billingUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("users")),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("startup"),
+      v.literal("enterprise")
+    ),
+    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
+    source: v.union(
+      v.literal("subscription_cycle"),
+      v.literal("seat_assignment"),
+      v.literal("manual")
+    ),
+    includedCents: v.number(),
+    appliedDeltaCents: v.number(),
+    periodStart: v.optional(v.number()),
+    periodEnd: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_grant_key", ["grantKey"])
+    .index("by_wallet_and_created", ["walletId", "createdAt"])
+    .index("by_organization_and_created", ["organizationId", "createdAt"])
+    .index("by_target_user", ["targetUserId"]),
 
   // ============================================
   // PROJECT SYSTEM TABLES

@@ -35,6 +35,8 @@ const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
 const SETTINGS_WINDOW_ITEMS = [
   { href: '/settings/account', label: 'Account' },
+  { href: '/settings/billing', label: 'Billing' },
+  { href: '/settings/ai', label: 'AI' },
   { href: '/settings/appearance', label: 'Appearance' },
   { href: '/settings/storage', label: 'Storage' },
   { href: '/settings/tooling', label: 'Tooling' },
@@ -105,7 +107,7 @@ function DashboardLayoutContent({
   const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
   const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
   const effectiveBreadcrumbAddon =
-    normalizedPath === "/workspace/ai" ? undefined : breadcrumbAddon
+    normalizedPath === '/settings/ai' || normalizedPath === '/workspace/ai' ? undefined : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
   const areAllSidebarsCollapsed = state === "collapsed"

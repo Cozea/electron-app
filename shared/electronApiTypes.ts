@@ -274,9 +274,62 @@ export interface RenameFileResult {
   error?: string
 }
 
+export type PreviewFailureReason =
+  | 'none'
+  | 'blocked_response'
+  | 'chrome_error_document'
+  | 'frame_not_found'
+  | 'bridge_injection_failed'
+  | 'bridge_timeout'
+  | 'iframe_load_error'
+  | 'server_unreachable'
+  | 'invalid_url'
+  | 'unsupported_origin'
+  | 'window_unavailable'
+  | 'unknown'
+
+export interface PreviewHeaderDiagnostic {
+  url: string
+  resourceType: 'mainFrame' | 'subFrame'
+  compatibilityEnabled: boolean
+  rewritten: boolean
+  removed: string[]
+  capturedAt: number
+}
+
+export interface PreviewBridgeFrameDetails {
+  requestedFrameName?: string
+  matchedFrameName?: string
+  matchedFrameUrl?: string
+  frameHref?: string | null
+  frameTreeNodeId?: number
+  routingId?: number
+  availableFrames?: Array<{
+    name: string
+    url: string
+    frameTreeNodeId: number
+    routingId: number
+  }>
+}
+
 export interface PreviewInjectBridgeResult {
   success: boolean
   error?: string
+  reason?: PreviewFailureReason
+  likelyBlocked?: boolean
+  frame?: PreviewBridgeFrameDetails
+  headerDiagnostic?: PreviewHeaderDiagnostic | null
+}
+
+export interface PreviewProbeUrlResult {
+  success: boolean
+  url: string
+  reachable: boolean
+  statusCode?: number
+  finalUrl?: string
+  reason?: PreviewFailureReason
+  error?: string
+  elapsedMs: number
 }
 
 export interface PreviewCaptureScreenshotResult {
@@ -546,6 +599,57 @@ export interface TerminalInfo {
   title: string
 }
 
+export interface TerminalCreateOptions {
+  projectPath: string
+  profileId?: string
+  cwd?: string
+  cols?: number
+  rows?: number
+  runId?: string
+}
+
+export interface TerminalOutputEvent {
+  terminalId: string
+  data: string
+  runId?: string
+}
+
+export interface TerminalExitEvent {
+  terminalId: string
+  exitCode: number | null
+  runId?: string
+}
+
+export interface DevServerStartOptions {
+  projectPath: string
+  command: string
+  port: number
+  cols?: number
+  rows?: number
+  runId?: string
+}
+
+export interface DevServerStartResult {
+  success: boolean
+  pid?: number
+  runId?: string
+  existing?: boolean
+  error?: string
+}
+
+export interface DevServerOutputEvent {
+  projectPath: string
+  output: string
+  stream: 'stdout' | 'stderr'
+  runId?: string
+}
+
+export interface DevServerExitEvent {
+  projectPath: string
+  code: number | null
+  runId?: string
+}
+
 export interface IntegrationKeyResult {
   success: boolean
   keyId?: string
@@ -807,6 +911,7 @@ export interface ElectronAPI {
   }
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
+    onOpenSettings: (callback: (route: string) => void) => () => void
   }
   settings: {
     get: () => Promise<AppSettings>
@@ -827,6 +932,7 @@ export interface ElectronAPI {
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
+    probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
   }
   project: {
@@ -972,24 +1078,24 @@ export interface ElectronAPI {
     onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
   }
   devServer: {
-    start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>
+    start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
     stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { projectPath: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     isRunning: (options: { projectPath: string }) => Promise<boolean>
-    onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => void) => () => void
-    onExit: (callback: (data: { projectPath: string; code: number | null }) => void) => () => void
+    onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
+    onExit: (callback: (data: DevServerExitEvent) => void) => () => void
     onError: (callback: (data: { projectPath: string; error: string }) => void) => () => void
   }
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number }) => Promise<{ success: boolean; terminalId?: string; error?: string }>
+    create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
     input: (options: { terminalId: string; data: string }) => Promise<void>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
-    onOutput: (callback: (data: { terminalId: string; data: string }) => void) => () => void
-    onExit: (callback: (data: { terminalId: string; exitCode: number | null }) => void) => () => void
+    onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
+    onExit: (callback: (data: TerminalExitEvent) => void) => () => void
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>

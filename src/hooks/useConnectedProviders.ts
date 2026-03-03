@@ -3,6 +3,8 @@ import type { ProviderAuthStatus } from '@shared/electronApiTypes'
 
 export type ConnectedProvider = string
 
+const COZEA_MANAGED_PROVIDERS: ConnectedProvider[] = ['openai', 'anthropic', 'google', 'xai']
+
 export const isConnectedProvider = (value?: string): value is ConnectedProvider =>
   typeof value === 'string' && value.trim().length > 0
 
@@ -59,6 +61,10 @@ export function useConnectedProviders() {
         if (!status.connected) continue
         if (typeof status.expiresAt === 'number' && status.expiresAt <= now) continue
         connectedSet.add(status.provider)
+      }
+
+      for (const provider of COZEA_MANAGED_PROVIDERS) {
+        connectedSet.add(provider)
       }
 
       setProviderStatuses(nextStatuses)

@@ -139,6 +139,8 @@ function subscriptionQualityScore(org: Doc<"organizations">): number {
   const planScore =
     plan === "enterprise"
       ? 5
+      : plan === "startup"
+        ? 4
       : plan === "team"
         ? 4
         : plan === "max"

@@ -6,9 +6,19 @@ import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
+import type { DevServerStartResult } from '../../shared/electronApiTypes'
+
+interface DevServerProcessEntry {
+  runId: string
+  projectPath: string
+  command: string
+  port: number
+  startedAt: number
+  ptyProcess: pty.IPty
+}
 
 interface RegisterDevServerHandlersDeps {
-  devServerProcesses: Map<string, pty.IPty>
+  devServerProcesses: Map<string, DevServerProcessEntry>
   getMainWindow: () => BrowserWindow | null
 }
 
@@ -115,6 +125,13 @@ function toPtyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return normalized
 }
 
+function createRunId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `devsrv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
 // Start, stop, and manage per-project dev servers using PTY-backed terminals.
 export function registerDevServerHandlers(
   ipcMain: IpcMain,
@@ -130,19 +147,44 @@ export function registerDevServerHandlers(
         port,
         cols = 80,
         rows = 24,
+        runId,
       }: {
         projectPath: string
         command: string
         port: number
         cols?: number
         rows?: number
+        runId?: string
       }
-    ): Promise<{ success: boolean; pid?: number; error?: string }> => {
-      if (deps.devServerProcesses.has(projectPath)) {
-        return { success: false, error: 'Dev server already running for this project' }
+    ): Promise<DevServerStartResult> => {
+      const activeEntry = deps.devServerProcesses.get(projectPath)
+      if (activeEntry) {
+        const normalizedRequestedRunId = typeof runId === 'string' && runId.trim().length > 0 ? runId.trim() : null
+        const isSameRun = normalizedRequestedRunId !== null && normalizedRequestedRunId === activeEntry.runId
+        const isSameCommand = activeEntry.command === command && activeEntry.port === port
+
+        if (isSameRun || isSameCommand) {
+          return {
+            success: true,
+            pid: activeEntry.ptyProcess.pid,
+            runId: activeEntry.runId,
+            existing: true,
+          }
+        }
+
+        return {
+          success: false,
+          error: 'Dev server already running for this project',
+          runId: activeEntry.runId,
+          existing: true,
+        }
       }
 
       try {
+        const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
+          ? runId.trim()
+          : createRunId()
+
         const resolved = resolveCommandWithRuntime(command)
         if (resolved.status === 'failed') {
           return { success: false, error: resolved.error || 'Command is not supported in this release.' }
@@ -181,19 +223,40 @@ export function registerDevServerHandlers(
           env: toPtyEnv(runtimeEnv),
         })
 
-        deps.devServerProcesses.set(projectPath, ptyProcess)
+        const processEntry: DevServerProcessEntry = {
+          runId: resolvedRunId,
+          projectPath,
+          command,
+          port,
+          startedAt: Date.now(),
+          ptyProcess,
+        }
+
+        deps.devServerProcesses.set(projectPath, processEntry)
 
         ptyProcess.onData((data: string) => {
-          deps.getMainWindow()?.webContents.send('devServer:output', { projectPath, output: data, stream: 'stdout' })
+          deps.getMainWindow()?.webContents.send('devServer:output', {
+            projectPath,
+            output: data,
+            stream: 'stdout',
+            runId: resolvedRunId,
+          })
         })
 
         ptyProcess.onExit(({ exitCode }) => {
           console.log(`[DevServer] PTY exited with code ${exitCode}`)
-          deps.devServerProcesses.delete(projectPath)
-          deps.getMainWindow()?.webContents.send('devServer:exit', { projectPath, code: exitCode })
+          const currentEntry = deps.devServerProcesses.get(projectPath)
+          if (currentEntry?.runId === resolvedRunId) {
+            deps.devServerProcesses.delete(projectPath)
+          }
+          deps.getMainWindow()?.webContents.send('devServer:exit', {
+            projectPath,
+            code: exitCode,
+            runId: resolvedRunId,
+          })
         })
 
-        return { success: true, pid: ptyProcess.pid }
+        return { success: true, pid: ptyProcess.pid, runId: resolvedRunId }
       } catch (err) {
         console.error('[DevServer] Failed to start PTY:', err)
         return {
@@ -210,15 +273,18 @@ export function registerDevServerHandlers(
       _event,
       { projectPath }: { projectPath: string }
     ): Promise<{ success: boolean; error?: string }> => {
-      const ptyProcess = deps.devServerProcesses.get(projectPath)
-      if (!ptyProcess) {
+      const processEntry = deps.devServerProcesses.get(projectPath)
+      if (!processEntry) {
         return { success: true }
       }
 
       try {
         console.log(`[DevServer] Stopping PTY for ${projectPath}`)
-        ptyProcess.kill()
-        deps.devServerProcesses.delete(projectPath)
+        processEntry.ptyProcess.kill()
+        const currentEntry = deps.devServerProcesses.get(projectPath)
+        if (currentEntry?.runId === processEntry.runId) {
+          deps.devServerProcesses.delete(projectPath)
+        }
         return { success: true }
       } catch (err) {
         console.error('[DevServer] Failed to stop PTY:', err)
@@ -236,13 +302,13 @@ export function registerDevServerHandlers(
       _event,
       { projectPath, cols, rows }: { projectPath: string; cols: number; rows: number }
     ): { success: boolean } => {
-      const ptyProcess = deps.devServerProcesses.get(projectPath)
-      if (!ptyProcess) {
+      const processEntry = deps.devServerProcesses.get(projectPath)
+      if (!processEntry) {
         return { success: false }
       }
 
       try {
-        ptyProcess.resize(cols, rows)
+        processEntry.ptyProcess.resize(cols, rows)
         return { success: true }
       } catch (err) {
         console.error('[DevServer] Failed to resize PTY:', err)

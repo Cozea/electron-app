@@ -13,7 +13,6 @@ import {
   ChevronDownIcon,
   XIcon,
   Loader2Icon,
-  CircleDashedIcon,
   // Tool-specific icons (matching VS Code Codicons)
   FileTextIcon,
   FolderOpenIcon,
@@ -366,7 +365,7 @@ export type ToolHeaderProps = {
 export const getStatusIcon = (status: ToolState): ReactNode => {
   switch (status) {
     case "input-streaming":
-      return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
+      return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
     case "input-available":
       return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
     case "approval-requested":
@@ -380,7 +379,7 @@ export const getStatusIcon = (status: ToolState): ReactNode => {
     case "output-denied":
       return <XIcon className="size-3.5 text-orange-500" />;
     default:
-      return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
+      return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
   }
 };
 

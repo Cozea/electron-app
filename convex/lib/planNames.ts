@@ -1,11 +1,13 @@
-export type WorkspacePlanId = 'free' | 'pro' | 'max' | 'team' | 'enterprise'
+export type WorkspacePlanId = 'free' | 'pro' | 'max' | 'startup' | 'team' | 'enterprise'
 
-const PLAN_LABELS: Record<WorkspacePlanId, 'Free' | 'Power Duo' | 'Winning Team' | 'Custom'> = {
+const PLAN_LABELS: Record<WorkspacePlanId, string> = {
   free: 'Free',
-  pro: 'Power Duo',
-  max: 'Winning Team',
-  team: 'Custom',
-  enterprise: 'Custom',
+  pro: 'Pro',
+  max: 'Max',
+  startup: 'Startup',
+  // Legacy alias
+  team: 'Startup',
+  enterprise: 'Enterprise',
 }
 
 export function getWorkspacePlanLabel(plan?: string | null): string {

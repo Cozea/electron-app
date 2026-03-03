@@ -39,7 +39,7 @@ interface ReplicaStateFile {
   queue: QueueEntry[]
 }
 
-const DEFAULT_REPLICA_API_BASE = 'https://crosscode-auth-gateway-production.up.railway.app'
+const DEFAULT_REPLICA_API_BASE = 'https://api.cozea.app'
 const SNAPSHOT_FLUSH_DEBOUNCE_MS = 2_000
 const SNAPSHOT_RETRY_INITIAL_MS = 5_000
 const SNAPSHOT_RETRY_MAX_MS = 60_000

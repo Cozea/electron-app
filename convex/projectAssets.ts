@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { canConsumeStorage } from "./lib/workspaceLimits"
 
 // Generate upload URL for an asset
 export const generateUploadUrl = mutation({
@@ -34,13 +33,6 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
-
-    if (args.size > 0) {
-      const capacity = await canConsumeStorage(ctx, args.organizationId, args.size)
-      if (!capacity.allowed) {
-        throw new Error(capacity.message || "Storage limit reached")
-      }
-    }
 
     // Infer category from MIME type if not provided
     let category = args.category
@@ -360,13 +352,6 @@ export const duplicate = mutation({
     // Cannot duplicate folders
     if (asset.mimeType === "application/x-directory") {
       throw new Error("Cannot duplicate folders")
-    }
-
-    if (asset.size > 0) {
-      const capacity = await canConsumeStorage(ctx, asset.organizationId, asset.size)
-      if (!capacity.allowed) {
-        throw new Error(capacity.message || "Storage limit reached")
-      }
     }
 
     // Generate copy name

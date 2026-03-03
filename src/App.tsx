@@ -5,9 +5,12 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { UpdateMenu } from './components/updates/UpdateMenu'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
+import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
+import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })))
 const Onboarding = lazy(() =>
@@ -62,6 +65,64 @@ function ElectronNavigationBridge() {
   return null
 }
 
+function ElectronSettingsBridge() {
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const handleElectronSettingsOpen = useEffectEvent((route: string) => {
+    openSettingsDrawer(route)
+  })
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.app?.onOpenSettings?.((route) => {
+      handleElectronSettingsOpen(route)
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  return null
+}
+
+function SettingsDrawerUrlBridge() {
+  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
+  const route = useSettingsDrawerStore((state) => state.route)
+  const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
+  const close = useSettingsDrawerStore((state) => state.close)
+
+  const syncFromLocation = useEffectEvent(() => {
+    const routeFromLocation = getSettingsRouteFromLocation(window.location)
+    if (routeFromLocation) {
+      openFromRoute(routeFromLocation)
+      return
+    }
+
+    close()
+  })
+
+  useEffect(() => {
+    syncFromLocation()
+
+    const handleLocationChange = () => {
+      syncFromLocation()
+    }
+
+    window.addEventListener('hashchange', handleLocationChange)
+    window.addEventListener('popstate', handleLocationChange)
+
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange)
+      window.removeEventListener('popstate', handleLocationChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    writeSettingsRouteToUrl(isOpen ? route : null)
+  }, [isOpen, route])
+
+  return null
+}
+
 function AppContent() {
   const { isAuthenticated, isLoading, needsOnboarding, workspaceSelectionRequired } = useAuth()
   const location = useLocation()
@@ -104,16 +165,20 @@ function AppContent() {
   }
 
   const isWorkspaceSelectRoute = location.pathname === '/workspaces/select'
+  const isWorkspaceCreateRoute = location.pathname === '/workspaces/new'
   const isInviteRoute = location.pathname.startsWith('/invite/')
-  if (workspaceSelectionRequired && !isWorkspaceSelectRoute && !isInviteRoute) {
+  if (workspaceSelectionRequired && !isWorkspaceSelectRoute && !isWorkspaceCreateRoute && !isInviteRoute) {
     return <Navigate to="/workspaces/select" replace />
   }
 
   return (
     <>
       <ElectronNavigationBridge />
+      <ElectronSettingsBridge />
       {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
+      {!isSettingsWindow && <SettingsDrawerUrlBridge />}
+      {!isSettingsWindow && <SettingsDrawer />}
     </>
   )
 }

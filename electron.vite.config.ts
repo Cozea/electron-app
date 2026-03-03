@@ -18,7 +18,7 @@ function readBooleanFlag(name: string, fallback: boolean): boolean {
 }
 
 function resolveAiProxyTarget(): string {
-  const defaultRemoteTarget = 'https://crosscode-auth-gateway-production.up.railway.app'
+  const defaultRemoteTarget = 'https://api.cozea.app'
 
   // Optional explicit proxy target (origin or full URL).
   const configured =

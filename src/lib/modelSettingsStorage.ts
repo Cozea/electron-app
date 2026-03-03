@@ -6,8 +6,10 @@ export type StoredModelSettings = {
   surface?: AISurface;
 }
 
-const STORAGE_KEY = "crosscode.ai.modelSettings.v2";
-const GLOBAL_STORAGE_KEY = "crosscode.ai.globalSettings.v1";
+const STORAGE_KEY = "cozea.ai.modelSettings.v2";
+const LEGACY_STORAGE_SUFFIX = ".ai.modelSettings.v2";
+const GLOBAL_STORAGE_KEY = "cozea.ai.globalSettings.v1";
+const LEGACY_GLOBAL_STORAGE_SUFFIX = ".ai.globalSettings.v1";
 
 export type GlobalModelSettings = {
   model?: string;
@@ -36,6 +38,18 @@ function parseLegacyModelKey(key: string): { surface?: AISurface; model?: string
     surface: normalizedSurface,
     model: model || undefined,
   }
+}
+
+function findLegacyStorageValue(preferredKey: string, suffix: string): string | null {
+  if (typeof window === "undefined") return null
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i)
+    if (!key || key === preferredKey) continue
+    if (key.endsWith(suffix)) {
+      return window.localStorage.getItem(key)
+    }
+  }
+  return null
 }
 
 export function getModelSettingsKey(model: string, surface: AISurface): string {
@@ -69,12 +83,48 @@ export function loadModelSettings(): Record<string, StoredModelSettings> {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const legacyRaw = !raw ? findLegacyStorageValue(STORAGE_KEY, LEGACY_STORAGE_SUFFIX) : null;
+    const effectiveRaw = raw || legacyRaw;
+    if (!effectiveRaw) return {};
+
+    const parsed = JSON.parse(effectiveRaw);
     if (!parsed || typeof parsed !== "object") return {};
+
+    if (!raw && legacyRaw) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+
     return parsed as Record<string, StoredModelSettings>;
   } catch {
     return {};
+  }
+}
+
+function loadStoredGlobalModelSettingsRaw(): GlobalModelSettings | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(GLOBAL_STORAGE_KEY);
+    const legacyRaw = !raw
+      ? findLegacyStorageValue(GLOBAL_STORAGE_KEY, LEGACY_GLOBAL_STORAGE_SUFFIX)
+      : null;
+    const effectiveRaw = raw || legacyRaw;
+    if (!effectiveRaw) return null;
+
+    const parsed = JSON.parse(effectiveRaw)
+    if (!isRecord(parsed)) return null
+
+    const normalized: GlobalModelSettings = {
+      model: typeof parsed.model === 'string' ? parsed.model : undefined,
+      variantId: typeof parsed.variantId === 'string' ? parsed.variantId as VariantId : undefined,
+    }
+
+    if (!raw && legacyRaw) {
+      window.localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(normalized));
+    }
+
+    return normalized
+  } catch {
+    return null
   }
 }
 
@@ -131,16 +181,8 @@ function migrateGlobalSettingsFromLegacy(): GlobalModelSettings {
 export function loadGlobalModelSettings(): GlobalModelSettings {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(GLOBAL_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (isRecord(parsed)) {
-        return {
-          model: typeof parsed.model === 'string' ? parsed.model : undefined,
-          variantId: typeof parsed.variantId === 'string' ? parsed.variantId as VariantId : undefined,
-        }
-      }
-    }
+    const persisted = loadStoredGlobalModelSettingsRaw()
+    if (persisted) return persisted
 
     const migrated = migrateGlobalSettingsFromLegacy()
     if (migrated.model || migrated.variantId) {

@@ -15,6 +15,7 @@ import {
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai"] as const
+const PERSONAL_WORKSPACE_PREFIX = "personal:"
 type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
 
 function normalizeEmail(value: string): string {
@@ -424,6 +425,10 @@ export const reconcileMembershipSetFromWorkOS = mutation({
     let removedCount = 0
     for (const membership of currentMemberships) {
       if (!activeOrgIds.has(membership.organizationId)) {
+        const organization = await ctx.db.get(membership.organizationId)
+        if (organization?.workosId?.startsWith(PERSONAL_WORKSPACE_PREFIX)) {
+          continue
+        }
         await ctx.db.delete(membership._id)
         removedCount += 1
       }

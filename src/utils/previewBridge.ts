@@ -9,6 +9,11 @@
  */
 
 import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
+import type {
+  PreviewBridgeFrameDetails,
+  PreviewFailureReason,
+  PreviewHeaderDiagnostic,
+} from '@shared/electronApiTypes'
 
 /** Message types for bridge communication */
 export type BridgeMessageType =
@@ -70,6 +75,9 @@ export interface InjectBridgeScriptResult {
   success: boolean
   error?: string
   likelyBlocked?: boolean
+  reason?: PreviewFailureReason
+  frame?: PreviewBridgeFrameDetails
+  headerDiagnostic?: PreviewHeaderDiagnostic | null
 }
 
 /**
@@ -84,6 +92,9 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
 
   let electronInjectionError: string | null = null
   let electronLikelyBlocked = false
+  let electronFailureReason: PreviewFailureReason | undefined
+  let electronFrameDetails: PreviewBridgeFrameDetails | undefined
+  let electronHeaderDiagnostic: PreviewHeaderDiagnostic | null | undefined
 
   // Prefer Electron main-process injection when available (works cross-origin).
   const electronInject = window.electronAPI?.preview?.injectBridge
@@ -92,7 +103,12 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
       const result = await electronInject({ url: iframe.src, frameName })
       if (result.success) {
         console.log('[PreviewBridge][Renderer] Electron injection succeeded', { frameName, url: targetUrl })
-        return { success: true }
+        return {
+          success: true,
+          reason: result.reason,
+          frame: result.frame,
+          headerDiagnostic: result.headerDiagnostic,
+        }
       }
       console.warn('[PreviewBridge][Renderer] Electron injection returned unsuccessful result', {
         frameName,
@@ -101,6 +117,9 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
       })
       electronInjectionError = result.error ?? 'Electron preview injection failed'
       electronLikelyBlocked = /preview frame not found|refusing to inject|chrome error document|err_blocked_by_response|blocked by response/i.test(electronInjectionError)
+      electronFailureReason = result.reason
+      electronFrameDetails = result.frame
+      electronHeaderDiagnostic = result.headerDiagnostic
     } catch (err) {
       console.warn('[PreviewBridge][Renderer] Electron injection failed', { frameName, url: targetUrl, error: err })
       electronInjectionError = err instanceof Error ? err.message : String(err)
@@ -115,6 +134,9 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
         success: false,
         error: electronInjectionError ?? 'Cannot access iframe document',
         likelyBlocked: electronLikelyBlocked,
+        reason: electronFailureReason,
+        frame: electronFrameDetails,
+        headerDiagnostic: electronHeaderDiagnostic,
       }
     }
 
@@ -143,6 +165,9 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
       success: false,
       error: electronInjectionError ?? crossOriginError,
       likelyBlocked: electronLikelyBlocked || /x-frame-options|frame-ancestors|cross-origin|err_blocked_by_response|blocked by response/i.test(crossOriginError),
+      reason: electronFailureReason,
+      frame: electronFrameDetails,
+      headerDiagnostic: electronHeaderDiagnostic,
     }
   }
 }

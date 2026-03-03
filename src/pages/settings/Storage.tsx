@@ -31,6 +31,10 @@ import {
 } from 'lucide-react'
 import type { StorageUsage, LocalProject } from '../../types/electron'
 
+interface StorageProps {
+  surface?: 'page' | 'drawer'
+}
+
 // Format bytes to human readable size
 function formatBytes(bytes: number): string {
   if (bytes <= 0 || !Number.isFinite(bytes)) return '0 B'
@@ -60,7 +64,7 @@ function formatRelativeTime(timestamp: number): string {
   return 'Just now'
 }
 
-export function Storage() {
+export function Storage({ surface = 'page' }: StorageProps) {
   const { user, logout } = useAuth()
   const [projectsDirectory, setProjectsDirectory] = useState<string>('~/Developer/Cozea')
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
@@ -135,13 +139,14 @@ export function Storage() {
   const diskFree = storageUsage?.diskFree || 0
   const total = diskTotal > 0 ? bytesToGB(diskTotal) : 100 // Use actual disk size or default to 100 GB
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Storage' }]}
+  const content = (
+    <div
+      className={
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
+          : 'space-y-6'
+      }
     >
-      <div className="space-y-6">
         {/* Storage Usage */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
@@ -382,6 +387,19 @@ export function Storage() {
           </CardContent>
         </Card>
       </div>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'Storage' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

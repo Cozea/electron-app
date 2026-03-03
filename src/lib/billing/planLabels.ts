@@ -1,12 +1,20 @@
-export type WorkspacePlanId = 'free' | 'pro' | 'max' | 'team' | 'enterprise'
-export type WorkspacePricingPlanId = 'free' | 'pro' | 'max' | 'team'
+export type WorkspacePlanId =
+  | 'free'
+  | 'pro'
+  | 'max'
+  | 'startup'
+  | 'team'
+  | 'enterprise'
+export type WorkspacePricingPlanId = 'free' | 'pro' | 'max' | 'startup' | 'enterprise'
 
-export const WORKSPACE_PLAN_LABELS: Record<WorkspacePlanId, 'Starter' | 'Founders Plan' | 'Team Scale' | 'Custom Enterprise'> = {
-  free: 'Starter',
-  pro: 'Founders Plan',
-  max: 'Team Scale',
-  team: 'Custom Enterprise',
-  enterprise: 'Custom Enterprise',
+export const WORKSPACE_PLAN_LABELS: Record<WorkspacePlanId, string> = {
+  free: 'Free',
+  pro: 'Pro',
+  max: 'Max',
+  startup: 'Startup',
+  // Legacy alias
+  team: 'Startup',
+  enterprise: 'Enterprise',
 }
 
 export function getWorkspacePlanLabel(plan?: string | null): string {
@@ -18,8 +26,14 @@ export function getWorkspacePlanLabel(plan?: string | null): string {
 }
 
 export function normalizeWorkspacePlanForPricing(plan?: string | null): WorkspacePricingPlanId {
-  if (plan === 'enterprise') return 'team'
-  if (plan === 'free' || plan === 'pro' || plan === 'max' || plan === 'team') {
+  if (plan === 'team') return 'startup'
+  if (
+    plan === 'free' ||
+    plan === 'pro' ||
+    plan === 'max' ||
+    plan === 'startup' ||
+    plan === 'enterprise'
+  ) {
     return plan
   }
   return 'free'

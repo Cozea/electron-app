@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -147,7 +147,7 @@ const bytesToGB = (bytes: number): number => bytes / (1024 * 1024 * 1024)
 
 export function Sync() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
-  const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
   const [isClearing, setIsClearing] = useState(false)
 
@@ -221,14 +221,16 @@ export function Sync() {
   const getUpgradeMessage = (plan: string) => {
     switch (plan) {
       case 'free':
-        return 'Upgrade to Power Duo for 5 GB storage and shared sync.'
+        return 'Upgrade to Pro for more storage and shared sync.'
       case 'pro':
-        return 'Upgrade to Winning Team for 30 GB storage and larger project limits.'
+        return 'Upgrade to Max for more storage and larger project limits.'
       case 'max':
-        return 'Need more than 30 GB? Contact sales for a custom workspace plan.'
+        return 'Need centralized seat billing? Upgrade to Startup.'
+      case 'startup':
       case 'team':
+        return 'Startup plan active. Contact sales for enterprise customization.'
       case 'enterprise':
-        return 'Custom workspace plan active.'
+        return 'Enterprise plan active.'
       default:
         return ''
     }
@@ -391,7 +393,7 @@ export function Sync() {
                 <p className="text-sm text-muted-foreground">
                   {getUpgradeMessage(usageLimits?.plan ?? 'free')}
                 </p>
-                <Button size="sm" onClick={() => navigate('/workspace/billing')}>Upgrade Plan</Button>
+                <Button size="sm" onClick={() => openSettingsDrawer('/settings/billing')}>Upgrade Plan</Button>
               </div>
             </div>
           </div>

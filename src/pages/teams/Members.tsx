@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { featureFlags } from '@/lib/featureFlags'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useQuery, useMutation } from 'convex/react'
@@ -53,8 +54,6 @@ import {
   Send,
   Trash2,
   ArrowUpDown,
-  AlertCircle,
-  AlertTriangle,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 
@@ -94,6 +93,7 @@ function hasPermission(role: Role | undefined, permission: Permission): boolean 
 
 export function Members() {
   const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const { user, logout, currentOrganization, convexUserId } = useAuth()
   const { inviteMember, revokeInvitation: revokeWorkosInvitation, removeMember: removeWorkosMember, updateMemberRole: updateWorkosMemberRole } = useOrganization()
   const [selected, setSelected] = useState<string[]>([])
@@ -139,20 +139,17 @@ export function Members() {
     freshInvites
   )
 
-  // Seat limit status (cached to prevent header badge loading flashes)
-  const freshSeatStatus = useQuery(
-    api.organizations.getSeatStatus,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-  const seatStatus = useCachedQuery(
-    `members-seat-status-${convexOrg?._id}`,
-    freshSeatStatus
+  const seatManagement = useQuery(
+    api.billing.getSeatManagement,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
   )
 
   // Current user's role in the organization
   const currentUserRole = currentOrganization?.role as Role | undefined
   const hasInvitePermission = hasPermission(currentUserRole, 'members:invite')
-  const canInvite = hasInvitePermission && (seatStatus?.allowed ?? true)
+  const canInvite = hasInvitePermission
   const canRemove = hasPermission(currentUserRole, 'members:remove')
   const canUpdateRole = hasPermission(currentUserRole, 'members:update_role')
   const canRevokeInvite = hasPermission(currentUserRole, 'invitations:revoke')
@@ -424,24 +421,37 @@ export function Members() {
     return pages
   }
 
-  // Circular progress component for seat usage
-  const seatPercentage = seatStatus && seatStatus.limit > 0
-    ? Math.min((seatStatus.current / seatStatus.limit) * 100, 100)
+  const seatCounts = seatManagement?.entitlement?.seatCounts
+  const paidSeatTotal = seatCounts?.total ?? 0
+  const paidSeatAssigned = seatCounts?.assigned ?? 0
+  const seatManagedEntitlement = Boolean(
+    seatManagement &&
+      (
+        seatManagement.entitlement.source === 'legacy' ||
+        seatManagement.entitlement.source === 'trial' ||
+        seatManagement.entitlement.plan === 'startup' ||
+        seatManagement.entitlement.plan === 'enterprise'
+      )
+  )
+
+  // Circular progress component for paid-seat usage
+  const seatPercentage = paidSeatTotal > 0
+    ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100)
     : 0
   const circumference = 2 * Math.PI * 8 // radius = 8
   const strokeDashoffset = circumference - (seatPercentage / 100) * circumference
 
   const breadcrumbAddon = (
     <>
-      {seatStatus === undefined ? (
+      {seatManagement === undefined ? (
         <Badge variant="secondary" className="text-xs font-normal">
           --
         </Badge>
-      ) : seatStatus && seatStatus.limit > 0 && (
+      ) : paidSeatTotal > 0 && (
         <Badge
           variant="secondary"
           className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-          title={`${seatStatus.current} / ${seatStatus.limit} seats used`}
+          title={`${paidSeatAssigned} / ${paidSeatTotal} paid seats assigned`}
         >
           <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
             {/* Background circle */}
@@ -465,10 +475,10 @@ export function Members() {
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
-              className={seatStatus.current >= seatStatus.limit ? 'text-destructive' : seatStatus.current >= seatStatus.limit - 1 ? 'text-amber-500' : 'text-primary'}
+              className={paidSeatAssigned >= paidSeatTotal ? 'text-destructive' : paidSeatAssigned >= paidSeatTotal - 1 ? 'text-amber-500' : 'text-primary'}
             />
           </svg>
-          <span>{seatStatus.current}/{seatStatus.limit}</span>
+          <span>{paidSeatAssigned}/{paidSeatTotal}</span>
         </Badge>
       )}
     </>
@@ -643,51 +653,48 @@ export function Members() {
       header={headerContent}
     >
       <div className={featureFlags.contentVisibility ? 'perf-contain-auto' : undefined}>
-        {/* Seat limit warnings */}
-        {seatStatus && seatStatus.limit > 0 && (
-          <>
-            {seatStatus.overLimit ? (
-              <Alert variant="destructive" className="mb-4">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Over seat limit</AlertTitle>
-                <AlertDescription>
-                  You have {seatStatus.current} members but your plan allows {seatStatus.limit}.
-                  Remove {seatStatus.current - seatStatus.limit} member(s) or{' '}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-destructive underline"
-                    onClick={() => navigate('/workspace/billing')}
-                  >
-                    upgrade your plan
-                  </Button>{' '}
-                  to invite more.
-                </AlertDescription>
-              </Alert>
-            ) : seatStatus.current >= seatStatus.limit ? (
-              <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Seat limit reached</AlertTitle>
-                <AlertDescription>
-                  You've used all {seatStatus.limit} seats on your plan.{' '}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-destructive underline"
-                    onClick={() => navigate('/workspace/billing')}
-                  >
-                    Upgrade to add more members
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            ) : seatStatus.current >= seatStatus.limit - 1 ? (
-              <Alert className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>1 seat remaining</AlertTitle>
-                <AlertDescription>
-                  {seatStatus.current}/{seatStatus.limit} seats used. You can invite one more member.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-          </>
+        {seatManagement?.entitlement.source === 'legacy' && (
+          <Alert className="mb-4">
+            <AlertTitle>Legacy workspace billing is active</AlertTitle>
+            <AlertDescription>
+              This workspace still uses legacy billing entitlements. Migrate and manage explicit paid seats in{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0 underline"
+                onClick={() => openSettingsDrawer('/settings/billing')}
+              >
+                Billing Settings
+              </Button>
+              {' '}(Startup seat billing).
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {seatManagement && seatManagedEntitlement && seatManagement.entitlement.source !== 'legacy' && seatManagement.entitlement.seatCounts.total > 0 && (
+          <Alert className="mb-4">
+            <AlertTitle>Paid seat coverage</AlertTitle>
+            <AlertDescription>
+              {seatManagement.entitlement.seatCounts.assigned}/{seatManagement.entitlement.seatCounts.total} paid seats assigned.
+              Members can still join this workspace without a paid seat, but AI and sync require seat assignment.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {seatManagement && seatManagedEntitlement && !seatManagement.entitlement.canUseAi && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>No paid seat assigned to you</AlertTitle>
+            <AlertDescription>
+              Ask {seatManagement.billingUser?.email || 'the billing owner'} to assign your seat in{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0 text-destructive underline"
+                onClick={() => openSettingsDrawer('/settings/billing')}
+              >
+                Billing Settings
+              </Button>
+              .
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Table */}

@@ -2,6 +2,7 @@ import { AlertCircle, CreditCard, ArrowRight, AlertTriangle, Ban } from 'lucide-
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 
 export interface BillingErrorData {
   error: string
@@ -37,6 +38,7 @@ const errorIcons: Record<string, typeof AlertCircle> = {
   PROVIDER_RESTRICTED: Ban,
   PROVIDER_AUTH_REQUIRED: AlertCircle,
   ENTITLEMENT_REQUIRED: CreditCard,
+  WALLET_INSUFFICIENT_FUNDS: CreditCard,
 }
 
 const errorColors: Record<string, string> = {
@@ -47,20 +49,30 @@ const errorColors: Record<string, string> = {
   PROVIDER_RESTRICTED: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
   PROVIDER_AUTH_REQUIRED: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
   ENTITLEMENT_REQUIRED: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
+  WALLET_INSUFFICIENT_FUNDS: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
 }
 
 export function BillingError({ error, onAction, className }: BillingErrorProps) {
   const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const code = error.code || 'UNKNOWN'
   const Icon = errorIcons[code] || AlertCircle
   const colorClass = errorColors[code] || 'text-muted-foreground bg-muted/50 border-border'
+
+  const openHref = (href: string) => {
+    if (href.startsWith('/settings/')) {
+      openSettingsDrawer(href)
+      return
+    }
+    navigate(href)
+  }
 
   const handleAction = () => {
     if (error.action?.href) {
       if (onAction) {
         onAction(error.action.href)
       } else {
-        navigate(error.action.href)
+        openHref(error.action.href)
       }
     }
   }
@@ -70,7 +82,7 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
       if (onAction) {
         onAction(error.secondaryAction.href)
       } else {
-        navigate(error.secondaryAction.href)
+        openHref(error.secondaryAction.href)
       }
     }
   }
@@ -175,6 +187,14 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
           message,
         }
       }
+      if (message.includes('wallet_insufficient_funds') || message.includes('insufficient ai wallet')) {
+        return {
+          error: 'wallet_insufficient_funds',
+          code: 'WALLET_INSUFFICIENT_FUNDS',
+          title: 'Insufficient AI Wallet Balance',
+          message,
+        }
+      }
     }
   }
 
@@ -204,6 +224,7 @@ export function isBillingError(err: unknown): boolean {
     'PROVIDER_RESTRICTED',
     'PROVIDER_AUTH_REQUIRED',
     'ENTITLEMENT_REQUIRED',
+    'WALLET_INSUFFICIENT_FUNDS',
   ]
 
   return billingCodes.includes(parsed.code || '')

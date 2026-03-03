@@ -1,7 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server"
 import { v } from "convex/values"
 import { hasPermission, type Role } from "./lib/permissions"
-import { checkSeatLimit } from "./lib/seatLimits"
 
 // Generate a cryptographically secure random token.
 function generateToken(): string {
@@ -50,11 +49,6 @@ export const create = mutation({
     workosInvitationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const seatCheck = await checkSeatLimit(ctx, args.orgId)
-    if (!seatCheck.allowed) {
-      throw new Error(seatCheck.message || "Seat limit reached")
-    }
-
     const inviterMemberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>

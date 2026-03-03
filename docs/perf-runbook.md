@@ -7,8 +7,8 @@ This runbook is the canonical way to profile dashboard jank in development.
 Target pages:
 - `/projects`
 - `/teams`
-- `/workspace/billing`
-- `/workspace/ai`
+- `/settings/billing`
+- `/settings/ai`
 - `/workspace/sync`
 
 Primary warnings:

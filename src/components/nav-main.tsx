@@ -9,6 +9,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
+import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 
 export interface NavMainItem {
   title: string
@@ -16,7 +17,7 @@ export interface NavMainItem {
   icon?: ComponentType<{ className?: string }>
   alpha?: boolean
   preload?: () => Promise<unknown>
-  openInSettingsWindow?: boolean
+  openInSettingsDrawer?: boolean
 }
 
 interface NavMainProps {
@@ -31,6 +32,7 @@ export const NavMain = memo(function NavMain({
   const location = useLocation()
   const currentPath = location.pathname
   const preloadedUrlsRef = useRef<Set<string>>(new Set())
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
 
   const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/"
   const normalizedCurrentPath = normalizePath(currentPath)
@@ -67,11 +69,10 @@ export const NavMain = memo(function NavMain({
   }, [])
 
   const handleItemClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>, item: NavMainItem) => {
-    if (!item.openInSettingsWindow) return
-    if (!window.electronAPI?.window?.openSettings) return
+    if (!item.openInSettingsDrawer) return
     event.preventDefault()
-    void window.electronAPI.window.openSettings(item.url)
-  }, [])
+    openSettingsDrawer(item.url)
+  }, [openSettingsDrawer])
 
   return (
     <SidebarGroup>

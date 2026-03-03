@@ -2,7 +2,6 @@ import { internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
-import { canConsumeStorage } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_LFS_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -19,24 +18,13 @@ function assertGatewaySecret(secret: string | undefined) {
 
 type SyncCtx = QueryCtx | MutationCtx
 
-async function assertPaidSyncAccess(ctx: SyncCtx, projectId: Id<"projects">) {
+async function assertSyncProjectAccess(ctx: SyncCtx, projectId: Id<"projects">) {
   const project = await ctx.db.get(projectId)
   if (!project) {
     throw new Error("Project not found")
   }
 
-  const organization = await ctx.db.get(project.organizationId)
-  if (!organization) {
-    throw new Error("Organization not found")
-  }
-
-  if (organization.subscription.plan === "free") {
-    throw new Error(
-      "Realtime sync and auto-git are not available on the Free plan. Upgrade your workspace to enable collaborative infrastructure."
-    )
-  }
-
-  return { project, organization }
+  return { project }
 }
 
 export const generateUploadUrlForServer = mutation({
@@ -46,7 +34,7 @@ export const generateUploadUrlForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    await assertPaidSyncAccess(ctx, args.projectId)
+    await assertSyncProjectAccess(ctx, args.projectId)
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -62,7 +50,7 @@ export const upsertObjectForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    const { project } = await assertPaidSyncAccess(ctx, args.projectId)
+    await assertSyncProjectAccess(ctx, args.projectId)
 
     const existing = await ctx.db
       .query("projectReplicaLfsObjects")
@@ -70,15 +58,6 @@ export const upsertObjectForServer = mutation({
         q.eq("projectId", args.projectId).eq("oid", args.oid)
       )
       .first()
-
-    const previousSize = existing?.size ?? 0
-    const additionalBytes = Math.max(0, args.size - previousSize)
-    if (additionalBytes > 0) {
-      const capacity = await canConsumeStorage(ctx, project.organizationId, additionalBytes)
-      if (!capacity.allowed) {
-        throw new Error(capacity.message || "Storage limit reached")
-      }
-    }
 
     if (existing) {
       const previousStorageId = existing.storageId
@@ -118,7 +97,7 @@ export const getObjectForServer = query({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    await assertPaidSyncAccess(ctx, args.projectId)
+    await assertSyncProjectAccess(ctx, args.projectId)
     const record = await ctx.db
       .query("projectReplicaLfsObjects")
       .withIndex("by_project_and_oid", (q) =>

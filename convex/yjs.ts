@@ -3,7 +3,6 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import * as Y from "yjs"
-import { canConsumeStorage } from "./lib/workspaceLimits"
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
@@ -20,7 +19,7 @@ function defaultRoomId(projectId: Id<"projects">): string {
   return `project:${projectId}`
 }
 
-async function getProjectWithOrganization(
+async function getProject(
   ctx: YjsSyncCtx,
   projectId: Id<"projects">
 ) {
@@ -29,43 +28,19 @@ async function getProjectWithOrganization(
     throw new Error("Project not found")
   }
 
-  const organization = await ctx.db.get(project.organizationId)
-  if (!organization) {
-    throw new Error("Organization not found")
-  }
-
-  return { project, organization }
+  return project
 }
 
 async function assertCollaborationAccess(ctx: YjsSyncCtx, projectId: Id<"projects">) {
-  const { organization } = await getProjectWithOrganization(ctx, projectId)
-  if (organization.subscription.plan === "free") {
-    throw new Error(
-      "Realtime collaboration is not available on the Free plan. Upgrade your workspace to enable collaborative editing."
-    )
-  }
-  return { organizationId: organization._id }
+  await getProject(ctx, projectId)
 }
 
 async function assertCollaborationWriteAllowed(
   ctx: MutationCtx,
   projectId: Id<"projects">,
-  additionalBytes: number
+  _additionalBytes: number
 ) {
-  const { organization } = await getProjectWithOrganization(ctx, projectId)
-  if (organization.subscription.plan === "free") {
-    throw new Error(
-      "Realtime collaboration is not available on the Free plan. Upgrade your workspace to enable collaborative editing."
-    )
-  }
-
-  const normalizedAdditional = Math.max(0, additionalBytes)
-  if (normalizedAdditional > 0) {
-    const capacity = await canConsumeStorage(ctx, organization._id, normalizedAdditional)
-    if (!capacity.allowed) {
-      throw new Error(capacity.message || "Storage limit reached")
-    }
-  }
+  await getProject(ctx, projectId)
 }
 
 async function getLatestSeq(ctx: YjsSyncCtx, projectId: Id<"projects">): Promise<number> {

@@ -4,10 +4,8 @@ import * as React from "react"
 import {
   Users,
   Shield,
-  Settings,
-  CreditCard,
-  Bot,
-  Terminal,
+  FileText,
+  Wrench,
   Cloud,
 } from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
@@ -24,6 +22,8 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
+import { useAuth } from "@/contexts/AuthContext"
+import { isPersonalWorkspace } from "@/lib/workspaces"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -47,12 +47,14 @@ const TEAM_ITEMS: NavMainItem[] = [
 ]
 
 const WORKSPACE_ITEMS: NavMainItem[] = [
-  { title: "General", url: "/workspace/general", icon: Settings },
-  { title: "Billing", url: "/workspace/billing", icon: CreditCard },
-  { title: "AI", url: "/workspace/ai", icon: Bot },
-  { title: "CLI Tools", url: "/workspace/integrations", icon: Terminal },
+  { title: "General", url: "/workspace/general", icon: FileText },
+  { title: "CLI Tools", url: "/workspace/integrations", icon: Wrench },
   { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
 ]
+
+const PERSONAL_WORKSPACE_ITEMS: NavMainItem[] = WORKSPACE_ITEMS.filter(
+  (item) => item.url !== "/workspace/general"
+)
 
 function isMacClient(): boolean {
   if (typeof navigator === "undefined") return false
@@ -63,6 +65,10 @@ function isMacClient(): boolean {
 
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
   const applyWindowControlsInset = isMacClient()
+  const { currentOrganization } = useAuth()
+  const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
+  const teamItems = personalWorkspaceSelected ? [] : TEAM_ITEMS
+  const workspaceItems = personalWorkspaceSelected ? PERSONAL_WORKSPACE_ITEMS : WORKSPACE_ITEMS
 
   return (
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
@@ -83,8 +89,8 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
           )}
         >
           <NavMain label="Platform" items={PLATFORM_ITEMS} />
-          <NavMain label="Team" items={TEAM_ITEMS} />
-          <NavMain label="Workspace" items={WORKSPACE_ITEMS} />
+          {teamItems.length > 0 ? <NavMain label="Team" items={teamItems} /> : null}
+          <NavMain label="Workspace" items={workspaceItems} />
         </SidebarContent>
         <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
           <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">

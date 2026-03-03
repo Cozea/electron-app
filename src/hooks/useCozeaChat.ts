@@ -44,7 +44,12 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
     if (!errStr.includes('{')) return null
     const jsonStr = errStr.substring(errStr.indexOf('{'))
     const parsed = JSON.parse(jsonStr)
-    if (parsed.error === 'billing_error' || parsed.error === 'provider_auth_required' || parsed.error === 'provider_restricted') {
+    if (
+      parsed.error === 'billing_error' ||
+      parsed.error === 'provider_auth_required' ||
+      parsed.error === 'provider_restricted' ||
+      parsed.error === 'wallet_insufficient_funds'
+    ) {
       return parsed
     }
   } catch {

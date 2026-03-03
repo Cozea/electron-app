@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -104,6 +104,7 @@ export function ContextSwitcher() {
     name: currentOrganization?.organizationName || 'My Workspace',
     plan: getWorkspacePlanLabel(convexOrg?.subscription?.plan),
   }
+  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
 
   const resetSyncState = useCallback(() => {
     setSyncState('idle')
@@ -189,6 +190,10 @@ export function ContextSwitcher() {
     navigate('/workspaces/select')
   }
 
+  const handleCreateWorkspace = () => {
+    navigate('/workspaces/new')
+  }
+
   const isBusy = syncState !== 'idle'
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -205,13 +210,15 @@ export function ContextSwitcher() {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                {isInProject ? (
-                  <FolderOpen className="size-4" />
-                ) : (
-                  <Building2 className="size-4" />
-                )}
-              </div>
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  {isInProject ? (
+                    <FolderOpen className="size-4" />
+                  ) : isPersonalWorkspace ? (
+                    <User className="size-4" />
+                  ) : (
+                    <Building2 className="size-4" />
+                  )}
+                </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
                   {isInProject
@@ -322,6 +329,13 @@ export function ContextSwitcher() {
                 <Plus className="size-4" />
               </div>
               <span className="text-muted-foreground font-medium">New Project</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleCreateWorkspace} className="gap-2 p-2" disabled={isBusy}>
+              <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
+                <Building2 className="size-4" />
+              </div>
+              <span className="text-muted-foreground font-medium">Create Workspace</span>
             </DropdownMenuItem>
             {organizations.length > 1 ? (
               <>

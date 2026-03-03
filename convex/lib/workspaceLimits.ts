@@ -17,16 +17,19 @@ export function getPlanProjectLimit(plan: string): number {
       // Free is local-first and intentionally constrained on shared infra.
       return 1
     case "pro":
-      // Power Duo
+      // Pro
       return 5
     case "max":
-      // Winning Team
+      // Max
       return 20
+    case "startup":
+      // Startup centralized billing - limits are not enforced yet.
+      return -1
     case "team":
-      // Legacy "team" is treated as custom.
+      // Legacy alias for Startup.
       return -1
     case "enterprise":
-      // Custom
+      // Enterprise
       return -1
     default:
       return 1
@@ -113,16 +116,19 @@ export function getPlanStorageLimit(plan: string): number {
       // Free keeps cloud infra optional/minimal.
       return 1 * 1024 * 1024 * 1024 // 1 GB
     case "pro":
-      // Power Duo
+      // Pro
       return 5 * 1024 * 1024 * 1024 // 5 GB
     case "max":
-      // Winning Team
+      // Max
       return 30 * 1024 * 1024 * 1024 // 30 GB
+    case "startup":
+      // Startup centralized billing - limits are not enforced yet.
+      return -1
     case "team":
-      // Legacy "team" is treated as custom.
+      // Legacy alias for Startup.
       return -1
     case "enterprise":
-      // Custom
+      // Enterprise
       return -1
     default:
       return 1 * 1024 * 1024 * 1024 // 1 GB
@@ -141,6 +147,8 @@ export function getPlanStorageLimitGB(plan: string): number {
       return 5
     case "max":
       return 30
+    case "startup":
+      return -1
     case "team":
       return -1
     case "enterprise":

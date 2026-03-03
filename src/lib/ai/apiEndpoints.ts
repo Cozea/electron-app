@@ -3,8 +3,7 @@
 // - In production builds, default to hosted gateway if not explicitly configured.
 const DEFAULT_AI_API_URL = import.meta.env.DEV
   ? 'http://localhost:3001/ai/chat'
-  : 'https://crosscode-auth-gateway-production.up.railway.app/ai/chat'
+  : 'https://api.cozea.app/ai/chat'
 
 export const AI_API_URL = import.meta.env.VITE_AI_API_URL || DEFAULT_AI_API_URL
 export const AI_BASE_URL = AI_API_URL.replace(/\/chat$/, '')
-

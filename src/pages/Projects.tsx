@@ -39,7 +39,6 @@ import {
   TooltipProvider,
   Tooltip,
   TooltipTrigger,
-  TooltipContent,
 } from '../components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog'
 
@@ -386,7 +385,6 @@ export function Projects() {
     : 0
   const circumference = 2 * Math.PI * 8 // radius = 8
   const strokeDashoffset = circumference - (projectPercentage / 100) * circumference
-  const isLimitReached = projectLimit && !projectLimit.isUnlimited && projectLimit.current >= projectLimit.limit
 
   const openProjectAfterSyncReview = useCallback((review: PendingSyncReview) => {
     navigate(`/projects/${review.projectSlug}`, {
@@ -798,19 +796,12 @@ export function Projects() {
               <Button
                 className="gap-2 h-7 px-2 text-xs rounded-full"
                 onClick={() => navigate('/projects/new')}
-                disabled={isLimitReached}
               >
                 <Plus className="h-3.5 w-3.5" />
                 New Project
               </Button>
             </span>
           </TooltipTrigger>
-          {isLimitReached && (
-            <TooltipContent>
-              <p>Project limit reached ({projectLimit?.current}/{projectLimit?.limit}).</p>
-              <p className="text-muted-foreground">Upgrade your plan for more projects.</p>
-            </TooltipContent>
-          )}
         </Tooltip>
       </TooltipProvider>
     </div>

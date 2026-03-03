@@ -256,14 +256,14 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "bash",
     displayName: "Run in Terminal",
-    description: "Run a shell command in the workspace.",
+    description: "Run a shell command in the workspace. Prefer non-interactive commands that exit on their own.",
     category: "code",
     inputSchema: {
       type: "object",
       required: ["command", "description"],
       properties: {
         command: {
-          description: "The command to run in the terminal.",
+          description: "The command to run in the terminal. Prefer non-interactive usage (for example --yes/-y) and avoid long-running watch/dev commands unless explicitly requested.",
           type: "string",
         },
         timeout: {
@@ -362,17 +362,16 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "todowrite",
     displayName: "Build Tasks",
-    description: "Track and update build progress tasks during project generation.",
+    description: "Manage and update task lists for progress tracking.",
     category: "data",
     inputSchema: {
       type: "object",
-      required: ["tasks"],
       properties: {
         tasks: {
           type: "array",
           items: {
             type: "object",
-            required: ["content", "activeForm", "status"],
+            required: ["content", "status"],
             properties: {
               content: { type: "string" },
               activeForm: { type: "string" },
@@ -381,7 +380,26 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
             },
           },
         },
+        todos: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["content", "status"],
+            properties: {
+              content: { type: "string" },
+              activeForm: { type: "string" },
+              status: { type: "string", enum: ["pending", "in_progress", "completed"] },
+              files: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+        tasks_json: { type: "string" },
       },
+      anyOf: [
+        { required: ["tasks"] },
+        { required: ["todos"] },
+        { required: ["tasks_json"] },
+      ],
     },
     requiresApproval: false,
     allowedRoles: ["admin", "member", "viewer"],
