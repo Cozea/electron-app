@@ -74,6 +74,7 @@ import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachme
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { validateInputAgainstSchema } from '@/components/assistant/toolSchemaValidation'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
+import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import {
   attachToolDiagnosticsToOutput,
   collectMutatingToolDiagnosticsSummary,
@@ -93,7 +94,7 @@ import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
 import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
-import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 
 // AI Elements components
 import {
@@ -154,6 +155,81 @@ interface UsageData {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+type TodowriteTaskStatus = 'pending' | 'in_progress' | 'completed'
+
+interface TodowriteTask {
+  content: string
+  activeForm: string
+  status: TodowriteTaskStatus
+  files?: string[]
+}
+
+function normalizeTodowriteTaskStatus(value: unknown): TodowriteTaskStatus | null {
+  if (value === 'pending' || value === 'in_progress' || value === 'completed') {
+    return value
+  }
+  if (value === 'in-progress' || value === 'inprogress' || value === 'active') {
+    return 'in_progress'
+  }
+  if (value === 'complete' || value === 'done') {
+    return 'completed'
+  }
+  return null
+}
+
+function normalizeTodowriteTaskList(value: unknown): TodowriteTask[] | null {
+  if (!Array.isArray(value)) return null
+
+  const tasks: TodowriteTask[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+
+    const content = typeof entry.content === 'string' ? entry.content.trim() : ''
+    const status = normalizeTodowriteTaskStatus(entry.status)
+    if (!content || !status) continue
+
+    const activeForm =
+      typeof entry.activeForm === 'string' && entry.activeForm.trim().length > 0
+        ? entry.activeForm.trim()
+        : content
+
+    const files = Array.isArray(entry.files)
+      ? entry.files
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim())
+      : undefined
+
+    tasks.push({
+      content,
+      activeForm,
+      status,
+      ...(files && files.length > 0 ? { files } : {}),
+    })
+  }
+
+  if (tasks.length === 0 && value.length > 0) {
+    return null
+  }
+
+  return tasks
+}
+
+function parseTodowriteTasksPayload(input: Record<string, unknown>): TodowriteTask[] | null {
+  const fromTasks = normalizeTodowriteTaskList(input.tasks)
+  if (fromTasks !== null) return fromTasks
+
+  const fromTodos = normalizeTodowriteTaskList(input.todos)
+  if (fromTodos !== null) return fromTodos
+
+  if (typeof input.tasks_json === 'string') {
+    const parsed = parseJsonArrayLoose(input.tasks_json)
+    const fromTasksJson = normalizeTodowriteTaskList(parsed)
+    if (fromTasksJson !== null) return fromTasksJson
+  }
+
+  return null
+}
+
 function getMessageCreatedAt(message: UIMessage): number {
   const candidate = (message as UIMessage & { createdAt?: Date | string | number }).createdAt
   if (candidate instanceof Date) return candidate.getTime()
@@ -171,7 +247,9 @@ type ChatHookResult = ReturnType<typeof useCozeaChat>
 const defaultModels: ModelOption[] = DEFAULT_MODELS
 
 export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
-  const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
+  const assistantPanelWidth = useAssistantPanelStore((state) => state.panelWidth)
   const {
     triggerClearChat,
     pendingPrompt,
@@ -667,6 +745,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Check if a tool is allowed in the current context
   const isToolAllowedInContext = useCallback((toolName: string) => {
+    if (toolName === 'todowrite') {
+      return true
+    }
+
     return isLocalToolAllowedForAgent({
       agentId: normalizedAgentId,
       toolName,
@@ -692,7 +774,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       return
     }
 
-    // Context-based gating: block all local tools when not in project context.
+    // Context-based gating: allow todowrite globally, gate other local tools by context/profile.
     if (!isToolAllowedInContext(toolCall.toolName)) {
       const addToolOutput = addToolOutputRef.current
       if (addToolOutput) {
@@ -733,6 +815,34 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
         errorText: 'Tool input must be an object.',
+      })
+      return
+    }
+
+    if (toolCall.toolName === 'todowrite') {
+      const tasks = parseTodowriteTasksPayload(toolInput)
+      if (tasks === null) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          errorText: 'todowrite failed: provide tasks, todos, or valid tasks_json.',
+        })
+        return
+      }
+
+      if (cancelledToolCallsRef.current.has(toolCall.toolCallId)) {
+        return
+      }
+
+      void addToolOutput({
+        tool: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        output: JSON.stringify({
+          success: true,
+          taskCount: tasks.length,
+          tasks,
+        }),
       })
       return
     }
@@ -1187,7 +1297,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [accessToken])
 
   const runLocalTool = useCallback(async (toolName: string, toolCallId: string, input: unknown) => {
-    // Context-based gating
+    // Context-based gating (todowrite is allowed without project context).
     if (!isToolAllowedInContext(toolName)) {
       void addToolOutput({
         state: 'output-error',
@@ -1231,6 +1341,34 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         tool: toolName,
         toolCallId,
         errorText: 'Tool input must be an object.',
+      })
+      return
+    }
+
+    if (toolName === 'todowrite') {
+      const tasks = parseTodowriteTasksPayload(toolInput)
+      if (tasks === null) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolName,
+          toolCallId,
+          errorText: 'todowrite failed: provide tasks, todos, or valid tasks_json.',
+        })
+        return
+      }
+
+      if (cancelledToolCallsRef.current.has(toolCallId)) {
+        return
+      }
+
+      void addToolOutput({
+        tool: toolName,
+        toolCallId,
+        output: JSON.stringify({
+          success: true,
+          taskCount: tasks.length,
+          tasks,
+        }),
       })
       return
     }
@@ -1426,6 +1564,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }
 
   const resizeComposerTextarea = useCallback((target: HTMLTextAreaElement) => {
+    const rect = target.getBoundingClientRect()
+    if (rect.width < 40 || rect.height === 0) {
+      return
+    }
+
     target.style.height = 'auto'
     const maxHeight = Math.floor(window.innerHeight * 0.25)
     const nextHeight = Math.min(target.scrollHeight, maxHeight)
@@ -1437,6 +1580,35 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (!composerTextareaRef.current) return
     resizeComposerTextarea(composerTextareaRef.current)
   }, [input, resizeComposerTextarea])
+
+  useEffect(() => {
+    if (!composerTextareaRef.current) return
+
+    const textarea = composerTextareaRef.current
+
+    if (assistantPanelMode === 'closed') {
+      textarea.style.height = 'auto'
+      textarea.style.overflowY = 'hidden'
+      return
+    }
+
+    const resizeNow = () => {
+      if (!composerTextareaRef.current) return
+      resizeComposerTextarea(composerTextareaRef.current)
+    }
+
+    const immediateFrame = requestAnimationFrame(resizeNow)
+    const delayedFrame = requestAnimationFrame(() => {
+      requestAnimationFrame(resizeNow)
+    })
+    const delayedTimeout = window.setTimeout(resizeNow, 340)
+
+    return () => {
+      window.cancelAnimationFrame(immediateFrame)
+      window.cancelAnimationFrame(delayedFrame)
+      window.clearTimeout(delayedTimeout)
+    }
+  }, [assistantPanelMode, assistantPanelWidth, resizeComposerTextarea])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1466,6 +1638,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                   message={message}
                   toolsByName={toolsByName}
                   status={status}
+                  showTodowriteTools
                   shouldRequireLocalApproval={shouldRequireLocalApproval}
                   onApproveTool={handleApprovedTool}
                   onDenyTool={handleDeniedTool}
@@ -1510,7 +1683,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
                   variant="outline"
                   size="sm"
                   className="h-7 shrink-0 border-destructive/40 bg-transparent px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => navigate('/workspace/ai')}
+                  onClick={() => openSettingsDrawer('/settings/ai')}
                 >
                   AI Settings
                 </Button>

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import type { OrganizationMembership } from '../types/electron'
 import { fetchWithAbort } from '@/lib/abort'
 
-const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://api.cozea.app'
 const STORAGE_KEY_TOKEN = 'auth_token'
 
 interface Organization {

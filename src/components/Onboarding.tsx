@@ -1,75 +1,25 @@
 import { useState } from 'react'
-import { useMutation } from 'convex/react'
 import { Sparkles, Building2, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
-import { api } from '../../convex/_generated/api'
-import type { OrganizationMembership } from '@/types/electron'
-
-const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
 
 export function Onboarding() {
-  const { user, accessToken, setOrganizations, setCurrentOrganization } = useAuth()
-  const syncOrgToConvex = useMutation(api.organizations.syncFromWorkOS)
-  const syncMembershipToConvex = useMutation(api.organizations.syncMembershipFromWorkOS)
+  const { user, createOrganizationWorkspace } = useAuth()
   const [step, setStep] = useState<'welcome' | 'create-org'>('welcome')
   const [orgName, setOrgName] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleCreateOrg = async () => {
-    if (!orgName.trim() || !accessToken) return
+    if (!orgName.trim()) return
 
     setIsCreating(true)
     setError(null)
 
     try {
-      const response = await fetch(`${AUTH_SERVER_URL}/organizations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ name: orgName.trim() }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create organization')
-      }
-
-      const data = await response.json()
-
-      // Create membership object from response
-      const newMembership: OrganizationMembership = {
-        id: data.membership.id,
-        organizationId: data.organization.id,
-        organizationName: data.organization.name,
-        role: data.membership.role,
-        status: data.membership.status,
-      }
-
-      // Sync to Convex - this MUST succeed for billing to work
-      await syncOrgToConvex({
-        workosId: data.organization.id,
-        name: data.organization.name,
-      })
-      await syncMembershipToConvex({
-        workosId: data.membership.id,
-        workosOrgId: data.organization.id,
-        workosUserId: user!.id,
-        role: data.membership.role,
-        status: data.membership.status,
-      })
-
-      // Persist to local session file so it survives app restart
-      await window.electronAPI.auth.updateOrganizations([newMembership])
-
-      // Update auth context with new org
-      setOrganizations([newMembership])
-      setCurrentOrganization(newMembership)
+      await createOrganizationWorkspace(orgName)
     } catch (err) {
       console.error('Failed to create organization:', err)
       setError(err instanceof Error ? err.message : 'Failed to create organization')

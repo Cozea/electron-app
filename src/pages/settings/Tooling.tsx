@@ -18,6 +18,10 @@ interface ToolingFamily {
   requiredAny?: RuntimeKind[]
 }
 
+interface ToolingProps {
+  surface?: 'page' | 'drawer'
+}
+
 const TOOLING_FAMILIES: ToolingFamily[] = [
   {
     id: 'js-web',
@@ -107,7 +111,7 @@ function RuntimeProgressRing({ progress }: { progress: number }) {
   )
 }
 
-export function Tooling() {
+export function Tooling({ surface = 'page' }: ToolingProps) {
   const { user, logout } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -240,14 +244,14 @@ export function Tooling() {
     </Button>
   )
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Tooling' }]}
-      header={headerActions}
+  const content = (
+    <div
+      className={
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
+          : 'max-w-6xl space-y-6 px-6 pt-6 pb-8'
+      }
     >
-      <div className="max-w-6xl space-y-6 px-6 pt-6 pb-8">
         <div className="rounded-2xl bg-secondary/70 px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -478,6 +482,20 @@ export function Tooling() {
           </div>
         </section>
       </div>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'Tooling' }]}
+      header={headerActions}
+    >
+      {content}
     </DashboardLayout>
   )
 }

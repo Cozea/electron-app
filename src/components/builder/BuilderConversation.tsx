@@ -282,41 +282,6 @@ const truncateTerminalOutput = (output: string) => {
 const appendTerminalOutput = (current: string, chunk: string) =>
   truncateTerminalOutput(current + chunk)
 
-type TerminalExecutionStatus = 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled'
-
-function getTerminalExecutionState(args: {
-  running: boolean
-  exitCode: number | null
-  timedOut: boolean
-  cancelled: boolean
-}): { success: boolean; status: TerminalExecutionStatus; error?: string } {
-  if (args.running) {
-    return { success: true, status: 'running' }
-  }
-  if (args.cancelled) {
-    return {
-      success: false,
-      status: 'cancelled',
-      error: 'Command was cancelled by user.',
-    }
-  }
-  if (args.timedOut) {
-    return {
-      success: false,
-      status: 'timed_out',
-      error: 'Command timed out before completion.',
-    }
-  }
-  if (typeof args.exitCode === 'number' && args.exitCode !== 0) {
-    return {
-      success: false,
-      status: 'failed',
-      error: `Command exited with code ${args.exitCode}.`,
-    }
-  }
-  return { success: true, status: 'completed' }
-}
-
 type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 export function BuilderConversation({
@@ -1054,7 +1019,7 @@ Now begin by defining your task list with todowrite, then start working through 
         return
       }
 
-      if (toolName === 'bash' && localPath) {
+      if (toolName === 'bash') {
         const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
         const description = toolInput && typeof toolInput.description === 'string' ? toolInput.description : ''
         if (!command) {
@@ -1073,209 +1038,6 @@ Now begin by defining your task list with todowrite, then start working through 
           })
           return
         }
-        const timeout = typeof toolInput?.timeout === 'number' ? toolInput.timeout : 120000 // 2 min default
-        const requestedWorkdir =
-          toolInput && typeof toolInput.workdir === 'string' ? toolInput.workdir : ''
-        const terminalCwd = requestedWorkdir ? normalizeProjectPath(requestedWorkdir) : localPath
-
-        try {
-          // Try to create a PTY terminal session for interactive command execution
-          let createResult = await window.electronAPI.terminal.create({
-            projectPath: localPath,
-            cwd: terminalCwd,
-            cols: 120,
-            rows: 30,
-          })
-
-          // Fallback to project root if specified workdir does not exist
-          if (!createResult.success && terminalCwd !== localPath && createResult.error?.includes('does not exist')) {
-            console.warn('[Builder] Terminal working directory does not exist, falling back to project root', { terminalCwd, localPath })
-            createResult = await window.electronAPI.terminal.create({
-              projectPath: localPath,
-              cwd: localPath,
-              cols: 120,
-              rows: 30,
-            })
-          }
-
-          if (!createResult.success || !createResult.terminalId) {
-            const detail = createResult.error?.trim() || 'No terminalId returned from main process'
-            console.error('[Builder][bash] terminal.create failed', {
-              projectPath: localPath,
-              cwd: terminalCwd,
-              command,
-              createResult,
-            })
-            throw new Error(`Failed to create terminal session: ${detail}`)
-          }
-
-          const terminalId = createResult.terminalId
-          let output = ''
-          let exitCode: number | null = null
-          let completed = false
-          let unsubOutput: (() => void) | null = null
-          let unsubExit: (() => void) | null = null
-          let listenersReleased = false
-
-          const releaseListeners = () => {
-            if (listenersReleased) return
-            listenersReleased = true
-            if (unsubOutput) {
-              unsubOutput()
-              unsubOutput = null
-            }
-            if (unsubExit) {
-              unsubExit()
-              unsubExit = null
-            }
-            terminalListenerCleanupRef.current.delete(toolCallId)
-          }
-
-          terminalListenerCleanupRef.current.set(toolCallId, releaseListeners)
-          terminalOutputByIdRef.current.set(terminalId, {
-            id: terminalId,
-            command,
-            stdout: '',
-            stderr: '',
-            startedAt: Date.now(),
-            endedAt: null,
-            exitCode: null,
-            timedOut: false,
-            cancelled: false,
-          })
-
-          // Track this terminal session for live UI rendering
-          setTerminalSessions(prev => {
-            const next = new Map(prev)
-            next.set(toolCallId, terminalId)
-            return next
-          })
-
-          // Set up output listener
-          const outputHandler = (event: { terminalId: string; data: string }) => {
-            if (event.terminalId === terminalId) {
-              output = appendTerminalOutput(output, event.data)
-              const session = terminalOutputByIdRef.current.get(terminalId)
-              if (session) {
-                session.stdout = appendTerminalOutput(session.stdout, event.data)
-              }
-            }
-          }
-
-          // Set up exit listener
-          const exitPromise = new Promise<{ exitCode: number | null }>((resolve) => {
-            const exitHandler = (event: { terminalId: string; exitCode: number | null }) => {
-              if (event.terminalId === terminalId) {
-                completed = true
-                const session = terminalOutputByIdRef.current.get(terminalId)
-                if (session) {
-                  session.exitCode = event.exitCode ?? null
-                  session.endedAt = Date.now()
-                }
-                // Remove from active sessions when terminal exits
-                setTerminalSessions(prev => {
-                  const next = new Map(prev)
-                  next.delete(toolCallId)
-                  return next
-                })
-                releaseListeners()
-                resolve({ exitCode: event.exitCode })
-              }
-            }
-            unsubExit = window.electronAPI.terminal.onExit(exitHandler)
-          })
-
-          unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
-
-          // Send the command to the terminal
-          setTimeout(() => {
-            window.electronAPI.terminal.input({
-              terminalId,
-              data: command + '\r',
-            })
-          }, 100)
-
-          const timeoutPromise = timeout > 0
-            ? new Promise<{ exitCode: number | null }>((resolve) => {
-                setTimeout(() => {
-                  if (!completed) {
-                    resolve({ exitCode: -1 })
-                  }
-                }, timeout)
-              })
-            : new Promise<never>(() => {}) // Never resolves if no timeout
-
-          const result = await Promise.race([exitPromise, timeoutPromise])
-          exitCode = result.exitCode
-
-          // If timed out, kill the process
-          if (!completed && timeout > 0) {
-            const session = terminalOutputByIdRef.current.get(terminalId)
-            if (session) {
-              session.timedOut = true
-              session.exitCode = -1
-              session.endedAt = Date.now()
-            }
-            try {
-              await window.electronAPI.terminal.kill({ terminalId })
-            } catch {
-              // Ignore kill errors
-            }
-            // Remove from active sessions on timeout
-            setTerminalSessions(prev => {
-              const next = new Map(prev)
-              next.delete(toolCallId)
-              return next
-            })
-            output = appendTerminalOutput(
-              output,
-              '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
-            )
-          }
-
-          releaseListeners()
-
-          if (cancelledToolCallsRef.current.has(toolCallId)) return
-          const timedOut = !completed && timeout > 0
-          const executionState = getTerminalExecutionState({
-            running: false,
-            exitCode,
-            timedOut,
-            cancelled: false,
-          })
-          void addToolOutput({
-            tool: toolName,
-            toolCallId,
-            output: JSON.stringify({
-              id: terminalId,
-              command,
-              stdout: output,
-              stderr: '',
-              exitCode,
-              timedOut,
-              cancelled: false,
-              success: executionState.success,
-              status: executionState.status,
-              ...(executionState.error ? { error: executionState.error } : {}),
-            }),
-          })
-        } catch (err) {
-          // Remove from active sessions on error
-          terminalListenerCleanupRef.current.get(toolCallId)?.()
-          setTerminalSessions(prev => {
-            const next = new Map(prev)
-            next.delete(toolCallId)
-            return next
-          })
-          if (cancelledToolCallsRef.current.has(toolCallId)) return
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: err instanceof Error ? err.message : 'Failed to run command',
-          })
-        }
-        return
       }
 
       if (!toolInput) {
@@ -1291,6 +1053,7 @@ Now begin by defining your task list with todowrite, then start working through 
       const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
         toolName,
         input: toolInput,
+        projectPath: localPath,
         toolCallId,
       })
 

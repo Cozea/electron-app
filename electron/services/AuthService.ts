@@ -33,7 +33,7 @@ export class AuthService {
   private readonly waitlistMessage = "You're on the waitlist. We'll notify you when access is ready."
 
     private constructor() {
-        this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+        this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://api.cozea.app'
         // In electron-vite dev, ELECTRON_RENDERER_URL is set; VITE_DEV_SERVER_URL may be absent.
         const devServerUrl = process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
         this.isProduction = !devServerUrl

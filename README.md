@@ -105,7 +105,7 @@ Server (Railway/Fastify):
 - `REDIS_URL` - Redis backing store for rate limiting.
 - `STRIPE_SECRET_KEY` - Stripe API key.
 - `STRIPE_WEBHOOK_SECRET` - Stripe webhook verification secret.
-- `STRIPE_PRICE_CROSSCODE_PRO`, `STRIPE_PRICE_CROSSCODE_MAX`, `STRIPE_PRICE_CROSSCODE_TEAM` - Optional fallback price IDs if Convex catalog is not set.
+- `STRIPE_PRICE_COZEA_PRO_MONTHLY`, `STRIPE_PRICE_COZEA_PRO_YEARLY`, `STRIPE_PRICE_COZEA_MAX_MONTHLY`, `STRIPE_PRICE_COZEA_MAX_YEARLY`, `STRIPE_PRICE_COZEA_STARTUP_MONTHLY`, `STRIPE_PRICE_COZEA_STARTUP_YEARLY` - Optional fallback price IDs if Convex catalog is not set.
 - `STRIPE_PRICE_CREDITS_1000`, `STRIPE_PRICE_CREDITS_5000`, `STRIPE_PRICE_CREDITS_15000`, `STRIPE_PRICE_CREDITS_50000` - Optional fallback price IDs for credit packs.
 - `ALLOWED_ORIGINS` - Comma-separated CORS allowlist (include `app://` for Electron).
 

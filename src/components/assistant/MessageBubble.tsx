@@ -44,6 +44,7 @@ export interface MessageBubbleProps {
   message: UIMessage
   toolsByName: Map<string, MessageToolMeta>
   status: 'ready' | 'submitted' | 'streaming' | 'error'
+  showTodowriteTools?: boolean
   shouldRequireLocalApproval?: (toolMeta?: MessageToolMeta) => boolean
   onApproveTool?: (toolName: string, toolCallId: string, input: unknown, approvalId?: string) => void
   onDenyTool?: (toolName: string, toolCallId: string, approvalId?: string) => void
@@ -138,6 +139,7 @@ function MessageBubbleComponent({
   message,
   toolsByName,
   status,
+  showTodowriteTools = false,
   shouldRequireLocalApproval,
   onApproveTool,
   onDenyTool,
@@ -263,10 +265,13 @@ function MessageBubbleComponent({
 
             // Special handling for task-based tools (like Claude Code's TodoWrite)
             const isTaskTool = toolName === 'todowrite'
-            const hasTaskInput = Array.isArray(toolInput?.tasks) || typeof toolInput?.tasks_json === 'string'
+            const hasTaskInput =
+              Array.isArray(toolInput?.tasks) ||
+              Array.isArray(toolInput?.todos) ||
+              typeof toolInput?.tasks_json === 'string'
 
-            // Skip rendering todowrite entirely - it's shown in the controls pill
-            if (toolName === 'todowrite') {
+            // Builder surface keeps todowrite in the controls pill.
+            if (toolName === 'todowrite' && !showTodowriteTools) {
               return null
             }
             // Special handling for terminal tools
@@ -513,10 +518,12 @@ function extractTerminalOutput(output: unknown): string {
 
 function extractTasksFromInput(input: unknown): TaskData[] {
   const payload = isRecord(input) ? input : null
-  // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
+  // Handle tasks/todos arrays and tasks_json compatibility payloads.
   let tasks: unknown[] = []
   if (payload && Array.isArray(payload.tasks)) {
     tasks = payload.tasks
+  } else if (payload && Array.isArray(payload.todos)) {
+    tasks = payload.todos
   } else if (payload && typeof payload.tasks_json === 'string') {
     const parsed = parseJsonArrayLoose(payload.tasks_json)
     if (parsed) tasks = parsed
@@ -551,7 +558,13 @@ function extractTasksFromToolOutput(output: unknown): TaskData[] {
   }
 
   const taskContainer = isRecord(payload) ? payload : null
-  const tasks = Array.isArray(taskContainer?.tasks) ? taskContainer?.tasks : []
+  const tasks = Array.isArray(taskContainer?.tasks)
+    ? taskContainer.tasks
+    : Array.isArray(taskContainer?.todos)
+      ? taskContainer.todos
+      : typeof taskContainer?.tasks_json === 'string'
+        ? parseJsonArrayLoose(taskContainer.tasks_json) ?? []
+        : []
   return tasks
     .filter(isRecord)
     .map((task) => {

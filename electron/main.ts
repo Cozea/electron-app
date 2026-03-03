@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import { cancelToolRuns, runTool } from './tools'
 import { autoUpdater } from 'electron-updater'
 import * as pty from 'node-pty' // Still used for DevServer PTY
-import type { AppSettings } from '../shared/electronApiTypes'
+import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
 
@@ -29,9 +29,18 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
 import { loadSyncState } from './services/syncReplicaStore'
 
+interface DevServerProcessEntry {
+  runId: string
+  projectPath: string
+  command: string
+  port: number
+  startedAt: number
+  ptyProcess: pty.IPty
+}
+
 // Dev server process management
-// Maps projectPath to running PTY instance for proper terminal emulation
-const devServerProcesses = new Map<string, pty.IPty>()
+// Maps projectPath to running PTY-backed dev server metadata.
+const devServerProcesses = new Map<string, DevServerProcessEntry>()
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -65,6 +74,41 @@ function matchesProtocolUrl(url: string, routePrefix: string): boolean {
 
 function findProtocolArg(commandLine: string[]): string | undefined {
   return commandLine.find((arg) => SUPPORTED_PROTOCOLS.some((scheme) => arg.startsWith(`${scheme}://`)))
+}
+
+function extractNavigationPath(protocolUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(protocolUrl)
+    const scheme = parsedUrl.protocol.replace(':', '')
+    if (!SUPPORTED_PROTOCOLS.includes(scheme)) return null
+
+    const host = parsedUrl.hostname.replace(/^\/+/, '')
+    const pathname = parsedUrl.pathname.replace(/^\/+/, '')
+    const routePath = `/${[host, pathname].filter(Boolean).join('/')}`.replace(/\/{2,}/g, '/')
+    if (routePath === '/' || routePath.startsWith('/auth/callback') || routePath.startsWith('/billing/') || routePath.startsWith('/oauth/callback')) {
+      return null
+    }
+
+    return `${routePath}${parsedUrl.search}${parsedUrl.hash}`
+  } catch {
+    return null
+  }
+}
+
+function sendNavigateEvent(path: string): void {
+  const targetWindow = win
+  if (!isBrowserWindowAlive(targetWindow)) return
+
+  const emitNavigate = () => {
+    if (targetWindow.isDestroyed()) return
+    targetWindow.webContents.send('navigate', path)
+  }
+
+  if (targetWindow.webContents.isLoadingMainFrame()) {
+    targetWindow.webContents.once('did-finish-load', emitNavigate)
+  } else {
+    emitNavigate()
+  }
 }
 
 // Lazy-loaded paths (app.getPath not available at module load time in ESM)
@@ -155,6 +199,63 @@ function isLoopbackPreviewUrl(rawUrl: string): boolean {
 
 let previewHeaderPolicyInstalled = false
 let previewHeaderCompatDisabledLogged = false
+const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
+const PREVIEW_HEADER_DIAGNOSTIC_TTL_MS = 60_000
+const PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES = 400
+
+function prunePreviewHeaderDiagnostics(now = Date.now()): void {
+  for (const [url, entry] of previewHeaderDiagnostics.entries()) {
+    if (now - entry.capturedAt > PREVIEW_HEADER_DIAGNOSTIC_TTL_MS) {
+      previewHeaderDiagnostics.delete(url)
+    }
+  }
+
+  if (previewHeaderDiagnostics.size <= PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES) {
+    return
+  }
+
+  const sortedEntries = Array.from(previewHeaderDiagnostics.entries()).sort(
+    (a, b) => a[1].capturedAt - b[1].capturedAt
+  )
+  const overflow = sortedEntries.length - PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES
+  for (let index = 0; index < overflow; index += 1) {
+    previewHeaderDiagnostics.delete(sortedEntries[index][0])
+  }
+}
+
+function rememberPreviewHeaderDiagnostic(entry: PreviewHeaderDiagnostic): void {
+  previewHeaderDiagnostics.set(entry.url, entry)
+  prunePreviewHeaderDiagnostics(entry.capturedAt)
+}
+
+function getLatestPreviewHeaderDiagnostic(url: string): PreviewHeaderDiagnostic | null {
+  prunePreviewHeaderDiagnostics()
+  const direct = previewHeaderDiagnostics.get(url)
+  if (direct) return direct
+
+  let targetOrigin: string | null = null
+  try {
+    targetOrigin = new URL(url).origin
+  } catch {
+    targetOrigin = null
+  }
+  if (!targetOrigin) return null
+
+  let latest: PreviewHeaderDiagnostic | null = null
+  for (const diagnostic of previewHeaderDiagnostics.values()) {
+    let diagnosticOrigin: string | null = null
+    try {
+      diagnosticOrigin = new URL(diagnostic.url).origin
+    } catch {
+      diagnosticOrigin = null
+    }
+    if (!diagnosticOrigin || diagnosticOrigin !== targetOrigin) continue
+    if (!latest || diagnostic.capturedAt > latest.capturedAt) {
+      latest = diagnostic
+    }
+  }
+  return latest
+}
 
 function installPreviewHeaderCompatibilityPolicy(): void {
   if (previewHeaderPolicyInstalled) return
@@ -171,12 +272,22 @@ function installPreviewHeaderCompatibilityPolicy(): void {
       return
     }
 
+    const resourceType = details.resourceType === 'mainFrame' ? 'mainFrame' : 'subFrame'
+
     const previewHeaderCompatibilityEnabled = loadSettings().previewHeaderCompatibilityEnabled
     if (!previewHeaderCompatibilityEnabled) {
       if (!previewHeaderCompatDisabledLogged) {
         previewHeaderCompatDisabledLogged = true
         console.log('[PreviewHeaders] Localhost header compatibility policy is disabled by settings')
       }
+      rememberPreviewHeaderDiagnostic({
+        url: details.url,
+        resourceType,
+        compatibilityEnabled: false,
+        rewritten: false,
+        removed: [],
+        capturedAt: Date.now(),
+      })
       callback({})
       return
     }
@@ -186,6 +297,14 @@ function installPreviewHeaderCompatibilityPolicy(): void {
     }
 
     if (!details.responseHeaders) {
+      rememberPreviewHeaderDiagnostic({
+        url: details.url,
+        resourceType,
+        compatibilityEnabled: true,
+        rewritten: false,
+        removed: [],
+        capturedAt: Date.now(),
+      })
       callback({})
       return
     }
@@ -219,6 +338,14 @@ function installPreviewHeaderCompatibilityPolicy(): void {
     }
 
     if (!removedXFrameOptions && !removedFrameAncestors) {
+      rememberPreviewHeaderDiagnostic({
+        url: details.url,
+        resourceType,
+        compatibilityEnabled: true,
+        rewritten: false,
+        removed: [],
+        capturedAt: Date.now(),
+      })
       callback({})
       return
     }
@@ -226,6 +353,15 @@ function installPreviewHeaderCompatibilityPolicy(): void {
     const removedHeaderNames: string[] = []
     if (removedXFrameOptions) removedHeaderNames.push('x-frame-options')
     if (removedFrameAncestors) removedHeaderNames.push('content-security-policy:frame-ancestors')
+
+    rememberPreviewHeaderDiagnostic({
+      url: details.url,
+      resourceType,
+      compatibilityEnabled: true,
+      rewritten: true,
+      removed: removedHeaderNames,
+      capturedAt: Date.now(),
+    })
 
     console.log('[PreviewHeaders] Rewrote localhost preview response headers', {
       url: details.url,
@@ -243,11 +379,12 @@ function installPreviewHeaderCompatibilityPolicy(): void {
 type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
-let settingsWindow: AppBrowserWindow | null = null
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
+  '/settings/billing',
+  '/settings/ai',
   '/settings/appearance',
   '/settings/storage',
   '/settings/tooling',
@@ -255,31 +392,23 @@ const SETTINGS_ROUTES = new Set([
 
 function normalizeSettingsRoute(route?: string): string {
   if (!route) return DEFAULT_SETTINGS_ROUTE
-  const [pathOnly] = route.split('?')
+  const queryIndex = route.indexOf('?')
+  const pathOnly = queryIndex === -1 ? route : route.slice(0, queryIndex)
+  const query = queryIndex === -1 ? '' : route.slice(queryIndex + 1)
   const withLeadingSlash = pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`
   const normalizedPath = withLeadingSlash.replace(/\/+$/, '') || '/'
-  return SETTINGS_ROUTES.has(normalizedPath) ? normalizedPath : DEFAULT_SETTINGS_ROUTE
-}
-
-function navigateRendererWindow(targetWindow: AppBrowserWindow, route: string): void {
-  const sendNavigate = () => {
-    if (targetWindow.isDestroyed()) return
-    targetWindow.webContents.send('navigate', route)
+  if (!SETTINGS_ROUTES.has(normalizedPath)) {
+    return DEFAULT_SETTINGS_ROUTE
   }
 
-  if (targetWindow.webContents.isLoadingMainFrame()) {
-    targetWindow.webContents.once('did-finish-load', sendNavigate)
-    return
-  }
-
-  sendNavigate()
+  return query ? `${normalizedPath}?${query}` : normalizedPath
 }
 
 function isBrowserWindowAlive(windowRef: AppBrowserWindow | null): windowRef is AppBrowserWindow {
   return Boolean(windowRef && !windowRef.isDestroyed())
 }
 
-function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main' | 'settings'): void {
+function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main'): void {
   targetWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     const isPreviewLog =
       message.includes('[PreviewBridge]') ||
@@ -318,98 +447,30 @@ function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main'
   )
 }
 
-function createSettingsWindow(initialRoute: string): AppBrowserWindow {
-  const isMac = process.platform === 'darwin'
-  const isWindows = process.platform === 'win32'
-  const isReleaseBuild = app.isPackaged
-  const themedOpaqueBackground = nativeTheme.shouldUseDarkColors ? '#101014' : '#f7f7f8'
-  const parentWindow = isBrowserWindowAlive(win) ? win : undefined
-
-  const nextWindow = new BrowserWindow({
-    width: 940,
-    height: 700,
-    minWidth: 820,
-    minHeight: 580,
-    show: false,
-    parent: parentWindow,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      devTools: !isReleaseBuild,
-      additionalArguments: ['--cozea-window=settings'],
-    },
-    transparent: isMac,
-    backgroundColor: isMac ? '#00000000' : themedOpaqueBackground,
-    vibrancy: isMac ? 'sidebar' : undefined,
-    visualEffectState: isMac ? 'active' : undefined,
-    backgroundMaterial: isWindows ? 'mica' : undefined,
-    titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
-    titleBarOverlay: isWindows
-      ? {
-          color: '#00000000',
-          symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f6' : '#111827',
-          height: 36,
-        }
-      : false,
-    trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
-  })
-
-  settingsWindow = nextWindow
-  attachPreviewDebugLogging(nextWindow, 'settings')
-
-  nextWindow.on('closed', () => {
-    if (settingsWindow === nextWindow) {
-      settingsWindow = null
-    }
-  })
-
-  if (isReleaseBuild) {
-    nextWindow.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
-        void shell.openExternal(url)
-      }
-      return { action: 'deny' }
-    })
-
-    nextWindow.webContents.on('will-navigate', (event, url) => {
-      event.preventDefault()
-      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
-        void shell.openExternal(url)
-      }
-    })
-  }
-
-  nextWindow.once('ready-to-show', () => {
-    nextWindow.show()
-    nextWindow.focus()
-  })
-
-  if (VITE_DEV_SERVER_URL) {
-    void nextWindow.loadURL(`${VITE_DEV_SERVER_URL}${initialRoute}`)
-  } else {
-    void nextWindow.loadFile(path.join(RENDERER_DIST, 'index.html'))
-    nextWindow.webContents.once('did-finish-load', () => {
-      navigateRendererWindow(nextWindow, initialRoute)
-    })
-  }
-
-  return nextWindow
-}
-
 async function openSettingsWindow(route?: string): Promise<{ success: boolean; error?: string }> {
   const targetRoute = normalizeSettingsRoute(route)
+  const targetWindow = win
 
   try {
-    if (isBrowserWindowAlive(settingsWindow)) {
-      if (settingsWindow.isMinimized()) settingsWindow.restore()
-      settingsWindow.show()
-      settingsWindow.focus()
-      navigateRendererWindow(settingsWindow, targetRoute)
-      return { success: true }
+    if (!isBrowserWindowAlive(targetWindow)) {
+      return { success: false, error: 'Main window is not available.' }
     }
 
-    createSettingsWindow(targetRoute)
+    if (targetWindow.isMinimized()) targetWindow.restore()
+    targetWindow.show()
+    targetWindow.focus()
+
+    const sendOpenSettings = () => {
+      if (targetWindow.isDestroyed()) return
+      targetWindow.webContents.send('settings:open', targetRoute)
+    }
+
+    if (targetWindow.webContents.isLoadingMainFrame()) {
+      targetWindow.webContents.once('did-finish-load', sendOpenSettings)
+    } else {
+      sendOpenSettings()
+    }
+
     return { success: true }
   } catch (err) {
     return {
@@ -572,10 +633,7 @@ function handleBillingCallback(url: string): void {
 
   // Focus the window
   if (win) {
-    if (win.isMinimized()) win.restore()
-    win.focus()
-
-    // Navigate to billing page with appropriate query params
+    // Open the billing settings section with callback status.
     const isSuccess = urlPath === '/success' || urlPath === '//success'
     const isCanceled = urlPath === '/canceled' || urlPath === '//canceled'
 
@@ -587,16 +645,7 @@ function handleBillingCallback(url: string): void {
     }
 
     if (queryString) {
-      if (VITE_DEV_SERVER_URL) {
-        win.loadURL(`${VITE_DEV_SERVER_URL}/workspace/billing${queryString}`)
-      } else {
-        // For production, load index.html - the SPA will handle routing
-        win.loadFile(path.join(RENDERER_DIST, 'index.html'))
-        // Send a message to navigate after the page loads
-        win.webContents.once('did-finish-load', () => {
-          win?.webContents.send('navigate', `/workspace/billing${queryString}`)
-        })
-      }
+      void openSettingsWindow(`/settings/billing${queryString}`)
     }
   }
 }
@@ -646,6 +695,11 @@ app.on('open-url', async (event, url) => {
         error: err instanceof Error ? err.message : 'OAuth callback failed',
       })
     }
+  } else {
+    const navigationPath = extractNavigationPath(url)
+    if (navigationPath) {
+      sendNavigateEvent(navigationPath)
+    }
   }
 
   // Focus the window
@@ -693,6 +747,11 @@ if (!gotTheLock) {
               error: err instanceof Error ? err.message : 'OAuth callback failed',
             })
           })
+      } else {
+        const navigationPath = extractNavigationPath(url)
+        if (navigationPath) {
+          sendNavigateEvent(navigationPath)
+        }
       }
     }
   })
@@ -858,6 +917,7 @@ registerCoreHandlers(ipcMain, {
 
 registerPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
+  getLatestPreviewHeaderDiagnostic,
 })
 
 registerSettingsStorageHandlers(ipcMain, {
@@ -885,13 +945,12 @@ registerContextMenuHandlers(ipcMain, {
 
 app.on('window-all-closed', () => {
   win = null
-  settingsWindow = null
 
   // Kill all running dev servers when app closes
-  for (const [projectPath, ptyProcess] of devServerProcesses) {
-    console.log(`[DevServer] Killing PTY for ${projectPath}`)
+  for (const [projectPath, processEntry] of devServerProcesses) {
+    console.log(`[DevServer] Killing PTY for ${projectPath} (runId=${processEntry.runId})`)
     try {
-      ptyProcess.kill()
+      processEntry.ptyProcess.kill()
     } catch {
       // Ignore errors when killing on shutdown
     }

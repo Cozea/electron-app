@@ -11,16 +11,19 @@ export function getPlanMemberLimit(plan: string): number {
       // Free is intentionally solo-only.
       return 1
     case "pro":
-      // Power Duo
+      // Pro
       return 2
     case "max":
-      // Winning Team
+      // Max
       return 10
+    case "startup":
+      // Startup uses explicit paid-seat assignment for AI/sync, not member limits.
+      return -1
     case "team":
-      // Legacy "team" is treated as custom.
+      // Legacy alias for Startup.
       return -1
     case "enterprise":
-      // Custom
+      // Enterprise
       return -1
     default:
       return 1

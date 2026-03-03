@@ -177,6 +177,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('navigate', handler)
       return () => ipcRenderer.removeListener('navigate', handler)
     },
+    onOpenSettings: (callback: (route: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, route: string) => callback(route)
+      ipcRenderer.on('settings:open', handler)
+      return () => ipcRenderer.removeListener('settings:open', handler)
+    },
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -201,6 +206,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),
+    probeUrl: (options: { url: string; timeoutMs?: number }) => ipcRenderer.invoke('preview:probeUrl', options),
     captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
       ipcRenderer.invoke('preview:captureScreenshot', options),
   },
@@ -393,7 +399,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   devServer: {
-    start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number }) =>
+    start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number; runId?: string }) =>
       ipcRenderer.invoke('devServer:start', options),
     stop: (options: { projectPath: string }) =>
       ipcRenderer.invoke('devServer:stop', options),
@@ -401,13 +407,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devServer:resize', options),
     isRunning: (options: { projectPath: string }) =>
       ipcRenderer.invoke('devServer:isRunning', options),
-    onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => callback(data)
+    onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:output', handler)
       return () => ipcRenderer.removeListener('devServer:output', handler)
     },
-    onExit: (callback: (data: { projectPath: string; code: number | null }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; code: number | null }) => callback(data)
+    onExit: (callback: (data: { projectPath: string; code: number | null; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { projectPath: string; code: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:exit', handler)
       return () => ipcRenderer.removeListener('devServer:exit', handler)
     },
@@ -418,7 +424,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number }) =>
+    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string }) =>
       ipcRenderer.invoke('terminal:create', options),
     input: (options: { terminalId: string; data: string }) =>
       ipcRenderer.invoke('terminal:input', options),
@@ -432,13 +438,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('terminal:list', options),
     getInfo: (options: { terminalId: string }) =>
       ipcRenderer.invoke('terminal:getInfo', options),
-    onOutput: (callback: (data: { terminalId: string; data: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; data: string }) => callback(data)
+    onOutput: (callback: (data: { terminalId: string; data: string; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; data: string; runId?: string }) => callback(data)
       ipcRenderer.on('terminal:output', handler)
       return () => ipcRenderer.removeListener('terminal:output', handler)
     },
-    onExit: (callback: (data: { terminalId: string; exitCode: number | null }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; exitCode: number | null }) => callback(data)
+    onExit: (callback: (data: { terminalId: string; exitCode: number | null; runId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; exitCode: number | null; runId?: string }) => callback(data)
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
     },

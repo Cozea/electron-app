@@ -35,7 +35,11 @@ interface NotificationPrefs {
   pushNotifications: boolean
 }
 
-export function Account() {
+interface AccountProps {
+  surface?: 'page' | 'drawer'
+}
+
+export function Account({ surface = 'page' }: AccountProps) {
   const { user, convexUserId, logout } = useAuth()
 
   // Fetch extended profile from Convex
@@ -89,13 +93,14 @@ export function Account() {
 
   const isProfileLoading = profile === undefined
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
+  const content = (
+    <div
+      className={
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-4xl space-y-8 px-6 py-6'
+          : 'max-w-2xl space-y-8 px-6 pt-6'
+      }
     >
-      <div className="max-w-2xl space-y-8 px-6 pt-6">
         {isProfileLoading && (
           <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
             Loading account profile...
@@ -281,6 +286,19 @@ export function Account() {
           </div>
         </div>
       </div>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

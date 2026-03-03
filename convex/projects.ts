@@ -2,7 +2,6 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
-import { checkProjectLimit } from "./lib/workspaceLimits"
 
 type OrganizationRole = "admin" | "member" | "viewer"
 
@@ -182,16 +181,6 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Check project limit before creating
-    const limitStatus = await checkProjectLimit(ctx, args.organizationId)
-
-    if (!limitStatus.allowed) {
-      throw new Error(
-        limitStatus.message ||
-          "Project limit reached. Upgrade your plan to create more projects."
-      )
-    }
-
     const now = Date.now()
 
     // Generate unique slug

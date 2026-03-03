@@ -201,6 +201,7 @@ export const PLAN_TIER_ACCESS: Record<string, ModelTier[]> = {
   free: ["fast", "standard", "powerful"],
   pro: ["fast", "standard", "powerful"],
   max: ["fast", "standard", "powerful"],
+  startup: ["fast", "standard", "powerful"],
   team: ["fast", "standard", "powerful"],
   enterprise: ["fast", "standard", "powerful"],
 }
@@ -210,6 +211,7 @@ export const PLAN_CREDITS: Record<string, number> = {
   free: 0,
   pro: 0,
   max: 0,
+  startup: 0,
   team: 0,
   enterprise: 0, // Custom
 }
@@ -219,6 +221,7 @@ export const OVERAGE_RATES: Record<string, number> = {
   free: 0, // No overage allowed
   pro: 0,
   max: 0,
+  startup: 0,
   team: 0,
   enterprise: 0,
 }
@@ -328,6 +331,32 @@ export function calculateCredits(
 }
 
 /**
+ * Convert tracked credit units to currency spend in minor units (cents).
+ *
+ * Current policy maps 1 tracked credit unit to $0.01 (1 cent) for wallet
+ * accounting while preserving the existing model-rate weighting behavior.
+ */
+export function calculateSpendCents(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number = 0
+): number {
+  const trackedCreditUnits = calculateCredits(
+    modelId,
+    inputTokens,
+    outputTokens,
+    cachedInputTokens
+  )
+
+  if (!Number.isFinite(trackedCreditUnits) || trackedCreditUnits <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.ceil(trackedCreditUnits * 100))
+}
+
+/**
  * Calculate credits with detailed breakdown
  */
 export function calculateCreditsDetailed(
@@ -429,7 +458,7 @@ export function getModelsByTier(): Record<ModelTier, ModelInfo[]> {
 export function getPlanCredits(plan: string, seatCount?: number): number {
   const baseCredits = PLAN_CREDITS[plan] ?? 0
 
-  if (plan === "team" && seatCount) {
+  if ((plan === "team" || plan === "startup") && seatCount) {
     return baseCredits * seatCount
   }
 

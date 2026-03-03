@@ -51,6 +51,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const { currentOrganization } = useAuth()
   const isOpen = mode !== 'closed'
   const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
+  const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
   const shouldShowWindowsCaptionSpacer = isWindowsClient && isOpen
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
 
@@ -122,7 +123,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   return (
     <div
       className={cn(
-        'flex flex-col bg-[var(--assistant-surface)] overflow-hidden bdry-l relative sidebar-fade-border [--assistant-surface:var(--background)]',
+        'flex flex-col bg-[var(--assistant-surface)] overflow-hidden relative sidebar-fade-border sidebar-fade-border-left [--assistant-surface:var(--background)]',
         'relative',
         !isDragging && 'transition-[width,flex-grow,flex-shrink,min-width] duration-300 ease-in-out',
         className
@@ -165,7 +166,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
         }}
       >
         {/* Header */}
-        <div className="flex items-center h-9 px-4 shrink-0 gap-2">
+        <div className={cn('flex items-center h-9 px-4 shrink-0 gap-2', isMacClient && 'pr-2')}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
           </div>

@@ -14,6 +14,67 @@ interface TokenPayload {
   iat?: number
 }
 
+interface CreateOrganizationResponse {
+  organization: {
+    id: string
+    name: string
+  }
+  membership: {
+    id: string
+    role?: string
+    status?: string
+  }
+}
+
+interface ListOrganizationsResponse {
+  organizations?: OrganizationMembership[]
+}
+
+const PERSONAL_WORKSPACE_PREFIX = 'personal:'
+const PERSONAL_MEMBERSHIP_PREFIX = 'personal-membership:'
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://api.cozea.app'
+
+function isPersonalWorkspaceOrganizationId(organizationId: string): boolean {
+  return organizationId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+}
+
+function getPersonalWorkspaceName(user: User): string {
+  if (user.firstName && user.firstName.trim().length > 0) {
+    return `${user.firstName.trim()}'s Workspace`
+  }
+  const emailPrefix = user.email.split('@')[0]?.trim()
+  if (emailPrefix) {
+    return `${emailPrefix}'s Workspace`
+  }
+  return 'My Workspace'
+}
+
+function createPersonalWorkspaceMembership(user: User): OrganizationMembership {
+  const organizationId = `${PERSONAL_WORKSPACE_PREFIX}${user.id}`
+  return {
+    id: `${PERSONAL_MEMBERSHIP_PREFIX}${user.id}`,
+    organizationId,
+    organizationName: getPersonalWorkspaceName(user),
+    role: 'admin',
+    status: 'active',
+    workspaceType: 'personal',
+  }
+}
+
+function withPersonalWorkspaceMembership(
+  user: User,
+  memberships: OrganizationMembership[]
+): OrganizationMembership[] {
+  return normalizeOrganizations([...memberships, createPersonalWorkspaceMembership(user)])
+}
+
+function normalizeMembershipStatus(status: string | undefined): OrganizationMembership['status'] {
+  if (status === 'inactive' || status === 'pending') {
+    return status
+  }
+  return 'active'
+}
+
 function decodeBase64Url(value: string): string | null {
   try {
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
@@ -43,6 +104,7 @@ function normalizeOrganizations(input: OrganizationMembership[]): OrganizationMe
     const normalizedOrg: OrganizationMembership = {
       ...org,
       organizationId: key,
+      workspaceType: org.workspaceType ?? (isPersonalWorkspaceOrganizationId(key) ? 'personal' : 'organization'),
     }
 
     const existing = byOrganizationId.get(key)
@@ -120,6 +182,7 @@ interface AuthContextType {
   login: () => Promise<void>
   logout: () => Promise<void>
   refreshToken: () => Promise<boolean>
+  createOrganizationWorkspace: (name: string) => Promise<OrganizationMembership>
   setOrganizations: (orgs: OrganizationMembership[]) => void
   setCurrentOrganization: (org: OrganizationMembership | null) => void
 }
@@ -214,6 +277,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: org.role || 'member',
             status: 'active' as const,
             convexOrgId: org._id, // Store Convex document ID separately
+            workspaceType: isPersonalWorkspaceOrganizationId(org.workosId || org._id)
+              ? ('personal' as const)
+              : ('organization' as const),
           }))
       )
 
@@ -249,19 +315,135 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Wrapper to update organizations and set current org
   const setOrganizations = useCallback((orgs: OrganizationMembership[]) => {
-    const normalized = normalizeOrganizations(orgs)
+    const normalized = user
+      ? withPersonalWorkspaceMembership(user, orgs)
+      : normalizeOrganizations(orgs)
     setOrganizationsState(normalized)
     // Set current org to first active one if not already set
     if (normalized.length > 0 && !currentOrganization) {
       const activeOrg = normalized.find(o => o.status === 'active') || normalized[0]
       setCurrentOrganization(activeOrg)
     }
-  }, [currentOrganization])
+  }, [currentOrganization, user])
 
   // Convex mutations for syncing
   const syncUserToConvex = useMutation(api.users.syncFromWorkOS)
   const syncOrgToConvex = useMutation(api.organizations.syncFromWorkOS)
+  const syncMembershipToConvex = useMutation(api.organizations.syncMembershipFromWorkOS)
   const reconcileMembershipsToConvex = useMutation(api.organizations.reconcileMembershipSetFromWorkOS)
+
+  const createOrganizationWorkspace = useCallback(async (name: string): Promise<OrganizationMembership> => {
+    if (!user || !accessToken) {
+      throw new Error('You must be signed in to create a workspace')
+    }
+
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      throw new Error('Workspace name is required')
+    }
+
+    const createResponse = await fetch(`${AUTH_SERVER_URL}/organizations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ name: trimmedName }),
+    })
+
+    if (!createResponse.ok) {
+      let errorMessage = 'Failed to create organization'
+      try {
+        const errorData = (await createResponse.json()) as { error?: string }
+        if (errorData.error) {
+          errorMessage = errorData.error
+        }
+      } catch {
+        // noop
+      }
+      throw new Error(errorMessage)
+    }
+
+    const created = (await createResponse.json()) as CreateOrganizationResponse
+
+    const createdConvexOrgId = await syncOrgToConvex({
+      workosId: created.organization.id,
+      name: created.organization.name,
+    })
+
+    const createdMembership: OrganizationMembership = {
+      id: created.membership.id,
+      organizationId: created.organization.id,
+      organizationName: created.organization.name,
+      role: created.membership.role || 'admin',
+      status: normalizeMembershipStatus(created.membership.status),
+      workspaceType: 'organization',
+      convexOrgId: createdConvexOrgId,
+    }
+
+    await syncMembershipToConvex({
+      workosId: createdMembership.id,
+      workosOrgId: createdMembership.organizationId,
+      workosUserId: user.id,
+      role: createdMembership.role,
+      status: createdMembership.status,
+    })
+
+    let nextOrganizations: OrganizationMembership[]
+    try {
+      const listResponse = await fetch(`${AUTH_SERVER_URL}/organizations`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (!listResponse.ok) {
+        throw new Error('Failed to list organizations after creation')
+      }
+
+      const listed = (await listResponse.json()) as ListOrganizationsResponse
+      const convexOrgIdsByWorkosId = new Map(
+        organizationsRef.current
+          .filter((organization) => organization.workspaceType !== 'personal' && organization.convexOrgId)
+          .map((organization) => [organization.organizationId, organization.convexOrgId])
+      )
+      convexOrgIdsByWorkosId.set(createdMembership.organizationId, createdConvexOrgId)
+
+      const listedOrganizations = (listed.organizations || []).map((organization) => {
+        const organizationId = organization.organizationId || organization.id
+        return {
+          ...organization,
+          organizationId,
+          workspaceType: 'organization' as const,
+          convexOrgId: convexOrgIdsByWorkosId.get(organizationId),
+        }
+      })
+
+      nextOrganizations = withPersonalWorkspaceMembership(user, listedOrganizations)
+    } catch {
+      const existingOrganizations = organizationsRef.current.filter(
+        (organization) => organization.workspaceType !== 'personal'
+      )
+      nextOrganizations = withPersonalWorkspaceMembership(user, [
+        ...existingOrganizations,
+        createdMembership,
+      ])
+    }
+
+    setOrganizationsState(nextOrganizations)
+    localStorage.setItem(STORAGE_KEY_ORGS, JSON.stringify(nextOrganizations))
+    await window.electronAPI.auth.updateOrganizations(nextOrganizations)
+
+    const selectedOrganization =
+      nextOrganizations.find((organization) => organization.organizationId === createdMembership.organizationId) ||
+      createdMembership
+
+    setCurrentOrganization(selectedOrganization)
+    setWorkspaceSelectionRequired(false)
+    localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, selectedOrganization.organizationId)
+
+    return selectedOrganization
+  }, [accessToken, syncMembershipToConvex, syncOrgToConvex, user])
 
   const handleSession = useCallback(async (session: Session | null, source: 'startup' | 'callback' = 'startup') => {
     if (session) {
@@ -272,7 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(session.accessToken)
       localStorage.setItem(STORAGE_KEY_TOKEN, session.accessToken)
 
-      const orgs = normalizeOrganizations(session.organizations || [])
+      const orgs = withPersonalWorkspaceMembership(session.user, session.organizations || [])
       setOrganizationsState(orgs)
       localStorage.setItem(STORAGE_KEY_ORGS, JSON.stringify(orgs))
       const shouldPromptWorkspaceSelection = source === 'callback' && orgs.length > 1
@@ -319,7 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setConvexUserId(userId)
 
         // Sync organizations and memberships to Convex - must succeed for billing
-        for (const org of session.organizations || []) {
+        for (const org of orgs) {
           // Sync org
           await syncOrgToConvex({
             workosId: org.organizationId,
@@ -327,14 +509,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
         }
 
+        const personalWorkspace = orgs.find((org) => org.workspaceType === 'personal')
+        if (personalWorkspace) {
+          await syncMembershipToConvex({
+            workosId: personalWorkspace.id,
+            workosOrgId: personalWorkspace.organizationId,
+            workosUserId: session.user.id,
+            role: 'admin',
+            status: 'active',
+          })
+        }
+
         await reconcileMembershipsToConvex({
           workosUserId: session.user.id,
-          memberships: (session.organizations || []).map((org) => ({
-            workosId: org.id,
-            workosOrgId: org.organizationId,
-            role: org.role,
-            status: org.status,
-          })),
+          memberships: orgs
+            .filter((org) => org.workspaceType !== 'personal')
+            .map((org) => ({
+              workosId: org.id,
+              workosOrgId: org.organizationId,
+              role: org.role,
+              status: org.status,
+            })),
         })
       } catch (err) {
         console.error('Failed to sync to Convex - billing will not work:', err)
@@ -357,7 +552,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
     }
     setIsLoading(false)
-  }, [syncUserToConvex, syncOrgToConvex, reconcileMembershipsToConvex])
+  }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex, reconcileMembershipsToConvex])
 
   const clearLoginTimeout = useCallback(() => {
     if (loginTimeoutRef.current) {
@@ -584,6 +779,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshToken,
+        createOrganizationWorkspace,
         setOrganizations,
         setCurrentOrganization: (org) => {
           setCurrentOrganization(org)

@@ -221,6 +221,8 @@ export function ProjectBuild() {
   useEffect(() => {
     if (devServer.status === 'ready' && devServer.url) {
       addLog(`Dev server ready at ${devServer.url}`)
+    } else if (devServer.status === 'unhealthy' && devServer.error) {
+      addLog(`Dev server unhealthy: ${devServer.error}`)
     } else if (devServer.status === 'error' && devServer.error) {
       addLog(`Dev server error: ${devServer.error}`)
     } else if (devServer.status === 'starting') {
@@ -945,6 +947,7 @@ export function ProjectBuild() {
                     status={devServer.status}
                     url={devServer.url}
                     error={devServer.error}
+                    timeline={devServer.timeline}
                     onRefresh={devServer.restart}
                     onCapture={capturePreviewScreenshot}
                     className="h-full relative sidebar-fade-border sidebar-fade-border-left"

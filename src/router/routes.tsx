@@ -1,7 +1,9 @@
-import { lazy } from 'react'
+import { lazy, type ReactNode } from 'react'
 import { Navigate, type RouteObject } from 'react-router-dom'
 
 import { AppRoot } from '@/App'
+import { useAuth } from '@/contexts/AuthContext'
+import { isPersonalWorkspace } from '@/lib/workspaces'
 import { Projects } from '@/pages/Projects'
 import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
@@ -83,6 +85,25 @@ const WorkspaceSelect = lazy(() =>
     default: module.WorkspaceSelect,
   }))
 )
+const WorkspaceCreate = lazy(() =>
+  import('@/pages/WorkspaceCreate').then((module) => ({
+    default: module.WorkspaceCreate,
+  }))
+)
+
+function OrganizationWorkspaceOnly({ children }: { children: ReactNode }) {
+  const { currentOrganization, isLoading } = useAuth()
+
+  if (isLoading) {
+    return null
+  }
+
+  if (!currentOrganization || isPersonalWorkspace(currentOrganization)) {
+    return <Navigate to="/projects" replace />
+  }
+
+  return <>{children}</>
+}
 
 export const appRoutes: RouteObject[] = [
   {
@@ -112,16 +133,47 @@ export const appRoutes: RouteObject[] = [
           { path: '*', element: <ProjectDetailPage /> },
         ],
       },
-      { path: 'teams', element: <Members /> },
-      { path: 'teams/members/:memberId', element: <MemberDetails /> },
-      { path: 'teams/roles', element: <Roles /> },
+      {
+        path: 'teams',
+        element: (
+          <OrganizationWorkspaceOnly>
+            <Members />
+          </OrganizationWorkspaceOnly>
+        ),
+      },
+      {
+        path: 'teams/members/:memberId',
+        element: (
+          <OrganizationWorkspaceOnly>
+            <MemberDetails />
+          </OrganizationWorkspaceOnly>
+        ),
+      },
+      {
+        path: 'teams/roles',
+        element: (
+          <OrganizationWorkspaceOnly>
+            <Roles />
+          </OrganizationWorkspaceOnly>
+        ),
+      },
       { path: 'workspaces/select', element: <WorkspaceSelect /> },
-      { path: 'workspace/general', element: <General /> },
-      { path: 'workspace/billing', element: <Billing /> },
-      { path: 'workspace/ai', element: <AI /> },
+      { path: 'workspaces/new', element: <WorkspaceCreate /> },
+      {
+        path: 'workspace/general',
+        element: (
+          <OrganizationWorkspaceOnly>
+            <General />
+          </OrganizationWorkspaceOnly>
+        ),
+      },
+      { path: 'workspace/billing', element: <Navigate to="/settings/billing" replace /> },
+      { path: 'workspace/ai', element: <Navigate to="/settings/ai" replace /> },
       { path: 'workspace/integrations', element: <Integrations /> },
       { path: 'workspace/sync', element: <Sync /> },
       { path: 'settings/account', element: <Account /> },
+      { path: 'settings/billing', element: <Billing /> },
+      { path: 'settings/ai', element: <AI /> },
       { path: 'settings/appearance', element: <Appearance /> },
       { path: 'settings/tooling', element: <Tooling /> },
       { path: 'settings/storage', element: <Storage /> },

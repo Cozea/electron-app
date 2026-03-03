@@ -20,6 +20,7 @@ export interface OrganizationMembership {
   role: string // admin | member | viewer
   status: 'active' | 'inactive' | 'pending'
   convexOrgId?: string // Convex document ID (populated after sync)
+  workspaceType?: 'personal' | 'organization'
 }
 
 // Session data stored after authentication

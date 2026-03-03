@@ -34,6 +34,7 @@ export interface TerminalProfile {
 export interface ManagedTerminal {
     id: string
     projectPath: string
+    runId?: string
     ptyProcess: pty.IPty
     profile: TerminalProfile
     title: string
@@ -56,6 +57,7 @@ export interface TerminalInfo {
 export interface TerminalSnapshot {
     id: string
     projectPath: string
+    runId?: string
     command?: string
     stdout: string
     stderr: string
@@ -275,6 +277,7 @@ export class TerminalService {
         return {
             id: terminal.id,
             projectPath: terminal.projectPath,
+            runId: terminal.runId,
             command: terminal.lastInput,
             stdout: terminal.output,
             stderr: '',
@@ -310,6 +313,7 @@ export class TerminalService {
             cwd?: string
             cols?: number
             rows?: number
+            runId?: string
         }) => {
             try {
                 const profile = this.getTerminalProfile(options.profileId)
@@ -361,6 +365,7 @@ export class TerminalService {
                 const terminal: ManagedTerminal = {
                     id: terminalId,
                     projectPath: options.projectPath,
+                    runId: options.runId,
                     ptyProcess,
                     profile: selectedProfile,
                     title: selectedProfile.name,
@@ -379,7 +384,7 @@ export class TerminalService {
                 ptyProcess.onData((data) => {
                     terminal.output = appendTerminalOutput(terminal.output, data)
                     if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:output', { terminalId, data })
+                        event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
                     }
                 })
 
@@ -391,7 +396,7 @@ export class TerminalService {
                     this.removeProjectTerminal(options.projectPath, terminalId)
 
                     if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode })
+                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode, runId: terminal.runId })
                     }
                 })
 

@@ -113,6 +113,10 @@ type ProviderAuthMethod =
   | 'gemini'
   | 'gemini_api_key'
 
+interface AIProps {
+  surface?: 'page' | 'drawer'
+}
+
 const FALLBACK_PROVIDER_ROWS: ProviderCatalogRow[] = [
   {
     id: 'openai',
@@ -228,7 +232,17 @@ const formatTokens = (tokens: number): string => {
   return tokens.toString()
 }
 
-export function AI() {
+const formatCurrencyFromCents = (cents: number, currency: string = 'USD'): string => {
+  const normalized = Number.isFinite(cents) ? cents : 0
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(normalized / 100)
+}
+
+export function AI({ surface = 'page' }: AIProps) {
   const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
 
   // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
@@ -251,6 +265,13 @@ export function AI() {
   const recentUsage = useQuery(
     api.aiUsage.getRecentForOrganization,
     convexOrg?._id ? { organizationId: convexOrg._id, limit: 50 } : 'skip'
+  )
+
+  const walletSummary = useQuery(
+    api.aiWallets.getWalletForViewer,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
   )
 
   // Mutations
@@ -439,6 +460,9 @@ export function AI() {
   // Get aggregate usage data
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
+  const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
+  const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
+  const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
   const now = Date.now()
   const providerRows = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
@@ -545,13 +569,15 @@ export function AI() {
     }
   }, [providerPage, providerRows.length])
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
-    >
-      <div className="space-y-6 pb-10">
+  const content = (
+    <>
+      <div
+        className={
+          surface === 'drawer'
+            ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
+            : 'space-y-6 pb-10'
+        }
+      >
         {/* Usage Overview */}
         <div className="px-4">
           <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-border w-full">
@@ -579,6 +605,18 @@ export function AI() {
                   <p className="text-2xl font-semibold">{connectedProviders}/{providerRows.length}</p>
                 </div>
               </div>
+            </div>
+
+            <div className="sm:flex-1 px-6 py-2">
+              <p className="text-sm text-muted-foreground mb-1">AI Wallet (Available)</p>
+              <p className="text-2xl font-semibold">
+                {formatCurrencyFromCents(walletAvailableCents, walletCurrency)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {walletIncludedCents > 0
+                  ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
+                  : 'No included wallet on current entitlement'}
+              </p>
             </div>
           </div>
         </div>
@@ -1258,6 +1296,20 @@ export function AI() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'AI' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useQuery } from 'convex/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import type { Id } from '../../../convex/_generated/dataModel'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
 import { useAuth } from '../../contexts/AuthContext'
@@ -36,26 +37,37 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
 import {
   ExternalLink,
+  Check,
   CheckCircle2,
   XCircle,
-  Check,
+  Loader2,
 } from 'lucide-react'
-import { normalizeWorkspacePlanForPricing, type WorkspacePricingPlanId } from '@/lib/billing/planLabels'
 import { scheduleTask } from '@/lib/scheduler'
 import { fetchWithAbort } from '@/lib/abort'
 import { featureFlags } from '@/lib/featureFlags'
 
-const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+const AUTH_SERVER_URL =
+  import.meta.env.VITE_AUTH_SERVER_URL ||
+  'https://api.cozea.app'
 
-type PlanId = WorkspacePricingPlanId
+const STARTUP_MIN_SEATS = 2
+
+type UsageRange = '7d' | '30d' | '90d'
+type BillingCycle = 'monthly' | 'yearly'
+type CheckoutPlan = 'pro' | 'max' | 'startup'
+
+interface BillingProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
 
 interface PlanFeature {
   text: string
   included: boolean
 }
 
-interface StandardPlanInfo {
-  id: PlanId
+interface PlanCard {
+  id: CheckoutPlan | 'free'
   name: string
   description: string
   price: string
@@ -63,116 +75,97 @@ interface StandardPlanInfo {
   trial?: string
   features: PlanFeature[]
   conclusion: string
-  buttonLabel: string
   footerText: string
 }
 
-interface EnterprisePlanInfo {
-  id: 'team'
-  name: string
-  description: string
-  priceLabel: string
-  features: PlanFeature[]
-  buttonLabel: string
-  footerText: string
-}
-
-const standardPlans: StandardPlanInfo[] = [
+const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
     id: 'free',
-    name: 'Starter',
-    description: 'For builders testing ideas locally.',
+    name: 'Free',
+    description: 'Personal BYOK mode with core limits and no paid seats.',
     price: 'Free',
     period: '',
     features: [
-      { text: '1 user', included: true },
-      { text: 'Local-only projects', included: true },
-      { text: '25 tool integrations', included: true },
-      { text: 'Connect OpenAI, Gemini, and more', included: true },
-      { text: 'No cloud sync', included: false },
-      { text: 'No collaboration', included: false },
+      { text: 'Individual workspace access', included: true },
+      { text: 'Bring your own AI provider keys', included: true },
+      { text: 'No paid seat assignment required', included: true },
+      { text: 'Collaboration and sync are gated', included: false },
     ],
-    conclusion: 'Build alone. Upgrade when you\'re ready to ship with others.',
-    buttonLabel: 'Download Free',
-    footerText: 'Upgrade anytime to collaborate with your team.',
+    conclusion: 'Great for solo exploration before upgrading.',
+    footerText: 'Downgrades are managed in Stripe billing portal.',
   },
   {
     id: 'pro',
-    name: 'Founders Plan',
-    description: 'For founders who want to ship fast.',
-    price: '15 USD',
+    name: 'Pro',
+    description: 'Individual subscription for focused daily builders.',
+    price: '$20',
     period: '/ month',
-    trial: '7 day free trial',
     features: [
-      { text: 'Up to 2 users', included: true },
-      { text: '5 GB cloud workspace', included: true },
-      { text: '5 shared projects', included: true },
-      { text: '25 tool integrations', included: true },
-      { text: 'Live Collaboration', included: true },
-      { text: 'Connect OpenAI, Gemini, and more', included: true },
-      { text: 'Built-in AI version control', included: true },
-      { text: 'Priority support', included: true },
+      { text: 'Individual paid plan', included: true },
+      { text: 'AI and sync entitlement included', included: true },
+      { text: 'Included AI wallet resets each cycle', included: true },
+      { text: 'No seat management required', included: true },
+      { text: 'Centralized seat pool billing', included: false },
     ],
-    conclusion: 'Go from idea to product without friction.',
-    buttonLabel: 'Start Free Trial',
-    footerText: 'Cancel anytime.',
+    conclusion: 'Simple paid access without seat administration.',
+    footerText: 'Best for a single operator or maker.',
   },
   {
     id: 'max',
-    name: 'Team Scale',
-    description: 'For teams building at serious speed.',
-    price: '49 USD',
+    name: 'Max',
+    description: 'Individual power plan with expanded usage headroom.',
+    price: '$49',
     period: '/ month',
-    trial: '7 day free trial',
     features: [
-      { text: 'Up to 10 users', included: true },
-      { text: '30 GB cloud workspace', included: true },
-      { text: '20 shared projects', included: true },
-      { text: '25+ tool integrations', included: true },
-      { text: 'Advanced collaboration', included: true },
-      { text: 'Connect any AI provider available', included: true },
-      { text: 'Advanced AI traffic control', included: true },
-      { text: 'Priority support', included: true },
+      { text: 'Highest individual entitlement tier', included: true },
+      { text: 'AI and sync entitlement included', included: true },
+      { text: 'Included AI wallet resets each cycle', included: true },
+      { text: 'No seat management required', included: true },
+      { text: 'Centralized seat pool billing', included: false },
     ],
-    conclusion: 'Ship faster than teams 10x your size.',
-    buttonLabel: 'Start Free Trial',
-    footerText: 'Upgrade anytime as your team grows.',
+    conclusion: 'For heavy individual usage and extended workloads.',
+    footerText: 'Upgrade or downgrade anytime.',
   },
 ]
 
-/** Badge shown on a plan card based on current user plan. Starter: Founders = Most Popular; Founders: Team Scale = Recommended; Team Scale: Team Scale = Keep Going. */
-function getPlanBadge(planId: PlanId, currentPlan: PlanId): string | null {
-  if (currentPlan === 'free' && planId === 'pro') return 'Most Popular'
-  if (currentPlan === 'pro' && planId === 'max') return 'Recommended'
-  if (currentPlan === 'max' && planId === 'max') return 'Keep Going'
-  return null
-}
-
-const enterprisePlan: EnterprisePlanInfo = {
-  id: 'team',
-  name: 'Custom Enterprise',
-  description: 'Built for scale, security, and flexibility.',
-  priceLabel: 'Custom Pricing',
+const STARTUP_PLAN_CARD: PlanCard = {
+  id: 'startup',
+  name: 'Startup',
+  description: 'Centralized billing with explicit paid-seat assignment.',
+  price: '$35',
+  period: '/ seat / month',
+  trial: '7 day free trial',
   features: [
-    { text: 'Custom number of users', included: true },
-    { text: 'Flexible storage options', included: true },
-    { text: 'Dedicated onboarding', included: true },
-    { text: 'Priority support', included: true },
-    { text: 'Advanced security options', included: true },
-    { text: 'Private deployment options', included: true },
-    { text: 'Connect OpenAI, Gemini, or custom models', included: true },
+    { text: 'Workspace-level seat pool', included: true },
+    { text: 'Per-member seat assignment controls', included: true },
+    { text: 'AI and sync gated by seat assignment', included: true },
+    { text: 'Each assigned seat gets a full wallet each cycle', included: true },
+    { text: `Minimum ${STARTUP_MIN_SEATS} paid seats`, included: true },
   ],
-  buttonLabel: 'Contact Sales',
-  footerText: "We tailor pricing to your team's needs.",
+  conclusion: 'Best when a team needs centralized cost control.',
+  footerText: 'Billing owner always consumes one paid seat.',
 }
 
-/** Legacy shape for current plan display and upgrade logic */
-const plans: { id: PlanId; name: string; price: string; period: string; description: string }[] = [
-  { id: 'free', name: 'Starter', price: '', period: '', description: standardPlans[0].description },
-  { id: 'pro', name: 'Founders Plan', price: '15 USD', period: '/ month', description: standardPlans[1].description },
-  { id: 'max', name: 'Team Scale', price: '49 USD', period: '/ month', description: standardPlans[2].description },
-  { id: 'team', name: 'Custom Enterprise', price: 'Custom', period: '', description: enterprisePlan.description },
-]
+interface EnterprisePlanCard {
+  name: string
+  description: string
+  priceLabel: string
+  features: string[]
+  footerText: string
+}
+
+const ENTERPRISE_PLAN_CARD: EnterprisePlanCard = {
+  name: 'Enterprise',
+  description: 'Custom pricing, support, and controls for larger organizations.',
+  priceLabel: 'Custom',
+  features: [
+    'Custom seat bands and contract terms',
+    'Dedicated onboarding and billing support',
+    'Advanced governance and procurement support',
+    'Flexible rollout across multiple teams',
+  ],
+  footerText: 'Contact sales to structure enterprise billing.',
+}
 
 interface StripeInvoice {
   id: string
@@ -192,12 +185,131 @@ interface UsagePoint {
   requests: number
 }
 
-export function Billing() {
-  const { user, logout, currentOrganization, accessToken } = useAuth()
+interface SeatWalletView {
+  userId: Id<'users'>
+  email: string
+  firstName?: string
+  lastName?: string
+  profileImageUrl?: string
+  isBillingOwner: boolean
+  walletId: string | null
+  balanceCents: number
+  heldCents: number
+  availableCents: number
+  updatedAt: number | null
+}
+
+interface WalletLedgerView {
+  _id: string
+  kind: string
+  amountCents: number
+  createdAt: number
+  metadata?: Record<string, unknown>
+}
+
+function formatDate(timestamp?: number): string {
+  if (!timestamp) return '-'
+  return new Date(timestamp).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function formatCurrencyFromCents(cents: number, currency: string = 'USD'): string {
+  const normalized = Number.isFinite(cents) ? cents : 0
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(normalized / 100)
+}
+
+function formatEntitlementStatus(status?: string): string {
+  if (!status) return 'Unknown'
+  if (status === 'trialing') return 'Trial'
+  if (status === 'past_due') return 'Past Due'
+  if (status === 'canceled') return 'Canceled'
+  if (status === 'active') return 'Active'
+  return status
+}
+
+function formatWalletLedgerKind(kind: string): string {
+  switch (kind) {
+    case 'credit':
+      return 'Credit'
+    case 'debit':
+      return 'Debit'
+    case 'hold':
+      return 'Hold'
+    case 'release':
+      return 'Release'
+    case 'adjustment':
+      return 'Adjustment'
+    default:
+      return kind
+  }
+}
+
+function isSeatManagedEntitlement(args: {
+  source?: 'account' | 'legacy' | 'trial' | 'free'
+  plan?: string
+}): boolean {
+  return (
+    args.source === 'trial' ||
+    args.plan === 'startup' ||
+    args.plan === 'enterprise' ||
+    args.source === 'legacy'
+  )
+}
+
+function planLabel(args: {
+  source?: 'account' | 'legacy' | 'trial' | 'free'
+  plan?: 'free' | 'pro' | 'max' | 'startup' | 'enterprise'
+}): string {
+  if (args.source === 'legacy') return 'Legacy Workspace'
+  if (args.plan === 'pro') return 'Pro'
+  if (args.plan === 'max') return 'Max'
+  if (args.plan === 'enterprise') return 'Enterprise'
+  if (args.plan === 'startup' || args.source === 'trial') return 'Startup'
+  return 'Free'
+}
+
+function normalizeSeatQuantity(value: number): number {
+  if (!Number.isFinite(value)) return STARTUP_MIN_SEATS
+  return Math.max(STARTUP_MIN_SEATS, Math.floor(value))
+}
+
+function normalizeCurrentPlanForCards(
+  source: 'account' | 'legacy' | 'trial' | 'free' | undefined,
+  plan: string | undefined
+): 'free' | CheckoutPlan | 'enterprise' {
+  if (source === 'trial') return 'startup'
+  if (plan === 'team') return 'startup'
+  if (plan === 'pro' || plan === 'max' || plan === 'startup' || plan === 'enterprise') {
+    return plan
+  }
+  return 'free'
+}
+
+function getPlanBadge(
+  planId: PlanCard['id'],
+  currentPlanId: 'free' | CheckoutPlan | 'enterprise'
+): string | null {
+  if (currentPlanId === 'free' && planId === 'pro') return 'Most Popular'
+  if (currentPlanId === 'pro' && planId === 'max') return 'Recommended'
+  return null
+}
+
+export function Billing({ surface = 'page', route }: BillingProps) {
+  const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
 
   const freshOrg = useQuery(
     api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
+    currentOrganization?.organizationId
+      ? { workosId: currentOrganization.organizationId }
+      : 'skip'
   )
   const convexOrg = useCachedQuery(
     `billing-org-${currentOrganization?.organizationId}`,
@@ -214,22 +326,48 @@ export function Billing() {
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
-  const [usageTimeRange, setUsageTimeRange] = useState('30d')
+  const seatManagement = useQuery(
+    api.billing.getSeatManagement,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
+  )
+
+  const walletSummary = useQuery(
+    api.aiWallets.getWalletForViewer,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
+  )
+
+  const seatWallets = useQuery(
+    api.aiWallets.getSeatWalletsForViewer,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
+  )
+
+  const setSeatAssignment = useMutation(api.billing.setSeatAssignment)
+
+  const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
   const usageDateRange = useMemo(() => {
     const now = Date.now()
-    const daysToSubtract = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const daysToSubtract =
+      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
     const startDate = now - daysToSubtract * 24 * 60 * 60 * 1000
     return { startDate, endDate: now }
   }, [usageTimeRange])
 
   const usageAggregates = useQuery(
     api.aiUsage.getAggregates,
-    convexOrg?._id ? {
-      organizationId: convexOrg._id,
-      period: 'daily' as const,
-      startDate: usageDateRange.startDate,
-      endDate: usageDateRange.endDate,
-    } : 'skip'
+    convexOrg?._id
+      ? {
+          organizationId: convexOrg._id,
+          period: 'daily' as const,
+          startDate: usageDateRange.startDate,
+          endDate: usageDateRange.endDate,
+        }
+      : 'skip'
   )
 
   const [chartData, setChartData] = useState<UsagePoint[]>([])
@@ -242,7 +380,8 @@ export function Billing() {
         return
       }
 
-      const daysToShow = usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+      const daysToShow =
+        usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
       const dates: UsagePoint[] = []
       const now = new Date()
 
@@ -299,8 +438,35 @@ export function Billing() {
 
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
-  const [isUpgrading, setIsUpgrading] = useState(false)
+  const [isCheckoutPending, setIsCheckoutPending] = useState(false)
+  const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
+  const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
+  const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
+
+  const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle>('monthly')
+  const [checkoutSeatQuantity, setCheckoutSeatQuantity] = useState<number>(STARTUP_MIN_SEATS)
+  const checkoutDefaultsInitializedRef = useRef(false)
+
+  useEffect(() => {
+    if (!seatManagement || checkoutDefaultsInitializedRef.current) return
+
+    const cycle =
+      seatManagement.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
+    const subscriptionSeats =
+      typeof seatManagement.accountSubscription?.seatQuantity === 'number'
+        ? seatManagement.accountSubscription.seatQuantity
+        : undefined
+    const entitlementSeats =
+      typeof seatManagement.entitlement?.seatCounts?.total === 'number'
+        ? seatManagement.entitlement.seatCounts.total
+        : undefined
+    setCheckoutCycle(cycle)
+    setCheckoutSeatQuantity(
+      normalizeSeatQuantity(subscriptionSeats ?? entitlementSeats ?? STARTUP_MIN_SEATS)
+    )
+    checkoutDefaultsInitializedRef.current = true
+  }, [seatManagement])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -331,7 +497,7 @@ export function Billing() {
         )
 
         if (response.ok) {
-          const data = await response.json()
+          const data = (await response.json()) as { invoices?: StripeInvoice[] }
           if (!cancelled) {
             setStripeInvoices(data.invoices || [])
           }
@@ -353,98 +519,140 @@ export function Billing() {
     }
   }, [currentOrganization?.organizationId, accessToken])
 
-  const subscription = convexOrg?.subscription
-  const currentPlan = normalizeWorkspacePlanForPricing(subscription?.plan)
-  const planInfo = plans.find((p) => p.id === currentPlan) || plans[0]
-
-  const memberCount = usageLimits?.seats.current ?? members?.length ?? 0
-  const memberLimit = usageLimits?.seats.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 2 : currentPlan === 'max' ? 10 : -1)
-  const visibleMembers = (members ?? []).slice(0, 5)
-  const overflowMembers = Math.max((members?.length ?? 0) - 5, 0)
+  const entitlement = seatManagement?.entitlement
+  const currentPlanName = planLabel({
+    source: entitlement?.source,
+    plan: entitlement?.plan,
+  })
+  const entitlementStatusLabel = formatEntitlementStatus(entitlement?.status)
+  const paidSeatTotal = entitlement?.seatCounts.total ?? 0
+  const paidSeatAssigned = entitlement?.seatCounts.assigned ?? 0
+  const paidSeatAvailable = entitlement?.seatCounts.available ?? 0
+  const paidSeatProgress =
+    paidSeatTotal > 0 ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100) : 0
 
   const projectCurrent = usageLimits?.projects.current ?? 0
-  const projectLimit = usageLimits?.projects.limit ?? (currentPlan === 'free' ? 1 : currentPlan === 'pro' ? 5 : currentPlan === 'max' ? 20 : -1)
-
+  const projectLimit = usageLimits?.projects.limit ?? -1
   const storageCurrent = usageLimits?.storage.currentFormatted ?? '0 B'
   const storageLimit = usageLimits?.storage.limitFormatted ?? '0 B'
   const storagePercent = usageLimits?.storage.usagePercent ?? 0
+  const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
+  const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
+  const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
+  const walletBalanceCents = walletSummary?.wallet?.balanceCents ?? 0
+  const walletHeldCents = walletSummary?.wallet?.heldCents ?? 0
+  const walletUsagePercent =
+    walletIncludedCents > 0
+      ? Math.max(0, Math.min(100, (walletAvailableCents / walletIncludedCents) * 100))
+      : 0
+  const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
 
-  const formatDate = (timestamp?: number) => {
-    if (!timestamp) return '-'
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  }
+  const activeAssignmentsByUserId = useMemo(() => {
+    const map = new Set<string>()
+    for (const assignment of seatManagement?.seatAssignments ?? []) {
+      map.add(String(assignment.assignedUserId))
+    }
+    return map
+  }, [seatManagement?.seatAssignments])
+
+  const billingOwnerId = seatManagement?.billingAccount?.billingUserId
+    ? String(seatManagement.billingAccount.billingUserId)
+    : null
+  const canManageSeats = seatManagement?.canManageSeats ?? false
+  const canOpenCheckout = currentOrganization?.role === 'admin'
+  const seatManagedEntitlement = isSeatManagedEntitlement({
+    source: entitlement?.source,
+    plan: entitlement?.plan,
+  })
+  const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
 
   const handleManageBilling = useCallback(async () => {
     if (!currentOrganization?.organizationId || !accessToken) return
 
+    setIsPortalPending(true)
     try {
-      const response = await fetchWithAbort(`${AUTH_SERVER_URL}/stripe/create-portal`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/create-portal`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganization.organizationId,
+            returnUrl: `${window.location.origin}/settings/billing`,
+          }),
         },
-        body: JSON.stringify({
-          organizationId: currentOrganization.organizationId,
-          returnUrl: `${window.location.origin}/workspace/billing`,
-        }),
-      }, { timeoutMs: 15000 })
+        { timeoutMs: 15000 }
+      )
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = (await response.json()) as { error?: string }
         throw new Error(error.error || 'Failed to open billing portal')
       }
 
-      const { url } = await response.json()
+      const { url } = (await response.json()) as { url?: string }
       if (url) {
         await window.electronAPI.shell.openExternal(url)
       }
     } catch (err) {
       console.error('Billing portal error:', err)
       alert(err instanceof Error ? err.message : 'Failed to open billing portal')
+    } finally {
+      setIsPortalPending(false)
     }
-  }, [currentOrganization?.organizationId, accessToken])
+  }, [accessToken, currentOrganization?.organizationId])
 
-  const handleUpgrade = useCallback(async (planId: PlanId) => {
+  const handleCheckout = useCallback(async (requestedPlan: CheckoutPlan) => {
     if (!currentOrganization?.organizationId || !accessToken) return
 
-    if (planId === 'free') {
-      handleManageBilling()
-      return
+    const checkoutSeatManaged = requestedPlan === 'startup'
+    const normalizedSeats = checkoutSeatManaged
+      ? normalizeSeatQuantity(checkoutSeatQuantity)
+      : 1
+    const payload: {
+      organizationId: string
+      type: 'subscription'
+      plan: CheckoutPlan
+      cycle: BillingCycle
+      seatQuantity?: number
+      successUrl: string
+      cancelUrl: string
+    } = {
+      organizationId: currentOrganization.organizationId,
+      type: 'subscription',
+      plan: requestedPlan,
+      cycle: checkoutCycle,
+      successUrl: 'cozea://billing/success?type=subscription',
+      cancelUrl: 'cozea://billing/canceled',
     }
 
-    if (planId === 'team') {
-      await window.electronAPI.shell.openExternal('https://cozea.app/contact?topic=custom-pricing')
-      return
+    if (checkoutSeatManaged) {
+      payload.seatQuantity = normalizedSeats
     }
 
-    setIsUpgrading(true)
+    setIsCheckoutPending(true)
     try {
-      const response = await fetchWithAbort(`${AUTH_SERVER_URL}/stripe/create-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/create-checkout`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify({
-          organizationId: currentOrganization.organizationId,
-          type: 'subscription',
-          plan: planId,
-          successUrl: 'cozea://billing/success?type=subscription',
-          cancelUrl: 'cozea://billing/canceled',
-        }),
-      }, { timeoutMs: 15000 })
+        { timeoutMs: 15000 }
+      )
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create checkout')
+        const error = (await response.json()) as { error?: string }
+        throw new Error(error.error || 'Failed to start checkout')
       }
 
-      const { url } = await response.json()
+      const { url } = (await response.json()) as { url?: string }
       if (url) {
         await window.electronAPI.shell.openExternal(url)
       }
@@ -452,29 +660,66 @@ export function Billing() {
       console.error('Checkout error:', err)
       alert(err instanceof Error ? err.message : 'Failed to start checkout')
     } finally {
-      setIsUpgrading(false)
+      setIsCheckoutPending(false)
     }
-  }, [currentOrganization?.organizationId, accessToken, handleManageBilling])
+  }, [
+    accessToken,
+    checkoutCycle,
+    checkoutSeatQuantity,
+    currentOrganization?.organizationId,
+  ])
 
-  const urlParams = new URLSearchParams(window.location.search)
+  const handlePlanCardCheckout = useCallback(
+    (planId: PlanCard['id']) => {
+      if (planId === 'free') return
+      void handleCheckout(planId as CheckoutPlan)
+    },
+    [handleCheckout]
+  )
+
+  const handleSeatToggle = useCallback(
+    async (assignedUserId: Id<'users'>, nextActive: boolean) => {
+      if (!convexOrg?._id || !convexUserId) return
+
+      setSeatMutationError(null)
+      setSeatMutationUserId(String(assignedUserId))
+      try {
+        await setSeatAssignment({
+          organizationId: convexOrg._id,
+          actorUserId: convexUserId,
+          assignedUserId,
+          active: nextActive,
+        })
+      } catch (err) {
+        setSeatMutationError(
+          err instanceof Error ? err.message : 'Failed to update seat assignment'
+        )
+      } finally {
+        setSeatMutationUserId(null)
+      }
+    },
+    [convexOrg?._id, convexUserId, setSeatAssignment]
+  )
+
+  const search =
+    surface === 'drawer'
+      ? route?.split('?')[1] ?? ''
+      : typeof window !== 'undefined'
+        ? window.location.search.replace(/^\?/, '')
+        : ''
+
+  const urlParams = new URLSearchParams(search)
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
-  const isWorkspaceLoading = !convexOrg
 
-  const currentPlanIndex = plans.findIndex((p) => p.id === currentPlan)
-
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'Billing' }]}
-    >
+  const content = (
+    <>
       {successType && (
         <Alert className="mb-6 border-green-500/50 bg-green-500/10">
           <CheckCircle2 className="h-4 w-4 text-green-500" />
           <AlertTitle className="text-green-500">Subscription Updated</AlertTitle>
           <AlertDescription>
-            Workspace infrastructure billing was updated. AI usage billing continues through each connected provider subscription.
+            Billing details were updated successfully.
           </AlertDescription>
         </Alert>
       )}
@@ -483,66 +728,89 @@ export function Billing() {
         <Alert className="mb-6 border-amber-500/50 bg-amber-500/10">
           <XCircle className="h-4 w-4 text-amber-500" />
           <AlertTitle className="text-amber-500">Checkout Canceled</AlertTitle>
-          <AlertDescription>
-            Your checkout was canceled. No charges were made.
-          </AlertDescription>
+          <AlertDescription>Your checkout was canceled. No charges were made.</AlertDescription>
         </Alert>
       )}
 
-      {isWorkspaceLoading && (
+      {entitlement && entitlement.source === 'legacy' && (
         <Alert className="mb-6">
-          <AlertTitle>Loading billing details</AlertTitle>
+          <AlertTitle>Legacy workspace billing compatibility mode</AlertTitle>
           <AlertDescription>
-            Workspace billing profile is still loading. Cached values remain visible.
+            Legacy workspace subscriptions still work. Move to account subscriptions for canonical Pro,
+            Max, and Startup billing.
           </AlertDescription>
         </Alert>
       )}
 
-      <div className={[featureFlags.contentVisibility ? 'perf-contain-auto' : '', 'space-y-4'].join(' ').trim()}>
+      {seatMutationError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>Seat assignment failed</AlertTitle>
+          <AlertDescription>{seatMutationError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div
+        className={[
+          featureFlags.contentVisibility ? 'perf-contain-auto' : '',
+          surface === 'drawer' ? 'space-y-6 px-6 py-6' : 'space-y-6',
+        ]
+          .join(' ')
+          .trim()}
+      >
         <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="pt-0 space-y-5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-3xl font-semibold tracking-tight">{planInfo.name} plan</h3>
-                {subscription?.status === 'active' && (
-                  <Badge
-                    variant="secondary"
-                    className={
-                      currentPlan === 'free'
-                        ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/20'
-                        : 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20'
-                    }
-                  >
-                    Active
-                  </Badge>
-                )}
+          <CardHeader className="pt-0 px-0">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+              <div className="min-w-0 flex items-center gap-2">
+                <CardTitle className="truncate text-3xl font-semibold tracking-tight">{currentPlanName} plan</CardTitle>
+                <Badge variant="secondary">{entitlementStatusLabel}</Badge>
               </div>
-              <Button onClick={() => setShowUpgradeOptions(!showUpgradeOptions)}>
-                {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
-              </Button>
+
+              <div className="flex shrink-0 items-center gap-2 justify-self-end">
+                <Button
+                  variant="secondary"
+                  onClick={handleManageBilling}
+                  disabled={!canOpenCheckout || isPortalPending}
+                >
+                  {isPortalPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Manage Billing
+                </Button>
+                <Button variant="outline" onClick={() => setShowUpgradeOptions((current) => !current)}>
+                  {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
+                </Button>
+              </div>
             </div>
+            <CardDescription>
+              Billing is account-scoped. Pro and Max are individual subscriptions. Startup and Enterprise use
+              centralized seat billing. Workspace limits are informational only.
+            </CardDescription>
+          </CardHeader>
 
-            <p className="text-sm text-muted-foreground">{planInfo.description}</p>
-
-            {(planInfo.price || planInfo.period) && (
-              <div>
-                <span className="text-xl font-medium text-muted-foreground">{planInfo.price}</span>
-                {planInfo.period && <span className="text-muted-foreground/90">{planInfo.period}</span>}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+          <CardContent className="space-y-5 px-0">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Workspace members</span>
-                  <span>{memberLimit < 0 ? `${memberCount} / Unlimited` : `${memberCount} / ${memberLimit}`}</span>
+                  <span>Paid seats</span>
+                  <span>{seatManagedEntitlement ? `${paidSeatAssigned} / ${paidSeatTotal || '-'}` : 'Not required'}</span>
                 </div>
-                {memberLimit > 0 && (
-                  <Progress value={Math.min(100, (memberCount / Math.max(memberLimit, 1)) * 100)} className="h-2" />
+                {seatManagedEntitlement && paidSeatTotal > 0 ? (
+                  <Progress value={paidSeatProgress} className="h-2" />
+                ) : (
+                  <div className="text-xs text-muted-foreground">
+                    {seatManagedEntitlement
+                      ? 'No paid seat pool active'
+                      : 'Seat assignment is only used for Startup and Enterprise'}
+                  </div>
                 )}
+                <div className="text-xs text-muted-foreground">
+                  {seatManagedEntitlement
+                    ? paidSeatTotal > 0
+                      ? `${paidSeatAvailable} seats available`
+                      : 'Assign seats after starting Startup'
+                    : 'Pro and Max do not use seat assignments'}
+                </div>
               </div>
 
-              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Projects</span>
                   <span>{projectLimit < 0 ? `${projectCurrent} / Unlimited` : `${projectCurrent} / ${projectLimit}`}</span>
@@ -552,164 +820,215 @@ export function Billing() {
                 )}
               </div>
 
-              <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-4 space-y-2">
+              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Cloud storage</span>
-                  <span>{storageCurrent} / {storageLimit}</span>
+                  <span>
+                    {storageCurrent} / {storageLimit}
+                  </span>
                 </div>
-                {!usageLimits?.storage.isUnlimited && (
-                  <Progress value={Math.min(100, storagePercent)} className="h-2" />
+                {!usageLimits?.storage.isUnlimited && <Progress value={Math.min(100, storagePercent)} className="h-2" />}
+              </div>
+
+              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>AI wallet</span>
+                  <span>{formatCurrencyFromCents(walletAvailableCents, walletCurrency)} available</span>
+                </div>
+                {walletIncludedCents > 0 ? (
+                  <Progress value={walletUsagePercent} className="h-2" />
+                ) : (
+                  <div className="text-xs text-muted-foreground">No included wallet on current entitlement</div>
                 )}
+                <div className="text-xs text-muted-foreground">
+                  {walletIncludedCents > 0
+                    ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
+                    : 'Included wallet is not active for this plan'}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Balance {formatCurrencyFromCents(walletBalanceCents, walletCurrency)}
+                  {' · '}
+                  Held {formatCurrencyFromCents(walletHeldCents, walletCurrency)}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center rounded-full p-1 bg-secondary/80 dark:bg-secondary/40 w-fit min-h-10">
-              <div className="flex -space-x-2">
-                {Array.from({ length: 5 }).map((_, index) => {
-                  const memberSlot = visibleMembers[index]
-                  if (!memberSlot) {
-                    return (
-                      <Avatar key={`placeholder-${index}`} className="ring-2 ring-border shrink-0">
-                        <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">--</AvatarFallback>
-                      </Avatar>
-                    )
-                  }
-
-                  const displayName = memberSlot.user?.firstName
-                    ? `${memberSlot.user.firstName} ${memberSlot.user.lastName || ''}`.trim()
-                    : memberSlot.user?.email
-
-                  return (
-                    <Avatar key={memberSlot._id} className="ring-2 ring-border shrink-0">
-                      <AvatarImage src={memberSlot.user?.profileImageUrl} alt={displayName} />
-                      <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">
-                        {(displayName || '?').slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  )
-                })}
+            {seatManagedEntitlement && seatManagement?.billingUser ? (
+              <div className="flex w-fit items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={seatManagement.billingUser.profileImageUrl || undefined} />
+                  <AvatarFallback>
+                    {(seatManagement.billingUser.email || '?').slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-xs text-muted-foreground">Billing owner</p>
+                  <p className="text-sm font-medium">{seatManagement.billingUser.email}</p>
+                </div>
               </div>
-              <span
-                className={[
-                  'flex items-center justify-center rounded-full bg-transparent text-xs transition-all',
-                  overflowMembers > 0
-                    ? 'ml-1 px-2 min-w-[2rem] text-muted-foreground hover:text-foreground'
-                    : 'w-0 min-w-0 px-0 overflow-hidden text-transparent select-none',
-                ].join(' ')}
-              >
-                {overflowMembers > 0 ? `+${overflowMembers}` : '--'}
-              </span>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              AI tokens are tracked for visibility only. AI provider charges are billed directly by each connected provider account.
-            </p>
+            ) : null}
           </CardContent>
         </Card>
 
         <div
-          className={`grid transition-all duration-300 ease-in-out ${showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-            }`}
+          className={`grid transition-all duration-300 ease-in-out ${
+            showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+          }`}
         >
           <div className="overflow-hidden">
-            <Card className="border-none shadow-none bg-transparent">
-              <CardHeader className="pt-0">
+            <Card className="border-none bg-transparent shadow-none">
+              <CardHeader className="px-0 pt-0 pb-4">
                 <CardTitle>Available Plans</CardTitle>
                 <CardDescription>
-                  Pricing is for shared infrastructure: cloud storage, project capacity, sync, and collaboration.
+                  Restore the plan-style comparison view while keeping the same checkout and entitlement logic.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="pt-0">
-                <Tabs defaultValue="standard" className="w-full">
-                  <TabsList className="mb-6 h-10 rounded-lg bg-muted p-1 w-fit">
-                    <TabsTrigger value="standard" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                      Standard Plans
+              <CardContent className="px-0 pt-0">
+                <Tabs defaultValue="individual" className="w-full">
+                  <TabsList className="mb-6 h-10 w-fit rounded-lg bg-muted p-1">
+                    <TabsTrigger value="individual" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                      Individual
                     </TabsTrigger>
-                    <TabsTrigger value="enterprise" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <TabsTrigger value="workspace" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                       Enterprise
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="standard" className="mt-0">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {standardPlans.map((plan, index) => {
-                        const isCurrent = plan.id === currentPlan
-                        const isDowngrade = plans.findIndex((p) => p.id === plan.id) < currentPlanIndex
-                        const badge = getPlanBadge(plan.id, currentPlan)
+                  <TabsContent value="individual" className="mt-0">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                      {INDIVIDUAL_PLAN_CARDS.map((planCard, index) => {
+                        const isCurrentPlan = currentPlanIdForCards === planCard.id
+                        const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
+
                         return (
                           <div
-                            key={plan.id}
-                            className={`relative flex flex-col rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ${showUpgradeOptions ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'} ${badge ? 'ring-2 ring-primary/20' : ''}`}
-                            style={{
-                              transitionDelay: showUpgradeOptions ? `${index * 50}ms` : `${(standardPlans.length - 1 - index) * 50}ms`,
-                            }}
+                            key={planCard.id}
+                            className={`relative flex h-full flex-col rounded-2xl border border-transparent bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40 ${
+                              isCurrentPlan ? 'border-primary/30' : ''
+                            }`}
+                            style={{ transitionDelay: `${index * 50}ms` }}
                           >
-                            {badge && (
+                            {badge ? (
                               <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
                                 {badge}
                               </div>
-                            )}
-                            <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
+                            ) : null}
+
+                            <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{planCard.description}</p>
                             <div className="mt-4 flex items-baseline gap-1">
-                              <span className="text-3xl font-bold text-foreground">{plan.price}</span>
-                              {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
+                              <span className="text-3xl font-bold text-foreground">{planCard.price}</span>
+                              {planCard.period ? <span className="text-muted-foreground">{planCard.period}</span> : null}
                             </div>
-                            {plan.trial && (
-                              <p className="mt-1 text-sm text-green-600 dark:text-green-400">{plan.trial}</p>
-                            )}
+                            {planCard.trial ? (
+                              <p className="mt-1 text-sm text-green-600 dark:text-green-400">{planCard.trial}</p>
+                            ) : null}
+
                             <ul className="mt-5 flex-1 space-y-2.5">
-                              {plan.features.map((f, i) => (
-                                <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  {f.included ? (
+                              {planCard.features.map((feature, featureIndex) => (
+                                <li key={`${planCard.id}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  {feature.included ? (
                                     <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                                   ) : (
                                     <XCircle className="h-4 w-4 shrink-0 text-destructive" />
                                   )}
-                                  <span>{f.text}</span>
+                                  <span>{feature.text}</span>
                                 </li>
                               ))}
                             </ul>
-                            <p className="mt-4 text-sm text-muted-foreground">{plan.conclusion}</p>
-                            <Button
-                              className="mt-5 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                              disabled={isCurrent || isUpgrading}
-                              onClick={() => handleUpgrade(plan.id)}
-                            >
-                              {isCurrent ? 'Current Plan' : isDowngrade ? 'Downgrade' : plan.buttonLabel}
-                            </Button>
-                            <p className="mt-2 text-center text-xs text-muted-foreground">{plan.footerText}</p>
+
+                            <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
+
+                            {planCard.id === 'free' ? (
+                              <Button
+                                className="mt-5 w-full rounded-lg"
+                                variant="outline"
+                                onClick={handleManageBilling}
+                                disabled={!canOpenCheckout || isPortalPending}
+                              >
+                                {isCurrentPlan ? 'Current Plan' : 'Downgrade in Billing Portal'}
+                              </Button>
+                            ) : (
+                              <Button
+                                className="mt-5 w-full rounded-lg"
+                                variant={isCurrentPlan ? 'secondary' : 'default'}
+                                onClick={() => handlePlanCardCheckout(planCard.id)}
+                                disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending}
+                              >
+                                {isCheckoutPending ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                {isCurrentPlan ? 'Current Plan' : `Start ${planCard.name} Subscription`}
+                              </Button>
+                            )}
+
+                            <p className="mt-2 text-center text-xs text-muted-foreground">{planCard.footerText}</p>
                           </div>
                         )
                       })}
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="enterprise" className="mt-0">
-                    <div className="flex justify-center">
-                      <div
-                        className={`relative flex w-full max-w-md flex-col rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ${showUpgradeOptions ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}
-                        style={{ transitionDelay: showUpgradeOptions ? '0ms' : '0ms' }}
-                      >
-                        <h3 className="text-lg font-semibold text-foreground">{enterprisePlan.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{enterprisePlan.description}</p>
-                        <p className="mt-4 text-3xl font-bold text-foreground">{enterprisePlan.priceLabel}</p>
+                  <TabsContent value="workspace" className="mt-0">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
+                        <h3 className="text-lg font-semibold text-foreground">{STARTUP_PLAN_CARD.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.description}</p>
+                        <div className="mt-4 flex items-baseline gap-1">
+                          <span className="text-3xl font-bold text-foreground">{STARTUP_PLAN_CARD.price}</span>
+                          <span className="text-muted-foreground">{STARTUP_PLAN_CARD.period}</span>
+                        </div>
+                        {STARTUP_PLAN_CARD.trial ? (
+                          <p className="mt-1 text-sm text-green-600 dark:text-green-400">
+                            {STARTUP_PLAN_CARD.trial}
+                          </p>
+                        ) : null}
                         <ul className="mt-5 flex-1 space-y-2.5">
-                          {enterprisePlan.features.map((f, i) => (
-                            <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {STARTUP_PLAN_CARD.features.map((feature, featureIndex) => (
+                            <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              {feature.included ? (
+                                <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                              ) : (
+                                <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                              )}
+                              <span>{feature.text}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-4 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.conclusion}</p>
+                        <Button
+                          className="mt-5 w-full rounded-lg"
+                          variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
+                          onClick={() => handlePlanCardCheckout('startup')}
+                          disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending}
+                        >
+                          {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          {currentPlanIdForCards === 'startup' ? 'Current Plan' : 'Start Startup Subscription'}
+                        </Button>
+                        <p className="mt-2 text-center text-xs text-muted-foreground">{STARTUP_PLAN_CARD.footerText}</p>
+                      </div>
+
+                      <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
+                        <h3 className="text-lg font-semibold text-foreground">{ENTERPRISE_PLAN_CARD.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{ENTERPRISE_PLAN_CARD.description}</p>
+                        <p className="mt-4 text-3xl font-bold text-foreground">{ENTERPRISE_PLAN_CARD.priceLabel}</p>
+                        <ul className="mt-5 flex-1 space-y-2.5">
+                          {ENTERPRISE_PLAN_CARD.features.map((feature) => (
+                            <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
-                              <span>{f.text}</span>
+                              <span>{feature}</span>
                             </li>
                           ))}
                         </ul>
                         <Button
-                          className="mt-6 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                          disabled={isUpgrading}
-                          onClick={() => handleUpgrade(enterprisePlan.id)}
+                          className="mt-6 w-full rounded-lg"
+                          onClick={() =>
+                            window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Enterprise%20Plan')
+                          }
                         >
-                          {enterprisePlan.buttonLabel}
+                          Contact Enterprise Sales
                         </Button>
-                        <p className="mt-2 text-center text-xs text-muted-foreground">{enterprisePlan.footerText}</p>
+                        <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
                       </div>
                     </div>
                   </TabsContent>
@@ -719,17 +1038,259 @@ export function Billing() {
           </div>
         </div>
 
+        {seatManagedEntitlement && (
+          <Card className="border-none shadow-none bg-transparent">
+          <CardHeader className="pt-0 px-0 pb-4">
+            <CardTitle>Seat Assignments</CardTitle>
+            <CardDescription>
+              Assign paid seats explicitly. Members without seats can stay in the workspace but AI and
+              sync are gated.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-0">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Seat</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {(members ?? []).length > 0 ? (
+                    (members ?? []).map((member) => {
+                      const isBillingOwner =
+                        billingOwnerId !== null &&
+                        billingOwnerId === String(member.userId)
+                      const hasSeat =
+                        entitlement?.source === 'legacy'
+                          ? true
+                          : isBillingOwner || activeAssignmentsByUserId.has(String(member.userId))
+                      const isBusy = seatMutationUserId === String(member.userId)
+                      const canToggle =
+                        canManageSeats &&
+                        entitlement?.source !== 'legacy' &&
+                        !isBillingOwner
+
+                      const displayName =
+                        member.user?.firstName
+                          ? `${member.user.firstName} ${member.user.lastName || ''}`.trim()
+                          : member.user?.email || 'Unknown'
+
+                      return (
+                        <TableRow key={member._id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={member.user?.profileImageUrl || undefined} />
+                                <AvatarFallback>
+                                  {(displayName || '?').slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{displayName}</p>
+                                <p className="text-xs text-muted-foreground">{member.user?.email || '-'}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className="border-0 bg-primary/10 text-primary">
+                              {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {isBillingOwner ? (
+                              <Badge variant="secondary">Owner Seat</Badge>
+                            ) : hasSeat ? (
+                              <Badge variant="secondary">Assigned</Badge>
+                            ) : (
+                              <Badge variant="outline">Not Assigned</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isBillingOwner ? (
+                              <span className="text-xs text-muted-foreground">Always included</span>
+                            ) : (
+                              <Button
+                                variant={hasSeat ? 'outline' : 'default'}
+                                size="sm"
+                                disabled={!canToggle || isBusy}
+                                onClick={() => void handleSeatToggle(member.userId, !hasSeat)}
+                              >
+                                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : hasSeat ? 'Revoke' : 'Assign'}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
+                        No workspace members found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {!canManageSeats && seatManagement?.billingUser && entitlement?.source !== 'legacy' && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Only the billing owner ({seatManagement.billingUser.email}) can assign or revoke paid seats.
+              </p>
+            )}
+          </CardContent>
+          </Card>
+        )}
+
+        {seatManagedEntitlement && seatWallets?.canManage && (
+          <Card className="border-none shadow-none bg-transparent">
+            <CardHeader className="pt-0 px-0 pb-4">
+              <CardTitle>Seat Wallet Balances</CardTitle>
+              <CardDescription>
+                Each active seat keeps its own wallet. Wallets reset to the full included amount every billing cycle.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-0">
+              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <Table className="[&_th]:px-4 [&_td]:px-4">
+                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                    <TableRow>
+                      <TableHead>Seat User</TableHead>
+                      <TableHead>Available</TableHead>
+                      <TableHead>Included / Cycle</TableHead>
+                      <TableHead className="text-right">Updated</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                    {seatWallets.wallets.length > 0 ? (
+                      seatWallets.wallets.map((entry: SeatWalletView) => {
+                        const displayName =
+                          entry.firstName
+                            ? `${entry.firstName} ${entry.lastName || ''}`.trim()
+                            : entry.email
+
+                        return (
+                          <TableRow key={String(entry.userId)}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={entry.profileImageUrl || undefined} />
+                                  <AvatarFallback>
+                                    {(displayName || '?').slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {displayName}
+                                    {entry.isBillingOwner ? ' (Owner)' : ''}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{entry.email}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium">
+                                {formatCurrencyFromCents(entry.availableCents, walletCurrency)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {formatCurrencyFromCents(seatWallets.includedCentsPerCycle, walletCurrency)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm text-muted-foreground">
+                              {formatDate(entry.updatedAt ?? undefined)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
+                          No active seat wallets yet.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="pt-0">
+          <CardHeader className="pt-0 px-0 pb-4">
+            <CardTitle>AI Wallet Activity</CardTitle>
+            <CardDescription>
+              Recent wallet events for the active wallet context.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0 px-0">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="[&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead className="text-right">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {walletLedgerRows.length > 0 ? (
+                    walletLedgerRows.map((entry) => {
+                      const kindLabel = formatWalletLedgerKind(entry.kind)
+                      const isDebit = entry.kind === 'debit'
+                      const amountPrefix = isDebit ? '-' : '+'
+                      const source =
+                        typeof entry.metadata?.source === 'string'
+                          ? entry.metadata.source
+                          : typeof entry.metadata?.reason === 'string'
+                            ? entry.metadata.reason
+                            : '-'
+
+                      return (
+                        <TableRow key={entry._id}>
+                          <TableCell>{formatDate(entry.createdAt)}</TableCell>
+                          <TableCell>{kindLabel}</TableCell>
+                          <TableCell>
+                            {amountPrefix}{formatCurrencyFromCents(entry.amountCents, walletCurrency)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">{source}</TableCell>
+                        </TableRow>
+                      )
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
+                        No wallet activity yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0 px-0">
             <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="font-medium">AI Token Usage</p>
                   <p className="text-sm text-muted-foreground">
-                    Daily token consumption across the workspace
+                    Daily token consumption across this workspace
                   </p>
                 </div>
-                <Select value={usageTimeRange} onValueChange={setUsageTimeRange}>
+                <Select
+                  value={usageTimeRange}
+                  onValueChange={(value) =>
+                    setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
+                  }
+                >
                   <SelectTrigger className="w-[140px]" aria-label="Select time range">
                     <SelectValue placeholder="Last 30 days" />
                   </SelectTrigger>
@@ -740,6 +1301,7 @@ export function Billing() {
                   </SelectContent>
                 </Select>
               </div>
+
               <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
                 <AreaChart data={chartData}>
                   <defs>
@@ -791,7 +1353,7 @@ export function Billing() {
             <div className="mt-6 pt-6 border-t grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="font-medium">Tokens in Selected Range</p>
-                <p className="text-sm text-muted-foreground">Tracking only, not billed by Cozea</p>
+                <p className="text-sm text-muted-foreground">Operational usage tracking (wallet debits are shown above)</p>
                 <p className="text-3xl font-bold mt-1">{chartTotals.tokens.toLocaleString()}</p>
               </div>
               <div>
@@ -804,13 +1366,13 @@ export function Billing() {
         </Card>
 
         <Card className="border-none shadow-none bg-transparent">
-          <CardHeader className="pt-0 pb-4">
+          <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>Invoice History</CardTitle>
             <CardDescription>
-              Review your recent workspace invoices and payment statuses.
+              Review recent Stripe invoices for the active billing customer.
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="pt-0 px-0">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
@@ -827,9 +1389,7 @@ export function Billing() {
                     stripeInvoices.map((invoice) => (
                       <TableRow key={invoice.id}>
                         <TableCell>{formatDate(invoice.date)}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {invoice.description}
-                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">{invoice.description}</TableCell>
                         <TableCell>${(invoice.amountPaid / 100).toFixed(2)}</TableCell>
                         <TableCell>
                           <Badge
@@ -840,17 +1400,19 @@ export function Billing() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {invoice.hostedInvoiceUrl && (
+                          {invoice.hostedInvoiceUrl ? (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-8 gap-1"
-                              onClick={() => window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)}
+                              onClick={() =>
+                                window.electronAPI.shell.openExternal(invoice.hostedInvoiceUrl!)
+                              }
                             >
                               View
                               <ExternalLink className="h-3 w-3" />
                             </Button>
-                          )}
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))
@@ -867,6 +1429,20 @@ export function Billing() {
           </CardContent>
         </Card>
       </div>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return <div className="mx-auto w-full max-w-6xl">{content}</div>
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'Billing' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

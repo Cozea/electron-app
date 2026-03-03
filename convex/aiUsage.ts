@@ -4,6 +4,7 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import {
   calculateCredits,
+  calculateSpendCents,
   getModelTier,
 } from "./lib/modelTiers"
 
@@ -75,8 +76,15 @@ export const log = mutation({
 
       if (existing) {
         const trackedUnits = existing.trackedUnits
+        const spendCents = calculateSpendCents(
+          existing.model,
+          existing.promptTokens,
+          existing.completionTokens,
+          existing.extendedUsage?.cachedInputTokens ?? 0
+        )
         return {
           trackedUnits,
+          spendCents,
           alreadyProcessed: true,
         }
       }
@@ -90,6 +98,12 @@ export const log = mutation({
       cachedInputTokens
     )
     const modelTier = getModelTier(args.model)
+    const spendCents = calculateSpendCents(
+      args.model,
+      args.promptTokens,
+      args.completionTokens,
+      cachedInputTokens
+    )
 
     await ctx.db.insert("aiUsage", {
       organizationId: args.organizationId,
@@ -127,6 +141,7 @@ export const log = mutation({
     return {
       trackedUnits,
       modelTier,
+      spendCents,
     }
   },
 })
@@ -304,7 +319,7 @@ export const getUsageSummary = query({
       currentPeriodStart: org.subscription.currentPeriodStart,
       currentPeriodEnd: org.subscription.currentPeriodEnd,
       plan: org.subscription.plan,
-      note: "Tracked units are visibility metrics only. Provider charges are billed directly by connected providers.",
+      note: "Tracked units are visibility metrics. Cozea-managed providers debit from the shared AI wallet.",
     }
   },
 })
