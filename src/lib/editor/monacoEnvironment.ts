@@ -1,12 +1,6 @@
 import { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-
 let initialized = false
 
 type MonacoTsDefaults = {
@@ -48,6 +42,46 @@ export function configureMonacoTypeScriptValidation(monacoInstance: typeof monac
   applyTypeScriptValidationConfig(monacoInstance)
 }
 
+function createMonacoWorker(label: string): Worker {
+  // Use explicit module workers instead of Vite's `?worker` shorthand.
+  // The `?worker` + iife format is incompatible with Vite 7/Rolldown code-splitting builds.
+  if (label === 'json') {
+    return new Worker(
+      new URL('monaco-editor/esm/vs/language/json/json.worker', import.meta.url),
+      { type: 'module' }
+    )
+  }
+  if (label === 'css' || label === 'scss' || label === 'less') {
+    return new Worker(
+      new URL('monaco-editor/esm/vs/language/css/css.worker', import.meta.url),
+      { type: 'module' }
+    )
+  }
+  if (label === 'html' || label === 'handlebars' || label === 'razor') {
+    return new Worker(
+      new URL('monaco-editor/esm/vs/language/html/html.worker', import.meta.url),
+      { type: 'module' }
+    )
+  }
+  if (label === 'typescript' || label === 'javascript') {
+    return new Worker(
+      new URL('monaco-editor/esm/vs/language/typescript/ts.worker', import.meta.url),
+      { type: 'module' }
+    )
+  }
+  if (label === 'TextMateWorker') {
+    return new Worker(
+      new URL('@codingame/monaco-vscode-textmate-service-override/worker', import.meta.url),
+      { type: 'module' }
+    )
+  }
+  // Default editor worker
+  return new Worker(
+    new URL('monaco-editor/esm/vs/editor/editor.worker', import.meta.url),
+    { type: 'module' }
+  )
+}
+
 export function ensureMonacoEnvironment(): void {
   if (initialized) return
   initialized = true
@@ -55,26 +89,7 @@ export function ensureMonacoEnvironment(): void {
   if (typeof self !== 'undefined') {
     self.MonacoEnvironment = {
       getWorker(_, label) {
-        if (label === 'json') {
-          return new jsonWorker()
-        }
-        if (label === 'css' || label === 'scss' || label === 'less') {
-          return new cssWorker()
-        }
-        if (label === 'html' || label === 'handlebars' || label === 'razor') {
-          return new htmlWorker()
-        }
-        if (label === 'typescript' || label === 'javascript') {
-          return new tsWorker()
-        }
-
-        if (label === 'TextMateWorker') {
-          return new Worker(new URL('@codingame/monaco-vscode-textmate-service-override/worker', import.meta.url), {
-            type: 'module',
-          })
-        }
-
-        return new editorWorker()
+        return createMonacoWorker(label)
       },
     }
   }
