@@ -98,7 +98,7 @@ interface StripeCatalogResponse {
 const FALLBACK_CATALOG_AMOUNTS_CENTS: Record<SelfServePlan, Record<BillingCycle, number>> = {
   pro: { monthly: 2000, yearly: 21100 },
   max: { monthly: 4900, yearly: 51700 },
-  startup: { monthly: 9000, yearly: 90000 },
+  startup: { monthly: 10000, yearly: 105600 },
 }
 
 const FALLBACK_TRIAL_DAYS: Partial<Record<SelfServePlan, number>> = {
@@ -159,7 +159,7 @@ const STARTUP_PLAN_CARD: PlanCard = {
   id: 'startup',
   name: 'Startup',
   description: 'Centralized billing with explicit paid-seat assignment.',
-  price: '$90',
+  price: '$100',
   period: '/ seat / month',
   trial: '7 day free trial',
   features: [
