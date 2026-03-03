@@ -21,10 +21,6 @@ function readEnvInt(key: string): number | undefined {
   return parsed
 }
 
-function monthsForCycle(cycle: AccountBillingCycle | undefined): number {
-  return cycle === "yearly" ? 12 : 1
-}
-
 function resolvePlanMonthlyCents(plan: AccountSubscriptionPlan): number {
   switch (plan) {
     case "pro":
@@ -49,12 +45,43 @@ function resolvePlanMonthlyCents(plan: AccountSubscriptionPlan): number {
   }
 }
 
+function resolvePlanYearlyOverrideCents(
+  plan: AccountSubscriptionPlan
+): number | undefined {
+  switch (plan) {
+    case "pro":
+      return readEnvInt("AI_WALLET_INCLUDED_PRO_YEARLY_CENTS")
+    case "max":
+      return readEnvInt("AI_WALLET_INCLUDED_MAX_YEARLY_CENTS")
+    case "startup":
+      return (
+        readEnvInt("AI_WALLET_INCLUDED_STARTUP_YEARLY_CENTS") ??
+        readEnvInt("AI_WALLET_INCLUDED_STARTUP_SEAT_YEARLY_CENTS")
+      )
+    case "enterprise":
+      return (
+        readEnvInt("AI_WALLET_INCLUDED_ENTERPRISE_YEARLY_CENTS") ??
+        readEnvInt("AI_WALLET_INCLUDED_ENTERPRISE_SEAT_YEARLY_CENTS")
+      )
+    case "free":
+    default:
+      return undefined
+  }
+}
+
 export function resolveIncludedWalletCents(args: {
   plan: AccountSubscriptionPlan
   cycle?: AccountBillingCycle
 }): number {
   const monthlyCents = resolvePlanMonthlyCents(args.plan)
-  return Math.max(0, monthlyCents * monthsForCycle(args.cycle))
+  if (args.cycle === "yearly") {
+    const yearlyOverrideCents = resolvePlanYearlyOverrideCents(args.plan)
+    if (typeof yearlyOverrideCents === "number") {
+      return Math.max(0, yearlyOverrideCents)
+    }
+    return Math.max(0, monthlyCents * 12)
+  }
+  return Math.max(0, monthlyCents)
 }
 
 export function isSeatManagedWalletPlan(plan: AccountSubscriptionPlan): boolean {
