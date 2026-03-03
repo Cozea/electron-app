@@ -1,19 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { ipcMain } from 'electron'
 import {
   createUIMessageStream,
   pipeUIMessageStreamToResponse,
   type UIMessage,
 } from 'ai'
-
-import { getModelInfo } from '../../server/src/routes/ai/modelCatalog.js'
-import { normalizeModelVariant } from '../../server/src/routes/ai/modelVariants.js'
-import { resolveAgentPolicy } from '../../server/src/routes/ai/runtime/profiles.js'
-import { createProviderModelFromEnvelope } from '../../server/src/routes/ai/providerHelpers.js'
-import { parseChatRequestBody } from '../../server/src/routes/ai/runtime/chatContract.js'
-import { executeChatPipeline, mergePipelineResultToWriter } from '../../server/src/routes/ai/runtime/chatExecutor.js'
-import type { ChatRequestBody, ProviderAuthEnvelope } from '../../server/src/routes/ai/types.js'
 
 interface LocalAiRuntimeStatus {
   enabled: boolean
@@ -22,6 +17,82 @@ interface LocalAiRuntimeStatus {
 }
 
 type LocalAiRuntimeProvider = 'openai' | 'google'
+
+interface ProviderAuthEnvelope {
+  provider: LocalAiRuntimeProvider
+  accessToken: string
+}
+
+interface ChatRequestBody {
+  messages: unknown[]
+  model: string
+  organizationId: string
+  conversationId?: string
+  providerOptions?: Record<string, unknown>
+  projectContext?: unknown
+  agentId?: string
+  surface?: string
+  variantId?: string
+  enableTools?: boolean
+  enableWebSearch?: boolean
+}
+
+interface ChatContractFailure {
+  ok: false
+  error: {
+    statusCode: number
+    payload: Record<string, unknown>
+  }
+}
+
+interface ChatContractSuccess {
+  ok: true
+  value: ChatRequestBody
+}
+
+type ChatContractResult = ChatContractFailure | ChatContractSuccess
+
+interface ModelInfo {
+  provider: string
+  providerModelId: string
+  capabilities?: Record<string, unknown>
+}
+
+interface LocalRuntimeDeps {
+  getModelInfo: (modelId: string) => ModelInfo | undefined
+  normalizeModelVariant: (args: {
+    requestedVariant: string | undefined
+    provider: string
+    modelId: string
+    capabilities?: Record<string, unknown>
+  }) => string | undefined
+  resolveAgentPolicy: (args: {
+    requestedAgentId?: string
+    requestedSurface?: string
+    requestedVariantId?: string
+    hasProjectContext: boolean
+  }) => {
+    ok: boolean
+    value?: {
+      variantId?: string
+      [key: string]: unknown
+    }
+    error?: string
+  }
+  createProviderModelFromEnvelope: (
+    provider: LocalAiRuntimeProvider,
+    providerModelId: string,
+    envelope: ProviderAuthEnvelope
+  ) => unknown
+  parseChatRequestBody: (raw: unknown) => ChatContractResult
+  executeChatPipeline: (args: Record<string, unknown>) => Promise<{
+    result: unknown
+    requestMessages: unknown
+    continuationStateInput: unknown
+    providerHint: unknown
+  }>
+  mergePipelineResultToWriter: (args: Record<string, unknown>) => void
+}
 
 function envFlagEnabled(value: string | undefined): boolean {
   if (!value) return false
@@ -73,6 +144,7 @@ export class LocalAiRuntimeService {
 
   private server: ReturnType<typeof createServer> | null = null
   private endpoint: string | null = null
+  private runtimeDeps: LocalRuntimeDeps | null = null
 
   static getInstance(): LocalAiRuntimeService {
     if (!LocalAiRuntimeService.instance) {
@@ -85,7 +157,11 @@ export class LocalAiRuntimeService {
     if (!isLocalRuntimeEnabled()) {
       return { enabled: false, running: false }
     }
-    await this.ensureServer()
+    const deps = await this.loadRuntimeDeps()
+    if (!deps) {
+      return { enabled: false, running: false }
+    }
+    await this.ensureServer(deps)
     return {
       enabled: true,
       running: this.server !== null,
@@ -97,7 +173,70 @@ export class LocalAiRuntimeService {
     ipcMain.handle('localAiRuntime:getStatus', async () => this.getStatus())
   }
 
-  private async ensureServer(): Promise<void> {
+  private async loadRuntimeDeps(): Promise<LocalRuntimeDeps | null> {
+    if (this.runtimeDeps) {
+      return this.runtimeDeps
+    }
+
+    const rootCandidates = [
+      process.cwd(),
+      path.resolve(process.cwd(), '..'),
+      path.resolve(__dirname, '..', '..'),
+      path.resolve(__dirname, '..', '..', '..'),
+    ]
+
+    const requiredRelativePaths = [
+      'modelCatalog.js',
+      'modelVariants.js',
+      'providerHelpers.js',
+      'runtime/profiles.js',
+      'runtime/chatContract.js',
+      'runtime/chatExecutor.js',
+    ]
+
+    for (const root of rootCandidates) {
+      const aiDistDir = path.join(root, 'server', 'dist', 'routes', 'ai')
+      const hasAllModules = requiredRelativePaths.every((rel) => existsSync(path.join(aiDistDir, rel)))
+      if (!hasAllModules) {
+        continue
+      }
+
+      try {
+        const [
+          modelCatalogModule,
+          modelVariantsModule,
+          profilesModule,
+          providerHelpersModule,
+          chatContractModule,
+          chatExecutorModule,
+        ] = await Promise.all([
+          import(pathToFileURL(path.join(aiDistDir, 'modelCatalog.js')).href),
+          import(pathToFileURL(path.join(aiDistDir, 'modelVariants.js')).href),
+          import(pathToFileURL(path.join(aiDistDir, 'runtime', 'profiles.js')).href),
+          import(pathToFileURL(path.join(aiDistDir, 'providerHelpers.js')).href),
+          import(pathToFileURL(path.join(aiDistDir, 'runtime', 'chatContract.js')).href),
+          import(pathToFileURL(path.join(aiDistDir, 'runtime', 'chatExecutor.js')).href),
+        ])
+
+        this.runtimeDeps = {
+          getModelInfo: modelCatalogModule.getModelInfo as LocalRuntimeDeps['getModelInfo'],
+          normalizeModelVariant: modelVariantsModule.normalizeModelVariant as LocalRuntimeDeps['normalizeModelVariant'],
+          resolveAgentPolicy: profilesModule.resolveAgentPolicy as LocalRuntimeDeps['resolveAgentPolicy'],
+          createProviderModelFromEnvelope: providerHelpersModule.createProviderModelFromEnvelope as LocalRuntimeDeps['createProviderModelFromEnvelope'],
+          parseChatRequestBody: chatContractModule.parseChatRequestBody as LocalRuntimeDeps['parseChatRequestBody'],
+          executeChatPipeline: chatExecutorModule.executeChatPipeline as LocalRuntimeDeps['executeChatPipeline'],
+          mergePipelineResultToWriter: chatExecutorModule.mergePipelineResultToWriter as LocalRuntimeDeps['mergePipelineResultToWriter'],
+        }
+        return this.runtimeDeps
+      } catch (error) {
+        console.warn('Failed to initialize local AI runtime server modules from', aiDistDir, error)
+      }
+    }
+
+    return null
+  }
+
+  private async ensureServer(runtimeDeps: LocalRuntimeDeps): Promise<void> {
     if (this.server && this.endpoint) return
 
     this.server = createServer(async (req, res) => {
@@ -127,7 +266,7 @@ export class LocalAiRuntimeService {
           return
         }
 
-        const contract = parseChatRequestBody(decodedBody)
+        const contract = runtimeDeps.parseChatRequestBody(decodedBody)
         if (!contract.ok) {
           sendJson(res, contract.error.statusCode, contract.error.payload)
           return
@@ -140,7 +279,7 @@ export class LocalAiRuntimeService {
         const enableTools = parsedBody.enableTools ?? true
         const enableWebSearch = parsedBody.enableWebSearch ?? false
 
-        const modelInfo = getModelInfo(model)
+        const modelInfo = runtimeDeps.getModelInfo(model)
         if (!modelInfo || (modelInfo.provider !== 'openai' && modelInfo.provider !== 'google')) {
           sendJson(res, 400, { error: 'Unsupported model for local runtime' })
           return
@@ -157,7 +296,7 @@ export class LocalAiRuntimeService {
           return
         }
 
-        const policyResult = resolveAgentPolicy({
+        const policyResult = runtimeDeps.resolveAgentPolicy({
           requestedAgentId: parsedBody.agentId,
           requestedSurface: parsedBody.surface,
           requestedVariantId: parsedBody.variantId,
@@ -170,7 +309,7 @@ export class LocalAiRuntimeService {
         }
 
         const resolvedPolicyBase = policyResult.value
-        const resolvedVariantId = normalizeModelVariant({
+        const resolvedVariantId = runtimeDeps.normalizeModelVariant({
           requestedVariant: resolvedPolicyBase.variantId,
           provider: modelInfo.provider,
           modelId: model,
@@ -181,7 +320,7 @@ export class LocalAiRuntimeService {
           variantId: resolvedVariantId,
         }
 
-        const aiModel = createProviderModelFromEnvelope(
+        const aiModel = runtimeDeps.createProviderModelFromEnvelope(
           modelInfo.provider as LocalAiRuntimeProvider,
           modelInfo.providerModelId,
           envelope
@@ -191,7 +330,7 @@ export class LocalAiRuntimeService {
         const stream = createUIMessageStream<UIMessage>({
           originalMessages: messages,
           execute: async ({ writer }) => {
-            const pipeline = await executeChatPipeline({
+            const pipeline = await runtimeDeps.executeChatPipeline({
               aiModel,
               messages: messages as UIMessage[],
               model,
@@ -231,7 +370,7 @@ export class LocalAiRuntimeService {
               },
             })
 
-            mergePipelineResultToWriter({
+            runtimeDeps.mergePipelineResultToWriter({
               result: pipeline.result,
               requestMessages: pipeline.requestMessages,
               continuationStateInput: pipeline.continuationStateInput,
