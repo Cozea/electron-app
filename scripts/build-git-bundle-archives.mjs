@@ -40,6 +40,10 @@ function isCI() {
   return process.env.CI === 'true'
 }
 
+function allowUnsignedBundlesInCI() {
+  return process.env.COZEA_ALLOW_UNSIGNED_GIT_BUNDLES === '1'
+}
+
 function resolveCodesignIdentity() {
   const explicitIdentity = (process.env.COZEA_CODESIGN_IDENTITY ?? process.env.CSC_NAME ?? '').trim()
   if (explicitIdentity) return explicitIdentity
@@ -181,7 +185,7 @@ async function signDarwinTargetBinaries(target) {
 
   const identity = resolveCodesignIdentity()
   if (!identity) {
-    if (isCI()) {
+    if (isCI() && !allowUnsignedBundlesInCI()) {
       throw new Error(
         `No Developer ID codesigning identity available while building bundled git archive for ${target.id}`
       )

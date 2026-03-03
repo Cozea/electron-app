@@ -222,7 +222,13 @@ jobs:
             log_file="$(mktemp)"
             echo "Build/package attempt ${attempt}/${max_attempts}"
 
-            if npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }} 2>&1 | tee "${log_file}"; then
+            if [[ "${{ steps.publish_mode.outputs.mode }}" == "always" ]]; then
+              dist_cmd=(npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
+            else
+              dist_cmd=(env COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1 npm run dist -- --${{ matrix.electron_target }} --${{ matrix.arch }} --publish ${{ steps.publish_mode.outputs.mode }})
+            fi
+
+            if "${dist_cmd[@]}" 2>&1 | tee "${log_file}"; then
               success=1
               break
             fi
