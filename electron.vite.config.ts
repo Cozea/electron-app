@@ -47,6 +47,15 @@ const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: {
+        // LocalAiRuntimeService imports from ../../server/src/routes/ai/...
+        // The server package is not bundled into the Electron main process build.
+        // This alias maps those cross-package paths to their actual location so
+        // Rollup can resolve and bundle them correctly during the Electron build.
+        '../../server/src/routes/ai': path.resolve(__dirname, 'server/src/routes/ai'),
+      },
+    },
     build: {
       lib: {
         entry: {
@@ -115,8 +124,8 @@ export default defineConfig({
       react({
         babel: reactCompilerEnabled
           ? {
-              plugins: [['babel-plugin-react-compiler', {}]],
-            }
+            plugins: [['babel-plugin-react-compiler', {}]],
+          }
           : undefined,
       }),
       tailwindcss(),
