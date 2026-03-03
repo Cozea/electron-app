@@ -55,6 +55,7 @@ const STARTUP_MIN_SEATS = 2
 type UsageRange = '7d' | '30d' | '90d'
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
+type SelfServePlan = CheckoutPlan
 
 interface BillingProps {
   surface?: 'page' | 'drawer'
@@ -73,9 +74,35 @@ interface PlanCard {
   price: string
   period: string
   trial?: string
+  yearlySavingsLabel?: string
   features: PlanFeature[]
   conclusion: string
   footerText: string
+}
+
+interface StripeCatalogPrice {
+  priceId?: string
+  amountCents: number
+  currency?: string
+  trialDays: number | null
+}
+
+interface StripeCatalogResponse {
+  source?: 'convex' | 'env' | 'mixed'
+  plans?: Partial<Record<SelfServePlan, {
+    monthly?: StripeCatalogPrice
+    yearly?: StripeCatalogPrice
+  }>>
+}
+
+const FALLBACK_CATALOG_AMOUNTS_CENTS: Record<SelfServePlan, Record<BillingCycle, number>> = {
+  pro: { monthly: 2000, yearly: 21100 },
+  max: { monthly: 4900, yearly: 51700 },
+  startup: { monthly: 9000, yearly: 90000 },
+}
+
+const FALLBACK_TRIAL_DAYS: Partial<Record<SelfServePlan, number>> = {
+  startup: 7,
 }
 
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
@@ -132,7 +159,7 @@ const STARTUP_PLAN_CARD: PlanCard = {
   id: 'startup',
   name: 'Startup',
   description: 'Centralized billing with explicit paid-seat assignment.',
-  price: '$35',
+  price: '$90',
   period: '/ seat / month',
   trial: '7 day free trial',
   features: [
@@ -224,6 +251,124 @@ function formatCurrencyFromCents(cents: number, currency: string = 'USD'): strin
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(normalized / 100)
+}
+
+function formatDisplayCurrencyFromCents(cents: number, currency: string = 'USD'): string {
+  const normalized = Number.isFinite(cents) ? cents : 0
+  const normalizedCurrency = currency?.trim() ? currency.toUpperCase() : 'USD'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: normalizedCurrency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized / 100)
+}
+
+function resolveCatalogPrice(
+  catalog: StripeCatalogResponse | null,
+  plan: SelfServePlan,
+  cycle: BillingCycle
+): StripeCatalogPrice | undefined {
+  if (cycle === 'yearly') {
+    return catalog?.plans?.[plan]?.yearly
+  }
+  return catalog?.plans?.[plan]?.monthly
+}
+
+function resolvePlanAmountCents(
+  catalog: StripeCatalogResponse | null,
+  plan: SelfServePlan,
+  cycle: BillingCycle
+): number {
+  const catalogPrice = resolveCatalogPrice(catalog, plan, cycle)
+  if (typeof catalogPrice?.amountCents === 'number' && Number.isFinite(catalogPrice.amountCents)) {
+    return catalogPrice.amountCents
+  }
+  return FALLBACK_CATALOG_AMOUNTS_CENTS[plan][cycle]
+}
+
+function resolvePlanCurrency(
+  catalog: StripeCatalogResponse | null,
+  plan: SelfServePlan,
+  cycle: BillingCycle
+): string {
+  const catalogPrice = resolveCatalogPrice(catalog, plan, cycle)
+  return catalogPrice?.currency?.toUpperCase() || 'USD'
+}
+
+function resolvePlanTrialDays(
+  catalog: StripeCatalogResponse | null,
+  plan: SelfServePlan,
+  cycle: BillingCycle
+): number | null {
+  const catalogPrice = resolveCatalogPrice(catalog, plan, cycle)
+  if (catalogPrice) {
+    if (
+      typeof catalogPrice.trialDays === 'number' &&
+      Number.isFinite(catalogPrice.trialDays) &&
+      catalogPrice.trialDays > 0
+    ) {
+      return Math.floor(catalogPrice.trialDays)
+    }
+    return null
+  }
+  const fallbackTrialDays = FALLBACK_TRIAL_DAYS[plan]
+  if (
+    typeof fallbackTrialDays === 'number' &&
+    Number.isFinite(fallbackTrialDays) &&
+    fallbackTrialDays > 0
+  ) {
+    return Math.floor(fallbackTrialDays)
+  }
+  return null
+}
+
+function resolvePlanPeriodLabel(plan: SelfServePlan, cycle: BillingCycle): string {
+  if (plan === 'startup') {
+    return cycle === 'yearly' ? '/ seat / year' : '/ seat / month'
+  }
+  return cycle === 'yearly' ? '/ year' : '/ month'
+}
+
+function resolveYearlySavingsLabel(
+  catalog: StripeCatalogResponse | null,
+  plan: SelfServePlan
+): string | undefined {
+  const monthlyAmountCents = resolvePlanAmountCents(catalog, plan, 'monthly')
+  const yearlyAmountCents = resolvePlanAmountCents(catalog, plan, 'yearly')
+  const savingsCents = Math.max(0, monthlyAmountCents * 12 - yearlyAmountCents)
+  if (savingsCents <= 0) return undefined
+
+  const currency = resolvePlanCurrency(catalog, plan, 'yearly')
+  return `Save ${formatDisplayCurrencyFromCents(savingsCents, currency)}`
+}
+
+function resolvePlanPricing(args: {
+  catalog: StripeCatalogResponse | null
+  plan: SelfServePlan
+  cycle: BillingCycle
+}): Pick<PlanCard, 'price' | 'period' | 'trial' | 'yearlySavingsLabel'> {
+  const amountCents = resolvePlanAmountCents(args.catalog, args.plan, args.cycle)
+  const currency = resolvePlanCurrency(args.catalog, args.plan, args.cycle)
+  const trialDays = resolvePlanTrialDays(args.catalog, args.plan, args.cycle)
+
+  return {
+    price: formatDisplayCurrencyFromCents(amountCents, currency),
+    period: resolvePlanPeriodLabel(args.plan, args.cycle),
+    trial: trialDays ? `${trialDays} day free trial` : undefined,
+    yearlySavingsLabel:
+      args.cycle === 'yearly'
+        ? resolveYearlySavingsLabel(args.catalog, args.plan)
+        : undefined,
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) return error.name === 'AbortError'
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    return (error as { name?: string }).name === 'AbortError'
+  }
+  return false
 }
 
 function formatEntitlementStatus(status?: string): string {
@@ -438,6 +583,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [pricingCatalog, setPricingCatalog] = useState<StripeCatalogResponse | null>(null)
+  const [isCatalogLoading, setIsCatalogLoading] = useState(false)
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
@@ -472,13 +619,49 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     const controller = new AbortController()
     let cancelled = false
 
-    const isAbortError = (error: unknown): boolean => {
-      if (error instanceof DOMException) return error.name === 'AbortError'
-      if (typeof error === 'object' && error !== null && 'name' in error) {
-        return (error as { name?: string }).name === 'AbortError'
+    const fetchCatalog = async () => {
+      setIsCatalogLoading(true)
+      try {
+        const headers: Record<string, string> = {}
+        if (accessToken) {
+          headers.Authorization = `Bearer ${accessToken}`
+        }
+
+        const response = await fetchWithAbort(
+          `${AUTH_SERVER_URL}/stripe/catalog`,
+          {
+            method: 'GET',
+            headers,
+            signal: controller.signal,
+          },
+          { signal: controller.signal, timeoutMs: 10000 }
+        )
+
+        if (!response.ok) return
+        const data = (await response.json().catch(() => null)) as StripeCatalogResponse | null
+        if (!cancelled && data) {
+          setPricingCatalog(data)
+        }
+      } catch (err) {
+        if (isAbortError(err)) return
+        console.error('Failed to load Stripe catalog:', err)
+      } finally {
+        if (!cancelled) {
+          setIsCatalogLoading(false)
+        }
       }
-      return false
     }
+
+    void fetchCatalog()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [accessToken])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
 
     const fetchInvoices = async () => {
       if (!currentOrganization?.organizationId || !accessToken) return
@@ -565,6 +748,40 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     plan: entitlement?.plan,
   })
   const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
+  const individualPlanCards = useMemo(() => {
+    return INDIVIDUAL_PLAN_CARDS.map((card) => {
+      if (card.id === 'free') return card
+      return {
+        ...card,
+        ...resolvePlanPricing({
+          catalog: pricingCatalog,
+          plan: card.id,
+          cycle: checkoutCycle,
+        }),
+      }
+    })
+  }, [checkoutCycle, pricingCatalog])
+  const startupPlanCard = useMemo(() => {
+    return {
+      ...STARTUP_PLAN_CARD,
+      ...resolvePlanPricing({
+        catalog: pricingCatalog,
+        plan: 'startup',
+        cycle: checkoutCycle,
+      }),
+    }
+  }, [checkoutCycle, pricingCatalog])
+  const normalizedCheckoutSeatQuantity = normalizeSeatQuantity(checkoutSeatQuantity)
+  const startupCycleAmountCents = resolvePlanAmountCents(
+    pricingCatalog,
+    'startup',
+    checkoutCycle
+  )
+  const startupCurrency = resolvePlanCurrency(pricingCatalog, 'startup', checkoutCycle)
+  const startupEstimatedTotalLabel = formatDisplayCurrencyFromCents(
+    startupCycleAmountCents * normalizedCheckoutSeatQuantity,
+    startupCurrency
+  )
 
   const handleManageBilling = useCallback(async () => {
     if (!currentOrganization?.organizationId || !accessToken) return
@@ -884,6 +1101,37 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent className="px-0 pt-0">
+                <div className="mb-6 flex flex-wrap items-center gap-3">
+                  <div className="inline-flex items-center rounded-lg border border-border/60 bg-background/70 p-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={checkoutCycle === 'monthly' ? 'default' : 'ghost'}
+                      onClick={() => setCheckoutCycle('monthly')}
+                    >
+                      Monthly
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={checkoutCycle === 'yearly' ? 'default' : 'ghost'}
+                      onClick={() => setCheckoutCycle('yearly')}
+                    >
+                      Yearly
+                    </Button>
+                  </div>
+                  {isCatalogLoading ? (
+                    <p className="text-xs text-muted-foreground">Syncing Stripe catalog pricing...</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Pricing source: {pricingCatalog?.source === 'convex'
+                        ? 'Convex Stripe catalog'
+                        : pricingCatalog?.source === 'mixed'
+                          ? 'Convex + env fallback'
+                          : 'Env fallback'}
+                    </p>
+                  )}
+                </div>
                 <Tabs defaultValue="individual" className="w-full">
                   <TabsList className="mb-6 h-10 w-fit rounded-lg bg-muted p-1">
                     <TabsTrigger value="individual" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
@@ -896,7 +1144,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
                   <TabsContent value="individual" className="mt-0">
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                      {INDIVIDUAL_PLAN_CARDS.map((planCard, index) => {
+                      {individualPlanCards.map((planCard, index) => {
                         const isCurrentPlan = currentPlanIdForCards === planCard.id
                         const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
 
@@ -920,6 +1168,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                               <span className="text-3xl font-bold text-foreground">{planCard.price}</span>
                               {planCard.period ? <span className="text-muted-foreground">{planCard.period}</span> : null}
                             </div>
+                            {planCard.yearlySavingsLabel ? (
+                              <p className="mt-1 text-xs text-muted-foreground">{planCard.yearlySavingsLabel}</p>
+                            ) : null}
                             {planCard.trial ? (
                               <p className="mt-1 text-sm text-green-600 dark:text-green-400">{planCard.trial}</p>
                             ) : null}
@@ -972,19 +1223,62 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   <TabsContent value="workspace" className="mt-0">
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                       <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
-                        <h3 className="text-lg font-semibold text-foreground">{STARTUP_PLAN_CARD.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.description}</p>
+                        <h3 className="text-lg font-semibold text-foreground">{startupPlanCard.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{startupPlanCard.description}</p>
                         <div className="mt-4 flex items-baseline gap-1">
-                          <span className="text-3xl font-bold text-foreground">{STARTUP_PLAN_CARD.price}</span>
-                          <span className="text-muted-foreground">{STARTUP_PLAN_CARD.period}</span>
+                          <span className="text-3xl font-bold text-foreground">{startupPlanCard.price}</span>
+                          <span className="text-muted-foreground">{startupPlanCard.period}</span>
                         </div>
-                        {STARTUP_PLAN_CARD.trial ? (
+                        {startupPlanCard.yearlySavingsLabel ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{startupPlanCard.yearlySavingsLabel}</p>
+                        ) : null}
+                        {startupPlanCard.trial ? (
                           <p className="mt-1 text-sm text-green-600 dark:text-green-400">
-                            {STARTUP_PLAN_CARD.trial}
+                            {startupPlanCard.trial}
                           </p>
                         ) : null}
+                        <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm text-muted-foreground">Seats</span>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setCheckoutSeatQuantity((current) =>
+                                    normalizeSeatQuantity(current - 1)
+                                  )
+                                }
+                                disabled={normalizedCheckoutSeatQuantity <= STARTUP_MIN_SEATS}
+                              >
+                                -
+                              </Button>
+                              <span className="w-8 text-center text-sm font-medium">
+                                {normalizedCheckoutSeatQuantity}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setCheckoutSeatQuantity((current) =>
+                                    normalizeSeatQuantity(current + 1)
+                                  )
+                                }
+                              >
+                                +
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Minimum {STARTUP_MIN_SEATS} seats · Estimated total {startupEstimatedTotalLabel}
+                            {' / '}
+                            {checkoutCycle === 'yearly' ? 'year' : 'month'}
+                          </p>
+                        </div>
                         <ul className="mt-5 flex-1 space-y-2.5">
-                          {STARTUP_PLAN_CARD.features.map((feature, featureIndex) => (
+                          {startupPlanCard.features.map((feature, featureIndex) => (
                             <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
                               {feature.included ? (
                                 <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
@@ -995,7 +1289,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                             </li>
                           ))}
                         </ul>
-                        <p className="mt-4 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.conclusion}</p>
+                        <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
                         <Button
                           className="mt-5 w-full rounded-lg"
                           variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
@@ -1005,7 +1299,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                           {currentPlanIdForCards === 'startup' ? 'Current Plan' : 'Start Startup Subscription'}
                         </Button>
-                        <p className="mt-2 text-center text-xs text-muted-foreground">{STARTUP_PLAN_CARD.footerText}</p>
+                        <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
                       </div>
 
                       <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
