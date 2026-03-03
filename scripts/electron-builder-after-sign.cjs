@@ -237,10 +237,11 @@ module.exports = async function afterSign(context) {
 
   const identity = resolveIdentity(context)
   if (!identity) {
-    if (process.env.CI === 'true') {
+    const allowUnsignedBundlesInCI = process.env.COZEA_ALLOW_UNSIGNED_GIT_BUNDLES === '1'
+    if (process.env.CI === 'true' && !allowUnsignedBundlesInCI) {
       throw new Error('No Developer ID identity available to sign bundled pack binaries.')
     }
-    log('No codesigning identity found, skipping pack signing in non-CI build.')
+    log('No codesigning identity found, skipping pack signing.')
     return
   }
 
