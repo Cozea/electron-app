@@ -3,26 +3,7 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
-
-export interface BillingErrorData {
-  error: string
-  code?: string
-  title?: string
-  message?: string
-  action?: {
-    label: string
-    href: string
-  }
-  secondaryAction?: {
-    label: string
-    href: string
-  }
-  hint?: string
-  details?: {
-    totalAvailable?: number
-    plan?: string
-  }
-}
+import type { BillingErrorData } from '@/lib/ai/billingErrors'
 
 interface BillingErrorProps {
   error: BillingErrorData
@@ -146,86 +127,4 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
     </div>
   )
 }
-
-/**
- * Parse an error response into BillingErrorData
- */
-export function parseBillingError(err: unknown): BillingErrorData | null {
-  if (!err) return null
-
-  // Handle Error objects with message containing JSON
-  if (err instanceof Error) {
-    try {
-      const parsed = JSON.parse(err.message)
-      if (parsed.code || parsed.title || parsed.error) {
-        return parsed as BillingErrorData
-      }
-    } catch {
-      // Not JSON, check for known patterns
-      const message = err.message
-      if (message.includes('subscription_required') || message.includes('Subscription Required')) {
-        return {
-          error: 'subscription_required',
-          code: 'SUBSCRIPTION_REQUIRED',
-          title: 'Subscription Required',
-          message: message,
-        }
-      }
-      if (message.includes('provider_auth_required') || message.includes('provider account required')) {
-        return {
-          error: 'provider_auth_required',
-          code: 'PROVIDER_AUTH_REQUIRED',
-          title: 'Provider Account Required',
-          message: message,
-        }
-      }
-      if (message.includes('entitlement') || message.includes('plan limit')) {
-        return {
-          error: 'entitlement_required',
-          code: 'ENTITLEMENT_REQUIRED',
-          title: 'Plan Upgrade Required',
-          message,
-        }
-      }
-      if (message.includes('wallet_insufficient_funds') || message.includes('insufficient ai wallet')) {
-        return {
-          error: 'wallet_insufficient_funds',
-          code: 'WALLET_INSUFFICIENT_FUNDS',
-          title: 'Insufficient AI Wallet Balance',
-          message,
-        }
-      }
-    }
-  }
-
-  // Handle plain objects
-  if (typeof err === 'object' && err !== null) {
-    const obj = err as Record<string, unknown>
-    if (obj.code || obj.title || obj.error) {
-      return obj as unknown as BillingErrorData
-    }
-  }
-
-  return null
-}
-
-/**
- * Check if an error is billing/provider-auth related
- */
-export function isBillingError(err: unknown): boolean {
-  const parsed = parseBillingError(err)
-  if (!parsed) return false
-
-  const billingCodes = [
-    'SUBSCRIPTION_REQUIRED',
-    'SUBSCRIPTION_INACTIVE',
-    'TIER_NOT_AVAILABLE',
-    'MODEL_RESTRICTED',
-    'PROVIDER_RESTRICTED',
-    'PROVIDER_AUTH_REQUIRED',
-    'ENTITLEMENT_REQUIRED',
-    'WALLET_INSUFFICIENT_FUNDS',
-  ]
-
-  return billingCodes.includes(parsed.code || '')
-}
+export { parseBillingError, isBillingError, type BillingErrorData } from '@/lib/ai/billingErrors'

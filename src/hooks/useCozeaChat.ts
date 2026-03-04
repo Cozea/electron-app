@@ -11,6 +11,7 @@ import {
   shouldAutoRetryFromHint,
   type RetryHint,
 } from '@/lib/ai/retryHints'
+import { parseBillingError, type BillingErrorData } from '@/lib/ai/billingErrors'
 
 // Common function for deduplication across the app
 export function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[] {
@@ -27,35 +28,6 @@ export function dedupeMessagesById<T extends ChatMessageLike>(messages: T[]): T[
     if (!message.id) return true
     return lastIndexById.get(message.id) === index
   })
-}
-
-// Simple billing error extraction
-export interface BillingErrorData {
-  title?: string
-  message?: string
-  action?: { label: string; href: string }
-  hint?: string
-}
-
-export function parseBillingError(err: unknown): BillingErrorData | null {
-  if (!err) return null
-  try {
-    const errStr = err instanceof Error ? err.message : String(err)
-    if (!errStr.includes('{')) return null
-    const jsonStr = errStr.substring(errStr.indexOf('{'))
-    const parsed = JSON.parse(jsonStr)
-    if (
-      parsed.error === 'billing_error' ||
-      parsed.error === 'provider_auth_required' ||
-      parsed.error === 'provider_restricted' ||
-      parsed.error === 'wallet_insufficient_funds'
-    ) {
-      return parsed
-    }
-  } catch {
-    // ignore
-  }
-  return null
 }
 
 export interface UseCozeaChatArgs {
