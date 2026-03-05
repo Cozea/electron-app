@@ -18,6 +18,7 @@ import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { SearchCommand } from "@/components/shared/SearchCommand"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
+import { ChatHistorySidebar } from "@/components/assistant/ChatHistorySidebar"
 import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useFileTabsStore } from "@/stores/useFileTabsStore"
@@ -34,7 +35,7 @@ import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBrid
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
-import { Loader2 } from "lucide-react"
+import { GripVertical, Loader2 } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
@@ -88,6 +89,8 @@ function getProjectSubpageLabel(pathname: string, basePath: string | null): stri
             return "Changes"
         case "settings":
             return "Settings"
+        case "team":
+            return "Team"
         case "database":
             return "Database"
         case "tasks":
@@ -156,6 +159,10 @@ interface ProjectLayoutLocationState {
 }
 
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
+const ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY = 'assistant-history-sidebar-width'
+const ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH = 224
+const ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH = 200
+const ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH = 320
 
 interface SidebarFullscreenSyncProps {
     assistantPanelMode: 'closed' | 'panel' | 'fullscreen'
@@ -643,13 +650,116 @@ export function ProjectLayout({
             isFilesView ? (
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                     {headerContent}
-                    <div className="min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+                    <div className="min-w-0 flex-1">
                         <EditorTabs />
                     </div>
                 </div>
             ) : headerContent,
         [headerContent, isFilesView]
     )
+    const [assistantHistorySidebarWidth, setAssistantHistorySidebarWidth] = useState(() => {
+        if (typeof window === 'undefined') return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
+        const stored = localStorage.getItem(ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY)
+        if (!stored) return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
+        const parsed = Number.parseInt(stored, 10)
+        if (!Number.isFinite(parsed)) return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
+        return Math.max(
+            ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH,
+            Math.min(ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH, parsed)
+        )
+    })
+    const [isResizingAssistantHistorySidebar, setIsResizingAssistantHistorySidebar] = useState(false)
+    const assistantHistorySidebarWidthRef = useRef(assistantHistorySidebarWidth)
+    const assistantHistoryPendingWidthRef = useRef<number | null>(null)
+    const assistantHistoryResizeRafRef = useRef<number | null>(null)
+    const assistantHistoryResizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+    useEffect(() => {
+        assistantHistorySidebarWidthRef.current = assistantHistorySidebarWidth
+    }, [assistantHistorySidebarWidth])
+
+    const flushPendingAssistantHistoryWidth = useCallback(() => {
+        if (assistantHistoryPendingWidthRef.current == null) return
+        const nextWidth = assistantHistoryPendingWidthRef.current
+        assistantHistoryPendingWidthRef.current = null
+        if (nextWidth === assistantHistorySidebarWidthRef.current) return
+        assistantHistorySidebarWidthRef.current = nextWidth
+        setAssistantHistorySidebarWidth(nextWidth)
+    }, [])
+
+    useEffect(() => {
+        if (!isResizingAssistantHistorySidebar) return
+
+        const scheduleWidthUpdate = (width: number) => {
+            assistantHistoryPendingWidthRef.current = width
+            if (assistantHistoryResizeRafRef.current !== null) return
+            assistantHistoryResizeRafRef.current = window.requestAnimationFrame(() => {
+                assistantHistoryResizeRafRef.current = null
+                flushPendingAssistantHistoryWidth()
+            })
+        }
+
+        const handleMouseMove = (event: MouseEvent) => {
+            const resizeStart = assistantHistoryResizeStartRef.current
+            if (!resizeStart) return
+            const delta = event.clientX - resizeStart.startX
+            const nextWidth = resizeStart.startWidth + delta
+            const clampedWidth = Math.max(
+                ASSISTANT_HISTORY_SIDEBAR_MIN_WIDTH,
+                Math.min(ASSISTANT_HISTORY_SIDEBAR_MAX_WIDTH, nextWidth)
+            )
+            scheduleWidthUpdate(Math.round(clampedWidth))
+        }
+
+        const handleMouseUp = () => {
+            if (assistantHistoryResizeRafRef.current !== null) {
+                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
+                assistantHistoryResizeRafRef.current = null
+            }
+            flushPendingAssistantHistoryWidth()
+            setIsResizingAssistantHistorySidebar(false)
+            assistantHistoryResizeStartRef.current = null
+            localStorage.setItem(
+                ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY,
+                assistantHistorySidebarWidthRef.current.toString()
+            )
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+            if (assistantHistoryResizeRafRef.current !== null) {
+                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
+                assistantHistoryResizeRafRef.current = null
+            }
+        }
+    }, [flushPendingAssistantHistoryWidth, isResizingAssistantHistorySidebar])
+
+    useEffect(() => {
+        return () => {
+            if (assistantHistoryResizeRafRef.current !== null) {
+                window.cancelAnimationFrame(assistantHistoryResizeRafRef.current)
+            }
+        }
+    }, [])
+
+    const handleAssistantHistoryResizeStart = useCallback((event: React.MouseEvent) => {
+        event.preventDefault()
+        assistantHistoryPendingWidthRef.current = null
+        assistantHistoryResizeStartRef.current = {
+            startX: event.clientX,
+            startWidth: assistantHistorySidebarWidthRef.current,
+        }
+        setIsResizingAssistantHistorySidebar(true)
+    }, [])
+
     const rightHeaderAddon = useMemo(
         () =>
             presenceUsers.length > 0 ? (
@@ -667,6 +777,7 @@ export function ProjectLayout({
         Boolean(breadcrumbAddon) ||
         Boolean(rightHeaderAddon)
     const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
+    const showAssistantHistorySidebar = assistantPanelMode === 'fullscreen'
 
     if (pathRecoveryChoice) {
         return (
@@ -713,6 +824,37 @@ export function ProjectLayout({
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
                     />
+                    {showAssistantHistorySidebar ? (
+                        <div
+                            style={{
+                                "--sidebar-width": `${assistantHistorySidebarWidth}px`,
+                                width: assistantHistorySidebarWidth,
+                                minWidth: assistantHistorySidebarWidth,
+                            } as React.CSSProperties}
+                            className="relative hidden h-full shrink-0 overflow-hidden md:flex"
+                        >
+                            <ChatHistorySidebar projectId={project?._id ?? null} />
+                            <div
+                                onMouseDown={handleAssistantHistoryResizeStart}
+                                className={cn(
+                                    "absolute right-0 top-0 bottom-0 z-50 hidden w-1 cursor-col-resize md:block group",
+                                    "hover:bg-primary/20 active:bg-primary/30",
+                                    isResizingAssistantHistorySidebar && "bg-primary/30"
+                                )}
+                                aria-hidden="true"
+                            >
+                                <div
+                                    className={cn(
+                                        "absolute right-0 top-1/2 flex h-8 w-3 -translate-y-1/2 items-center justify-center rounded-sm bg-border opacity-0 transition-opacity",
+                                        "group-hover:opacity-100",
+                                        isResizingAssistantHistorySidebar && "opacity-100"
+                                    )}
+                                >
+                                    <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
                     <SidebarInset
                         color="currentColor"
                         className="flex flex-row flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"

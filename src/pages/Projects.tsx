@@ -47,6 +47,7 @@ import {
 import {
   TooltipProvider,
   Tooltip,
+  TooltipContent,
   TooltipTrigger,
 } from '../components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog'
@@ -804,16 +805,24 @@ export function Projects() {
       </DropdownMenu>
 
       {/* View Mode Toggle */}
-      <Button
-        variant="secondary"
-        size="icon"
-        className="h-7 w-7 px-0 rounded-full focus:z-10"
-        onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
-        disabled={isMobile}
-        title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
-      >
-        {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-7 w-7 px-0 rounded-full focus:z-10"
+              onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
+              disabled={isMobile}
+            >
+              {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isMobile ? 'View fixed to list on small screens' : 'Toggle view mode'}
+        </TooltipContent>
+      </Tooltip>
 
       <TooltipProvider>
         <Tooltip>
@@ -828,6 +837,7 @@ export function Projects() {
               </Button>
             </span>
           </TooltipTrigger>
+          <TooltipContent side="bottom">Create new project</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     </div>

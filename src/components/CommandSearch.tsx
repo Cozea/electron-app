@@ -20,6 +20,11 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -145,15 +150,20 @@ export function CommandSearch({ className }: CommandSearchProps) {
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-        variant="ghost"
-        size="icon"
-        className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', className)}
-      >
-        <Search className="h-4 w-4" />
-        <span className="sr-only">Search (⌘K)</span>
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={() => setOpen(true)}
+            variant="ghost"
+            size="icon"
+            className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', className)}
+          >
+            <Search className="h-4 w-4" />
+            <span className="sr-only">Search (⌘K)</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Search (Cmd/Ctrl+K)</TooltipContent>
+      </Tooltip>
 
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogContent

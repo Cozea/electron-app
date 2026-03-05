@@ -22,6 +22,20 @@ export const listForProject = query({
     return await Promise.all(
       invites.map(async (invite) => {
         const inviter = await ctx.db.get(invite.invitedBy)
+        const normalizedInviteEmail = invite.email.trim().toLowerCase()
+        const inviteeUserByNormalizedEmail = await ctx.db
+          .query("users")
+          .withIndex("by_normalized_email", (q) =>
+            q.eq("normalizedEmail", normalizedInviteEmail)
+          )
+          .first()
+        const inviteeUser =
+          inviteeUserByNormalizedEmail ??
+          (await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", normalizedInviteEmail))
+            .first())
+
         return {
           ...invite,
           inviter: inviter
@@ -30,6 +44,15 @@ export const listForProject = query({
                 email: inviter.email,
                 firstName: inviter.firstName,
                 lastName: inviter.lastName,
+              }
+            : null,
+          user: inviteeUser
+            ? {
+                id: inviteeUser._id,
+                email: inviteeUser.email,
+                firstName: inviteeUser.firstName,
+                lastName: inviteeUser.lastName,
+                profileImageUrl: inviteeUser.profileImageUrl,
               }
             : null,
         }

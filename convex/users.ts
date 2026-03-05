@@ -158,6 +158,49 @@ export const getByEmail = query({
   },
 })
 
+// Resolve multiple users by email (for invite UI enrichment)
+export const getByEmails = query({
+  args: { emails: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const normalizedEmails = Array.from(
+      new Set(args.emails.map((email) => normalizeEmail(email)).filter((email) => email.length > 0))
+    ).slice(0, 100)
+
+    const resolved = await Promise.all(
+      normalizedEmails.map(async (normalizedEmail) => {
+        const byNormalizedEmail = await ctx.db
+          .query("users")
+          .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+          .collect()
+        let user = pickCanonicalUser(byNormalizedEmail)
+
+        if (!user) {
+          const byEmail = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+            .collect()
+          user = pickCanonicalUser(byEmail)
+        }
+
+        if (!user) return null
+
+        return {
+          email: normalizedEmail,
+          user: {
+            id: user._id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImageUrl: user.profileImageUrl,
+          },
+        }
+      })
+    )
+
+    return resolved.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+  },
+})
+
 // Get user by ID (for account settings)
 export const getById = query({
   args: { userId: v.id("users") },

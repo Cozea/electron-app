@@ -3,7 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
-import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
+import {
+    useProjectPagesStore,
+    type PreviewTimelineEvent,
+    type ServerStatus,
+} from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
@@ -71,6 +75,11 @@ function normalizeRoutePath(path?: string | null): string | null {
     return path.replace(/\/+$/, '')
 }
 
+function normalizePreviewPath(path?: string | null): string {
+    if (!path) return '/'
+    return path.startsWith('/') ? path : `/${path}`
+}
+
 function normalizeFilePath(path?: string | null): string | null {
     if (!path) return null
     return path.replace(/\\/g, '/')
@@ -84,6 +93,27 @@ type PreviewEmbedMode = 'standard' | 'credentialless'
 
 const BRIDGE_READY_TIMEOUT_MS = 2500
 
+function resolvePreviewEmbedModeForRun(
+    serverStatus: ServerStatus,
+    runId: string | null,
+    previewTimeline: PreviewTimelineEvent[]
+): PreviewEmbedMode {
+    if (serverStatus !== 'running' || !runId) return 'standard'
+
+    for (let index = previewTimeline.length - 1; index >= 0; index -= 1) {
+        const event = previewTimeline[index]
+        if (event.category !== 'preview') continue
+        if (event.runId !== runId) continue
+        if (event.type !== 'fallback_mode') continue
+
+        const targetMode = typeof event.details?.to === 'string' ? event.details.to : null
+        if (targetMode === 'credentialless') return 'credentialless'
+        if (targetMode === 'standard') return 'standard'
+    }
+
+    return 'standard'
+}
+
 export function ProjectPagesPage() {
     const navigate = useViewTransitionNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
@@ -93,6 +123,7 @@ export function ProjectPagesPage() {
 
     // Store state
     const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
+    const activeServerRunId = serverLifecycle.runId
     const togglePagesListOpen = actions.togglePagesListOpen
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
@@ -112,7 +143,9 @@ export function ProjectPagesPage() {
     const [bridgeReady, setBridgeReady] = useState(false)
     const [bridgeError, setBridgeError] = useState<string | null>(null)
     const [, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
-    const [previewEmbedMode, setPreviewEmbedMode] = useState<PreviewEmbedMode>('standard')
+    const [previewEmbedMode, setPreviewEmbedMode] = useState<PreviewEmbedMode>(() =>
+        resolvePreviewEmbedModeForRun(serverStatus, activeServerRunId, previewTimeline)
+    )
     const [previewEmbedBlocked, setPreviewEmbedBlocked] = useState(false)
     const [previewReloadToken, setPreviewReloadToken] = useState(0)
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
@@ -142,6 +175,8 @@ export function ProjectPagesPage() {
     const bridgeReadyRef = useRef(false)
     const bridgeReadyTimeoutRef = useRef<number | null>(null)
     const previewFallbackAttemptRef = useRef(0)
+    const nonFocusedEmbedProbeKeyRef = useRef<string | null>(null)
+    const embedModeHydratedRunIdRef = useRef<string | null>(null)
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -155,17 +190,33 @@ export function ProjectPagesPage() {
     )
     const previewRoute = focusedRoute ?? cachedFocusedRoute
     const focusedPreviewUrl = previewRoute && serverPort
-        ? `http://localhost:${serverPort}${previewRoute.path}`
+        ? `http://localhost:${serverPort}${normalizePreviewPath(previewRoute.path)}`
         : null
     const useCredentiallessPreview = previewEmbedMode === 'credentialless'
     const credentiallessAttribute = useCredentiallessPreview ? '' : undefined
+    const buildRoutePreviewUrl = useCallback(
+        (routePath: string) => {
+            if (!serverPort) return null
+            return `http://localhost:${serverPort}${normalizePreviewPath(routePath)}`
+        },
+        [serverPort]
+    )
+    const defaultProjectPreviewPath = useMemo(() => {
+        const homeRoute = routes.find((route) => normalizePreviewPath(route.path) === '/')
+        return normalizePreviewPath(homeRoute?.path ?? routes[0]?.path ?? '/')
+    }, [routes])
+    const nonFocusedPreviewProbeUrl = useMemo(() => {
+        return buildRoutePreviewUrl(defaultProjectPreviewPath)
+    }, [buildRoutePreviewUrl, defaultProjectPreviewPath])
+    const compatProjectPreviewPath = normalizePreviewPath(previewRoute?.path ?? defaultProjectPreviewPath)
+    const projectPreviewCapturePath = useCredentiallessPreview ? compatProjectPreviewPath : defaultProjectPreviewPath
+    const projectPreviewCaptureUrl = buildRoutePreviewUrl(projectPreviewCapturePath)
     const previewRouteIndex = useMemo(() => {
         if (focusedPageIndex !== null) return focusedPageIndex
         if (!previewRoute) return null
         const index = routes.findIndex((route) => route.path === previewRoute.path)
         return index >= 0 ? index : null
     }, [focusedPageIndex, previewRoute, routes])
-    const activeServerRunId = serverLifecycle.runId
     const previewReady = bridgeReady && previewReadiness.reachable && !previewEmbedBlocked
     const recentPreviewTimeline = useMemo(() => {
         return previewTimeline
@@ -184,6 +235,23 @@ export function ProjectPagesPage() {
             setCachedFocusedRoutePath(focusedRoute.path)
         }
     }, [focusedRoute?.path])
+
+    useEffect(() => {
+        if (serverStatus !== 'running' || !activeServerRunId) {
+            embedModeHydratedRunIdRef.current = null
+            return
+        }
+
+        if (embedModeHydratedRunIdRef.current === activeServerRunId) return
+        embedModeHydratedRunIdRef.current = activeServerRunId
+
+        const resolvedMode = resolvePreviewEmbedModeForRun(
+            serverStatus,
+            activeServerRunId,
+            previewTimeline
+        )
+        setPreviewEmbedMode(resolvedMode)
+    }, [activeServerRunId, previewTimeline, serverStatus])
 
     useEffect(() => {
         if (!cachedFocusedRoutePath) return
@@ -327,11 +395,10 @@ export function ProjectPagesPage() {
     const [isCapturingPreview, setIsCapturingPreview] = useState(false)
     const captureAndUploadProjectPreview = useCallback(async () => {
         const projectId = project?._id
-        if (!serverPort || !projectId) return
-        const url = `http://localhost:${serverPort}/`
+        if (!projectId || !projectPreviewCaptureUrl) return
         try {
             const result = await window.electronAPI.preview.captureScreenshot({
-                url,
+                url: projectPreviewCaptureUrl,
                 width: 1280,
                 height: 800,
             })
@@ -357,7 +424,7 @@ export function ProjectPagesPage() {
         } finally {
             setIsCapturingPreview(false)
         }
-    }, [project?._id, serverPort, generatePreviewUploadUrl, updatePreviewImage])
+    }, [project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrl, updatePreviewImage])
 
     const handleUpdateProjectPreview = useCallback(() => {
         if (serverStatus !== 'running' || !project?._id) return
@@ -652,6 +719,89 @@ export function ProjectPagesPage() {
         if (serverStatus !== 'running') return
         void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
     }, [focusedPreviewUrl, isFocusedPreview, probeFocusedPreviewReachability, serverStatus])
+
+    useEffect(() => {
+        if (serverStatus !== 'running') {
+            nonFocusedEmbedProbeKeyRef.current = null
+            return
+        }
+        if (isFocusedPreview) return
+        if (previewEmbedMode !== 'standard') return
+        if (!nonFocusedPreviewProbeUrl) return
+        if (!window.electronAPI?.preview?.injectBridge) return
+
+        const probeKey = `${activeServerRunId ?? 'unknown'}:${nonFocusedPreviewProbeUrl}`
+        if (nonFocusedEmbedProbeKeyRef.current === probeKey) return
+        nonFocusedEmbedProbeKeyRef.current = probeKey
+
+        let cancelled = false
+        const runProbe = async () => {
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+                if (cancelled) return
+
+                const result = await window.electronAPI.preview.injectBridge({
+                    url: nonFocusedPreviewProbeUrl,
+                })
+
+                if (cancelled) return
+
+                if (result.success) {
+                    addPreviewTimelineEvent({
+                        type: 'bridge_inject_succeeded',
+                        message: 'Non-focused preview probe succeeded',
+                        details: {
+                            mode: 'standard',
+                            source: 'grid-probe',
+                            attempt: attempt + 1,
+                        },
+                    })
+                    return
+                }
+
+                const reason = result.reason ?? 'bridge_injection_failed'
+                const likelyBlocked = Boolean(
+                    result.likelyBlocked ?? (reason === 'blocked_response' || reason === 'chrome_error_document')
+                )
+
+                if (likelyBlocked) {
+                    previewFallbackAttemptRef.current += 1
+                    addBridgeLog('Detected blocked standard embed in grid view; switching to credentialless mode', 'info')
+                    addPreviewTimelineEvent({
+                        type: 'fallback_mode',
+                        message: 'Grid preview probe switched to credentialless mode',
+                        details: {
+                            from: 'standard',
+                            to: 'credentialless',
+                            reason,
+                            source: 'grid-probe',
+                        },
+                    })
+                    setPreviewEmbedMode('credentialless')
+                    setPreviewEmbedBlocked(false)
+                    setBridgeError(null)
+                    setPreviewReloadToken((value) => value + 1)
+                    return
+                }
+
+                if (attempt < 3) {
+                    await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)))
+                }
+            }
+        }
+
+        void runProbe()
+        return () => {
+            cancelled = true
+        }
+    }, [
+        activeServerRunId,
+        addBridgeLog,
+        addPreviewTimelineEvent,
+        isFocusedPreview,
+        nonFocusedPreviewProbeUrl,
+        previewEmbedMode,
+        serverStatus,
+    ])
 
     useEffect(() => {
         if (!isFocusedPreview || !focusedPreviewUrl) return
@@ -1647,17 +1797,30 @@ export function ProjectPagesPage() {
                 )}
 
                 <div className="flex items-center gap-2 min-w-0">
-                        {focusedPageIndex !== null && serverStatus === 'running' && useCredentiallessPreview && (
-                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                                Compat Preview
-                            </span>
+                        {serverStatus === 'running' && useCredentiallessPreview && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold leading-none text-amber-950 dark:text-amber-100"
+                                        aria-label="Compat preview"
+                                    >
+                                        !
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">Legacy compat preview active</TooltipContent>
+                            </Tooltip>
                         )}
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7">
-                                    <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-                                </Button>
-                            </DropdownMenuTrigger>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Preview actions">
+                                            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">Preview actions</TooltipContent>
+                            </Tooltip>
                             <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuItem onClick={refreshRoutes}>
                                     <RefreshCw className="h-4 w-4 mr-2" />
@@ -1890,6 +2053,7 @@ export function ProjectPagesPage() {
                                     <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
                                         {routes.map((route, index) => {
                                             const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
+                                            const routePreviewUrl = buildRoutePreviewUrl(route.path)
                                             return (
                                                 <div key={route.path} className="group relative">
                                                     <Card
@@ -1898,11 +2062,12 @@ export function ProjectPagesPage() {
                                                     >
                                                         {/* Preview Area */}
                                                         <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
-                                                            {serverStatus === 'running' && serverPort ? (
+                                                            {serverStatus === 'running' && routePreviewUrl ? (
                                                                 <div className="absolute inset-0">
                                                                     <div className="w-full h-full bg-background relative overflow-hidden">
                                                                         <iframe
-                                                                            src={`http://localhost:${serverPort}${route.path}`}
+                                                                            key={`grid-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
+                                                                            src={routePreviewUrl}
                                                                             credentialless={credentiallessAttribute}
                                                                             className="w-[200%] h-[200%] origin-top-left scale-50 border-none pointer-events-none select-none block"
                                                                             tabIndex={-1}
@@ -1946,7 +2111,8 @@ export function ProjectPagesPage() {
                                                                         className="h-7 w-7 shadow-sm bg-background/80 backdrop-blur-sm hover:bg-background"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation()
-                                                                            window.open(`http://localhost:${serverPort}${route.path}`, '_blank')
+                                                                            if (!routePreviewUrl) return
+                                                                            window.open(routePreviewUrl, '_blank')
                                                                         }}
                                                                     >
                                                                         <ExternalLink className="h-3 w-3" />
@@ -2109,6 +2275,7 @@ export function ProjectPagesPage() {
                                                     >
                                                         {routes.map((route, index) => {
                                                             const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
+                                                            const routePreviewUrl = buildRoutePreviewUrl(route.path)
                                                             return (
                                                                 <div
                                                                     key={route.path}
@@ -2134,10 +2301,11 @@ export function ProjectPagesPage() {
                                                                             ? "border-primary ring-1 ring-primary/20"
                                                                             : "border-border/40 hover:border-border"
                                                                     )}>
-                                                                        {serverStatus === 'running' && serverPort ? (
+                                                                        {serverStatus === 'running' && routePreviewUrl ? (
                                                                             <div className="w-full h-full bg-background relative">
                                                                                 <iframe
-                                                                                    src={`http://localhost:${serverPort}${route.path}`}
+                                                                                    key={`thumb-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
+                                                                                    src={routePreviewUrl}
                                                                                     credentialless={credentiallessAttribute}
                                                                                     className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
                                                                                     tabIndex={-1}

@@ -1593,7 +1593,13 @@ export function AIConversation({
           {/* Bottom fade */}
         <div className="assistant-scroll-fade-bottom absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className={cn(uniqueMessages.length === 0 && "h-full p-0")}>
+          <ConversationContent
+            className={cn(
+              uniqueMessages.length === 0
+                ? "h-full p-0"
+                : "w-full max-w-2xl mx-auto px-3 pt-4 pb-24"
+            )}
+          >
             {uniqueMessages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center">
                 <EmptyState />

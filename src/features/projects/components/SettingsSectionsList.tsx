@@ -4,7 +4,6 @@ import { useParams, useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
     Settings,
-    Users,
     AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -13,7 +12,6 @@ import { buildLegacyProjectPath, buildProjectPath } from '../lib/projectRoutes'
 
 const settingsSections = [
     { id: 'general', label: 'General', icon: Settings },
-    { id: 'team', label: 'Team', icon: Users },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
 ]
 

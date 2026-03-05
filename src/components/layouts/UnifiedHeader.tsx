@@ -16,6 +16,7 @@ import {
   Inbox,
   Link2,
   Loader2,
+  MoreVertical,
   RefreshCw,
   Send,
   Share2,
@@ -67,6 +68,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
@@ -85,6 +91,13 @@ interface UnifiedHeaderProps {
 }
 
 type ProjectInviteRole = "project_manager" | "developer" | "designer" | "viewer"
+type InviteLookupUser = {
+  id: Id<"users">
+  email: string
+  firstName?: string | null
+  lastName?: string | null
+  profileImageUrl?: string | null
+}
 
 const PROJECT_INVITE_ROLE_OPTIONS: Array<{ value: ProjectInviteRole; label: string }> = [
   { value: "project_manager", label: "Project Manager" },
@@ -105,19 +118,43 @@ function buildProjectJoinUrl(token: string): string {
   return `${getSiteBaseUrl()}/join/project/${encodeURIComponent(token)}`
 }
 
-function formatTimestamp(value: number | null | undefined): string {
-  if (!value) return "Never"
-  return new Date(value).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
-
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
   return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
+}
+
+function getLinkPermissionDescription(role: ProjectInviteRole): string {
+  switch (role) {
+    case "project_manager":
+      return "Link members can edit everything and manage project members."
+    case "developer":
+      return "Link members can build and edit project code."
+    case "designer":
+      return "Link members can edit design-related project content."
+    case "viewer":
+      return "Link members can view the project only."
+    default:
+      return "Link members receive the selected role permissions."
+  }
+}
+
+function formatInviteeDisplayName(email: string, user: InviteLookupUser | null | undefined): string {
+  const first = user?.firstName?.trim() ?? ""
+  const last = user?.lastName?.trim() ?? ""
+  const fullName = `${first} ${last}`.trim()
+  if (fullName) return fullName
+  if (user?.email) return user.email
+  return email
+}
+
+function getInitials(value: string): string {
+  const source = value.trim()
+  if (!source) return "?"
+  const parts = source.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase()
+  }
+  return source.slice(0, 2).toUpperCase()
 }
 
 function HeaderInboxButton() {
@@ -176,20 +213,24 @@ function HeaderInboxButton() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative h-7 w-7 text-muted-foreground hover:text-foreground"
-          title="Project invites"
-        >
-          <Inbox className="h-4 w-4" />
-          {pendingCount > 0 ? (
-            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
-          ) : null}
-          <span className="sr-only">Project invites</span>
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-7 w-7 text-muted-foreground hover:text-foreground"
+            >
+              <Inbox className="h-4 w-4" />
+              {pendingCount > 0 ? (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              ) : null}
+              <span className="sr-only">Project invites</span>
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Project invites</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="w-[24rem] p-0">
         <DropdownMenuLabel id={invitesHeadingId} className="px-3 py-2.5">
           Project Invites
@@ -313,6 +354,28 @@ function HeaderProjectShareButton({
   const [joinLinkError, setJoinLinkError] = useState<string | null>(null)
   const [joinLinkNotice, setJoinLinkNotice] = useState<string | null>(null)
   const [joinLinkAction, setJoinLinkAction] = useState<"copy" | "rotate" | "disable" | null>(null)
+  const inviteEmailCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          inviteMembers
+            .map((member) => member.email.trim().toLowerCase())
+            .filter((email) => email.length > 0)
+        )
+      ),
+    [inviteMembers]
+  )
+  const inviteLookup = useQuery(
+    api.users.getByEmails,
+    inviteEmailCandidates.length > 0 ? { emails: inviteEmailCandidates } : "skip"
+  )
+  const inviteLookupByEmail = useMemo(() => {
+    const next = new Map<string, InviteLookupUser>()
+    for (const entry of inviteLookup ?? []) {
+      next.set(entry.email, entry.user)
+    }
+    return next
+  }, [inviteLookup])
   const roleCheckPending = Boolean(projectId && convexUserId && memberRole === undefined)
   const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager")
   const activeJoinLink = joinLinkState?.activeLink ?? null
@@ -494,21 +557,25 @@ function HeaderProjectShareButton({
 
   return (
     <Dialog open={isInviteOpen} onOpenChange={handleInviteOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
-          disabled={!projectId || roleCheckPending}
-          title="Share project"
-        >
-          {roleCheckPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Share2 className="h-3.5 w-3.5" />
-          )}
-          Share
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+              disabled={!projectId || roleCheckPending}
+            >
+              {roleCheckPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Share2 className="h-3.5 w-3.5" />
+              )}
+              Share
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Share project</TooltipContent>
+      </Tooltip>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Share project</DialogTitle>
@@ -539,107 +606,6 @@ function HeaderProjectShareButton({
               </div>
             ) : null}
 
-            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/35 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Link2 className="h-4 w-4 text-muted-foreground" />
-                  Invite link
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  {activeJoinLink ? "Active" : "Disabled"}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-2">
-                <span className="text-xs text-muted-foreground">Join role</span>
-                <Select
-                  value={joinLinkRole}
-                  onValueChange={(value) => setJoinLinkRole(value as ProjectInviteRole)}
-                  disabled={joinLinkAction !== null}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {activeJoinLink ? (
-                <div className="rounded-lg border border-border/60 bg-background/70 px-2.5 py-2">
-                  <p className="truncate text-[11px] font-medium text-foreground">
-                    {buildProjectJoinUrl(activeJoinLink.token)}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Updated {formatTimestamp(activeJoinLink.updatedAt)} • Used {activeJoinLink.useCount} times
-                  </p>
-                </div>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  No active link yet. Copy to create one.
-                </p>
-              )}
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-full px-3 text-xs"
-                  onClick={() => {
-                    void handleCopyJoinLink()
-                  }}
-                  disabled={joinLinkAction !== null || !canManageJoinLinks}
-                >
-                  {joinLinkAction === "copy" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                  Copy link
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-full px-3 text-xs"
-                  onClick={() => {
-                    void handleRotateJoinLink()
-                  }}
-                  disabled={joinLinkAction !== null || !canManageJoinLinks}
-                >
-                  {joinLinkAction === "rotate" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Rotate link
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-full px-3 text-xs text-muted-foreground hover:text-destructive"
-                  onClick={() => {
-                    void handleDisableJoinLink()
-                  }}
-                  disabled={joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink}
-                >
-                  {joinLinkAction === "disable" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ShieldOff className="h-3.5 w-3.5" />
-                  )}
-                  Disable link
-                </Button>
-              </div>
-            </div>
-
             <Input
               type="email"
               placeholder="Enter email addresses..."
@@ -656,15 +622,29 @@ function HeaderProjectShareButton({
                 <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent" />
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-background to-transparent" />
                 <div className="app-scrollbar max-h-64 space-y-1 overflow-y-auto py-2">
-                  {inviteMembers.map((member, index) => (
+                  {inviteMembers.map((member, index) => {
+                    const inviteeUser = inviteLookupByEmail.get(member.email)
+                    const inviteeName = formatInviteeDisplayName(member.email, inviteeUser)
+                    return (
                     <div key={member.email} className="flex items-center justify-between px-1 py-2">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10">
+                          <AvatarImage
+                            src={inviteeUser?.profileImageUrl ?? undefined}
+                            alt={inviteeName}
+                          />
                           <AvatarFallback className="text-sm">
-                            {member.email.slice(0, 2).toUpperCase()}
+                            {getInitials(inviteeName)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="max-w-[220px] truncate font-medium">{member.email}</span>
+                        <div className="min-w-0">
+                          <span className="block max-w-[220px] truncate font-medium">{inviteeName}</span>
+                          {inviteeUser ? (
+                            <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
+                              {member.email}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <DropdownMenu>
@@ -709,7 +689,8 @@ function HeaderProjectShareButton({
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             ) : null}
@@ -732,6 +713,105 @@ function HeaderProjectShareButton({
                 )}
                 Send invites
               </Button>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Shareable invite link</h3>
+
+              <div className="rounded-xl bg-background/60 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Link2 className="h-4 w-4" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={joinLinkRole}
+                      onValueChange={(value) => setJoinLinkRole(value as ProjectInviteRole)}
+                      disabled={joinLinkAction !== null}
+                    >
+                      <SelectTrigger className="h-10 w-full rounded-full border-0 bg-muted/50 text-sm shadow-none">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                    onClick={() => {
+                      void handleCopyJoinLink()
+                    }}
+                    disabled={joinLinkAction !== null || !canManageJoinLinks}
+                    title="Copy link"
+                  >
+                    {joinLinkAction === "copy" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                    <span className="sr-only">Copy link</span>
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                        disabled={joinLinkAction !== null || !canManageJoinLinks}
+                        title="Link options"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                        <span className="sr-only">Link options</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={joinLinkAction !== null || !canManageJoinLinks}
+                        onClick={() => {
+                          void handleRotateJoinLink()
+                        }}
+                      >
+                        {joinLinkAction === "rotate" ? (
+                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                        )}
+                        Rotate link
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink}
+                        onClick={() => {
+                          void handleDisableJoinLink()
+                        }}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        {joinLinkAction === "disable" ? (
+                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ShieldOff className="mr-2 h-3.5 w-3.5" />
+                        )}
+                        Disable link
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <p className="mt-2 pl-[52px] text-xs text-muted-foreground">
+                  {getLinkPermissionDescription(joinLinkRole)}
+                </p>
+              </div>
             </div>
           </>
         )}
@@ -949,7 +1029,7 @@ export function UnifiedHeader({
                 {header}
               </div>
             ) : (
-              <div className="titlebar-no-drag inline-flex min-w-0 max-w-full items-center">
+              <div className="titlebar-no-drag flex w-full min-w-0 max-w-full items-center">
                 {header}
               </div>
             )}

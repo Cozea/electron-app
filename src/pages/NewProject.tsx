@@ -3,6 +3,11 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../components/ui/tooltip'
 import { Progress } from '@/components/ui/progress'
 import { ArrowLeft, ArrowLeftRight, ArrowRight, Rocket, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -1158,33 +1163,47 @@ export function NewProject() {
           Change folder
         </button>
       )}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={handleBack}
-        disabled={state.isSaving || isScanning || isImporting}
-        aria-label="Back"
-        className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBack}
+              disabled={state.isSaving || isScanning || isImporting}
+              aria-label="Back"
+              className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Back</TooltipContent>
+      </Tooltip>
       {showNextButton && (
-        <Button
-          onClick={handleNext}
-          variant="ghost"
-          size="icon"
-          disabled={!canProceed || state.isSaving || isScanning}
-          aria-label={nextButtonText}
-          className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
-        >
-          {state.isSaving || isScanning ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
-            <Rocket className="h-4 w-4" />
-          ) : (
-            <ArrowRight className="h-4 w-4" />
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                onClick={handleNext}
+                variant="ghost"
+                size="icon"
+                disabled={!canProceed || state.isSaving || isScanning}
+                aria-label={nextButtonText}
+                className="bg-transparent hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+              >
+                {state.isSaving || isScanning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
+                  <Rocket className="h-4 w-4" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{nextButtonText}</TooltipContent>
+        </Tooltip>
       )}
     </div>
   )
