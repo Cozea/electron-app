@@ -31,7 +31,7 @@ import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { parseInjectedPromptForCompaction } from '@/components/assistant/injectedPromptCompaction'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
-import { AlertCircle, AlertTriangle, Check, Copy, MousePointer2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Check, Copy, MousePointer2, Terminal, X } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface MessageToolMeta {
@@ -200,11 +200,22 @@ function MessageBubbleComponent({
                 : null
 
             if (compactedPrompt) {
+              if (compactedPrompt.kind === 'terminal') {
+                return (
+                  <div key={`${message.id}-text-${index}`} className="flex">
+                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-sky-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-sky-900">
+                      <Terminal className="h-3 w-3 shrink-0 text-sky-700/80 dark:text-sky-200/90" />
+                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Terminal output'}</span>
+                    </div>
+                  </div>
+                )
+              }
+
               if (compactedPrompt.kind === 'inspector') {
                 return (
                   <div key={`${message.id}-text-${index}`} className="flex">
-                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-foreground">
-                      <MousePointer2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-teal-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-teal-900">
+                      <MousePointer2 className="h-3 w-3 shrink-0 text-teal-700/80 dark:text-teal-200/90" />
                       <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Inspected element'}</span>
                     </div>
                   </div>
@@ -214,8 +225,8 @@ function MessageBubbleComponent({
               if (compactedPrompt.kind === 'problem') {
                 return (
                   <div key={`${message.id}-text-${index}`} className="flex">
-                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-foreground">
-                      <AlertTriangle className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-amber-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-amber-900">
+                      <AlertTriangle className="h-3 w-3 shrink-0 text-amber-700/80 dark:text-amber-200/90" />
                       <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Problem'}</span>
                     </div>
                   </div>

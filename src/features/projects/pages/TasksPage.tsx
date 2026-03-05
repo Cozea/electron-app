@@ -1,4 +1,4 @@
-import { SplitSquareHorizontal } from 'lucide-react'
+import tasksComingSoonImage from '@/assets/tasks-coming-soon.png'
 import { Card } from '@/components/ui/card'
 import {
   Empty,
@@ -18,9 +18,11 @@ export function TasksPage() {
           <Empty className="py-0">
             <EmptyHeader>
               <EmptyMedia>
-                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4 mx-auto text-primary">
-                  <SplitSquareHorizontal className="w-8 h-8" />
-                </div>
+                <img
+                  src={tasksComingSoonImage}
+                  alt="Tasks coming soon"
+                  className="w-64 h-64 object-contain mb-5 mx-auto"
+                />
               </EmptyMedia>
               <EmptyTitle className="text-xl font-semibold mb-2">Integrated Task Board</EmptyTitle>
               <EmptyDescription className="text-base leading-relaxed">
