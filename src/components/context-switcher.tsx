@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check } from 'lucide-react'
-import { useQuery, useMutation, useConvex } from 'convex/react'
+import { useLocation, useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import {
@@ -21,6 +22,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
+import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -40,11 +42,10 @@ interface ProjectNavigationState {
 
 export function ContextSwitcher() {
   const { isMobile } = useSidebar()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const location = useLocation()
   const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization, user } = useAuth()
-  const convex = useConvex()
+  const { currentOrganization, user, organizations } = useAuth()
 
   const [open, setOpen] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
@@ -101,11 +102,9 @@ export function ContextSwitcher() {
   // Organization info
   const organization = {
     name: currentOrganization?.organizationName || 'My Workspace',
-    // Get plan from Convex org subscription, capitalize it
-    plan: convexOrg?.subscription?.plan
-      ? convexOrg.subscription.plan.charAt(0).toUpperCase() + convexOrg.subscription.plan.slice(1)
-      : 'Free',
+    plan: getWorkspacePlanLabel(convexOrg?.subscription?.plan),
   }
+  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
 
   const resetSyncState = useCallback(() => {
     setSyncState('idle')
@@ -154,32 +153,6 @@ export function ContextSwitcher() {
         })
       }
 
-      if (effectiveLocalPath) {
-        setSyncMessage('Checking files...')
-        let cloudManifest: Array<unknown> | null = null
-
-        try {
-          cloudManifest = await convex.query(api.projectFiles.getManifestForProject, {
-            projectId: project._id,
-          })
-        } catch {
-          cloudManifest = null
-        }
-
-        if (cloudManifest) {
-          const localResult = await window.electronAPI.sync.getLocalManifest({
-            projectPath: effectiveLocalPath,
-            debugSource: `context-switcher:${project._id}`,
-          })
-
-          const hasChanges = localResult.totalFiles !== cloudManifest.length
-          if (hasChanges) {
-            setSyncState('syncing')
-            setSyncMessage('Syncing files...')
-          }
-        }
-      }
-
       setSyncState('ready')
       setSyncMessage('Opening project...')
 
@@ -203,7 +176,7 @@ export function ContextSwitcher() {
         resetSyncState()
       }, 2000)
     }
-  }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = () => {
     navigate('/projects')
@@ -211,6 +184,14 @@ export function ContextSwitcher() {
 
   const handleNewProject = () => {
     navigate('/projects/new')
+  }
+
+  const handleSwitchWorkspace = () => {
+    navigate('/workspaces/select')
+  }
+
+  const handleCreateWorkspace = () => {
+    navigate('/workspaces/new')
   }
 
   const isBusy = syncState !== 'idle'
@@ -229,13 +210,15 @@ export function ContextSwitcher() {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                {isInProject ? (
-                  <FolderOpen className="size-4" />
-                ) : (
-                  <Building2 className="size-4" />
-                )}
-              </div>
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  {isInProject ? (
+                    <FolderOpen className="size-4" />
+                  ) : isPersonalWorkspace ? (
+                    <User className="size-4" />
+                  ) : (
+                    <Building2 className="size-4" />
+                  )}
+                </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
                   {isInProject
@@ -319,11 +302,7 @@ export function ContextSwitcher() {
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Recent Projects
             </DropdownMenuLabel>
-            {recentProjects.length === 0 ? (
-              <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                No projects yet
-              </div>
-            ) : (
+            {recentProjects.length > 0 ? (
               recentProjects.map((project) => (
                 <DropdownMenuItem
                   key={project._id}
@@ -339,7 +318,7 @@ export function ContextSwitcher() {
                   </div>
                 </DropdownMenuItem>
               ))
-            )}
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2" disabled={isBusy}>
               <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
@@ -347,6 +326,24 @@ export function ContextSwitcher() {
               </div>
               <span className="text-muted-foreground font-medium">New Project</span>
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleCreateWorkspace} className="gap-2 p-2" disabled={isBusy}>
+              <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
+                <Building2 className="size-4" />
+              </div>
+              <span className="text-muted-foreground font-medium">Create Workspace</span>
+            </DropdownMenuItem>
+            {organizations.length > 1 ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSwitchWorkspace} className="gap-2 p-2" disabled={isBusy}>
+                  <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
+                    <ArrowRightLeft className="size-4" />
+                  </div>
+                  <span className="text-muted-foreground font-medium">Switch Workspace</span>
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

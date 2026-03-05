@@ -1,15 +1,97 @@
 import { useEffect } from "react"
-import { useQuery } from "convex/react"
-import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { computeSyncPlan } from "@/lib/sync/syncEngine"
-import type { CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
+import { useAuth } from "@/contexts/AuthContext"
+import { isBootstrapOnlyLocalPath } from "@/features/projects/lib/localWorkspaceState"
 import {
   useProjectDiffStore,
   type ProjectDiffStatus,
 } from "@/stores/useProjectDiffStore"
 
 const MIN_CHECK_INTERVAL = 30 * 1000
+const REPLICA_AUTH_COOLDOWN_MS = 60 * 1000
+const REPLICA_TRANSIENT_COOLDOWN_MS = 90 * 1000
+const INTERACTIVE_LOGIN_COOLDOWN_MS = 2 * 60 * 1000
+const REPLICA_CHECK_TIMEOUT_MS = 20 * 1000
+const AUTH_RECOVERY_TIMEOUT_MS = 12 * 1000
+const INITIAL_CHECK_MAX_STAGGER_MS = 1200
+const inFlightBySlug = new Set<string>()
+let replicaAuthBlockedUntil = 0
+let hasLoggedReplicaAuthCooldown = false
+let replicaTransientBlockedUntil = 0
+let hasLoggedReplicaTransientCooldown = false
+let authRecoveryPromise: Promise<"refreshed" | "login_started" | "failed"> | null = null
+let lastInteractiveLoginAt = 0
+
+function hashString(input: string): number {
+  let hash = 0
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(message))
+    }, timeoutMs)
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
+async function recoverReplicaAuth(
+  refreshToken: () => Promise<boolean>,
+  login: () => Promise<void>
+): Promise<"refreshed" | "login_started" | "failed"> {
+  if (authRecoveryPromise) {
+    return authRecoveryPromise
+  }
+
+  authRecoveryPromise = (async () => {
+    try {
+      const refreshed = await withTimeout(
+        refreshToken(),
+        AUTH_RECOVERY_TIMEOUT_MS,
+        'Auth refresh timed out'
+      )
+      if (refreshed) {
+        replicaAuthBlockedUntil = 0
+        hasLoggedReplicaAuthCooldown = false
+        return "refreshed"
+      }
+
+      const now = Date.now()
+      if (now - lastInteractiveLoginAt < INTERACTIVE_LOGIN_COOLDOWN_MS) {
+        return "failed"
+      }
+
+      lastInteractiveLoginAt = now
+      await withTimeout(
+        login(),
+        AUTH_RECOVERY_TIMEOUT_MS,
+        'Auth login launch timed out'
+      )
+      return "login_started"
+    } catch (error) {
+      console.error("[ProjectDiffStatus] Auth recovery failed:", error)
+      return "failed"
+    } finally {
+      authRecoveryPromise = null
+    }
+  })()
+
+  return authRecoveryPromise
+}
 
 interface UseProjectDiffStatusOptions {
   projectId: Id<"projects">
@@ -28,66 +110,184 @@ export function useProjectDiffStatus({
   localPath,
   lastSyncAt,
 }: UseProjectDiffStatusOptions): ProjectDiffStatus | undefined {
-  const { diffs, setDiffStatus, setChecking } = useProjectDiffStore()
-  const diffStatus = diffs[projectSlug]
-
-  const cloudManifest = useQuery(api.projectFiles.getManifestForProject, {
-    projectId,
-  })
+  const { refreshToken, login } = useAuth()
+  const diffStatus = useProjectDiffStore((state) => state.diffs[projectSlug])
+  const setDiffStatus = useProjectDiffStore((state) => state.setDiffStatus)
+  const setChecking = useProjectDiffStore((state) => state.setChecking)
 
   useEffect(() => {
-    async function checkDiff() {
-      if (!localPath || cloudManifest === undefined) return
+    let cancelled = false
 
-      if (diffStatus?.isChecking) return
-      const lastChecked = diffStatus?.lastChecked ?? 0
-      if (Date.now() - lastChecked < MIN_CHECK_INTERVAL) return
+    const isUnauthorizedError = (message: string): boolean =>
+      /\b401\b/.test(message) || /unauthorized/i.test(message)
+    const isTransientReplicaError = (message: string): boolean =>
+      /\b5\d{2}\b/.test(message) ||
+      /unexpected eof while reading/i.test(message) ||
+      /varnish/i.test(message) ||
+      /timed out/i.test(message)
 
+    async function checkDiff(force = false) {
+      if (!localPath) return
+
+      if (Date.now() < replicaAuthBlockedUntil) return
+      if (Date.now() < replicaTransientBlockedUntil) return
+
+      const currentStatus = useProjectDiffStore.getState().diffs[projectSlug]
+      if (currentStatus?.isChecking) return
+      if (inFlightBySlug.has(projectSlug)) return
+
+      const lastChecked = currentStatus?.lastChecked ?? 0
+      if (!force && Date.now() - lastChecked < MIN_CHECK_INTERVAL) return
+
+      inFlightBySlug.add(projectSlug)
       setChecking(projectSlug, true)
 
-      try {
-        const exists = await window.electronAPI.project.pathExists(localPath)
+      const runDiffCheck = async () => {
+        const exists = await withTimeout(
+          window.electronAPI.project.pathExists(localPath),
+          REPLICA_CHECK_TIMEOUT_MS,
+          'Project path check timed out'
+        )
+        if (cancelled) return
+
         if (!exists) {
           setDiffStatus(projectSlug, {
-            downloads: cloudManifest.length,
+            downloads: 0,
             uploads: 0,
             conflicts: 0,
           })
           return
         }
 
-        const localResult = await window.electronAPI.sync.getLocalManifest({
-          projectPath: localPath,
-          debugSource: `project-diff-status:${projectSlug}`,
-        })
+        const bootstrap = await withTimeout(
+          window.electronAPI.sync.gitReplicaBootstrap({
+            projectId: String(projectId),
+            projectPath: localPath,
+          }),
+          REPLICA_CHECK_TIMEOUT_MS,
+          'Replica bootstrap timed out'
+        )
+        if (cancelled) return
 
-        const localFiles: LocalFileEntry[] = localResult.manifest
-        const cloudFiles: CloudFileEntry[] = cloudManifest.map((entry) => ({
-          _id: entry._id,
-          path: entry.path,
-          hash: entry.hash,
-          size: entry.size,
-          version: entry.version,
-          storageId: entry.storageId,
-          uploadedAt: entry.uploadedAt,
-        }))
+        if (!bootstrap.success) {
+          throw new Error(bootstrap.error || "Failed to bootstrap replica")
+        }
 
-        const plan = computeSyncPlan(localFiles, cloudFiles, lastSyncAt)
+        const plan = await withTimeout(
+          window.electronAPI.sync.gitReplicaPlan({
+            projectId: String(projectId),
+            projectPath: localPath,
+          }),
+          REPLICA_CHECK_TIMEOUT_MS,
+          'Replica plan timed out'
+        )
+        if (cancelled) return
+
+        if (!plan.success) {
+          throw new Error(plan.error || "Failed to compute replica plan")
+        }
+        const nonBootstrapUploadCount = plan.uploads.filter(
+          (entry) => !isBootstrapOnlyLocalPath(entry.path)
+        ).length
+        const localWipeLikePattern =
+          nonBootstrapUploadCount === 0 &&
+          plan.localDeletes.length === 0 &&
+          plan.conflicts.length === 0 &&
+          (plan.autoMerged?.length ?? 0) === 0 &&
+          plan.cloudDeletes.length > 0
+
         setDiffStatus(projectSlug, {
-          downloads: plan.downloads.length,
-          uploads: plan.uploads.length + plan.cloudDeletes.length,
+          downloads: localWipeLikePattern
+            ? plan.downloads.length + plan.cloudDeletes.length
+            : plan.downloads.length,
+          uploads: localWipeLikePattern
+            ? 0
+            : nonBootstrapUploadCount + plan.cloudDeletes.length,
           conflicts: plan.conflicts.length,
         })
+        hasLoggedReplicaAuthCooldown = false
+        replicaTransientBlockedUntil = 0
+        hasLoggedReplicaTransientCooldown = false
+      }
+
+      try {
+        await runDiffCheck()
       } catch (error) {
+        if (cancelled) return
+
+        let message = error instanceof Error ? error.message : "Unknown error"
+        if (isUnauthorizedError(message)) {
+          const recoveryResult = await recoverReplicaAuth(refreshToken, login)
+          if (cancelled) return
+
+          if (recoveryResult === "refreshed") {
+            try {
+              await runDiffCheck()
+              return
+            } catch (retryError) {
+              if (cancelled) return
+              message = retryError instanceof Error ? retryError.message : "Unknown error"
+            }
+          }
+
+          if (!hasLoggedReplicaAuthCooldown) {
+            console.warn("[ProjectDiffStatus] Replica API unauthorized; attempted auth recovery and will retry shortly.")
+            hasLoggedReplicaAuthCooldown = true
+          }
+
+          replicaAuthBlockedUntil = Date.now() + REPLICA_AUTH_COOLDOWN_MS
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
+            error: message,
+          })
+          return
+        }
+
+        if (isTransientReplicaError(message)) {
+          replicaTransientBlockedUntil = Date.now() + REPLICA_TRANSIENT_COOLDOWN_MS
+          if (!hasLoggedReplicaTransientCooldown) {
+            console.warn(
+              `[ProjectDiffStatus] Replica API transient failure; pausing checks for ${Math.round(
+                REPLICA_TRANSIENT_COOLDOWN_MS / 1000
+              )}s.`
+            )
+            hasLoggedReplicaTransientCooldown = true
+          }
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
+            error: message,
+          })
+          return
+        }
+
         console.error(`[ProjectDiffStatus] Error checking ${projectSlug}:`, error)
         setDiffStatus(projectSlug, {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: message,
         })
+      } finally {
+        setChecking(projectSlug, false)
+        inFlightBySlug.delete(projectSlug)
       }
     }
 
-    void checkDiff()
-  }, [cloudManifest, localPath, projectSlug, lastSyncAt, diffStatus?.isChecking, diffStatus?.lastChecked, setChecking, setDiffStatus])
+    const initialDelayMs = hashString(projectSlug) % INITIAL_CHECK_MAX_STAGGER_MS
+    const initialTimerId = window.setTimeout(() => {
+      void checkDiff(true)
+    }, initialDelayMs)
+    const intervalId = window.setInterval(() => {
+      void checkDiff(false)
+    }, MIN_CHECK_INTERVAL)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(initialTimerId)
+      window.clearInterval(intervalId)
+    }
+  }, [localPath, projectId, projectSlug, lastSyncAt, login, refreshToken, setChecking, setDiffStatus])
 
   return diffStatus
 }

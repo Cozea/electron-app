@@ -2,8 +2,6 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { SyncCoordinator } from '../sync/SyncCoordinator'
-import { YjsOfflineQueue } from './OfflineQueue'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
 
@@ -20,60 +18,39 @@ interface PendingDelete {
   previousLineCount: number
 }
 
-function resolveOpSource(origin: ChangeOrigin): 'monaco' | 'agent' {
-  return origin === 'agent' ? 'agent' : 'monaco'
-}
-
-function resolveActorType(origin: ChangeOrigin): 'user' | 'agent' {
-  return origin === 'agent' ? 'agent' : 'user'
-}
-
 /**
- * ProjectFilesPersistence - Persists Yjs file changes to projectFiles table.
+ * ProjectFilesPersistence - Persists Yjs file changes to activity logs and replica snapshots.
  *
- * When the Yjs document changes, this provider debounces writes and
- * uploads the updated file content with computed checksums to Convex storage.
- * It then creates a new `projectFiles` version (superseding the previous active version).
- *
- * IMPORTANT: Only persists LOCAL changes (user edits, agent writes).
- * Ignores remote changes and snapshot loading to avoid:
- * - Infinite loops (remote change → persist → sync detects change → download)
- * - Unnecessary timestamp updates that make sync think files changed
+ * This provider tracks local Yjs edits/deletes, logs them for the activity feed,
+ * and enqueues a Git replica snapshot so the secondary sync lane converges.
  */
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
+  private projectPath: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
-  private offlineQueue: YjsOfflineQueue
   private pendingChanges: Map<string, PendingChange> = new Map()
   private pendingDeletes: Map<string, PendingDelete> = new Map()
   private previousContents: Map<string, string> = new Map()
-  private previousHashes: Map<string, string> = new Map()
-  private syncCoordinator: SyncCoordinator
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
 
   constructor(
     filesMap: Y.Map<Y.Text>,
     projectId: Id<"projects">,
+    projectPath: string | null,
     convex: ConvexReactClient,
     userId: Id<"users">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
+    this.projectPath = projectPath
     this.convex = convex
     this.userId = userId
     this.userName = userName
-    this.syncCoordinator = new SyncCoordinator({
-      projectId,
-      actorId: String(userId),
-      actorType: 'user',
-      source: 'monaco',
-    })
-    this.offlineQueue = new YjsOfflineQueue(convex, projectId)
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -85,11 +62,17 @@ export class ProjectFilesPersistence {
   }
 
   private handleFilesChange = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction) => {
-    // Skip changes from remote sources or snapshot loading
+    // Skip non-user-edit transactions (remote sync, snapshot/state-vector hydration, local init hydration).
     // These are already persisted on the server - no need to re-persist
     // and doing so would update timestamps causing sync to see "changes"
     const origin = transaction.origin
-    if (origin === 'remote' || origin === 'snapshot' || origin === 'sync') {
+    if (
+      origin === 'remote' ||
+      origin === 'snapshot' ||
+      origin === 'sync' ||
+      origin === 'state-vector' ||
+      origin === 'init'
+    ) {
       return
     }
 
@@ -126,8 +109,11 @@ export class ProjectFilesPersistence {
           const previousContent = this.previousContents.get(path) || ''
           const previousLineCount = this.countLines(previousContent)
 
+          const nextContent = event.target.toString()
+          if (nextContent === previousContent) continue
+
           this.pendingChanges.set(path, {
-            content: event.target.toString(),
+            content: nextContent,
             previousContent: previousContent,
             origin: changeOrigin,
             previousLineCount,
@@ -154,62 +140,39 @@ export class ProjectFilesPersistence {
     return null
   }
 
-  private async ensurePreviousHash(path: string, previousContent: string): Promise<string | undefined> {
-    const cached = this.previousHashes.get(path)
-    if (cached) return cached
-    if (!previousContent) return undefined
-    const computed = await this.computeHash(previousContent)
-    this.previousHashes.set(path, computed)
-    return computed
-  }
-
-  private async enqueueDeleteOp(path: string, origin: ChangeOrigin, previousContent: string): Promise<void> {
-    try {
-      const baseHash = await this.ensurePreviousHash(path, previousContent)
-      await this.syncCoordinator.enqueueOp({
-        kind: 'delete',
-        source: resolveOpSource(origin),
-        actorType: resolveActorType(origin),
-        actorId: String(this.userId),
-        path,
-        baseHash,
-        isBinary: false,
-        size: 0,
-      })
-    } catch (error) {
-      console.warn(`[ProjectFilesPersistence] Failed to enqueue delete op for ${path}:`, error)
-    }
-  }
-
-  private async enqueueUpsertOp(
-    path: string,
-    origin: ChangeOrigin,
-    previousContent: string,
-    content: string,
-    checksum: string
-  ): Promise<void> {
-    try {
-      const baseHash = await this.ensurePreviousHash(path, previousContent)
-      const size = new TextEncoder().encode(content).byteLength
-      await this.syncCoordinator.enqueueOp({
-        kind: 'upsert',
-        source: resolveOpSource(origin),
-        actorType: resolveActorType(origin),
-        actorId: String(this.userId),
-        path,
-        baseHash,
-        newHash: checksum,
-        isBinary: false,
-        size,
-      })
-    } catch (error) {
-      console.warn(`[ProjectFilesPersistence] Failed to enqueue upsert op for ${path}:`, error)
-    }
-  }
-
   private schedulePersist() {
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = setTimeout(() => this.persistChanges(), this.debounceMs)
+  }
+
+  private mergeSnapshotSource(current: ChangeOrigin | null, next: ChangeOrigin): ChangeOrigin {
+    if (current === 'agent' || next === 'agent') return 'agent'
+    if (current === 'remote' || next === 'remote') return 'remote'
+    if (current === 'init' || next === 'init') return 'init'
+    return 'user'
+  }
+
+  private toSnapshotSource(origin: ChangeOrigin): 'user' | 'agent' | 'external' {
+    if (origin === 'agent') return 'agent'
+    if (origin === 'remote') return 'external'
+    return 'user'
+  }
+
+  private async enqueueReplicaSnapshot(source: ChangeOrigin, reason: string): Promise<void> {
+    if (!this.projectPath) {
+      return
+    }
+
+    try {
+      await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
+        projectId: this.projectId,
+        projectPath: this.projectPath,
+        source: this.toSnapshotSource(source),
+        reason,
+      })
+    } catch (error) {
+      console.warn('[ProjectFilesPersistence] Failed to enqueue replica snapshot:', error)
+    }
   }
 
   private async persistChanges() {
@@ -217,46 +180,11 @@ export class ProjectFilesPersistence {
     this.pendingChanges.clear()
     const deletes = new Map(this.pendingDeletes)
     this.pendingDeletes.clear()
+    let hasMaterialChanges = false
+    let snapshotSource: ChangeOrigin | null = null
 
     // Persist deletions first
     if (deletes.size > 0) {
-      const paths = Array.from(deletes.keys())
-      let deleteSuccess = false
-
-      for (const [path, info] of deletes) {
-        await this.enqueueDeleteOp(path, info.origin, info.previousContent)
-      }
-
-      try {
-        await this.convex.mutation(api.projectFiles.markFilesDeleted, {
-          projectId: this.projectId,
-          filePaths: paths,
-        })
-        deleteSuccess = true
-      } catch (error) {
-        console.error('[ProjectFilesPersistence] Failed to mark files deleted, queueing for retry:', error)
-        // Queue for retry when back online
-        this.offlineQueue.enqueueDelete(paths)
-      }
-
-      // Create tombstones for deleted files (for conflict detection on reconnection)
-      // Only create if the delete succeeded - otherwise they'll be created when the queue processes
-      if (deleteSuccess) {
-        for (const path of paths) {
-          try {
-            await this.convex.mutation(api.fileTombstones.createTombstone, {
-              projectId: this.projectId,
-              filePath: path,
-              deletedBy: this.userId,
-            })
-          } catch (error) {
-            // Tombstone creation is best-effort - conflict detection will still work
-            // via the markFilesDeleted mutation
-            console.warn(`[ProjectFilesPersistence] Failed to create tombstone for ${path}:`, error)
-          }
-        }
-      }
-
       for (const [path, info] of deletes) {
         const { previousContent, origin, previousLineCount } = info
         try {
@@ -278,7 +206,8 @@ export class ProjectFilesPersistence {
         }
 
         this.previousContents.delete(path)
-        this.previousHashes.delete(path)
+        hasMaterialChanges = true
+        snapshotSource = this.mergeSnapshotSource(snapshotSource, origin)
       }
     }
 
@@ -287,9 +216,10 @@ export class ProjectFilesPersistence {
       if (deletes.has(path)) continue
 
       const { content, previousContent, origin, previousLineCount } = change
-      const checksum = await this.computeHash(content)
+      // Ignore no-op writes to avoid noisy feed events and redundant uploads.
+      if (content === previousContent) continue
+
       const currentLineCount = this.countLines(content)
-      await this.enqueueUpsertOp(path, origin, previousContent, content, checksum)
 
       // Calculate additions and deletions
       const isNewFile = previousLineCount === 0
@@ -297,50 +227,6 @@ export class ProjectFilesPersistence {
       const deletions = isNewFile ? 0 : Math.max(0, previousLineCount - currentLineCount)
 
       try {
-        const uploadUrl = await this.convex.mutation(api.projectFiles.generateUploadUrl, {
-          projectId: this.projectId,
-        })
-
-        const mimeType = getMimeTypeForText(path)
-        const blob = new Blob([content], { type: mimeType })
-
-        const response = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': mimeType },
-          body: blob,
-        })
-
-        if (!response.ok) {
-          throw new Error(`Upload failed (${response.status})`)
-        }
-
-        const json = (await response.json()) as { storageId: Id<"_storage"> }
-        const storageId = json.storageId
-
-        await this.convex.mutation(api.projectFiles.saveFile, {
-          projectId: this.projectId,
-          userId: this.userId,
-          storageId,
-          fileName: path.split('/').pop() || path,
-          filePath: path,
-          fileType: mimeType,
-          sizeBytes: blob.size,
-          checksum,
-        })
-
-        // If this is a new file, remove any existing tombstone
-        // (file was deleted before, now being recreated)
-        if (isNewFile) {
-          try {
-            await this.convex.mutation(api.fileTombstones.removeTombstone, {
-              projectId: this.projectId,
-              filePath: path,
-            })
-          } catch {
-            // Tombstone removal is best-effort
-          }
-        }
-
         // Log the activity with content for diff viewing
         await this.convex.mutation(api.activity.logFileChange, {
           projectId: this.projectId,
@@ -358,44 +244,23 @@ export class ProjectFilesPersistence {
 
         // Update previous content for next diff
         this.previousContents.set(path, content)
-        this.previousHashes.set(path, checksum)
+        hasMaterialChanges = true
+        snapshotSource = this.mergeSnapshotSource(snapshotSource, origin)
       } catch (error) {
-        console.error(`[ProjectFilesPersistence] Failed to save ${path}:`, error)
+        console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
       }
     }
-  }
 
-  private async computeHash(content: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const bytes = encoder.encode(content)
-    const hash = await crypto.subtle.digest('SHA-256', bytes)
-    return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    if (hasMaterialChanges && snapshotSource) {
+      await this.enqueueReplicaSnapshot(
+        snapshotSource,
+        `yjs-batch: upserts=${changes.size}, deletes=${deletes.size}`
+      )
+    }
   }
 
   destroy() {
     this.filesMap.unobserveDeep(this.handleFilesChange)
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
   }
-}
-
-function getMimeTypeForText(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || ''
-  const map: Record<string, string> = {
-    ts: 'text/typescript',
-    tsx: 'text/typescript',
-    js: 'application/javascript',
-    jsx: 'application/javascript',
-    json: 'application/json',
-    css: 'text/css',
-    scss: 'text/scss',
-    html: 'text/html',
-    htm: 'text/html',
-    md: 'text/markdown',
-    txt: 'text/plain',
-    yaml: 'text/yaml',
-    yml: 'text/yaml',
-    xml: 'text/xml',
-    svg: 'image/svg+xml',
-  }
-  return map[ext] ?? 'text/plain'
 }

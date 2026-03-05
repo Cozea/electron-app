@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -32,7 +33,7 @@ function cleanConvexError(error: unknown, fallback: string): string {
 }
 
 export function ProjectSettingsPage() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { slug } = useParams<{ slug: string }>()
   const { currentOrganization, convexUserId } = useAuth()
 

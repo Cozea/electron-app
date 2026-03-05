@@ -1,3 +1,6 @@
+import { requestEditorDiagnosticsRefresh } from '@/lib/editor/diagnosticsRefresh'
+import { getMutatingToolFilePaths, isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
+
 type DiagnosticSource = 'tsserver' | 'eslint' | 'runtime' | 'build'
 type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
@@ -38,6 +41,15 @@ interface CollectToolDiagnosticsOptions {
   maxItems?: number
 }
 
+interface CollectMutatingToolDiagnosticsOptions {
+  projectPath?: string | null
+  toolName: string
+  toolInput?: Record<string, unknown> | null
+  timeoutMs?: number
+  maxItems?: number
+  debounceMs?: number
+}
+
 interface SummarizeLintDiagnosticsOptions {
   projectPath: string
   diagnostics: PipelineDiagnostic[]
@@ -45,7 +57,22 @@ interface SummarizeLintDiagnosticsOptions {
   maxItems?: number
 }
 
+interface PendingDiagnosticsRequest {
+  filePaths: string[]
+  timeoutMs: number
+  maxItems: number
+  resolve: (value: ToolDiagnosticsSummary | null) => void
+}
+
+interface DiagnosticsQueueState {
+  timer: ReturnType<typeof setTimeout> | null
+  flushing: boolean
+  requests: PendingDiagnosticsRequest[]
+}
+
 const LINT_SOURCES = new Set<DiagnosticSource>(['tsserver', 'eslint'])
+const DIAGNOSTICS_DEBOUNCE_MS = 400
+const diagnosticsQueueByProject = new Map<string, DiagnosticsQueueState>()
 
 const SEVERITY_ORDER: Record<DiagnosticSeverity, number> = {
   error: 0,
@@ -152,15 +179,8 @@ export function summarizeLintDiagnostics({
   }
 }
 
-export async function collectToolDiagnosticsSummary({
-  projectPath,
-  filePaths,
-  timeoutMs = 900,
-  maxItems = 8,
-}: CollectToolDiagnosticsOptions): Promise<ToolDiagnosticsSummary | null> {
-  if (!projectPath || !window.electronAPI?.diagnostics) return null
-
-  const checkedPaths = Array.from(
+function normalizeCheckedPaths(filePaths: string[]): string[] {
+  return Array.from(
     new Set(
       filePaths
         .filter((filePath): filePath is string => typeof filePath === 'string')
@@ -168,26 +188,179 @@ export async function collectToolDiagnosticsSummary({
         .filter(Boolean)
     )
   )
+}
 
-  if (checkedPaths.length === 0) return null
+async function getDiagnosticsForPaths(
+  projectPath: string,
+  filePaths: string[],
+  timeoutMs: number
+): Promise<PipelineDiagnostic[]> {
+  if (typeof window === 'undefined' || !window.electronAPI?.diagnostics) {
+    return []
+  }
 
   const response = await window.electronAPI.diagnostics.checkFiles({
     projectPath,
-    filePaths: checkedPaths,
+    filePaths,
     timeoutMs,
   })
 
-  if (!response.success) return null
+  if (!response.success) {
+    return []
+  }
 
-  const diagnostics = Array.isArray(response.diagnostics)
+  return Array.isArray(response.diagnostics)
     ? response.diagnostics as PipelineDiagnostic[]
     : []
+}
+
+function getOrCreateDiagnosticsQueue(projectPath: string): DiagnosticsQueueState {
+  const existing = diagnosticsQueueByProject.get(projectPath)
+  if (existing) {
+    return existing
+  }
+
+  const created: DiagnosticsQueueState = {
+    timer: null,
+    flushing: false,
+    requests: [],
+  }
+  diagnosticsQueueByProject.set(projectPath, created)
+  return created
+}
+
+function scheduleDiagnosticsQueueFlush(projectPath: string, debounceMs: number): void {
+  const queue = getOrCreateDiagnosticsQueue(projectPath)
+  if (queue.timer) {
+    clearTimeout(queue.timer)
+  }
+
+  queue.timer = setTimeout(() => {
+    queue.timer = null
+    void flushDiagnosticsQueue(projectPath)
+  }, Math.max(0, debounceMs))
+}
+
+async function flushDiagnosticsQueue(projectPath: string): Promise<void> {
+  const queue = diagnosticsQueueByProject.get(projectPath)
+  if (!queue || queue.flushing) {
+    return
+  }
+
+  if (queue.requests.length === 0) {
+    diagnosticsQueueByProject.delete(projectPath)
+    return
+  }
+
+  queue.flushing = true
+  const pending = queue.requests.splice(0)
+
+  try {
+    const mergedPaths = normalizeCheckedPaths(pending.flatMap((entry) => entry.filePaths))
+    const timeoutMs = pending.reduce((maxTimeout, entry) => Math.max(maxTimeout, entry.timeoutMs), 900)
+
+    requestEditorDiagnosticsRefresh()
+
+    const diagnostics = mergedPaths.length > 0
+      ? await getDiagnosticsForPaths(projectPath, mergedPaths, timeoutMs)
+      : []
+
+    for (const entry of pending) {
+      entry.resolve(
+        summarizeLintDiagnostics({
+          projectPath,
+          diagnostics,
+          filePaths: entry.filePaths,
+          maxItems: entry.maxItems,
+        })
+      )
+    }
+  } catch (error) {
+    console.warn('[Diagnostics] Failed to collect debounced diagnostics summary', error)
+    for (const entry of pending) {
+      entry.resolve(null)
+    }
+  } finally {
+    queue.flushing = false
+
+    if (queue.requests.length > 0) {
+      scheduleDiagnosticsQueueFlush(projectPath, 0)
+    } else if (!queue.timer) {
+      diagnosticsQueueByProject.delete(projectPath)
+    }
+  }
+}
+
+function enqueueDebouncedDiagnosticsSummary(args: {
+  projectPath: string
+  filePaths: string[]
+  timeoutMs: number
+  maxItems: number
+  debounceMs: number
+}): Promise<ToolDiagnosticsSummary | null> {
+  const { projectPath, filePaths, timeoutMs, maxItems, debounceMs } = args
+
+  return new Promise<ToolDiagnosticsSummary | null>((resolve) => {
+    const queue = getOrCreateDiagnosticsQueue(projectPath)
+    queue.requests.push({
+      filePaths,
+      timeoutMs,
+      maxItems,
+      resolve,
+    })
+    scheduleDiagnosticsQueueFlush(projectPath, debounceMs)
+  })
+}
+
+export async function collectToolDiagnosticsSummary({
+  projectPath,
+  filePaths,
+  timeoutMs = 900,
+  maxItems = 8,
+}: CollectToolDiagnosticsOptions): Promise<ToolDiagnosticsSummary | null> {
+  if (!projectPath || typeof window === 'undefined' || !window.electronAPI?.diagnostics) return null
+
+  const checkedPaths = normalizeCheckedPaths(filePaths)
+
+  if (checkedPaths.length === 0) return null
+
+  const diagnostics = await getDiagnosticsForPaths(projectPath, checkedPaths, timeoutMs)
 
   return summarizeLintDiagnostics({
     projectPath,
     diagnostics,
     filePaths: checkedPaths,
     maxItems,
+  })
+}
+
+export async function collectMutatingToolDiagnosticsSummary({
+  projectPath,
+  toolName,
+  toolInput,
+  timeoutMs = 900,
+  maxItems = 8,
+  debounceMs = DIAGNOSTICS_DEBOUNCE_MS,
+}: CollectMutatingToolDiagnosticsOptions): Promise<ToolDiagnosticsSummary | null> {
+  if (!projectPath || typeof window === 'undefined') {
+    return null
+  }
+
+  if (!isFileMutatingTool(toolName)) {
+    return null
+  }
+
+  const filePaths = normalizeCheckedPaths(getMutatingToolFilePaths(toolName, toolInput))
+  if (filePaths.length === 0) {
+    return null
+  }
+
+  return enqueueDebouncedDiagnosticsSummary({
+    projectPath,
+    filePaths,
+    timeoutMs,
+    maxItems,
+    debounceMs,
   })
 }
 

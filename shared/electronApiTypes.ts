@@ -4,6 +4,7 @@ export type { OrganizationMembership, Session, User } from './types'
 
 export interface AppSettings {
   projectsDirectory: string
+  previewHeaderCompatibilityEnabled: boolean
 }
 
 export type UpdateStatus =
@@ -50,6 +51,21 @@ export interface LocalProject {
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
+// Current release supports web target only.
+// Reserved for future use (not yet enabled): 'desktop' | 'mobile'.
+export type TargetPlatform = 'web'
+
+export interface BuildContract {
+  previewMode: 'web'
+  frameworkClass: 'web-framework'
+  toolchain?: Record<string, unknown>
+  commands?: Record<string, unknown>
+  constraints?: Record<string, unknown>
+  fallbackPolicy?: Record<string, unknown>
+  successCriteria?: Record<string, unknown>
+  telemetryHints?: Record<string, unknown>
+}
+
 export type DependencyType =
   | 'dependency'
   | 'devDependency'
@@ -82,6 +98,79 @@ export interface DependencyJobPayload {
   finishedAt?: number
   stdout?: string
   stderr?: string
+  error?: string
+}
+
+export type RuntimeKind =
+  | 'node'
+  | 'npm'
+  | 'corepack'
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'python'
+  | 'rust'
+  | 'go'
+
+export type RuntimeSource = 'override' | 'bundled' | 'runtime-pack' | 'system' | 'missing'
+export type RuntimeTarget = `${NodeJS.Platform}-${NodeJS.Architecture}` | string
+
+export interface RuntimeHealth {
+  runtime: RuntimeKind
+  target: RuntimeTarget
+  source: RuntimeSource
+  available: boolean
+  executablePath?: string
+  version?: string
+  error?: string
+}
+
+export interface RuntimeEnsureResult {
+  success: boolean
+  runtime: RuntimeKind
+  target: RuntimeTarget
+  source: RuntimeSource
+  executablePath?: string
+  installed?: boolean
+  error?: string
+}
+
+export interface DevCommandSuggestion {
+  command: string
+  runtime: RuntimeKind | 'unknown'
+  confidence: number
+  reason: string
+}
+
+export interface DevServerConfig {
+  suggestions: DevCommandSuggestion[]
+  selectedCommand?: string
+  requiresUserSelection: boolean
+}
+
+export interface ProjectRuntimeProfile {
+  runtimes: RuntimeHealth[]
+  devServer: DevServerConfig
+  evidence: {
+    files: string[]
+    scripts: string[]
+    lockfiles: string[]
+  }
+}
+
+export interface RuntimeResolveCommandResult {
+  success: boolean
+  command: string
+  resolvedCommand?: string
+  runtime?: RuntimeKind
+  source?: RuntimeSource
+  executablePath?: string
+  status?: 'completed' | 'failed' | 'needs_user_approval'
+  approvalPayload?: {
+    command: string
+    reason: string
+    alternatives: string[]
+  }
   error?: string
 }
 
@@ -185,9 +274,62 @@ export interface RenameFileResult {
   error?: string
 }
 
+export type PreviewFailureReason =
+  | 'none'
+  | 'blocked_response'
+  | 'chrome_error_document'
+  | 'frame_not_found'
+  | 'bridge_injection_failed'
+  | 'bridge_timeout'
+  | 'iframe_load_error'
+  | 'server_unreachable'
+  | 'invalid_url'
+  | 'unsupported_origin'
+  | 'window_unavailable'
+  | 'unknown'
+
+export interface PreviewHeaderDiagnostic {
+  url: string
+  resourceType: 'mainFrame' | 'subFrame'
+  compatibilityEnabled: boolean
+  rewritten: boolean
+  removed: string[]
+  capturedAt: number
+}
+
+export interface PreviewBridgeFrameDetails {
+  requestedFrameName?: string
+  matchedFrameName?: string
+  matchedFrameUrl?: string
+  frameHref?: string | null
+  frameTreeNodeId?: number
+  routingId?: number
+  availableFrames?: Array<{
+    name: string
+    url: string
+    frameTreeNodeId: number
+    routingId: number
+  }>
+}
+
 export interface PreviewInjectBridgeResult {
   success: boolean
   error?: string
+  reason?: PreviewFailureReason
+  likelyBlocked?: boolean
+  frame?: PreviewBridgeFrameDetails
+  headerDiagnostic?: PreviewHeaderDiagnostic | null
+}
+
+export interface PreviewProbeUrlResult {
+  success: boolean
+  url: string
+  reachable: boolean
+  statusCode?: number
+  finalUrl?: string
+  reason?: PreviewFailureReason
+  error?: string
+  elapsedMs: number
 }
 
 export interface PreviewCaptureScreenshotResult {
@@ -318,6 +460,121 @@ export interface SyncDeleteFilesResult {
   results: Array<{ path: string; success: boolean }>
 }
 
+export type GitReplicaSnapshotSource = 'agent' | 'user' | 'external' | 'remote' | 'system'
+
+export interface GitReplicaSnapshotFile {
+  path: string
+  contentBase64: string
+  isBinary: boolean
+  size: number
+  hash: string
+}
+
+export interface GitReplicaOperation {
+  path: string
+  reason: string
+}
+
+export type GitReplicaConflictKind = 'text' | 'binary'
+export type GitReplicaConflictDecision = 'local' | 'cloud'
+
+export interface GitReplicaConflict {
+  path: string
+  reason: string
+  kind: GitReplicaConflictKind
+  localExists: boolean
+  remoteExists: boolean
+  localHash?: string
+  remoteHash?: string
+}
+
+export interface GitReplicaDiagnostics {
+  baseCommit?: string
+  localCommit?: string
+  remoteCommit?: string
+  resultCommit?: string
+  mergeDurationMs?: number
+  failureClass?: string
+}
+
+export interface GitReplicaBootstrapResult {
+  success: boolean
+  canonicalRef?: string
+  headCommit?: string
+  seededFrom?: 'canonical' | 'local' | 'empty'
+  error?: string
+}
+
+export interface GitReplicaPlanResult {
+  success: boolean
+  sessionId: string
+  baseCommit?: string
+  localCommit?: string
+  remoteCommit?: string
+  downloads: GitReplicaOperation[]
+  uploads: GitReplicaOperation[]
+  localDeletes: GitReplicaOperation[]
+  cloudDeletes: GitReplicaOperation[]
+  autoMerged: GitReplicaOperation[]
+  conflicts: GitReplicaConflict[]
+  noChange: number
+  error?: string
+}
+
+export interface GitReplicaWorkspacePatch {
+  path: string
+  deleted?: boolean
+  contentBase64?: string
+  encoding?: 'utf8' | 'base64'
+}
+
+export interface GitReplicaExecuteResult {
+  success: boolean
+  applied: boolean
+  requiresConflictResolution?: boolean
+  conflicts?: GitReplicaConflict[]
+  diagnostics?: GitReplicaDiagnostics
+  workspacePatch?: GitReplicaWorkspacePatch[]
+  canonicalHeadCommit?: string
+  error?: string
+}
+
+export interface GitReplicaStatusResult {
+  success: boolean
+  projectId: string
+  canonicalHeadCommit?: string
+  pendingQueue: number
+  degraded: boolean
+  lastError?: string
+  downloads: number
+  uploads: number
+  conflicts: number
+  updatedAt?: number
+  error?: string
+}
+
+export interface GitReplicaEnqueueResult {
+  success: boolean
+  queued: number
+  enqueuedAt: number
+  error?: string
+}
+
+export interface GitLfsPutObjectResult {
+  success: boolean
+  oid: string
+  size: number
+  error?: string
+}
+
+export interface GitLfsGetObjectResult {
+  success: boolean
+  oid: string
+  size?: number
+  contentBase64?: string
+  error?: string
+}
+
 export interface FileEntry {
   name: string
   path: string
@@ -340,6 +597,57 @@ export interface TerminalInfo {
   profileId: string
   profileName: string
   title: string
+}
+
+export interface TerminalCreateOptions {
+  projectPath: string
+  profileId?: string
+  cwd?: string
+  cols?: number
+  rows?: number
+  runId?: string
+}
+
+export interface TerminalOutputEvent {
+  terminalId: string
+  data: string
+  runId?: string
+}
+
+export interface TerminalExitEvent {
+  terminalId: string
+  exitCode: number | null
+  runId?: string
+}
+
+export interface DevServerStartOptions {
+  projectPath: string
+  command: string
+  port: number
+  cols?: number
+  rows?: number
+  runId?: string
+}
+
+export interface DevServerStartResult {
+  success: boolean
+  pid?: number
+  runId?: string
+  existing?: boolean
+  error?: string
+}
+
+export interface DevServerOutputEvent {
+  projectPath: string
+  output: string
+  stream: 'stdout' | 'stderr'
+  runId?: string
+}
+
+export interface DevServerExitEvent {
+  projectPath: string
+  code: number | null
+  runId?: string
 }
 
 export interface IntegrationKeyResult {
@@ -378,6 +686,111 @@ export interface IntegrationToolResult {
   error?: string
 }
 
+export type ProviderAuthProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'xai'
+  | 'github-copilot'
+  | 'gitlab'
+  | (string & {})
+export type ProviderAuthMethod =
+  | 'oauth'
+  | 'api_key'
+  | 'cloud_credentials'
+  | 'device'
+  | 'manual_code'
+  | 'vertex'
+  | 'gemini'
+  | 'gemini_api_key'
+export type ProviderAuthGoogleMode = 'vertex' | 'gemini'
+export type ProviderAuthType = 'oauth' | 'local_token' | 'api_key' | 'cloud_credentials'
+
+export interface ProviderCloudCredentials {
+  kind?: string
+  region?: string
+  profile?: string
+  accessKeyId?: string
+  secretAccessKey?: string
+  sessionToken?: string
+  projectId?: string
+  location?: string
+  accountId?: string
+  gatewayId?: string
+  serviceKey?: string
+  audience?: string
+  apiVersion?: string
+  baseUrl?: string
+  apiKey?: string
+  apiToken?: string
+  token?: string
+  headers?: Record<string, string>
+  extras?: Record<string, unknown>
+}
+
+export interface ProviderAuthRequestEnvelope {
+  provider: ProviderAuthProvider
+  authType: ProviderAuthType
+  accessToken: string
+  organizationId?: string
+  expiresAt?: number
+  accountId?: string
+  google?: {
+    mode: ProviderAuthGoogleMode
+    projectId?: string
+    location?: string
+  }
+  headers?: Record<string, string>
+  baseUrl?: string
+  cloud?: ProviderCloudCredentials
+}
+
+export interface ProviderAuthStatus {
+  provider: ProviderAuthProvider
+  connected: boolean
+  authType?: ProviderAuthType
+  expiresAt?: number
+  accountId?: string
+  googleMode?: ProviderAuthGoogleMode
+  googleProjectId?: string
+  googleLocation?: string
+  cloudKind?: string
+  lastError?: string
+  updatedAt?: number
+}
+
+export interface ProviderAuthStatusChangedEvent {
+  provider?: ProviderAuthProvider
+  statuses: ProviderAuthStatus[]
+  updatedAt: number
+}
+
+export interface ProviderAuthConnectResult {
+  success: boolean
+  status?: ProviderAuthStatus
+  authorizationUrl?: string
+  requiresManualCode?: boolean
+  error?: string
+}
+
+export interface ProviderAuthDisconnectResult {
+  success: boolean
+  error?: string
+}
+
+export interface ProviderAuthRequestAuthResult {
+  success: boolean
+  envelope?: ProviderAuthRequestEnvelope
+  error?: string
+  code?: 'not_connected' | 'expired' | 'invalid' | 'refresh_failed'
+}
+
+export interface LocalAiRuntimeStatus {
+  enabled: boolean
+  running: boolean
+  endpoint?: string
+}
+
 export interface DbSupabaseSelectResult {
   success: boolean
   rows?: unknown[]
@@ -399,31 +812,11 @@ export interface DbFirestoreListDocumentsResult {
   error?: string
 }
 
-export interface PerfHistogram {
-  buckets: number[]
-  counts: number[]
-  count: number
-  sum: number
-  max: number
-}
-
-export interface PerfMetric {
-  name: string
-  unit: 'ms'
-  histogram: PerfHistogram
-  tags?: Record<string, string>
-}
-
-export interface PerfBatch {
-  sessionId: string
-  source: 'renderer'
-  timestamp: number
-  metrics: PerfMetric[]
-  context?: Record<string, string>
-}
+export type ElectronWindowContext = 'main' | 'settings'
 
 export interface ElectronAPI {
   platform: NodeJS.Platform
+  windowContext: ElectronWindowContext
   auth: {
     login: () => Promise<{ success: boolean }>
     logout: () => Promise<{ success: boolean }>
@@ -434,6 +827,31 @@ export interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>
     onSuccess: (callback: (session: Session) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
+  }
+  providerAuth: {
+    listProviders: () => Promise<Array<{
+      provider: ProviderAuthProvider
+      methods: ProviderAuthMethod[]
+    }>>
+    getStatus: (provider?: ProviderAuthProvider) => Promise<ProviderAuthStatus[]>
+    connect: (options: {
+      provider: ProviderAuthProvider
+      method?: ProviderAuthMethod
+      authorizationCode?: string
+      credentialPath?: string
+      apiKey?: string
+      cloudCredentials?: ProviderCloudCredentials
+    }) => Promise<ProviderAuthConnectResult>
+    disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
+    getRequestAuth: (options: {
+      provider: ProviderAuthProvider
+      modelId: string
+      organizationId: string
+    }) => Promise<ProviderAuthRequestAuthResult>
+    onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => () => void
+  }
+  localAiRuntime: {
+    getStatus: () => Promise<LocalAiRuntimeStatus>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
@@ -502,6 +920,7 @@ export interface ElectronAPI {
   }
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
+    onOpenSettings: (callback: (route: string) => void) => () => void
   }
   settings: {
     get: () => Promise<AppSettings>
@@ -509,6 +928,7 @@ export interface ElectronAPI {
   }
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    showMessageBox: (options: import('electron').MessageBoxOptions) => Promise<import('electron').MessageBoxReturnValue>
   }
   storage: {
     getUsage: () => Promise<StorageUsage>
@@ -517,9 +937,11 @@ export interface ElectronAPI {
   window: {
     isFullScreen: () => Promise<boolean>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
+    openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
+    probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
   }
   project: {
@@ -546,14 +968,26 @@ export interface ElectronAPI {
     watchStart: (options: { projectPath: string }) => Promise<WatchProjectResult>
     watchStop: (options: { projectPath: string }) => Promise<WatchProjectResult>
   }
+  runtime: {
+    getProjectCapabilities: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
+    resolveCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeResolveCommandResult>
+    ensureCommandRuntime: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    detectProjectRuntime: (options: { projectPath: string }) => Promise<ProjectRuntimeProfile>
+    ensureForCommand: (options: { projectPath: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    ensureRuntime: (options: {
+      runtime: RuntimeKind
+      target?: string
+      cleanBrokenLocalFiles?: boolean
+      forceReinstall?: boolean
+    }) => Promise<RuntimeEnsureResult>
+    getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+  }
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>
     readFile: (path: string) => Promise<string | null>
   }
   sync: {
     hashFile: (options: { filePath: string }) => Promise<{ hash: string; size: number }>
-    getLocalManifest: (options: { projectPath: string; excludePatterns?: string[]; debugSource?: string; strict?: boolean }) =>
-      Promise<{ manifest: FileManifestEntry[]; totalFiles: number }>
     writeFiles: (options: {
       projectPath: string
       files: SyncWriteFile[]
@@ -603,6 +1037,39 @@ export interface ElectronAPI {
     getReplicaState: (options: { projectId: string }) => Promise<ReplicaState>
     getHistory: (options: { projectId: string }) => Promise<SyncHistory>
     setHistory: (options: { projectId: string; lastSyncAt: number; cloudPaths: string[] }) => Promise<SyncHistory>
+    gitReplicaBootstrap: (options: {
+      projectId: string
+      projectPath: string
+      sessionId?: string
+    }) => Promise<GitReplicaBootstrapResult>
+    gitReplicaPlan: (options: {
+      projectId: string
+      projectPath: string
+      sessionId?: string
+    }) => Promise<GitReplicaPlanResult>
+    gitReplicaExecute: (options: {
+      projectId: string
+      projectPath: string
+      sessionId: string
+      conflictDecisions?: Record<string, GitReplicaConflictDecision>
+    }) => Promise<GitReplicaExecuteResult>
+    gitReplicaStatus: (options: { projectId: string }) => Promise<GitReplicaStatusResult>
+    gitReplicaEnqueueSnapshot: (options: {
+      projectId: string
+      projectPath: string
+      source: GitReplicaSnapshotSource
+      reason: string
+    }) => Promise<GitReplicaEnqueueResult>
+    gitLfsPutObject: (options: {
+      projectId: string
+      oid: string
+      size: number
+      contentBase64: string
+    }) => Promise<GitLfsPutObjectResult>
+    gitLfsGetObject: (options: {
+      projectId: string
+      oid: string
+    }) => Promise<GitLfsGetObjectResult>
   }
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void
@@ -610,34 +1077,42 @@ export interface ElectronAPI {
       filePath: string
       origin?: string
       isBinary: boolean
+      isDirectory?: boolean
       sizeBytes: number
       content?: string
     }) => void) => () => void
     onExternalFileDelete: (callback: (data: { filePath: string; origin?: string }) => void) => () => void
   }
   devServer: {
-    start: (options: { projectPath: string; command: string; port: number; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>
+    start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
     stop: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { projectPath: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     isRunning: (options: { projectPath: string }) => Promise<boolean>
-    onOutput: (callback: (data: { projectPath: string; output: string; stream: 'stdout' | 'stderr' }) => void) => () => void
-    onExit: (callback: (data: { projectPath: string; code: number | null }) => void) => () => void
+    onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
+    onExit: (callback: (data: DevServerExitEvent) => void) => () => void
     onError: (callback: (data: { projectPath: string; error: string }) => void) => () => void
   }
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number }) => Promise<{ success: boolean; terminalId?: string; error?: string }>
+    create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
     input: (options: { terminalId: string; data: string }) => Promise<void>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
     getProfiles: () => Promise<TerminalProfile[]>
     list: (options: { projectPath: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
-    onOutput: (callback: (data: { terminalId: string; data: string }) => void) => () => void
-    onExit: (callback: (data: { terminalId: string; exitCode: number | null }) => void) => () => void
+    onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
+    onExit: (callback: (data: TerminalExitEvent) => void) => () => void
   }
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
+    showNative: (options: {
+      x: number
+      y: number
+      editable?: boolean
+      selectionText?: string
+      linkUrl?: string
+    }) => Promise<{ shown: boolean }>
   }
   updates: {
     check: () => Promise<UpdateState>
@@ -659,9 +1134,6 @@ export interface ElectronAPI {
     searchRegistry: (options: { query: string; size?: number }) => Promise<DependenciesRegistrySearchResult>
     fetchPackageMeta: (options: { names: string[] }) => Promise<DependenciesFetchPackageMetaResult>
     onJobStatus: (callback: (payload: { projectPath: string; job: DependencyJobPayload }) => void) => () => void
-  }
-  performance: {
-    report: (payload: PerfBatch) => Promise<{ success: boolean }>
   }
   diagnostics: {
     start: (options: { projectPath: string }) => Promise<{ success: boolean; error?: string }>
@@ -721,39 +1193,5 @@ export interface ElectronAPI {
         related?: Array<{ message: string; file?: string; line?: number; column?: number }>
       }>
     }>
-    onDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => () => void
-    onDidChangeDiagnostics: (callback: (payload: {
-      projectPath: string
-      source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-      diagnostics: Array<{
-        id?: string
-        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
-        severity: 'error' | 'warning' | 'info'
-        message: string
-        file?: string
-        line?: number
-        column?: number
-        endLine?: number
-        endColumn?: number
-        code?: string
-        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
-      }>
-    }) => void) => () => void
   }
 }

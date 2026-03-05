@@ -6,133 +6,225 @@ import {
   useCallback,
   type ReactNode,
 } from "react"
-import { useQuery, useMutation, useConvex } from "convex/react"
+import { useMutation } from "convex/react"
+import { useNavigate } from "react-router-dom"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
-import {
-  classifyProjectReconciliation,
-  computeSyncPlanWithMerge,
-  hasSyncOperations,
-} from "@/lib/sync/syncEngine"
-import { executeSyncPlan } from "@/lib/sync/syncExecutor"
-import type { SyncProgress, SyncPlan, CloudFileEntry, LocalFileEntry } from "@/lib/sync/types"
-import {
-  inspectLocalSyncHistory,
-  loadLocalSyncHistory,
-  saveLocalSyncHistory,
-} from "@/lib/sync/syncHistory"
-import { syncCheckpointStore } from "@/lib/sync/SyncCheckpointStore"
-import { normalizeCloudEntries, normalizeRelativePath } from "@/lib/sync/pathNormalization"
+import type { SyncProgress, SyncPlan, SyncOperation } from "@/lib/sync/types"
 import { SyncScreen } from "../components/SyncScreen"
 import { useProjectDiffStore } from "@/stores/useProjectDiffStore"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
+import { useCollabSession } from "@/hooks/useCollabSession"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import {
+  getMeaningfulLocalFileCount,
+  isBootstrapOnlyLocalPath,
+} from "../lib/localWorkspaceState"
+import type {
+  GitReplicaConflictDecision,
+  GitReplicaPlanResult,
+} from "@shared/electronApiTypes"
+import type { CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
 
-const MANIFEST_LOG_SAMPLE_LIMIT = 12
-
-function shortHash(hash?: string): string {
-  if (!hash) return "missing"
-  return hash.slice(0, 12)
+function createLocalPlaceholder(pathValue: string): SyncOperation["localEntry"] {
+  return {
+    path: pathValue,
+    hash: "",
+    size: 0,
+    mtime: Date.now(),
+  }
 }
 
-function formatTimestamp(value: number | undefined): string {
-  if (!value || Number.isNaN(value)) return "n/a"
-  return new Date(value).toISOString()
+function createCloudPlaceholder(pathValue: string): SyncOperation["cloudEntry"] {
+  return {
+    _id: "placeholder" as Id<"projectFiles">,
+    path: pathValue,
+    hash: "",
+    size: 0,
+    version: 1,
+    storageId: "placeholder" as Id<"_storage">,
+    uploadedAt: Date.now(),
+  }
 }
 
-function buildManifestComparisonLogs(
-  localFiles: LocalFileEntry[],
-  cloudFiles: CloudFileEntry[]
-): string[] {
-  const normalizedLocal = localFiles
-    .map((file) => ({ entry: file, normalizedPath: normalizeRelativePath(file.path) }))
-    .filter((item) => item.normalizedPath.length > 0)
-  const normalizedCloud = normalizeCloudEntries(cloudFiles)
-
-  const localByPath = new Map<string, LocalFileEntry>()
-  for (const file of normalizedLocal) {
-    localByPath.set(file.normalizedPath, file.entry)
+function toSyncPlanFromReplicaPlan(replicaPlan: GitReplicaPlanResult): SyncPlan {
+  return {
+    downloads: replicaPlan.downloads.map((entry) => ({
+      type: "download",
+      path: entry.path,
+      reason: entry.reason,
+      cloudEntry: createCloudPlaceholder(entry.path),
+    })),
+    uploads: replicaPlan.uploads.map((entry) => ({
+      type: "upload",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+    })),
+    localDeletes: replicaPlan.localDeletes.map((entry) => ({
+      type: "delete-local",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+    })),
+    cloudDeletes: replicaPlan.cloudDeletes.map((entry) => ({
+      type: "delete-cloud",
+      path: entry.path,
+      reason: entry.reason,
+      cloudEntry: createCloudPlaceholder(entry.path),
+    })),
+    autoMerged: replicaPlan.autoMerged.map((entry) => ({
+      type: "auto-merged",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: createLocalPlaceholder(entry.path),
+      cloudEntry: createCloudPlaceholder(entry.path),
+      mergeDetails: {
+        localChanges: 0,
+        cloudChanges: 0,
+        mergedContent: "",
+      },
+    })),
+    conflicts: replicaPlan.conflicts.map((entry) => ({
+      type: "conflict",
+      path: entry.path,
+      reason: entry.reason,
+      localEntry: entry.localExists ? createLocalPlaceholder(entry.path) : undefined,
+      cloudEntry: entry.remoteExists ? createCloudPlaceholder(entry.path) : undefined,
+    })),
+    noChange: replicaPlan.noChange,
   }
+}
 
-  const cloudByPath = new Map<string, CloudFileEntry>()
-  for (const file of normalizedCloud) {
-    cloudByPath.set(file.normalizedPath, file.entry)
-  }
+function deriveConflictDecisions(
+  originalPlan: SyncPlan,
+  resolvedPlan: SyncPlan
+): Record<string, GitReplicaConflictDecision> {
+  const decisions: Record<string, GitReplicaConflictDecision> = {}
+  const addedUploads = new Set(
+    resolvedPlan.uploads
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.uploads.some((item) => item.path === pathValue))
+  )
+  const addedDownloads = new Set(
+    resolvedPlan.downloads
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.downloads.some((item) => item.path === pathValue))
+  )
+  const addedLocalDeletes = new Set(
+    resolvedPlan.localDeletes
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.localDeletes.some((item) => item.path === pathValue))
+  )
+  const addedCloudDeletes = new Set(
+    resolvedPlan.cloudDeletes
+      .map((entry) => entry.path)
+      .filter((pathValue) => !originalPlan.cloudDeletes.some((item) => item.path === pathValue))
+  )
 
-  const allPaths = new Set<string>([
-    ...normalizedLocal.map((item) => item.normalizedPath),
-    ...normalizedCloud.map((item) => item.normalizedPath),
-  ])
-
-  const mismatches: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
-  const localOnly: Array<{ path: string; local: LocalFileEntry }> = []
-  const cloudOnly: Array<{ path: string; cloud: CloudFileEntry }> = []
-  const cloudMissingHash: Array<{ path: string; local: LocalFileEntry; cloud: CloudFileEntry }> = []
-  let identicalCount = 0
-
-  for (const path of Array.from(allPaths).sort()) {
-    const local = localByPath.get(path)
-    const cloud = cloudByPath.get(path)
-
-    if (local && cloud) {
-      if (!cloud.hash) {
-        cloudMissingHash.push({ path, local, cloud })
-      } else if (local.hash === cloud.hash) {
-        identicalCount += 1
-      } else {
-        mismatches.push({ path, local, cloud })
-      }
+  for (const conflict of originalPlan.conflicts) {
+    const pathValue = conflict.path
+    if (conflict.localEntry && conflict.cloudEntry) {
+      if (addedUploads.has(pathValue)) decisions[pathValue] = "local"
+      if (addedDownloads.has(pathValue)) decisions[pathValue] = "cloud"
       continue
     }
-
-    if (local && !cloud) {
-      localOnly.push({ path, local })
+    if (conflict.localEntry && !conflict.cloudEntry) {
+      if (addedUploads.has(pathValue)) decisions[pathValue] = "local"
+      if (addedLocalDeletes.has(pathValue)) decisions[pathValue] = "cloud"
       continue
     }
-
-    if (!local && cloud) {
-      cloudOnly.push({ path, cloud })
+    if (!conflict.localEntry && conflict.cloudEntry) {
+      if (addedCloudDeletes.has(pathValue)) decisions[pathValue] = "local"
+      if (addedDownloads.has(pathValue)) decisions[pathValue] = "cloud"
     }
   }
 
-  const logs: string[] = [
-    `Manifest compare (normalized): local=${normalizedLocal.length}, cloud=${normalizedCloud.length}, union=${allPaths.size}`,
-    `Manifest summary: same=${identicalCount}, mismatch=${mismatches.length}, localOnly=${localOnly.length}, cloudOnly=${cloudOnly.length}, cloudHashMissing=${cloudMissingHash.length}`,
-  ]
+  // Apply non-conflict intent overrides when caller rewrites the plan shape
+  // (e.g. local-wipe recovery converting cloudDeletes -> downloads).
+  const originalUploadPaths = new Set(originalPlan.uploads.map((entry) => entry.path))
+  const resolvedUploadPaths = new Set(resolvedPlan.uploads.map((entry) => entry.path))
+  const originalCloudDeletePaths = new Set(originalPlan.cloudDeletes.map((entry) => entry.path))
+  const resolvedDownloadPaths = new Set(resolvedPlan.downloads.map((entry) => entry.path))
 
-  const appendSample = <T,>(
-    title: string,
-    rows: T[],
-    formatter: (row: T) => string
-  ) => {
-    if (rows.length === 0) return
-    logs.push(`${title} (${rows.length}):`)
-    for (const row of rows.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
-      logs.push(`  ${formatter(row)}`)
-    }
-    if (rows.length > MANIFEST_LOG_SAMPLE_LIMIT) {
-      logs.push(`  ... +${rows.length - MANIFEST_LOG_SAMPLE_LIMIT} more`)
+  for (const pathValue of originalUploadPaths) {
+    if (!resolvedUploadPaths.has(pathValue)) {
+      decisions[pathValue] = "cloud"
     }
   }
 
-  appendSample("Hash mismatches", mismatches, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
-  ))
-  appendSample("Local-only paths", localOnly, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} @ ${formatTimestamp(row.local.mtime)}`
-  ))
-  appendSample("Cloud-only paths", cloudOnly, (row) => (
-    `${row.path} cloud=${shortHash(row.cloud.hash)} @ ${formatTimestamp(row.cloud.uploadedAt)}`
-  ))
-  appendSample("Cloud paths missing hash", cloudMissingHash, (row) => (
-    `${row.path} local=${shortHash(row.local.hash)} cloud=missing`
-  ))
+  for (const pathValue of originalCloudDeletePaths) {
+    if (resolvedDownloadPaths.has(pathValue)) {
+      decisions[pathValue] = "cloud"
+    }
+  }
 
-  return logs
+  return decisions
+}
+
+function hasSyncOperations(plan: SyncPlan): boolean {
+  return (
+    plan.downloads.length > 0 ||
+    plan.uploads.length > 0 ||
+    plan.localDeletes.length > 0 ||
+    plan.cloudDeletes.length > 0 ||
+    plan.autoMerged.length > 0 ||
+    plan.conflicts.length > 0
+  )
+}
+
+function isLikelyLocalWorkspaceWipe(
+  plan: SyncPlan,
+  meaningfulLocalFileCount: number | null
+): boolean {
+  if (meaningfulLocalFileCount !== 0) {
+    return false
+  }
+
+  const hasNoLocalMutations =
+    plan.uploads.every((entry) => isBootstrapOnlyLocalPath(entry.path)) &&
+    plan.localDeletes.every((entry) => isBootstrapOnlyLocalPath(entry.path)) &&
+    plan.conflicts.every((entry) => isBootstrapOnlyLocalPath(entry.path)) &&
+    (plan.autoMerged?.every((entry) => isBootstrapOnlyLocalPath(entry.path)) ?? true)
+
+  if (!hasNoLocalMutations) {
+    return false
+  }
+
+  // Replica plans may express a wipe either as restore downloads
+  // or as cloud-delete intents from an empty local tree.
+  return plan.downloads.length > 0 || plan.cloudDeletes.length > 0
+}
+
+function buildLocalWipeRecoveryPlan(plan: SyncPlan): SyncPlan {
+  const restoreDownloads =
+    plan.downloads.length > 0
+      ? plan.downloads.map((entry) => ({
+          ...entry,
+          reason: "Local workspace is empty; restore from cloud",
+        }))
+      : plan.cloudDeletes.map((entry) => ({
+          type: "download" as const,
+          path: entry.path,
+          reason: "Local workspace is empty; restore from cloud",
+          cloudEntry: createCloudPlaceholder(entry.path),
+        }))
+
+  return {
+    downloads: restoreDownloads,
+    uploads: [],
+    localDeletes: [],
+    cloudDeletes: [],
+    conflicts: [],
+    autoMerged: [],
+    noChange: restoreDownloads.length === 0 ? plan.noChange : 0,
+  }
 }
 
 interface ProjectSyncContextValue {
@@ -167,6 +259,8 @@ interface ProjectSyncProviderProps {
   projectSlug: string
   localPath: string | null
   lastSyncAt?: number
+  initialGateSyncScreen?: boolean
+  skipInitialSyncCheck?: boolean
   onFilesChanged?: () => void
 }
 
@@ -183,7 +277,6 @@ function AgentFileSyncBridge({
   children: ReactNode
 }) {
   const { yjsDoc } = useYjsProject()
-  const convex = useConvex()
 
   // Watch local filesystem for edits that bypass Electron IPC (terminal, external editor, etc.)
   useEffect(() => {
@@ -206,7 +299,7 @@ function AgentFileSyncBridge({
   // Bridge local agent file writes to Yjs (local → Yjs → remote)
   useAgentFileSync(yjsDoc, projectPath, projectId, userId)
   // Sync binary files via shared file-op pipeline.
-  useBinaryFileSync(projectId, projectPath, userId, convex)
+  useBinaryFileSync(projectId, projectPath, userId)
   // Write remote Yjs changes back to local disk (remote → Yjs → local)
   useYjsFileWriteback(yjsDoc, projectPath, projectId)
   return <>{children}</>
@@ -220,51 +313,78 @@ export function ProjectSyncProvider({
   projectSlug,
   localPath,
   lastSyncAt: initialLastSyncAt,
+  initialGateSyncScreen = false,
+  skipInitialSyncCheck = false,
   onFilesChanged,
 }: ProjectSyncProviderProps) {
-  const [isSynced, setIsSynced] = useState(false)
+  const navigate = useNavigate()
+  const { accessToken } = useAuth()
+  const [isSynced, setIsSynced] = useState(skipInitialSyncCheck)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
     initialLastSyncAt ?? null
   )
-  // Don't show sync screen initially - only show if there are actual changes
-  const [showSyncScreen, setShowSyncScreen] = useState(false)
+  // Usually we don't show sync screen initially, but card/row pre-check can
+  // request a gated open when conflicts/recovery are likely.
+  const [showSyncScreen, setShowSyncScreen] = useState(initialGateSyncScreen)
   const [plan, setPlan] = useState<SyncPlan | null>(null)
+  const [requireSyncBeforeContinue, setRequireSyncBeforeContinue] = useState(false)
   const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
   // Prevent concurrent sync runs
   const [isSyncRunning, setIsSyncRunning] = useState(false)
-  const [hasRunInitialSync, setHasRunInitialSync] = useState(false)
+  const [hasRunInitialSync, setHasRunInitialSync] = useState(skipInitialSyncCheck)
 
-  const [progress, setProgress] = useState<SyncProgress>({
-    status: "idle",
-    message: "",
-    current: 0,
-    total: 0,
-    logs: [],
-  })
+  const [progress, setProgress] = useState<SyncProgress>(() =>
+    initialGateSyncScreen
+      ? {
+        status: "checking",
+        message: "Checking project files...",
+        current: 0,
+        total: 0,
+        logs: ["Starting sync check..."],
+      }
+      : {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      }
+  )
 
   // Diff store - to clear badges when sync completes
   const clearDiff = useProjectDiffStore((state) => state.clearDiff)
 
-  // Convex queries
-  const cloudManifest = useQuery(api.projectFiles.getManifestForProject, {
-    projectId,
+  const [replicaPlan, setReplicaPlan] = useState<GitReplicaPlanResult | null>(null)
+
+  const { status: collabSessionStatus, session: collabSession } = useCollabSession({
+    projectId: String(projectId),
+    accessToken,
+    enabled: Boolean(accessToken),
   })
 
-  // Query that includes download URLs
-  const filesWithUrls = useQuery(api.projectFiles.listForProject, { projectId })
+  const activeCollabSession: CollabSessionDescriptor | null =
+    collabSessionStatus === 'ready' && collabSession
+      ? {
+          projectId: String(projectId),
+          roomId: collabSession.roomId,
+          collabWsUrl: collabSession.collabWsUrl,
+          token: collabSession.token,
+          protocolVersion: collabSession.protocolVersion,
+        }
+      : null
 
-  // Convex mutations
-  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
-  const saveFilesMutation = useMutation(api.projectFiles.saveFiles)
-  const markFilesDeletedMutation = useMutation(api.projectFiles.markFilesDeleted)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   // Use per-user local path (stored in projectMembers, not projects)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   /**
-   * Execute sync plan.
+   * Execute Git replica sync plan.
    */
-  const executeSync = useCallback(async (projectPath: string, syncPlan: SyncPlan) => {
+  const executeSync = useCallback(async (
+    projectPath: string,
+    syncPlan: SyncPlan,
+    overrideConflictDecisions?: Record<string, GitReplicaConflictDecision>
+  ) => {
     setIsSyncRunning(true)
 
     if (!hasSyncOperations(syncPlan)) {
@@ -281,116 +401,120 @@ export function ProjectSyncProvider({
       console.error("[Sync] Failed to update status:", err)
     }
 
-    const result = await executeSyncPlan(syncPlan, {
-      projectId,
-      userId,
-      projectPath,
-      onProgress: setProgress,
-      generateUploadUrl: () => generateUploadUrl({ projectId }),
-      saveFiles: (args) => saveFilesMutation(args),
-      markFilesDeleted: (args) => markFilesDeletedMutation(args),
-      getStorageUrl: async (storageId) => {
-        const file = filesWithUrls?.find((f) => f.storageId === storageId)
-        return file?.url ?? null
-      },
+    const sessionId = replicaPlan?.sessionId ?? crypto.randomUUID()
+    const conflictDecisions = overrideConflictDecisions ??
+      (plan ? deriveConflictDecisions(plan, syncPlan) : {})
+
+    if (requireSyncBeforeContinue && plan) {
+      for (const entry of plan.cloudDeletes) {
+        conflictDecisions[entry.path] = "cloud"
+      }
+      for (const entry of plan.uploads) {
+        conflictDecisions[entry.path] = "cloud"
+      }
+    }
+
+    console.log("[ProjectSync] Executing replica apply", {
+      projectId: String(projectId),
+      sessionId,
+      decisions: Object.keys(conflictDecisions).length,
+      requireSyncBeforeContinue,
     })
 
-    // Update final status
     try {
-      await updateSyncStatus({
-        projectId,
-        userId,
-        status: result.success ? "synced" : "error",
-        errorMessage: result.error,
-      })
-    } catch (err) {
-      console.error("[Sync] Failed to update final status:", err)
-    }
-
-    if (result.success) {
-      const now = Date.now()
-      const cloudPaths = new Set(
-        normalizeCloudEntries(
-          (cloudManifest ?? []).map((file) => ({
-            path: file.path,
-            uploadedAt: file.uploadedAt,
-            version: file.version,
-          }))
-        ).map((entry) => entry.normalizedPath)
-      )
-      for (const op of syncPlan.uploads) cloudPaths.add(op.path)
-      for (const op of syncPlan.cloudDeletes) cloudPaths.delete(op.path)
-      // Include auto-merged files in cloud paths
-      for (const op of syncPlan.autoMerged ?? []) cloudPaths.add(op.path)
-      await saveLocalSyncHistory(projectId, {
-        lastSyncAt: now,
-        cloudPathsAtLastSync: cloudPaths,
+      const result = await window.electronAPI.sync.gitReplicaExecute({
+        projectId: String(projectId),
+        projectPath,
+        sessionId,
+        conflictDecisions,
       })
 
-      // Save file checkpoints for future 3-way merges
+      const syncErrorMessage =
+        result.error || "Failed to sync project files"
+
+      // Update final status
       try {
-        const checkpointFiles = new Map<string, { content: string; hash: string }>()
-
-        // Read all synced files and save as checkpoints
-        const filesToCheckpoint = [
-          ...syncPlan.downloads.map((op) => op.path),
-          ...syncPlan.uploads.map((op) => op.path),
-          ...(syncPlan.autoMerged ?? []).map((op) => op.path),
-        ]
-
-        for (const filePath of filesToCheckpoint) {
-          try {
-            const readResult = await window.electronAPI.project.readFile({
-              projectPath,
-              filePath,
-            })
-            if (readResult.success && readResult.content !== undefined) {
-              // Compute hash
-              const encoder = new TextEncoder()
-              const data = encoder.encode(readResult.content)
-              const hashBuffer = await crypto.subtle.digest("SHA-256", data)
-              const hashArray = Array.from(new Uint8Array(hashBuffer))
-              const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-
-              checkpointFiles.set(filePath, { content: readResult.content, hash })
-            }
-          } catch {
-            // Skip files that can't be read (binary, etc.)
-          }
-        }
-
-        if (checkpointFiles.size > 0) {
-          await syncCheckpointStore.saveCheckpoint(projectId, checkpointFiles)
-        }
+        await updateSyncStatus({
+          projectId,
+          userId,
+          status: result.success && result.applied ? "synced" : "error",
+          errorMessage: result.success && result.applied ? undefined : syncErrorMessage,
+        })
       } catch (err) {
-        console.warn("[Sync] Failed to save checkpoints:", err)
-        // Non-fatal - sync still succeeded
+        console.error("[Sync] Failed to update final status:", err)
       }
 
-      setIsSynced(true)
-      setLastSyncAt(now)
-      setShowSyncScreen(false)
-      // Clear the diff badge for this project
-      clearDiff(projectSlug)
-      onFilesChanged?.()
-    } else {
-      // Surface failures in the sync screen so users can retry instead of
-      // continuing with a silently partial local/cloud state.
-      setShowSyncScreen(true)
-    }
+      if (result.success && result.applied) {
+        const now = Date.now()
+        setIsSynced(true)
+        setLastSyncAt(now)
+        setShowSyncScreen(false)
+        setRequireSyncBeforeContinue(false)
+        // Clear the diff badge for this project
+        clearDiff(projectSlug)
+        onFilesChanged?.()
+        setProgress({
+          status: "complete",
+          message: "Sync complete",
+          current: 0,
+          total: 0,
+          logs: [],
+        })
+      } else if (result.requiresConflictResolution) {
+        setShowSyncScreen(true)
+        setProgress((prev) => ({
+          ...prev,
+          status: "planning",
+          message: "Conflict resolution required",
+          logs: [...prev.logs, "⚠ Conflict resolution required before sync can continue"],
+        }))
+      } else {
+        // Surface non-conflict failures explicitly. Otherwise UI can stay on
+        // "Syncing files..." while already failed.
+        setShowSyncScreen(true)
+        setProgress({
+          status: "error",
+          message: syncErrorMessage,
+          current: 0,
+          total: 0,
+          logs: [`Error: ${syncErrorMessage}`],
+        })
+      }
+    } catch (error) {
+      const syncErrorMessage =
+        error instanceof Error ? error.message : "Failed to sync project files"
 
-    // Mark sync as complete regardless of result
-    setIsSyncRunning(false)
+      try {
+        await updateSyncStatus({
+          projectId,
+          userId,
+          status: "error",
+          errorMessage: syncErrorMessage,
+        })
+      } catch (err) {
+        console.error("[Sync] Failed to update error status:", err)
+      }
+
+      setShowSyncScreen(true)
+      setProgress({
+        status: "error",
+        message: syncErrorMessage,
+        current: 0,
+        total: 0,
+        logs: [`Error: ${syncErrorMessage}`],
+      })
+    } finally {
+      // Mark sync as complete regardless of result.
+      setIsSyncRunning(false)
+    }
   }, [
     clearDiff,
-    cloudManifest,
-    filesWithUrls,
-    generateUploadUrl,
-    markFilesDeletedMutation,
     onFilesChanged,
+    plan,
     projectId,
     projectSlug,
-    saveFilesMutation,
+    requireSyncBeforeContinue,
+    replicaPlan,
     updateSyncStatus,
     userId,
   ])
@@ -399,11 +523,6 @@ export function ProjectSyncProvider({
    * Run initial sync check when component mounts.
    */
   useEffect(() => {
-    if (cloudManifest === undefined || filesWithUrls === undefined) {
-      // Still loading from Convex
-      return
-    }
-
     // Prevent re-running if already synced or sync in progress
     if (hasRunInitialSync || isSyncRunning) {
       return
@@ -412,6 +531,7 @@ export function ProjectSyncProvider({
     const runInitialSync = async () => {
       setIsSyncRunning(true)
       setHasRunInitialSync(true)
+      setRequireSyncBeforeContinue(false)
       setProgress({
         status: "checking",
         message: "Checking project files...",
@@ -423,6 +543,8 @@ export function ProjectSyncProvider({
       try {
         // Check if we already have a local path (e.g., from repo import)
         let effectiveLocalPath = currentLocalPath
+      let localFileCount: number | null = null
+      let meaningfulLocalFileCount: number | null = null
 
         if (effectiveLocalPath) {
           // For repo imports, we already have the local path - just verify it exists
@@ -486,104 +608,91 @@ export function ProjectSyncProvider({
           throw new Error("Local project directory no longer exists")
         }
 
-        // Get local manifest
-        const localResult = await window.electronAPI.sync.getLocalManifest({
+        const localFiles = await window.electronAPI.project.listFiles({
           projectPath: effectiveLocalPath,
-          debugSource: `project-sync-context:${projectSlug}`,
         })
-
-        // Convert manifests
-        const localFiles: LocalFileEntry[] = localResult.manifest
-        const cloudFiles: CloudFileEntry[] = cloudManifest.map((f) => ({
-          _id: f._id,
-          path: f.path,
-          hash: f.hash,
-          size: f.size,
-          version: f.version,
-          storageId: f.storageId,
-          uploadedAt: f.uploadedAt,
-        }))
-        const manifestComparisonLogs = buildManifestComparisonLogs(localFiles, cloudFiles)
-
-        console.groupCollapsed(`[Sync][Manifest] ${projectSlug}`)
-        for (const line of manifestComparisonLogs) {
-          console.log(line)
+        if (localFiles.success) {
+          const localPaths = (localFiles.files ?? []).map((entry) => entry.path)
+          localFileCount = localPaths.length
+          meaningfulLocalFileCount = getMeaningfulLocalFileCount(localPaths)
         }
-        console.groupEnd()
 
         setProgress((prev) => ({
           ...prev,
           status: "planning",
-          message: "Comparing files...",
-          logs: [
-            ...prev.logs,
-            ...manifestComparisonLogs,
-          ],
+          message: "Bootstrapping Git replica...",
         }))
 
-        const historyInspection = await inspectLocalSyncHistory(projectId)
-        const localHistory = await loadLocalSyncHistory(projectId)
-
-        const checkpointMap = await syncCheckpointStore.getCheckpointMap(projectId)
-
-        // Compute sync plan with 3-way merge support
-        const syncPlan = await computeSyncPlanWithMerge(
-          localFiles,
-          cloudFiles,
-          localHistory.lastSyncAt ?? undefined,
-          localHistory.cloudPathsAtLastSync,
-          {
-            projectId,
-            checkpointMap,
-            maxMergeBytes: 2 * 1024 * 1024,
-            readLocalFile: async (path: string) => {
-              const result = await window.electronAPI.project.readFile({
-                projectPath: effectiveLocalPath,
-                filePath: path,
-              })
-              return result.success ? result.content ?? null : null
-            },
-            fetchCloudFile: async (storageId: string) => {
-              const file = filesWithUrls?.find((f) => f.storageId === storageId)
-              if (!file?.url) return null
-              try {
-                const response = await fetch(file.url)
-                return response.ok ? await response.text() : null
-              } catch {
-                return null
-              }
-            },
-          }
-        )
-        setPlan(syncPlan)
-        const planLogs: string[] = [
-          `Plan summary: ↓${syncPlan.downloads.length} ↑${syncPlan.uploads.length} ✕local ${syncPlan.localDeletes.length} ✕cloud ${syncPlan.cloudDeletes.length} ⚠${syncPlan.conflicts.length} ⊕${syncPlan.autoMerged.length} =${syncPlan.noChange}`,
-        ]
-        if (syncPlan.conflicts.length > 0) {
-          for (const conflict of syncPlan.conflicts.slice(0, MANIFEST_LOG_SAMPLE_LIMIT)) {
-            planLogs.push(`  ⚠ conflict ${conflict.path} (${conflict.reason})`)
-          }
-          if (syncPlan.conflicts.length > MANIFEST_LOG_SAMPLE_LIMIT) {
-            planLogs.push(`  ... +${syncPlan.conflicts.length - MANIFEST_LOG_SAMPLE_LIMIT} more conflicts`)
-          }
+        const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+          projectId: String(projectId),
+          projectPath: effectiveLocalPath,
+        })
+        if (!bootstrap.success) {
+          throw new Error(bootstrap.error || "Failed to bootstrap replica")
         }
 
-        const reconciliation = classifyProjectReconciliation(syncPlan, {
-          pathExists: localPathExists,
-          journalCorrupt: historyInspection.corrupted,
-        })
         setProgress((prev) => ({
           ...prev,
-          logs: [
-            ...prev.logs,
-            ...planLogs,
-            `Reconciliation state: ${reconciliation.state}`,
-            reconciliation.reason,
-            ...(historyInspection.corrupted
-              ? ["Detected corrupted local sync history; continuing with safe reconciliation defaults"]
-              : []),
-          ],
+          status: "planning",
+          message: "Planning replica merge...",
         }))
+
+        const replicaSyncPlan = await window.electronAPI.sync.gitReplicaPlan({
+          projectId: String(projectId),
+          projectPath: effectiveLocalPath,
+        })
+        if (!replicaSyncPlan.success) {
+          throw new Error(replicaSyncPlan.error || "Failed to create replica sync plan")
+        }
+        console.log("[ProjectSync] Replica plan computed", {
+          projectId: String(projectId),
+          projectPath: effectiveLocalPath,
+          localFileCount,
+          downloads: replicaSyncPlan.downloads.length,
+          uploads: replicaSyncPlan.uploads.length,
+          cloudDeletes: replicaSyncPlan.cloudDeletes.length,
+          localDeletes: replicaSyncPlan.localDeletes.length,
+          conflicts: replicaSyncPlan.conflicts.length,
+          autoMerged: replicaSyncPlan.autoMerged.length,
+          noChange: replicaSyncPlan.noChange,
+        })
+        setReplicaPlan(replicaSyncPlan)
+        const syncPlan = toSyncPlanFromReplicaPlan(replicaSyncPlan)
+        const localWipeDetected = isLikelyLocalWorkspaceWipe(syncPlan, meaningfulLocalFileCount)
+        if (localWipeDetected) {
+          console.warn("[ProjectSync] Local wipe detection triggered", {
+            projectId: String(projectId),
+            projectPath: effectiveLocalPath,
+            localFileCount,
+            meaningfulLocalFileCount,
+            restoreCandidates: Math.max(syncPlan.downloads.length, syncPlan.cloudDeletes.length),
+            cloudDeletes: syncPlan.cloudDeletes.length,
+            downloads: syncPlan.downloads.length,
+            uploads: syncPlan.uploads.length,
+            localDeletes: syncPlan.localDeletes.length,
+            conflicts: syncPlan.conflicts.length,
+            autoMerged: syncPlan.autoMerged.length,
+          })
+          setRequireSyncBeforeContinue(true)
+          const recoveryPlan = buildLocalWipeRecoveryPlan(syncPlan)
+          setPlan(recoveryPlan)
+          setShowSyncScreen(true)
+          setIsSyncRunning(false)
+          setProgress({
+            status: "planning",
+            message: "Local files are missing. Restore from cloud?",
+            current: 0,
+            total: 0,
+            logs: [
+              "⚠ Local workspace is empty. Preparing cloud restore.",
+              `Prepared ${recoveryPlan.downloads.length} files to download from cloud`,
+              "Click Download cloud files to restore your local workspace",
+            ],
+          })
+          return
+        }
+
+        setPlan(syncPlan)
 
         const totalChanges =
           syncPlan.downloads.length +
@@ -591,14 +700,27 @@ export function ProjectSyncProvider({
           syncPlan.localDeletes.length +
           syncPlan.cloudDeletes.length +
           (syncPlan.autoMerged?.length ?? 0)
+        const conflictCount = syncPlan.conflicts.length
+
+        if (conflictCount > 0) {
+          console.warn("[ProjectSync] Conflict detection triggered", {
+            projectId: String(projectId),
+            projectPath: effectiveLocalPath,
+            localFileCount,
+            meaningfulLocalFileCount,
+            conflicts: conflictCount,
+            downloads: syncPlan.downloads.length,
+            uploads: syncPlan.uploads.length,
+            cloudDeletes: syncPlan.cloudDeletes.length,
+            localDeletes: syncPlan.localDeletes.length,
+            autoMerged: syncPlan.autoMerged.length,
+            totalChanges,
+          })
+        }
 
         if (totalChanges === 0) {
           // Already synced - no screen needed
           const now = Date.now()
-          await saveLocalSyncHistory(projectId, {
-            lastSyncAt: now,
-            cloudPathsAtLastSync: normalizeCloudEntries(cloudFiles).map((f) => f.normalizedPath),
-          })
           setLastSyncAt(now)
           setProgress({
             status: "complete",
@@ -651,8 +773,6 @@ export function ProjectSyncProvider({
 
     runInitialSync()
   }, [
-    cloudManifest,
-    filesWithUrls,
     hasRunInitialSync,
     isSyncRunning,
     currentLocalPath,
@@ -677,7 +797,13 @@ export function ProjectSyncProvider({
    */
   const handleContinue = () => {
     setIsSynced(true)
+    setRequireSyncBeforeContinue(false)
     setShowSyncScreen(false)
+  }
+
+  const handleCancel = () => {
+    setRequireSyncBeforeContinue(false)
+    navigate("/projects")
   }
 
   /**
@@ -709,21 +835,11 @@ export function ProjectSyncProvider({
       logs: [],
     }))
 
-    await executeSync(currentLocalPath, resolvedPlan)
+    const decisions = plan ? deriveConflictDecisions(plan, resolvedPlan) : {}
+    await executeSync(currentLocalPath, resolvedPlan, decisions)
   }
 
-  // Conflicts/errors must be handled before entering the workspace.
-  if (showSyncScreen && !isSynced) {
-    return (
-      <SyncScreen
-        progress={progress}
-        plan={plan}
-        onContinue={handleContinue}
-        onRetry={handleRetry}
-        onSync={handleSyncResolved}
-      />
-    )
-  }
+  const isBlockingSyncScreen = showSyncScreen && !isSynced
 
   return (
     <ProjectSyncContext.Provider
@@ -739,15 +855,50 @@ export function ProjectSyncProvider({
         projectId={projectId}
         userId={userId}
         userName={userName}
+        projectPath={currentLocalPath}
+        collabSession={activeCollabSession}
       >
         <DeleteConflictDialog />
-        <AgentFileSyncBridge
-          projectId={projectId}
-          userId={userId}
-          projectPath={currentLocalPath}
-        >
-          {children}
-        </AgentFileSyncBridge>
+        {isBlockingSyncScreen ? (
+          <Dialog
+            open
+            onOpenChange={() => {
+              // Keep this blocking gate modal open until explicit action.
+            }}
+          >
+            <DialogContent
+              showCloseButton={false}
+              className="w-[min(960px,calc(100vw-2rem))] max-w-none max-h-[85vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
+            >
+              <>
+                <DialogTitle className="sr-only">Project sync required</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Resolve sync changes before entering the project workspace.
+                </DialogDescription>
+                <SyncScreen
+                  progress={progress}
+                  plan={plan}
+                  onContinue={handleContinue}
+                  onRetry={handleRetry}
+                  onCancel={handleCancel}
+                  onSync={handleSyncResolved}
+                  syncActionLabel={requireSyncBeforeContinue ? "Download cloud files" : undefined}
+                  syncActionIcon={requireSyncBeforeContinue ? "download" : undefined}
+                  hideContinue={requireSyncBeforeContinue}
+                  variant="panel"
+                />
+              </>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <AgentFileSyncBridge
+            projectId={projectId}
+            userId={userId}
+            projectPath={currentLocalPath}
+          >
+            {children}
+          </AgentFileSyncBridge>
+        )}
       </YjsProjectProvider>
     </ProjectSyncContext.Provider>
   )

@@ -5,10 +5,8 @@ import { MonacoBinding } from 'y-monaco'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useMonacoTheme } from '@/hooks/useMonacoTheme'
-import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
-import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
 import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
-import { ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
+import { configureMonacoTypeScriptValidation, ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
 
 ensureMonacoEnvironment()
 
@@ -122,6 +120,8 @@ export function CollaborativeMonacoEditor({
   // Handle editor mount - set up y-monaco binding
   const handleMount: OnMount = useCallback(
     (editor, monacoInstance) => {
+      configureMonacoTypeScriptValidation(monacoInstance)
+
       // Defensive cleanup in case Monaco remounts this editor instance.
       teardownBinding()
       for (const disposable of cursorDisposablesRef.current) {
@@ -168,6 +168,43 @@ export function CollaborativeMonacoEditor({
           actions.saveFile(activePathRef.current)
         }
       )
+      editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Period, () => {
+        editor.trigger('keyboard', 'editor.action.quickFix', {})
+      })
+      editor.addCommand(
+        monacoInstance.KeyMod.Shift | monacoInstance.KeyMod.Alt | monacoInstance.KeyCode.KeyO,
+        () => {
+          editor.trigger('keyboard', 'editor.action.organizeImports', {})
+        }
+      )
+
+      const quickFixAction = editor.addAction({
+        id: 'cozea.editor.quickFix.collab',
+        label: 'Quick Fix',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 0.5,
+        run: () => {
+          editor.trigger('contextmenu', 'editor.action.quickFix', {})
+        },
+      })
+      const organizeImportsAction = editor.addAction({
+        id: 'cozea.editor.organizeImports.collab',
+        label: 'Organize Imports',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 0.6,
+        run: () => {
+          editor.trigger('contextmenu', 'editor.action.organizeImports', {})
+        },
+      })
+      const renameAction = editor.addAction({
+        id: 'cozea.editor.renameSymbol.collab',
+        label: 'Rename Symbol',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 0.7,
+        run: () => {
+          editor.trigger('contextmenu', 'editor.action.rename', {})
+        },
+      })
 
       updateBottomFade()
       cursorDisposablesRef.current.push(
@@ -186,6 +223,13 @@ export function CollaborativeMonacoEditor({
           }
         })
       )
+      cursorDisposablesRef.current.push({
+        dispose: () => {
+          quickFixAction.dispose()
+          organizeImportsAction.dispose()
+          renameAction.dispose()
+        },
+      })
 
       // Notify parent that editor is ready
       onEditorReady?.(editor)
@@ -242,17 +286,6 @@ export function CollaborativeMonacoEditor({
       cursorDisposablesRef.current = []
     }
   }, [teardownBinding])
-
-  useDiagnosticsFileSync({
-    projectPath: model?.projectPath,
-    filePath: path,
-    content: model?.currentContent ?? '',
-  })
-
-  useMonacoDiagnostics({
-    projectPath: model?.projectPath,
-    filePath: path,
-  })
 
   useEffect(() => {
     editorRef.current?.updateOptions({

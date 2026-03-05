@@ -9,6 +9,9 @@ import {
 } from "react"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { scheduleTask } from "@/lib/scheduler"
+import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import {
   Breadcrumb,
   BreadcrumbEllipsis,
@@ -44,6 +47,16 @@ export function UnifiedHeader({
   contentInsetRight = 0,
   compactHeaderActions = true,
 }: UnifiedHeaderProps) {
+  const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
+  const isMacClient = typeof window !== "undefined" && window.electronAPI?.platform === "darwin"
+  const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== "closed")
+  const shouldShowWindowsCaptionSpacer = isWindowsClient && !isAssistantOpen
+  const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
+  const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && isMacClient
+  const headerBackdropClassName = isWindowsClient
+    ? "bg-background/60 backdrop-blur-md supports-[backdrop-filter]:bg-background/45"
+    : "bg-transparent backdrop-blur-md"
+
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [visibleBreadcrumbStartIndex, setVisibleBreadcrumbStartIndex] = useState(0)
   const breadcrumbContainerRef = useRef<HTMLDivElement | null>(null)
@@ -52,7 +65,7 @@ export function UnifiedHeader({
   const breadcrumbAddonRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (!leftWindowControlsInset) {
+    if (!shouldApplyLeftWindowControlsInset) {
       setIsFullScreen(false)
       return
     }
@@ -75,15 +88,16 @@ export function UnifiedHeader({
       isMounted = false
       cleanup?.()
     }
-  }, [leftWindowControlsInset])
+  }, [shouldApplyLeftWindowControlsInset])
 
-  const windowControlsInsetPadding = leftWindowControlsInset
-    ? { paddingLeft: isFullScreen ? 8 : 74 }
+  const windowControlsInsetPadding = shouldApplyLeftWindowControlsInset
+    ? { paddingLeft: isFullScreen ? 8 : 48 }
     : undefined
+  const rightFrameInset = shouldShowWindowsCaptionSpacer ? 0 : contentInsetRight
   const headerFrameStyle = {
     ...windowControlsInsetPadding,
     left: contentInsetLeft,
-    right: contentInsetRight,
+    right: rightFrameInset,
   }
   const visibleBreadcrumbs = useMemo(
     () =>
@@ -173,12 +187,18 @@ export function UnifiedHeader({
     const container = breadcrumbContainerRef.current
     if (!viewport || !container) return
 
+    const scheduleRecompute = () => {
+      void scheduleTask(() => {
+        recomputeVisibleBreadcrumbs()
+      }, 'background')
+    }
+
     const frame = window.requestAnimationFrame(() => {
-      recomputeVisibleBreadcrumbs()
+      scheduleRecompute()
     })
 
     const observer = new ResizeObserver(() => {
-      recomputeVisibleBreadcrumbs()
+      scheduleRecompute()
     })
     observer.observe(container)
     observer.observe(viewport)
@@ -199,7 +219,8 @@ export function UnifiedHeader({
     return (
       <div
         className={cn(
-          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 bg-transparent backdrop-blur-md titlebar-drag-region",
+          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 titlebar-drag-region",
+          headerBackdropClassName,
           className
         )}
         style={headerFrameStyle}
@@ -226,6 +247,16 @@ export function UnifiedHeader({
                 <div className="flex items-center">{rightAddon}</div>
               </>
             )}
+            {shouldShowWindowsCaptionSpacer && (
+              <>
+                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div
+                  aria-hidden="true"
+                  className="h-7 shrink-0 flex-none"
+                  style={{ width: windowsCaptionSpacerWidth }}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -235,7 +266,8 @@ export function UnifiedHeader({
   return (
     <div
       className={cn(
-        "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-4 bg-transparent backdrop-blur-md titlebar-drag-region",
+        "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-4 titlebar-drag-region",
+        headerBackdropClassName,
         className
       )}
       style={headerFrameStyle}
@@ -345,6 +377,16 @@ export function UnifiedHeader({
               <>
                 <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
                 <div className="flex items-center">{rightAddon}</div>
+              </>
+            )}
+            {shouldShowWindowsCaptionSpacer && (
+              <>
+                <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
+                <div
+                  aria-hidden="true"
+                  className="h-7 shrink-0 flex-none"
+                  style={{ width: windowsCaptionSpacerWidth }}
+                />
               </>
             )}
           </div>

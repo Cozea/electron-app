@@ -1,6 +1,11 @@
 import { ipcMain } from 'electron'
 import * as pty from 'node-pty'
 import * as fs from 'node:fs'
+import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { createRuntimeEnv } from '../runtime/runtimeEnv'
+import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
+import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
 
 function shellBasename(shellPath: string): string {
     const name = shellPath.split('/').pop()
@@ -29,6 +34,7 @@ export interface TerminalProfile {
 export interface ManagedTerminal {
     id: string
     projectPath: string
+    runId?: string
     ptyProcess: pty.IPty
     profile: TerminalProfile
     title: string
@@ -51,6 +57,7 @@ export interface TerminalInfo {
 export interface TerminalSnapshot {
     id: string
     projectPath: string
+    runId?: string
     command?: string
     stdout: string
     stderr: string
@@ -66,6 +73,41 @@ const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
 const TERMINAL_HISTORY_TTL_MS = 30 * 60 * 1000
 const TERMINAL_HISTORY_MAX_ENTRIES = 500
+const SPAWN_HELPER_EXEC_MODE = 0o755
+
+const spawnHelperFixCache = new Map<string, boolean>()
+const windowsExecutableCache = new Map<string, boolean>()
+
+function getNodePtySpawnHelperCandidates(): string[] {
+    const target = `${process.platform}-${process.arch}`
+    const appRoot = process.env.APP_ROOT || process.cwd()
+    return [
+        path.join(appRoot, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+        path.join(process.resourcesPath, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
+    ]
+}
+
+function ensureNodePtySpawnHelperExecutable(): void {
+    if (process.platform === 'win32') return
+    const cacheKey = `${process.platform}-${process.arch}`
+    if (spawnHelperFixCache.get(cacheKey)) return
+
+    for (const candidate of getNodePtySpawnHelperCandidates()) {
+        try {
+            if (!fs.existsSync(candidate)) continue
+            const stat = fs.statSync(candidate)
+            const hasExecBit = (stat.mode & 0o111) !== 0
+            if (!hasExecBit) {
+                fs.chmodSync(candidate, SPAWN_HELPER_EXEC_MODE)
+            }
+            spawnHelperFixCache.set(cacheKey, true)
+            return
+        } catch {
+            // Continue trying other candidate paths.
+        }
+    }
+}
 
 function truncateTerminalOutput(output: string): string {
     if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
@@ -75,6 +117,38 @@ function truncateTerminalOutput(output: string): string {
 
 function appendTerminalOutput(current: string, chunk: string): string {
     return truncateTerminalOutput(current + chunk)
+}
+
+function toPtyEnv(env: NodeJS.ProcessEnv, extra?: Record<string, string>): Record<string, string> {
+    const merged: NodeJS.ProcessEnv = {
+        ...env,
+        ...(extra ?? {}),
+    }
+    const normalized: Record<string, string> = {}
+    for (const [key, value] of Object.entries(merged)) {
+        if (typeof value === 'string') {
+            normalized[key] = value
+        }
+    }
+    return normalized
+}
+
+function isWindowsExecutableAvailable(executable: string): boolean {
+    if (process.platform !== 'win32') return false
+    const cached = windowsExecutableCache.get(executable)
+    if (cached !== undefined) return cached
+
+    try {
+        const result = spawnSync('where', [executable], { stdio: 'ignore' })
+        const available = result.status === 0
+        windowsExecutableCache.set(executable, available)
+        return available
+    } catch {
+        // Keep classic shells available even if `where` fails unexpectedly.
+        const available = executable !== 'pwsh.exe'
+        windowsExecutableCache.set(executable, available)
+        return available
+    }
 }
 
 export class TerminalService {
@@ -128,8 +202,15 @@ export class TerminalService {
 
         // Windows shells
         if (process.platform === 'win32') {
-            profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
-            profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
+            if (isWindowsExecutableAvailable('pwsh.exe')) {
+                profiles.push({ id: 'pwsh', name: 'PowerShell 7', path: 'pwsh.exe', icon: 'terminal-powershell' })
+            }
+            if (isWindowsExecutableAvailable('cmd.exe')) {
+                profiles.push({ id: 'cmd', name: 'Command Prompt', path: 'cmd.exe', icon: 'terminal-cmd' })
+            }
+            if (isWindowsExecutableAvailable('powershell.exe')) {
+                profiles.push({ id: 'powershell', name: 'PowerShell', path: 'powershell.exe', icon: 'terminal-powershell' })
+            }
         }
 
         // Node.js (cross-platform)
@@ -146,6 +227,19 @@ export class TerminalService {
         }
         // Default to first available profile (usually zsh or bash)
         return profiles[0] || { id: 'sh', name: 'sh', path: '/bin/sh', icon: 'terminal' }
+    }
+
+    private getTerminalProfileCandidates(primary: TerminalProfile): TerminalProfile[] {
+        const allProfiles = this.detectTerminalProfiles()
+        const candidates: TerminalProfile[] = [primary]
+        if (primary.id === 'node') return candidates
+
+        for (const fallback of allProfiles) {
+            if (fallback.id === primary.id) continue
+            if (fallback.id === 'node') continue
+            candidates.push(fallback)
+        }
+        return candidates
     }
 
     private removeProjectTerminal(projectPath: string, terminalId: string) {
@@ -183,6 +277,7 @@ export class TerminalService {
         return {
             id: terminal.id,
             projectPath: terminal.projectPath,
+            runId: terminal.runId,
             command: terminal.lastInput,
             stdout: terminal.output,
             stderr: '',
@@ -218,28 +313,62 @@ export class TerminalService {
             cwd?: string
             cols?: number
             rows?: number
+            runId?: string
         }) => {
             try {
                 const profile = this.getTerminalProfile(options.profileId)
+                const profileCandidates = this.getTerminalProfileCandidates(profile)
                 const cols = options.cols || 80
                 const rows = options.rows || 24
                 const cwd = options.cwd || options.projectPath
+                if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+                    return { success: false, error: `Terminal working directory does not exist: ${cwd || '(empty)'}` }
+                }
 
-                const ptyProcess = pty.spawn(profile.path, profile.args || [], {
-                    name: 'xterm-256color',
-                    cols,
-                    rows,
-                    cwd,
-                    env: process.env as Record<string, string>,
-                })
+                ensureNodePtySpawnHelperExecutable()
+                const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+
+                if (profile.id === 'node') {
+                    const ensured = await ensureRuntimeInstalled('node')
+                    if (!ensured.success) {
+                        return { success: false, error: ensured.error ?? 'Node runtime is unavailable.' }
+                    }
+                }
+
+                let spawnError: unknown = null
+                let selectedProfile = profile
+                let ptyProcess: pty.IPty | null = null
+
+                for (const candidate of profileCandidates) {
+                    try {
+                        ptyProcess = pty.spawn(candidate.path, candidate.args || [], {
+                            name: 'xterm-256color',
+                            cols,
+                            rows,
+                            cwd,
+                            env: toPtyEnv(runtimeEnv, candidate.env),
+                        })
+                        selectedProfile = candidate
+                        break
+                    } catch (error) {
+                        spawnError = error
+                    }
+                }
+
+                if (!ptyProcess) {
+                    throw spawnError instanceof Error
+                        ? spawnError
+                        : new Error('Unable to spawn terminal process')
+                }
 
                 const terminalId = Math.random().toString(36).substring(2, 15)
                 const terminal: ManagedTerminal = {
                     id: terminalId,
                     projectPath: options.projectPath,
+                    runId: options.runId,
                     ptyProcess,
-                    profile,
-                    title: profile.name,
+                    profile: selectedProfile,
+                    title: selectedProfile.name,
                     startedAt: Date.now(),
                     output: '',
                 }
@@ -255,7 +384,7 @@ export class TerminalService {
                 ptyProcess.onData((data) => {
                     terminal.output = appendTerminalOutput(terminal.output, data)
                     if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:output', { terminalId, data })
+                        event.sender.send('terminal:output', { terminalId, data, runId: terminal.runId })
                     }
                 })
 
@@ -267,13 +396,14 @@ export class TerminalService {
                     this.removeProjectTerminal(options.projectPath, terminalId)
 
                     if (!event.sender.isDestroyed()) {
-                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode })
+                        event.sender.send('terminal:exit', { terminalId, exitCode: res.exitCode, runId: terminal.runId })
                     }
                 })
 
                 return { success: true, terminalId }
             } catch (err) {
-                return { success: false, error: err instanceof Error ? err.message : 'Failed to create terminal' }
+                const detail = err instanceof Error ? err.message : 'Failed to create terminal'
+                return { success: false, error: `Failed to create terminal (profile=${options.profileId ?? 'default'}, path=${options.cwd || options.projectPath}): ${detail}` }
             }
         })
 

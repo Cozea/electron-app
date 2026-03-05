@@ -32,6 +32,10 @@ export function FileViewer({ path }: FileViewerProps) {
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [editorReady, setEditorReady] = useState(false)
   const [minimapEnabled, setMinimapEnabled] = useState(true)
+  const [displayPath, setDisplayPath] = useState(path)
+  const [reloadToken, setReloadToken] = useState(0)
+  const loadRequestIdRef = useRef(0)
+  const displayModel = useEditorStore((state) => state.models[displayPath])
 
   // Callback when editor is ready
   const handleEditorReady = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
@@ -52,7 +56,7 @@ export function FileViewer({ path }: FileViewerProps) {
     editorRef.current.setPosition({ lineNumber: line, column: safeColumn })
     editorRef.current.revealPositionInCenter({ lineNumber: line, column: safeColumn })
     editorRef.current.focus()
-  }, [editorReady, searchParams, path])
+  }, [displayPath, editorReady, searchParams])
 
   // Always get projectPath for breadcrumb (even if model exists)
   useEffect(() => {
@@ -69,10 +73,15 @@ export function FileViewer({ path }: FileViewerProps) {
 
   // Load file content when path changes and model doesn't exist
   useEffect(() => {
-    let mounted = true
+    const requestId = ++loadRequestIdRef.current
 
     const loadFile = async () => {
-      if (model) return
+      if (model) {
+        setDisplayPath(path)
+        setError(null)
+        setIsLoading(false)
+        return
+      }
 
       try {
         setIsLoading(true)
@@ -82,12 +91,16 @@ export function FileViewer({ path }: FileViewerProps) {
           syncContext?.projectPath ??
           (slug ? await window.electronAPI.project.getLocalPath(slug) : null)
         if (!localPath) {
-          if (mounted) setError('Project folder not found')
+          if (requestId === loadRequestIdRef.current) {
+            setError('Project folder not found')
+          }
           return
         }
 
         // Store project path for breadcrumb
-        if (mounted) setProjectPath(localPath)
+        if (requestId === loadRequestIdRef.current) {
+          setProjectPath(localPath)
+        }
 
         // Convert absolute path to relative path by removing the project folder prefix
         // path is absolute (e.g., /Users/foo/CrozCode Projects/my-project/src/App.tsx)
@@ -115,7 +128,7 @@ export function FileViewer({ path }: FileViewerProps) {
           filePath: relativePath,
         })
 
-        if (!mounted) return
+        if (requestId !== loadRequestIdRef.current) return
 
         if (!result.success) {
           setError(result.error || 'Failed to read file')
@@ -124,13 +137,14 @@ export function FileViewer({ path }: FileViewerProps) {
 
         if (typeof result.content === 'string') {
           editorActions.openFile(path, result.content, localPath)
+          setDisplayPath(path)
         }
       } catch (err) {
-        if (mounted) {
+        if (requestId === loadRequestIdRef.current) {
           setError(err instanceof Error ? err.message : 'Failed to load file')
         }
       } finally {
-        if (mounted) {
+        if (requestId === loadRequestIdRef.current) {
           setIsLoading(false)
         }
       }
@@ -139,18 +153,22 @@ export function FileViewer({ path }: FileViewerProps) {
     loadFile()
 
     return () => {
-      mounted = false
+      // Guard state updates from stale async responses when rapidly switching files.
+      if (loadRequestIdRef.current === requestId) {
+        loadRequestIdRef.current += 1
+      }
     }
-  }, [path, syncContext?.projectPath, slug, model, editorActions])
+  }, [path, syncContext?.projectPath, slug, model, editorActions, reloadToken])
 
   const handleRetry = () => {
     setError(null)
-    // Force re-load by clearing any existing model
+    // Force re-load by clearing any existing model and bumping reload token.
     editorActions.closeFile(path)
+    setReloadToken((value) => value + 1)
   }
 
-  // Loading state
-  if (isLoading || (!model && !error)) {
+  // Cold-start loading state (no existing editor model to keep rendered yet)
+  if ((!displayModel && !error) || (isLoading && !displayModel)) {
     return (
       <Empty className="h-full bg-background">
         <EmptyHeader>
@@ -191,19 +209,29 @@ export function FileViewer({ path }: FileViewerProps) {
   return (
     <div className="h-full flex flex-col">
       <EditorBreadcrumb
-        path={path}
+        path={displayPath}
         editorRef={editorRef}
         projectPath={projectPath}
         editorReady={editorReady}
         minimapEnabled={minimapEnabled}
         onToggleMinimap={() => setMinimapEnabled((prev) => !prev)}
       />
-      <div className="flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
         <MonacoEditor
-          path={path}
+          path={displayPath}
           onEditorReady={handleEditorReady}
           minimapEnabled={minimapEnabled}
         />
+        {isLoading && displayPath !== path && (
+          <div className="pointer-events-none absolute inset-x-4 top-3 z-10">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/85 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>
+                Loading {path.split('/').pop() || 'file'}...
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

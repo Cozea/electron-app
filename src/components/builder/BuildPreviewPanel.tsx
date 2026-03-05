@@ -17,6 +17,7 @@ interface BuildPreviewPanelProps {
   status: DevServerStatus
   url: string | null
   error: string | null
+  timeline?: Array<{ id: string; at: number; type: string; message: string }>
   onRefresh?: () => void
   onCapture?: () => Promise<void>
   onOpenExternal?: () => void
@@ -30,6 +31,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
   status,
   url,
   error,
+  timeline,
   onRefresh,
   onCapture,
   onOpenExternal,
@@ -165,15 +167,29 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
         )}
 
         {/* Error state */}
-        {status === 'error' && (
+        {(status === 'error' || status === 'unhealthy') && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
             <div className="rounded-full bg-destructive/10 p-6">
               <AlertCircle className="h-12 w-12 text-destructive" />
             </div>
             <div className="text-center max-w-sm">
-              <p className="text-sm font-medium text-destructive">Failed to start preview</p>
+              <p className="text-sm font-medium text-destructive">
+                {status === 'unhealthy' ? 'Preview is unhealthy' : 'Failed to start preview'}
+              </p>
               {error && (
                 <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-3">{error}</p>
+              )}
+              {timeline && timeline.length > 0 && (
+                <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-2 text-left">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Recent events</p>
+                  <div className="mt-1 space-y-1">
+                    {timeline.slice(-3).reverse().map((event) => (
+                      <p key={event.id} className="text-[11px] leading-4 text-muted-foreground">
+                        {event.message}
+                      </p>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             {onRefresh && (

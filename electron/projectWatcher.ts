@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from './yjsNotify'
-import { markManifestDirtyPath } from './services/manifestCache'
 
 const INTERNAL_IGNORE_MS = 1500
 const PROCESS_DEBOUNCE_MS = 200
@@ -118,11 +117,16 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
   const relNormalized = normalizeRelativePath(rel)
   if (shouldIgnoreRelativePath(relNormalized)) return
 
-  markManifestDirtyPath(handle.projectPath, relNormalized)
-
   try {
     const stats = fs.statSync(fullPath)
     if (stats.isDirectory()) {
+      notifyFileMetaChanged({
+        filePath: fullPath,
+        origin: 'external',
+        isBinary: false,
+        isDirectory: true,
+        sizeBytes: 0,
+      })
       if (handle.watcherType === 'manual') {
         void ensureDirWatched(handle, fullPath)
       }
@@ -136,6 +140,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
         filePath: fullPath,
         origin: 'external',
         isBinary,
+        isDirectory: false,
         sizeBytes: stats.size,
       })
       return
@@ -147,6 +152,7 @@ function processPath(handle: ProjectWatchHandle, fullPath: string): void {
       filePath: fullPath,
       origin: 'external',
       isBinary: false,
+      isDirectory: false,
       sizeBytes: stats.size,
       content,
     })

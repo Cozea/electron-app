@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { featureFlags } from '@/lib/featureFlags'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
 import { useQuery, useMutation } from 'convex/react'
@@ -10,7 +12,6 @@ import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Badge } from '../../components/ui/badge'
-import { Skeleton } from '../../components/ui/skeleton'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
@@ -42,7 +43,6 @@ import {
 import {
   UserPlus,
   MoreVertical,
-  Users,
   User,
   Loader2,
   XCircle,
@@ -54,8 +54,6 @@ import {
   Send,
   Trash2,
   ArrowUpDown,
-  AlertCircle,
-  AlertTriangle,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 
@@ -94,7 +92,8 @@ function hasPermission(role: Role | undefined, permission: Permission): boolean 
 }
 
 export function Members() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const { user, logout, currentOrganization, convexUserId } = useAuth()
   const { inviteMember, revokeInvitation: revokeWorkosInvitation, removeMember: removeWorkosMember, updateMemberRole: updateWorkosMemberRole } = useOrganization()
   const [selected, setSelected] = useState<string[]>([])
@@ -140,20 +139,17 @@ export function Members() {
     freshInvites
   )
 
-  // Seat limit status (cached to prevent header badge loading flashes)
-  const freshSeatStatus = useQuery(
-    api.organizations.getSeatStatus,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-  const seatStatus = useCachedQuery(
-    `members-seat-status-${convexOrg?._id}`,
-    freshSeatStatus
+  const seatManagement = useQuery(
+    api.billing.getSeatManagement,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
   )
 
   // Current user's role in the organization
   const currentUserRole = currentOrganization?.role as Role | undefined
   const hasInvitePermission = hasPermission(currentUserRole, 'members:invite')
-  const canInvite = hasInvitePermission && (seatStatus?.allowed ?? true)
+  const canInvite = hasInvitePermission
   const canRemove = hasPermission(currentUserRole, 'members:remove')
   const canUpdateRole = hasPermission(currentUserRole, 'members:update_role')
   const canRevokeInvite = hasPermission(currentUserRole, 'invitations:revoke')
@@ -166,56 +162,55 @@ export function Members() {
 
   const isLoading = members === undefined || pendingInvites === undefined
 
-  // Combine members and invites into unified table rows
-  const tableRows: TableRowData[] = [
-    ...(members ?? []).map((m): TableRowData => ({
-      id: m._id,
-      type: 'member',
-      email: m.user?.email || '',
-      name: `${m.user?.firstName || ''} ${m.user?.lastName || ''}`.trim() || m.user?.email?.split('@')[0] || 'Unknown',
-      role: m.role || 'member',
-      status: 'active',
-      date: m.joinedAt,
-      avatarUrl: m.user?.profileImageUrl || undefined,
-      workosMembershipId: m.workosId,
-    })),
-    ...(pendingInvites ?? []).map((i): TableRowData => ({
-      id: i._id,
-      type: 'invite',
-      email: i.email,
-      name: i.email.split('@')[0],
-      role: i.role,
-      status: 'pending',
-      date: i.createdAt,
-      workosInvitationId: i.workosInvitationId,
-    })),
-  ]
+  const filteredRows = useMemo(() => {
+    const tableRows: TableRowData[] = [
+      ...(members ?? []).map((member): TableRowData => ({
+        id: member._id,
+        type: 'member',
+        email: member.user?.email || '',
+        name:
+          `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim() ||
+          member.user?.email?.split('@')[0] ||
+          'Unknown',
+        role: member.role || 'member',
+        status: 'active',
+        date: member.joinedAt,
+        avatarUrl: member.user?.profileImageUrl || undefined,
+        workosMembershipId: member.workosId,
+      })),
+      ...(pendingInvites ?? []).map((invite): TableRowData => ({
+        id: invite._id,
+        type: 'invite',
+        email: invite.email,
+        name: invite.email.split('@')[0],
+        role: invite.role,
+        status: 'pending',
+        date: invite.createdAt,
+        workosInvitationId: invite.workosInvitationId,
+      })),
+    ]
 
-  // Filter by role
-  const roleFilteredRows = tableRows.filter((row) => {
-    if (roleFilter === 'all') return true
-    return row.role === roleFilter
-  })
+    const roleFilteredRows = tableRows.filter((row) => {
+      if (roleFilter === 'all') return true
+      return row.role === roleFilter
+    })
 
-  // Use role filtered rows directly (search removed)
-  const searchFilteredRows = roleFilteredRows
-
-  // Sort rows
-  const filteredRows = [...searchFilteredRows].sort((a, b) => {
-    let comparison = 0
-    switch (sortField) {
-      case 'name':
-        comparison = a.name.localeCompare(b.name)
-        break
-      case 'role':
-        comparison = a.role.localeCompare(b.role)
-        break
-      case 'date':
-        comparison = a.date - b.date
-        break
-    }
-    return sortDirection === 'asc' ? comparison : -comparison
-  })
+    return [...roleFilteredRows].sort((left, right) => {
+      let comparison = 0
+      switch (sortField) {
+        case 'name':
+          comparison = left.name.localeCompare(right.name)
+          break
+        case 'role':
+          comparison = left.role.localeCompare(right.role)
+          break
+        case 'date':
+          comparison = left.date - right.date
+          break
+      }
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+  }, [members, pendingInvites, roleFilter, sortDirection, sortField])
 
   // Pagination
   const totalPages = Math.ceil(filteredRows.length / pageSize)
@@ -426,22 +421,37 @@ export function Members() {
     return pages
   }
 
-  // Circular progress component for seat usage
-  const seatPercentage = seatStatus && seatStatus.limit > 0
-    ? Math.min((seatStatus.current / seatStatus.limit) * 100, 100)
+  const seatCounts = seatManagement?.entitlement?.seatCounts
+  const paidSeatTotal = seatCounts?.total ?? 0
+  const paidSeatAssigned = seatCounts?.assigned ?? 0
+  const seatManagedEntitlement = Boolean(
+    seatManagement &&
+      (
+        seatManagement.entitlement.source === 'legacy' ||
+        seatManagement.entitlement.source === 'trial' ||
+        seatManagement.entitlement.plan === 'startup' ||
+        seatManagement.entitlement.plan === 'enterprise'
+      )
+  )
+
+  // Circular progress component for paid-seat usage
+  const seatPercentage = paidSeatTotal > 0
+    ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100)
     : 0
   const circumference = 2 * Math.PI * 8 // radius = 8
   const strokeDashoffset = circumference - (seatPercentage / 100) * circumference
 
   const breadcrumbAddon = (
     <>
-      {seatStatus === undefined ? (
-        <Skeleton className="h-5 w-16 rounded-full" />
-      ) : seatStatus && seatStatus.limit > 0 && (
+      {seatManagement === undefined ? (
+        <Badge variant="secondary" className="text-xs font-normal">
+          --
+        </Badge>
+      ) : paidSeatTotal > 0 && (
         <Badge
           variant="secondary"
           className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-          title={`${seatStatus.current} / ${seatStatus.limit} seats used`}
+          title={`${paidSeatAssigned} / ${paidSeatTotal} paid seats assigned`}
         >
           <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
             {/* Background circle */}
@@ -465,10 +475,10 @@ export function Members() {
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
-              className={seatStatus.current >= seatStatus.limit ? 'text-destructive' : seatStatus.current >= seatStatus.limit - 1 ? 'text-amber-500' : 'text-primary'}
+              className={paidSeatAssigned >= paidSeatTotal ? 'text-destructive' : paidSeatAssigned >= paidSeatTotal - 1 ? 'text-amber-500' : 'text-primary'}
             />
           </svg>
-          <span>{seatStatus.current}/{seatStatus.limit}</span>
+          <span>{paidSeatAssigned}/{paidSeatTotal}</span>
         </Badge>
       )}
     </>
@@ -642,255 +652,254 @@ export function Members() {
       breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
-      <div>
-        {/* Seat limit warnings */}
-        {seatStatus && seatStatus.limit > 0 && (
-          <>
-            {seatStatus.overLimit ? (
-              <Alert variant="destructive" className="mb-4">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Over seat limit</AlertTitle>
-                <AlertDescription>
-                  You have {seatStatus.current} members but your plan allows {seatStatus.limit}.
-                  Remove {seatStatus.current - seatStatus.limit} member(s) or{' '}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-destructive underline"
-                    onClick={() => navigate('/workspace/billing')}
-                  >
-                    upgrade your plan
-                  </Button>{' '}
-                  to invite more.
-                </AlertDescription>
-              </Alert>
-            ) : seatStatus.current >= seatStatus.limit ? (
-              <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Seat limit reached</AlertTitle>
-                <AlertDescription>
-                  You've used all {seatStatus.limit} seats on your plan.{' '}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-destructive underline"
-                    onClick={() => navigate('/workspace/billing')}
-                  >
-                    Upgrade to add more members
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            ) : seatStatus.current >= seatStatus.limit - 1 ? (
-              <Alert className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>1 seat remaining</AlertTitle>
-                <AlertDescription>
-                  {seatStatus.current}/{seatStatus.limit} seats used. You can invite one more member.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-          </>
+      <div className={featureFlags.contentVisibility ? 'perf-contain-auto' : undefined}>
+        {seatManagement?.entitlement.source === 'legacy' && (
+          <Alert className="mb-4">
+            <AlertTitle>Legacy workspace billing is active</AlertTitle>
+            <AlertDescription>
+              This workspace still uses legacy billing entitlements. Migrate and manage explicit paid seats in{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0 underline"
+                onClick={() => openSettingsDrawer('/settings/billing')}
+              >
+                Billing Settings
+              </Button>
+              {' '}(Startup seat billing).
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {seatManagement && seatManagedEntitlement && seatManagement.entitlement.source !== 'legacy' && seatManagement.entitlement.seatCounts.total > 0 && (
+          <Alert className="mb-4">
+            <AlertTitle>Paid seat coverage</AlertTitle>
+            <AlertDescription>
+              {seatManagement.entitlement.seatCounts.assigned}/{seatManagement.entitlement.seatCounts.total} paid seats assigned.
+              Members can still join this workspace without a paid seat, but AI and sync require seat assignment.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {seatManagement && seatManagedEntitlement && !seatManagement.entitlement.canUseAi && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>No paid seat assigned to you</AlertTitle>
+            <AlertDescription>
+              Ask {seatManagement.billingUser?.email || 'the billing owner'} to assign your seat in{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0 text-destructive underline"
+                onClick={() => openSettingsDrawer('/settings/billing')}
+              >
+                Billing Settings
+              </Button>
+              .
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Table */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : paginatedRows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border rounded-md">
-            <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <h3 className="font-medium">No members found</h3>
-            <p className="text-sm text-muted-foreground">
-              Invite members to get started
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-              <Table className="[&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow>
-                    <TableHead className="w-12">
+        <div
+          className={[
+            featureFlags.contentVisibility ? 'perf-contain-card' : '',
+            'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1',
+          ].join(' ').trim()}
+        >
+          <Table className="[&_th]:px-4 [&_td]:px-4">
+            <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+              <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={selected.length === paginatedRows.length && paginatedRows.length > 0}
+                    onCheckedChange={toggleAll}
+                    disabled={paginatedRows.length === 0}
+                  />
+                </TableHead>
+                <TableHead>Member Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="w-12"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+              {paginatedRows.length > 0 ? (
+                paginatedRows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
                       <Checkbox
-                        checked={selected.length === paginatedRows.length && paginatedRows.length > 0}
-                        onCheckedChange={toggleAll}
+                        checked={selected.includes(row.id)}
+                        onCheckedChange={() => toggleRow(row.id)}
                       />
-                    </TableHead>
-                    <TableHead>Member Name</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="w-12"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {paginatedRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.includes(row.id)}
-                          onCheckedChange={() => toggleRow(row.id)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarImage src={row.avatarUrl} />
-                            <AvatarFallback className="text-xs">
-                              {row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{row.name}</span>
-                              {row.email === user?.email && (
-                                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                                  you
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground">{row.email}</div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className="border-0 bg-primary/10 text-primary">
-                          {row.role.charAt(0).toUpperCase() + row.role.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`h-2 w-2 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
-                              }`}
-                          />
-                          <span className={row.status === 'active' ? 'text-green-600' : 'text-amber-600'}>
-                            {row.status === 'active' ? 'Active' : 'Pending'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(row.date)}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {row.type === 'member' ? (
-                              <>
-                                <DropdownMenuSub>
-                                  <DropdownMenuSubTrigger disabled={!canUpdateRole || row.email === user?.email}>
-                                    <Shield className="h-4 w-4 mr-2" />
-                                    Change Role
-                                  </DropdownMenuSubTrigger>
-                                  <DropdownMenuSubContent>
-                                    <DropdownMenuItem
-                                      onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'admin')}
-                                      disabled={row.role === 'admin'}
-                                    >
-                                      Admin
-                                      {row.role === 'admin' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'member')}
-                                      disabled={row.role === 'member'}
-                                    >
-                                      Member
-                                      {row.role === 'member' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'viewer')}
-                                      disabled={row.role === 'viewer'}
-                                    >
-                                      Viewer
-                                      {row.role === 'viewer' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                                <DropdownMenuItem onClick={() => navigate(`/teams/members/${row.id}`)}>
-                                  <User className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  disabled={!canRemove || row.email === user?.email}
-                                  onClick={() => handleRemoveMember(row.id, row.workosMembershipId)}
-                                >
-                                  <Trash className="h-4 w-4 mr-2" />
-                                  {row.email === user?.email ? "Can't remove yourself" : 'Remove'}
-                                </DropdownMenuItem>
-                              </>
-                            ) : (
-                              <>
-                                <DropdownMenuItem disabled>
-                                  <User className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  disabled={!canRevokeInvite}
-                                  onClick={() => handleRevokeInvite(row.id, row.workosInvitationId)}
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" />
-                                  Revoke
-                                </DropdownMenuItem>
-                              </>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={row.avatarUrl} />
+                          <AvatarFallback className="text-xs">
+                            {row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{row.name}</span>
+                            {row.email === user?.email && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                                you
+                              </span>
                             )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                          </div>
+                          <div className="text-sm text-muted-foreground">{row.email}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="border-0 bg-primary/10 text-primary">
+                        {row.role.charAt(0).toUpperCase() + row.role.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
+                            }`}
+                        />
+                        <span className={row.status === 'active' ? 'text-green-600' : 'text-amber-600'}>
+                          {row.status === 'active' ? 'Active' : 'Pending'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(row.date)}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {row.type === 'member' ? (
+                            <>
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger disabled={!canUpdateRole || row.email === user?.email}>
+                                  <Shield className="h-4 w-4 mr-2" />
+                                  Change Role
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent>
+                                  <DropdownMenuItem
+                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'admin')}
+                                    disabled={row.role === 'admin'}
+                                  >
+                                    Admin
+                                    {row.role === 'admin' && <span className="ml-2 text-muted-foreground">(current)</span>}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'member')}
+                                    disabled={row.role === 'member'}
+                                  >
+                                    Member
+                                    {row.role === 'member' && <span className="ml-2 text-muted-foreground">(current)</span>}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'viewer')}
+                                    disabled={row.role === 'viewer'}
+                                  >
+                                    Viewer
+                                    {row.role === 'viewer' && <span className="ml-2 text-muted-foreground">(current)</span>}
+                                  </DropdownMenuItem>
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                              <DropdownMenuItem onClick={() => navigate(`/teams/members/${row.id}`)}>
+                                <User className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                disabled={!canRemove || row.email === user?.email}
+                                onClick={() => handleRemoveMember(row.id, row.workosMembershipId)}
+                              >
+                                <Trash className="h-4 w-4 mr-2" />
+                                {row.email === user?.email ? "Can't remove yourself" : 'Remove'}
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            <>
+                              <DropdownMenuItem disabled>
+                                <User className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                disabled={!canRevokeInvite}
+                                onClick={() => handleRevokeInvite(row.id, row.workosInvitationId)}
+                              >
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Revoke
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                    {isLoading
+                      ? 'Loading members...'
+                      : 'No members found. Invite members to get started.'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing <span className="font-medium">{startIndex + 1}-{Math.min(endIndex, filteredRows.length)}</span> of <span className="font-medium">{filteredRows.length}</span> entries
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {getPageNumbers().map((page, i) => (
-                  typeof page === 'number' ? (
-                    <Button
-                      key={i}
-                      variant={currentPage === page ? 'default' : 'secondary'}
-                      size="icon"
-                      className="h-8 w-8 rounded-full"
-                      onClick={() => setCurrentPage(page)}
-                    >
-                      {page}
-                    </Button>
-                  ) : (
-                    <span key={i} className="px-2 text-muted-foreground">...</span>
-                  )
-                ))}
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages || totalPages === 0}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+        {/* Pagination */}
+        {!isLoading && filteredRows.length > 0 && (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-muted-foreground">
+              Showing <span className="font-medium">{startIndex + 1}-{Math.min(endIndex, filteredRows.length)}</span> of <span className="font-medium">{filteredRows.length}</span> entries
             </div>
-          </>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              {getPageNumbers().map((page, i) => (
+                typeof page === 'number' ? (
+                  <Button
+                    key={i}
+                    variant={currentPage === page ? 'default' : 'secondary'}
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </Button>
+                ) : (
+                  <span key={i} className="px-2 text-muted-foreground">...</span>
+                )
+              ))}
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>

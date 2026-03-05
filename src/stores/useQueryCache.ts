@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { scheduleTask } from '@/lib/scheduler'
 
 interface QueryCacheState {
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -12,6 +13,7 @@ interface QueryCacheState {
 const DEFAULT_MAX_AGE = 5 * 60 * 1000 // 5 minutes
 const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_CACHE_ENTRIES = 250
+const MIN_CACHE_REFRESH_INTERVAL_MS = 750
 
 function pruneCache(
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -50,6 +52,11 @@ export const useQueryCache = create<QueryCacheState>()(
       cache: {},
 
       set: (key: string, data: unknown) => {
+        const existing = get().cache[key]
+        if (existing && existing.data === data) {
+          return
+        }
+
         set((state) => ({
           cache: pruneCache({
             ...state.cache,
@@ -109,12 +116,23 @@ export function useCachedQuery<T>(
   // Update cache when fresh data arrives
   useEffect(() => {
     if (freshData !== undefined) {
-      // Use getState to avoid re-render loop
-      const currentCache = useQueryCache.getState().cache[key]
-      // Simple reference check is usually sufficient for Convex data
-      if (!currentCache || currentCache.data !== freshData) {
+      void scheduleTask(() => {
+        // Use getState to avoid re-render loop
+        const currentCache = useQueryCache.getState().cache[key]
+        // Simple reference check is usually sufficient for Convex data
+        if (currentCache?.data === freshData) return
+
+        // Guard against high-frequency cache writes when a query returns
+        // rapidly changing object references.
+        if (
+          currentCache &&
+          Date.now() - currentCache.timestamp < MIN_CACHE_REFRESH_INTERVAL_MS
+        ) {
+          return
+        }
+
         useQueryCache.getState().set(key, freshData)
-      }
+      }, 'background')
     }
   }, [key, freshData])
 

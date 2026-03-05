@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
-import { motion } from 'framer-motion'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
@@ -54,6 +54,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
+import type { PreviewFailureReason } from '@shared/electronApiTypes'
 
 interface ProjectPresenceUser extends CompactPresenceUser {
     id: string
@@ -74,16 +75,24 @@ function normalizeFilePath(path?: string | null): string | null {
     return path.replace(/\\/g, '/')
 }
 
+function isChromeErrorUrl(url?: string | null): boolean {
+    return typeof url === 'string' && url.startsWith('chrome-error://')
+}
+
+type PreviewEmbedMode = 'standard' | 'credentialless'
+
+const BRIDGE_READY_TIMEOUT_MS = 2500
+
 export function ProjectPagesPage() {
     const { slug } = useParams<{ slug: string }>()
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const { currentOrganization } = useAuth()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
 
     // Store state
-    const { routes, serverStatus, serverPort, actions } = useProjectPagesStore()
+    const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
     const togglePagesListOpen = actions.togglePagesListOpen
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
@@ -101,8 +110,11 @@ export function ProjectPagesPage() {
     const [inspectorEnabled, setInspectorEnabled] = useState(false)
     const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
     const [bridgeReady, setBridgeReady] = useState(false)
-    const [, setBridgeError] = useState<string | null>(null)
+    const [bridgeError, setBridgeError] = useState<string | null>(null)
     const [, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
+    const [previewEmbedMode, setPreviewEmbedMode] = useState<PreviewEmbedMode>('standard')
+    const [previewEmbedBlocked, setPreviewEmbedBlocked] = useState(false)
+    const [previewReloadToken, setPreviewReloadToken] = useState(0)
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
         const focus = searchParams.get('focus')
@@ -122,11 +134,14 @@ export function ProjectPagesPage() {
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
+    const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
-    const [isFocusedIframeVisible, setIsFocusedIframeVisible] = useState(true)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
+    const bridgeReadyRef = useRef(false)
+    const bridgeReadyTimeoutRef = useRef<number | null>(null)
+    const previewFallbackAttemptRef = useRef(0)
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
@@ -139,12 +154,25 @@ export function ProjectPagesPage() {
         [routes, cachedFocusedRoutePath]
     )
     const previewRoute = focusedRoute ?? cachedFocusedRoute
+    const focusedPreviewUrl = previewRoute && serverPort
+        ? `http://localhost:${serverPort}${previewRoute.path}`
+        : null
+    const useCredentiallessPreview = previewEmbedMode === 'credentialless'
+    const credentiallessAttribute = useCredentiallessPreview ? '' : undefined
     const previewRouteIndex = useMemo(() => {
         if (focusedPageIndex !== null) return focusedPageIndex
         if (!previewRoute) return null
         const index = routes.findIndex((route) => route.path === previewRoute.path)
         return index >= 0 ? index : null
     }, [focusedPageIndex, previewRoute, routes])
+    const activeServerRunId = serverLifecycle.runId
+    const previewReady = bridgeReady && previewReadiness.reachable && !previewEmbedBlocked
+    const recentPreviewTimeline = useMemo(() => {
+        return previewTimeline
+            .filter((event) => event.category === 'preview' && (!activeServerRunId || !event.runId || event.runId === activeServerRunId))
+            .slice(-6)
+            .reverse()
+    }, [activeServerRunId, previewTimeline])
     const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
     const shouldElevateInspectorSidebar = isFocusedPreview && visualEditorOpen
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
@@ -165,18 +193,6 @@ export function ProjectPagesPage() {
             focusedIframeLoadedPathRef.current = null
         }
     }, [routes, cachedFocusedRoutePath])
-
-    useEffect(() => {
-        if (!isFocusedPreview || !focusedRoute || serverStatus !== 'running' || !serverPort) {
-            setIsFocusedIframeVisible(true)
-            return
-        }
-        if (focusedIframeLoadedPathRef.current === focusedRoute.path) {
-            setIsFocusedIframeVisible(true)
-            return
-        }
-        setIsFocusedIframeVisible(false)
-    }, [isFocusedPreview, focusedRoute, serverStatus, serverPort])
 
     useEffect(() => {
         const el = headerRef.current
@@ -209,7 +225,6 @@ export function ProjectPagesPage() {
             setFocusedPageIndex(null)
             setCachedFocusedRoutePath(null)
             focusedIframeLoadedPathRef.current = null
-            setIsFocusedIframeVisible(true)
         }
 
         prevProjectPathRef.current = projectPath
@@ -465,6 +480,213 @@ export function ProjectPagesPage() {
         console.log(`[Bridge] ${message}`)
     }, [])
 
+    const addPreviewTimelineEvent = useCallback((event: {
+        type: 'probe_succeeded' | 'probe_failed' | 'iframe_loaded' | 'bridge_inject_succeeded' | 'bridge_inject_failed' | 'bridge_ready' | 'bridge_timeout' | 'fallback_mode' | 'iframe_error'
+        message: string
+        details?: Record<string, unknown>
+    }) => {
+        actions.addPreviewTimelineEvent({
+            category: 'preview',
+            runId: activeServerRunId,
+            type: event.type,
+            message: event.message,
+            details: event.details,
+        })
+    }, [actions, activeServerRunId])
+
+    const setPreviewFailure = useCallback((reason: PreviewFailureReason, message: string, blocked: boolean) => {
+        setBridgeError(message)
+        setPreviewEmbedBlocked(blocked)
+        actions.setPreviewReadiness({
+            runId: activeServerRunId,
+            bridgeReady: false,
+            embedded: false,
+            lastCheckedAt: Date.now(),
+            lastFailureReason: reason,
+            lastFailureMessage: message,
+        })
+    }, [actions, activeServerRunId])
+
+    const clearBridgeReadyTimeout = useCallback(() => {
+        if (bridgeReadyTimeoutRef.current !== null) {
+            window.clearTimeout(bridgeReadyTimeoutRef.current)
+            bridgeReadyTimeoutRef.current = null
+        }
+    }, [])
+
+    const probeFocusedPreviewReachability = useCallback(async (
+        url: string,
+        source: 'iframe-load' | 'manual-retry' | 'state-sync'
+    ): Promise<boolean> => {
+        if (!window.electronAPI?.preview?.probeUrl) {
+            actions.setPreviewReadiness({
+                runId: activeServerRunId,
+                reachable: true,
+                lastCheckedAt: Date.now(),
+            })
+            return true
+        }
+
+        try {
+            const probe = await window.electronAPI.preview.probeUrl({
+                url,
+                timeoutMs: 2500,
+            })
+
+            if (probe.success && probe.reachable) {
+                actions.setPreviewReadiness({
+                    runId: activeServerRunId,
+                    reachable: true,
+                    lastCheckedAt: Date.now(),
+                    lastFailureReason: null,
+                    lastFailureMessage: null,
+                })
+                addPreviewTimelineEvent({
+                    type: 'probe_succeeded',
+                    message: `Preview reachable (${source})`,
+                    details: {
+                        source,
+                        statusCode: probe.statusCode,
+                    },
+                })
+                return true
+            }
+
+            const message = probe.error || 'Preview URL is unreachable'
+            setPreviewFailure(probe.reason ?? 'server_unreachable', message, false)
+            addPreviewTimelineEvent({
+                type: 'probe_failed',
+                message,
+                details: {
+                    source,
+                    reason: probe.reason,
+                },
+            })
+            return false
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Preview probe failed'
+            setPreviewFailure('server_unreachable', message, false)
+            addPreviewTimelineEvent({
+                type: 'probe_failed',
+                message,
+                details: {
+                    source,
+                    reason: 'server_unreachable',
+                },
+            })
+            return false
+        }
+    }, [actions, activeServerRunId, addPreviewTimelineEvent, setPreviewFailure])
+
+    const scheduleBridgeReadyTimeout = useCallback((mode: PreviewEmbedMode) => {
+        clearBridgeReadyTimeout()
+        bridgeReadyTimeoutRef.current = window.setTimeout(() => {
+            if (bridgeReadyRef.current) return
+
+            addPreviewTimelineEvent({
+                type: 'bridge_timeout',
+                message: `Bridge handshake timed out in ${mode} mode`,
+                details: { mode },
+            })
+            actions.setPreviewReadiness({
+                runId: activeServerRunId,
+                bridgeReady: false,
+                embedded: false,
+                lastCheckedAt: Date.now(),
+                lastFailureReason: 'bridge_timeout',
+                lastFailureMessage: 'Bridge handshake timed out',
+            })
+
+            if (mode === 'standard') {
+                if (previewFallbackAttemptRef.current < 1) {
+                    previewFallbackAttemptRef.current += 1
+                    addBridgeLog('Bridge handshake timed out; switching preview to credentialless mode', 'info')
+                    addPreviewTimelineEvent({
+                        type: 'fallback_mode',
+                        message: 'Switching preview to credentialless fallback mode',
+                        details: { from: 'standard', to: 'credentialless', reason: 'bridge_timeout' },
+                    })
+                    setPreviewEmbedMode('credentialless')
+                    setPreviewEmbedBlocked(false)
+                    setBridgeError(null)
+                    setPreviewReloadToken((value) => value + 1)
+                    return
+                }
+            }
+
+            addBridgeLog('Bridge handshake timed out in credentialless mode; preview marked blocked', 'error')
+            setPreviewFailure(
+                'bridge_timeout',
+                'Embedded preview is blocked by this page policy. Use Open to view it externally.',
+                true
+            )
+        }, BRIDGE_READY_TIMEOUT_MS)
+    }, [actions, activeServerRunId, addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, setPreviewFailure])
+
+    useEffect(() => {
+        bridgeReadyRef.current = bridgeReady
+    }, [bridgeReady])
+
+    useEffect(() => {
+        return () => {
+            clearBridgeReadyTimeout()
+        }
+    }, [clearBridgeReadyTimeout])
+
+    useEffect(() => {
+        if (serverStatus === 'running') return
+        clearBridgeReadyTimeout()
+        setBridgeReady(false)
+        setPreviewEmbedBlocked(false)
+        previewFallbackAttemptRef.current = 0
+        actions.resetPreviewReadiness()
+    }, [actions, clearBridgeReadyTimeout, serverStatus])
+
+    useEffect(() => {
+        if (!isFocusedPreview || !focusedPreviewUrl) return
+        console.log('[PagesPreview] state', {
+            url: focusedPreviewUrl,
+            mode: previewEmbedMode,
+            bridgeReady,
+            reachable: previewReadiness.reachable,
+            blocked: previewEmbedBlocked,
+        })
+    }, [bridgeReady, focusedPreviewUrl, isFocusedPreview, previewEmbedBlocked, previewEmbedMode, previewReadiness.reachable])
+
+    useEffect(() => {
+        if (!isFocusedPreview || !focusedPreviewUrl) return
+        if (serverStatus !== 'running') return
+        void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
+    }, [focusedPreviewUrl, isFocusedPreview, probeFocusedPreviewReachability, serverStatus])
+
+    useEffect(() => {
+        if (!isFocusedPreview || !focusedPreviewUrl) return
+        if (!window.crossOriginIsolated) return
+
+        let previewOrigin: string
+        try {
+            previewOrigin = new URL(focusedPreviewUrl).origin
+        } catch {
+            return
+        }
+
+        if (previewOrigin === window.location.origin) return
+        if (previewEmbedMode !== 'standard') return
+
+        addBridgeLog('Cross-origin isolated renderer detected; defaulting preview to credentialless mode', 'info')
+        addPreviewTimelineEvent({
+            type: 'fallback_mode',
+            message: 'Switched to credentialless mode for cross-origin isolation compatibility',
+            details: {
+                from: 'standard',
+                to: 'credentialless',
+                reason: 'cross_origin_isolated',
+            },
+        })
+        setPreviewEmbedMode('credentialless')
+        setPreviewReloadToken((value) => value + 1)
+    }, [addBridgeLog, addPreviewTimelineEvent, focusedPreviewUrl, isFocusedPreview, previewEmbedMode])
+
     // Listen for bridge messages from iframe
     useEffect(() => {
         const getSourceWindowName = (source: MessageEventSource | null): string | null => {
@@ -515,7 +737,7 @@ export function ProjectPagesPage() {
                 case 'bridge:shift-keydown':
                     if (!isFocusedPreview) break
                     // Shift pressed in iframe: enable inspector (same as window Shift keydown)
-                    if (!manualInspectorEnabled.current && bridgeReady) {
+                    if (!manualInspectorEnabled.current && previewReady) {
                         setShiftInspectorActive(true)
                         setInspectorEnabled(true)
                     }
@@ -539,9 +761,67 @@ export function ProjectPagesPage() {
                     break
 
                 case 'bridge:ready':
+                    if (isChromeErrorUrl(typeof bridgeMeta?.href === 'string' ? bridgeMeta.href : null)) {
+                        clearBridgeReadyTimeout()
+                        setBridgeReady(false)
+                        addBridgeLog(`Ignoring bridge:ready from Chromium error document (${bridgeMeta?.href})`, 'error')
+                        addPreviewTimelineEvent({
+                            type: 'bridge_inject_failed',
+                            message: 'Bridge ready came from Chromium error document',
+                            details: {
+                                href: bridgeMeta?.href,
+                            },
+                        })
+
+                        if (previewEmbedMode === 'standard') {
+                            previewFallbackAttemptRef.current += 1
+                            addBridgeLog('Detected blocked standard iframe load; retrying in credentialless mode', 'info')
+                            addPreviewTimelineEvent({
+                                type: 'fallback_mode',
+                                message: 'Switching to credentialless mode after blocked standard iframe',
+                                details: {
+                                    from: 'standard',
+                                    to: 'credentialless',
+                                    reason: 'blocked_response',
+                                },
+                            })
+                            setPreviewEmbedMode('credentialless')
+                            setPreviewEmbedBlocked(false)
+                            setBridgeError(null)
+                            setPreviewReloadToken((value) => value + 1)
+                            break
+                        }
+
+                        setPreviewFailure(
+                            'blocked_response',
+                            'Embedded preview was blocked by response policy (ERR_BLOCKED_BY_RESPONSE). Use Open to view it externally.',
+                            true
+                        )
+                        break
+                    }
+
                     // Bridge is ready
+                    clearBridgeReadyTimeout()
                     setBridgeReady(true)
+                    setPreviewEmbedBlocked(false)
                     setBridgeError(null)
+                    previewFallbackAttemptRef.current = 0
+                    actions.setPreviewReadiness({
+                        runId: activeServerRunId,
+                        bridgeReady: true,
+                        embedded: true,
+                        lastCheckedAt: Date.now(),
+                        lastFailureReason: null,
+                        lastFailureMessage: null,
+                    })
+                    addPreviewTimelineEvent({
+                        type: 'bridge_ready',
+                        message: 'Bridge handshake completed',
+                        details: {
+                            frameName: bridgeMeta?.frameName,
+                            href: bridgeMeta?.href,
+                        },
+                    })
                     addBridgeLog(`bridge:ready received for ${previewRoute?.path ?? 'unknown route'}`, 'success')
                     setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message: 'Bridge connected successfully!', type: 'success' }])
                     // Enable inspector if it was already enabled
@@ -680,7 +960,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, bridgeReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -695,7 +975,7 @@ export function ProjectPagesPage() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Shift: enable inspector while held (same as toolbar toggle)
-            if (e.key === 'Shift' && !e.repeat && isFocusedPreview && !manualInspectorEnabled.current && bridgeReady) {
+            if (e.key === 'Shift' && !e.repeat && isFocusedPreview && !manualInspectorEnabled.current && previewReady) {
                 setShiftInspectorActive(true)
                 setInspectorEnabled(true)
             }
@@ -730,40 +1010,139 @@ export function ProjectPagesPage() {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
         }
-    }, [shiftInspectorActive, bridgeReady, inspectorEnabled, focusedPageIndex, handleCloseInspectorSidebar, setSelectedElement, setInspectedElement, closeVisualEditor, isFocusedPreview])
+    }, [shiftInspectorActive, previewReady, inspectorEnabled, focusedPageIndex, handleCloseInspectorSidebar, setSelectedElement, setInspectedElement, closeVisualEditor, isFocusedPreview])
 
     // Inject bridge script when iframe loads
     const handleIframeLoad = useCallback(async () => {
         if (previewRoute?.path) {
             focusedIframeLoadedPathRef.current = previewRoute.path
         }
-        setIsFocusedIframeVisible(true)
         if (!isFocusedPreview) {
             return
         }
 
         // Reset bridge state before injection
+        clearBridgeReadyTimeout()
         setBridgeReady(false)
+        setPreviewEmbedBlocked(false)
         setBridgeError(null)
+        actions.setPreviewReadiness({
+            runId: activeServerRunId,
+            bridgeReady: false,
+            embedded: false,
+            lastCheckedAt: Date.now(),
+        })
         const frameName = iframeRef.current?.getAttribute('name') || 'unnamed-frame'
+        addPreviewTimelineEvent({
+            type: 'iframe_loaded',
+            message: `Iframe loaded for ${previewRoute?.path ?? 'unknown route'}`,
+            details: {
+                mode: previewEmbedMode,
+                frameName,
+                url: focusedPreviewUrl,
+            },
+        })
         addBridgeLog(`Iframe loaded for ${previewRoute?.path ?? 'unknown route'} [${frameName}], attempting injection...`)
+
+        if (focusedPreviewUrl) {
+            const reachable = await probeFocusedPreviewReachability(focusedPreviewUrl, 'iframe-load')
+            if (!reachable) {
+                return
+            }
+        }
 
         if (iframeRef.current) {
             try {
-                const success = await injectBridgeScript(iframeRef.current)
-                if (success) {
+                const result = await injectBridgeScript(iframeRef.current)
+                if (result.success) {
                     addBridgeLog('Script injected, waiting for bridge:ready...')
+                    actions.setPreviewReadiness({
+                        runId: activeServerRunId,
+                        embedded: false,
+                        bridgeReady: false,
+                        lastFailureReason: null,
+                        lastFailureMessage: null,
+                    })
+                    addPreviewTimelineEvent({
+                        type: 'bridge_inject_succeeded',
+                        message: 'Bridge injection succeeded',
+                        details: {
+                            mode: previewEmbedMode,
+                            frameName,
+                        },
+                    })
+                    scheduleBridgeReadyTimeout(previewEmbedMode)
                 } else {
-                    setBridgeError('Cannot inject into preview (cross-origin)')
-                    addBridgeLog('Injection failed: cross-origin restriction', 'error')
+                    const errorMessage = result.error ?? 'Cannot inject into preview'
+                    const reason = result.reason ?? 'bridge_injection_failed'
+                    addBridgeLog(`Injection failed: ${errorMessage}`, 'error')
+                    addPreviewTimelineEvent({
+                        type: 'bridge_inject_failed',
+                        message: errorMessage,
+                        details: {
+                            reason,
+                            mode: previewEmbedMode,
+                            headerDiagnostic: result.headerDiagnostic ?? undefined,
+                        },
+                    })
+
+                    if (previewEmbedMode === 'standard' && (result.likelyBlocked || reason === 'blocked_response' || reason === 'chrome_error_document')) {
+                        previewFallbackAttemptRef.current += 1
+                        addBridgeLog('Switching preview to credentialless compatibility mode', 'info')
+                        addPreviewTimelineEvent({
+                            type: 'fallback_mode',
+                            message: 'Switching preview to credentialless compatibility mode',
+                            details: {
+                                from: 'standard',
+                                to: 'credentialless',
+                                reason,
+                            },
+                        })
+                        setPreviewEmbedMode('credentialless')
+                        setPreviewEmbedBlocked(false)
+                        setBridgeError(null)
+                        setPreviewReloadToken((value) => value + 1)
+                        return
+                    }
+
+                    const isBlocked = Boolean(result.likelyBlocked ?? (reason === 'blocked_response' || reason === 'chrome_error_document'))
+                    setPreviewFailure(reason, errorMessage, isBlocked)
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : 'Unknown error'
-                setBridgeError(`Injection error: ${msg}`)
+                addPreviewTimelineEvent({
+                    type: 'bridge_inject_failed',
+                    message: msg,
+                    details: {
+                        reason: 'bridge_injection_failed',
+                        mode: previewEmbedMode,
+                    },
+                })
+
+                if (previewEmbedMode === 'standard') {
+                    previewFallbackAttemptRef.current += 1
+                    addBridgeLog(`Injection error in standard mode: ${msg}. Switching to credentialless mode.`, 'info')
+                    addPreviewTimelineEvent({
+                        type: 'fallback_mode',
+                        message: 'Switching to credentialless mode after injection error',
+                        details: {
+                            from: 'standard',
+                            to: 'credentialless',
+                            reason: 'bridge_injection_failed',
+                        },
+                    })
+                    setPreviewEmbedMode('credentialless')
+                    setPreviewEmbedBlocked(false)
+                    setBridgeError(null)
+                    setPreviewReloadToken((value) => value + 1)
+                    return
+                }
+
+                setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
                 addBridgeLog(`Injection error: ${msg}`, 'error')
             }
         }
-    }, [addBridgeLog, previewRoute?.path, isFocusedPreview])
+    }, [actions, activeServerRunId, addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, isFocusedPreview, previewEmbedMode, previewRoute?.path, probeFocusedPreviewReachability, scheduleBridgeReadyTimeout, setPreviewFailure])
 
     // Attempt to reinject bridge if not ready
     const retryBridgeInjection = useCallback(async () => {
@@ -772,40 +1151,119 @@ export function ProjectPagesPage() {
             return false
         }
 
+        clearBridgeReadyTimeout()
+        setBridgeReady(false)
+        setPreviewEmbedBlocked(false)
         const frameName = iframeRef.current.getAttribute('name') || 'unnamed-frame'
         addBridgeLog(`Retrying injection for ${previewRoute?.path ?? 'unknown route'} [${frameName}]...`)
         setBridgeError(null)
 
+        if (focusedPreviewUrl) {
+            const reachable = await probeFocusedPreviewReachability(focusedPreviewUrl, 'manual-retry')
+            if (!reachable) {
+                return false
+            }
+        }
+
         try {
-            const success = await injectBridgeScript(iframeRef.current)
-            if (success) {
+            const result = await injectBridgeScript(iframeRef.current)
+            if (result.success) {
                 addBridgeLog('Script injected, waiting for bridge:ready...')
+                addPreviewTimelineEvent({
+                    type: 'bridge_inject_succeeded',
+                    message: 'Manual bridge reinjection succeeded',
+                    details: {
+                        mode: previewEmbedMode,
+                        frameName,
+                    },
+                })
+                scheduleBridgeReadyTimeout(previewEmbedMode)
                 return true
             } else {
-                setBridgeError('Cannot inject into preview (cross-origin)')
-                addBridgeLog('Injection failed: cross-origin restriction', 'error')
+                const errorMessage = result.error ?? 'Cannot inject into preview'
+                const reason = result.reason ?? 'bridge_injection_failed'
+                addBridgeLog(`Injection failed: ${errorMessage}`, 'error')
+                addPreviewTimelineEvent({
+                    type: 'bridge_inject_failed',
+                    message: errorMessage,
+                    details: {
+                        mode: previewEmbedMode,
+                        reason,
+                    },
+                })
+
+                if (previewEmbedMode === 'standard' && (result.likelyBlocked || reason === 'blocked_response' || reason === 'chrome_error_document')) {
+                    previewFallbackAttemptRef.current += 1
+                    addBridgeLog('Switching preview to credentialless compatibility mode', 'info')
+                    addPreviewTimelineEvent({
+                        type: 'fallback_mode',
+                        message: 'Manual retry switched preview to credentialless mode',
+                        details: {
+                            from: 'standard',
+                            to: 'credentialless',
+                            reason,
+                        },
+                    })
+                    setPreviewEmbedMode('credentialless')
+                    setPreviewEmbedBlocked(false)
+                    setBridgeError(null)
+                    setPreviewReloadToken((value) => value + 1)
+                    return false
+                }
+
+                setPreviewFailure(reason, errorMessage, Boolean(result.likelyBlocked ?? true))
                 return false
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Unknown error'
-            setBridgeError(`Injection error: ${msg}`)
+            if (previewEmbedMode === 'standard') {
+                previewFallbackAttemptRef.current += 1
+                addBridgeLog(`Injection error in standard mode: ${msg}. Switching to credentialless mode.`, 'info')
+                addPreviewTimelineEvent({
+                    type: 'fallback_mode',
+                    message: 'Manual retry switched preview after injection error',
+                    details: {
+                        from: 'standard',
+                        to: 'credentialless',
+                        reason: 'bridge_injection_failed',
+                    },
+                })
+                setPreviewEmbedMode('credentialless')
+                setPreviewEmbedBlocked(false)
+                setBridgeError(null)
+                setPreviewReloadToken((value) => value + 1)
+                return false
+            }
+
+            setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
             addBridgeLog(`Injection error: ${msg}`, 'error')
+            addPreviewTimelineEvent({
+                type: 'bridge_inject_failed',
+                message: msg,
+                details: {
+                    mode: previewEmbedMode,
+                    reason: 'bridge_injection_failed',
+                },
+            })
             return false
         }
-    }, [addBridgeLog, previewRoute?.path])
+    }, [addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, previewEmbedMode, previewRoute?.path, probeFocusedPreviewReachability, scheduleBridgeReadyTimeout, setPreviewFailure])
 
     // Attempt to reinject bridge if not ready
     const ensureBridgeReady = useCallback((): boolean => {
-        if (bridgeReady) return true
+        if (previewReady) return true
+        if (focusedPreviewUrl) {
+            void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
+        }
         void retryBridgeInjection()
         return false
-    }, [bridgeReady, retryBridgeInjection])
+    }, [focusedPreviewUrl, previewReady, probeFocusedPreviewReachability, retryBridgeInjection])
 
     // Handle screenshot capture
     const handleCaptureScreenshot = useCallback(() => {
         if (!iframeRef.current || serverStatus !== 'running') return
 
-        if (!bridgeReady) {
+        if (!previewReady) {
             ensureBridgeReady()
             setBridgeError('Preview bridge not ready. Try again in a moment.')
             return
@@ -824,11 +1282,11 @@ export function ProjectPagesPage() {
                 return false
             })
         }, 10000)
-    }, [serverStatus, bridgeReady, ensureBridgeReady])
+    }, [serverStatus, previewReady, ensureBridgeReady])
 
     // Toggle inspector mode (manual toggle via button)
     const toggleInspector = useCallback(() => {
-        if (!inspectorEnabled && !bridgeReady) {
+        if (!inspectorEnabled && !previewReady) {
             ensureBridgeReady()
             setBridgeError('Preview bridge not ready. Try again in a moment.')
             return
@@ -849,7 +1307,7 @@ export function ProjectPagesPage() {
             }
             return newState
         })
-    }, [bridgeReady, inspectorEnabled, ensureBridgeReady, setSelectedElement, setInspectedElement, shiftInspectorActive, closeVisualEditor])
+    }, [previewReady, inspectorEnabled, ensureBridgeReady, setSelectedElement, setInspectedElement, shiftInspectorActive, closeVisualEditor])
 
     // Handle visual editor style preview
     const handlePreviewStyle = useCallback((styles: Record<string, string>) => {
@@ -956,11 +1414,55 @@ export function ProjectPagesPage() {
         navigate(`/projects/${slug}?${params.toString()}`)
     }
 
+    const reloadFocusedPreview = useCallback((reason: 'manual' | 'fallback' = 'manual') => {
+        clearBridgeReadyTimeout()
+        setBridgeReady(false)
+        setPreviewEmbedBlocked(false)
+        setBridgeError(null)
+        actions.setPreviewReadiness({
+            runId: activeServerRunId,
+            bridgeReady: false,
+            embedded: false,
+            lastCheckedAt: Date.now(),
+        })
+        if (reason === 'manual') {
+            previewFallbackAttemptRef.current = 0
+        }
+        addPreviewTimelineEvent({
+            type: 'fallback_mode',
+            message: reason === 'manual' ? 'Manual preview reload requested' : 'Preview reload requested by fallback flow',
+            details: {
+                reason,
+                mode: previewEmbedMode,
+            },
+        })
+        setPreviewReloadToken((value) => value + 1)
+    }, [actions, activeServerRunId, addPreviewTimelineEvent, clearBridgeReadyTimeout, previewEmbedMode])
+
+    const handleFocusedIframeError = useCallback(() => {
+        const previewUrl = focusedPreviewUrl ?? 'unknown'
+        console.error(`[PagesPreview] iframe load error mode=${previewEmbedMode} url=${previewUrl}`)
+        setPreviewFailure('iframe_load_error', 'Iframe failed to load preview content. Try Open for direct view.', true)
+        addPreviewTimelineEvent({
+            type: 'iframe_error',
+            message: 'Iframe failed to load preview content',
+            details: {
+                mode: previewEmbedMode,
+                url: previewUrl,
+            },
+        })
+    }, [addPreviewTimelineEvent, focusedPreviewUrl, previewEmbedMode, setPreviewFailure])
+
+    const openFocusedPreviewExternally = useCallback(() => {
+        if (!focusedPreviewUrl) return
+        window.open(focusedPreviewUrl, '_blank')
+    }, [focusedPreviewUrl])
+
     const headerControls = useMemo(() => (
         <TooltipProvider delayDuration={300}>
             <div
                 ref={headerRef}
-                className={cn("flex items-center gap-2", focusedPageIndex !== null && "ml-auto")}
+                className={cn("flex items-center gap-2", focusedPageIndex !== null && !isMacClient && "ml-auto")}
             >
                 {focusedPageIndex !== null && (
                     <>
@@ -1150,6 +1652,11 @@ export function ProjectPagesPage() {
                 )}
 
                 <div className="flex items-center gap-2 min-w-0">
+                        {focusedPageIndex !== null && serverStatus === 'running' && useCredentiallessPreview && (
+                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                Compat Preview
+                            </span>
+                        )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -1163,12 +1670,12 @@ export function ProjectPagesPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={retryBridgeInjection}>
                                     <span
-                                        className={cn(
-                                            "h-2.5 w-2.5 rounded-full shrink-0 mr-2",
-                                            bridgeReady ? "bg-green-500" : "bg-amber-500"
-                                        )}
-                                        aria-hidden
-                                    />
+                                            className={cn(
+                                                "h-2.5 w-2.5 rounded-full shrink-0 mr-2",
+                                                previewReady ? "bg-green-500" : "bg-amber-500"
+                                            )}
+                                            aria-hidden
+                                        />
                                     Retry Bridge Connection
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -1187,7 +1694,7 @@ export function ProjectPagesPage() {
                                                 variant="ghost"
                                                 size="icon"
                                                 className="h-7 w-7"
-                                                disabled={isCapturingScreenshot}
+                                                disabled={isCapturingScreenshot || !previewReady || previewEmbedBlocked}
                                                 onClick={handleCaptureScreenshot}
                                             >
                                                 <Camera className={cn(
@@ -1197,7 +1704,13 @@ export function ProjectPagesPage() {
                                             </Button>
                                         </div>
                                     </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Take Screenshot</TooltipContent>
+                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">
+                                        {previewEmbedBlocked
+                                            ? 'Preview blocked. Open externally.'
+                                            : previewReady
+                                                ? 'Take Screenshot'
+                                                : 'Preview not ready yet'}
+                                    </TooltipContent>
                                 </Tooltip>
 
                                 {/* Inspector button */}
@@ -1212,13 +1725,20 @@ export function ProjectPagesPage() {
                                                 variant={inspectorEnabled ? "secondary" : "ghost"}
                                                 size="icon"
                                                 className="h-7 w-7"
+                                                disabled={!previewReady || previewEmbedBlocked}
                                                 onClick={toggleInspector}
                                             >
                                                 <MousePointer2 className={cn("h-3.5 w-3.5", inspectorEnabled ? "text-foreground" : "text-muted-foreground")} />
                                             </Button>
                                         </div>
                                     </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">{inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector'}</TooltipContent>
+                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">
+                                        {previewEmbedBlocked
+                                            ? 'Preview blocked. Open externally.'
+                                            : previewReady
+                                                ? (inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector')
+                                                : 'Preview not ready yet'}
+                                    </TooltipContent>
                                 </Tooltip>
 
                                 {/* Update project preview (Projects page showcase) */}
@@ -1259,6 +1779,7 @@ export function ProjectPagesPage() {
         </TooltipProvider>
     ), [
         focusedPageIndex,
+        isMacClient,
         toolbarDensity,
         device,
         zoom,
@@ -1267,7 +1788,9 @@ export function ProjectPagesPage() {
         inspectorEnabled,
         toolbarTooltip,
         serverStatus,
-        bridgeReady,
+        previewReady,
+        previewEmbedBlocked,
+        useCredentiallessPreview,
         projectPath,
         storedFrameworkInfo?.devCommand,
         storedFrameworkInfo?.devPort,
@@ -1328,12 +1851,9 @@ export function ProjectPagesPage() {
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (
                             /* Empty State */
-                            <motion.div
+                            <div
                                 key="pages-empty"
-                                initial={{ opacity: 0, y: 8, scale: 0.996 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                className="app-scrollbar flex-1 overflow-y-auto p-6"
+                                className="app-scrollbar flex-1 overflow-y-auto p-6 animate-in fade-in slide-in-from-bottom-2 duration-300"
                             >
                                 <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                                     <FileText className="h-10 w-10 mb-3 opacity-20" />
@@ -1365,22 +1885,14 @@ export function ProjectPagesPage() {
                                         )}
                                     </Button>
                                 </div>
-                            </motion.div>
+                            </div>
                         ) : (
                             <div className="relative flex-1 min-h-0 min-w-0 bg-sidebar/60">
-                                <motion.div
-                                    initial={false}
-                                    animate={isFocusedPreview
-                                        ? { opacity: 0, y: -6, scale: 0.998 }
-                                        : { opacity: 1, y: 0, scale: 1 }}
-                                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                    className={cn(
-                                        "app-scrollbar absolute inset-0 overflow-y-auto p-6",
-                                        isFocusedPreview && "pointer-events-none"
-                                    )}
-                                    aria-hidden={isFocusedPreview}
+                                {!isFocusedPreview && (
+                                <div
+                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6 animate-in fade-in duration-300"
                                 >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
                                         {routes.map((route, index) => {
                                             const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
                                             return (
@@ -1393,9 +1905,10 @@ export function ProjectPagesPage() {
                                                         <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
                                                             {serverStatus === 'running' && serverPort ? (
                                                                 <div className="absolute inset-0">
-                                                                    <div className="w-full h-full bg-white relative overflow-hidden">
+                                                                    <div className="w-full h-full bg-background relative overflow-hidden">
                                                                         <iframe
                                                                             src={`http://localhost:${serverPort}${route.path}`}
+                                                                            credentialless={credentiallessAttribute}
                                                                             className="w-[200%] h-[200%] origin-top-left scale-50 border-none pointer-events-none select-none block"
                                                                             tabIndex={-1}
                                                                         />
@@ -1475,20 +1988,12 @@ export function ProjectPagesPage() {
                                             )
                                         })}
                                     </div>
-                                </motion.div>
+                                </div>
+                                )}
 
-                                {previewRoute && (
-                                    <motion.div
-                                        initial={false}
-                                        animate={isFocusedPreview
-                                            ? { opacity: 1, y: 0, scale: 1 }
-                                            : { opacity: 0, y: 8, scale: 0.998 }}
-                                        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                                        className={cn(
-                                            "absolute inset-0 flex overflow-hidden min-h-0 min-w-0",
-                                            !isFocusedPreview && "pointer-events-none"
-                                        )}
-                                        aria-hidden={!isFocusedPreview}
+                                {isFocusedPreview && previewRoute && (
+                                    <div
+                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0 animate-in fade-in duration-300"
                                     >
                                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                             {/* Preview area */}
@@ -1509,17 +2014,14 @@ export function ProjectPagesPage() {
                                                         <div className="relative h-full w-full bg-sidebar/40">
                                                             <iframe
                                                                 ref={iframeRef}
+                                                                key={`focused-preview-${previewEmbedMode}-${previewReloadToken}-${previewRoute.path}`}
                                                                 name={focusedPreviewFrameName}
-                                                                src={`http://localhost:${serverPort}${previewRoute.path}`}
-                                                                className={cn(
-                                                                    "h-full w-full border-none transition-opacity duration-300 ease-out",
-                                                                    isFocusedIframeVisible ? "opacity-100" : "opacity-0"
-                                                                )}
+                                                                src={focusedPreviewUrl ?? undefined}
+                                                                credentialless={credentiallessAttribute}
+                                                                className="h-full w-full border-none"
                                                                 onLoad={handleIframeLoad}
+                                                                onError={handleFocusedIframeError}
                                                             />
-                                                            {!isFocusedIframeVisible && (
-                                                                <div className="pointer-events-none absolute inset-0 bg-muted/35 backdrop-blur-[1px]" />
-                                                            )}
                                                         </div>
                                                     ) : (
                                                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -1551,7 +2053,7 @@ export function ProjectPagesPage() {
                                                             <Button
                                                                 variant="secondary"
                                                                 size="sm"
-                                                                onClick={() => window.open(`http://localhost:${serverPort}${previewRoute.path}`, '_blank')}
+                                                                onClick={openFocusedPreviewExternally}
                                                                 className="shadow-md"
                                                             >
                                                                 <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
@@ -1566,6 +2068,40 @@ export function ProjectPagesPage() {
                                                             {previewRoute.name}
                                                         </div>
                                                     </div>
+
+                                                    {serverStatus === 'running' && previewEmbedBlocked && (
+                                                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm">
+                                                            <div className="max-w-md rounded-xl border border-border/80 bg-card p-4 shadow-xl">
+                                                                <p className="text-sm font-semibold">Embedded preview unavailable</p>
+                                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                                    {bridgeError ?? 'This page blocks iframe embedding in isolated mode.'}
+                                                                </p>
+                                                                {recentPreviewTimeline.length > 0 && (
+                                                                    <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-2">
+                                                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                                                            Recent diagnostics
+                                                                        </p>
+                                                                        <div className="mt-1 space-y-1">
+                                                                            {recentPreviewTimeline.slice(0, 3).map((event) => (
+                                                                                <p key={event.id} className="text-[11px] leading-4 text-muted-foreground">
+                                                                                    {event.message}
+                                                                                </p>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                <div className="mt-4 flex items-center gap-2">
+                                                                    <Button size="sm" variant="outline" onClick={() => reloadFocusedPreview('manual')}>
+                                                                        Retry
+                                                                    </Button>
+                                                                    <Button size="sm" onClick={openFocusedPreviewExternally}>
+                                                                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                                                                        Open
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1604,9 +2140,10 @@ export function ProjectPagesPage() {
                                                                             : "border-border/40 hover:border-border"
                                                                     )}>
                                                                         {serverStatus === 'running' && serverPort ? (
-                                                                            <div className="w-full h-full bg-white relative">
+                                                                            <div className="w-full h-full bg-background relative">
                                                                                 <iframe
                                                                                     src={`http://localhost:${serverPort}${route.path}`}
+                                                                                    credentialless={credentiallessAttribute}
                                                                                     className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
                                                                                     tabIndex={-1}
                                                                                 />
@@ -1676,7 +2213,7 @@ export function ProjectPagesPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 )}
                             </div>
                         )}

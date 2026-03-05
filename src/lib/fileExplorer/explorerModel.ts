@@ -21,12 +21,13 @@ export class ExplorerItem {
   readonly name: string
   readonly isDirectory: boolean
   readonly isSymbolicLink: boolean
-  readonly mtime: number
-  readonly size: number
+  mtime: number
+  size: number
 
   private _parent: ExplorerItem | null = null
   private _children: Map<string, ExplorerItem> = new Map()
   private _isDirectoryResolved: boolean = false
+  private _sortedChildrenCache: ExplorerItem[] | null = null
 
   constructor(data: ExplorerItemData) {
     this.resource = data.resource
@@ -56,7 +57,11 @@ export class ExplorerItem {
 
   // Get sorted children as array
   get sortedChildren(): ExplorerItem[] {
-    return Array.from(this._children.values()).sort((a, b) => {
+    if (this._sortedChildrenCache) {
+      return this._sortedChildrenCache
+    }
+
+    this._sortedChildrenCache = Array.from(this._children.values()).sort((a, b) => {
       // Directories first
       if (a.isDirectory !== b.isDirectory) {
         return a.isDirectory ? -1 : 1
@@ -64,17 +69,25 @@ export class ExplorerItem {
       // Then alphabetical (case-insensitive)
       return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
     })
+
+    return this._sortedChildrenCache
+  }
+
+  private invalidateChildrenCache(): void {
+    this._sortedChildrenCache = null
   }
 
   // Methods
   addChild(child: ExplorerItem): void {
     child._parent = this
     this._children.set(child.name.toLowerCase(), child)
+    this.invalidateChildrenCache()
   }
 
   removeChild(child: ExplorerItem): void {
     this._children.delete(child.name.toLowerCase())
     child._parent = null
+    this.invalidateChildrenCache()
   }
 
   getChild(name: string): ExplorerItem | undefined {
@@ -88,10 +101,24 @@ export class ExplorerItem {
   clearChildren(): void {
     this._children.clear()
     this._isDirectoryResolved = false
+    this.invalidateChildrenCache()
   }
 
   markResolved(): void {
     this._isDirectoryResolved = true
+  }
+
+  updateMetadata(data: { mtime?: number; size?: number }): boolean {
+    let changed = false
+    if (typeof data.mtime === 'number' && data.mtime !== this.mtime) {
+      this.mtime = data.mtime
+      changed = true
+    }
+    if (typeof data.size === 'number' && data.size !== this.size) {
+      this.size = data.size
+      changed = true
+    }
+    return changed
   }
 
   // Get the path from root to this item
@@ -178,6 +205,7 @@ export class ExplorerItem {
     cloned._parent = this._parent
     cloned._children = this._children
     cloned._isDirectoryResolved = this._isDirectoryResolved
+    cloned._sortedChildrenCache = this._sortedChildrenCache
     return cloned
   }
 }

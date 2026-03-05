@@ -1,15 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { ProviderCloudCredentials } from '@shared/electronApiTypes'
+import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
+import { AI_BASE_URL } from '../../lib/ai/apiEndpoints'
+import { clearModelCatalogCache } from '../../lib/ai/modelCatalogClient'
+import { getProviderLogoUrl } from '../../lib/ai/providerLogos'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Label } from '../../components/ui/label'
-import { Badge } from '../../components/ui/badge'
-import { Switch } from '../../components/ui/switch'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '../../components/ui/chart'
 import {
   Table,
   TableBody,
@@ -36,6 +44,7 @@ import {
 import {
   Key,
   AlertCircle,
+  CheckCircle2,
   Sparkles,
   Loader2,
   History,
@@ -43,56 +52,187 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-type Provider = 'anthropic' | 'openai' | 'google'
+type ConnectableProvider = string
 
-const providerInfo: Record<Provider, { name: string; description: string; placeholder: string; models: number }> = {
-  anthropic: {
-    name: 'Anthropic',
-    description: 'Claude 4.5 Opus, Sonnet, Haiku',
-    placeholder: 'sk-ant-...',
-    models: 3,
-  },
-  openai: {
-    name: 'OpenAI',
-    description: 'GPT-5.1, GPT-5.2',
-    placeholder: 'sk-...',
-    models: 2,
-  },
-  google: {
-    name: 'Google AI',
-    description: 'Gemini 3 Pro, Flash',
-    placeholder: 'AIza...',
-    models: 2,
-  },
+const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'github-copilot',
+  'gitlab',
+]
+
+const BUILTIN_PROVIDER_IDS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
+
+function isBuiltinProvider(providerId: string): providerId is (typeof BUILTIN_PROVIDER_IDS)[number] {
+  return BUILTIN_PROVIDER_IDS.includes(providerId as (typeof BUILTIN_PROVIDER_IDS)[number])
 }
 
-// Provider icons
-const ProviderIcon = ({ provider, className }: { provider: Provider; className?: string }) => {
-  switch (provider) {
-    case 'anthropic':
-      return (
-        <svg viewBox="0 0 256 176" className={className} fill="currentColor">
-          <path d="M147.487 0 256 176h-51.627l-22.593-38.652H123.51L147.487 0ZM66.41 0h46.592l77.166 176h-52.142L66.409 0ZM0 176 66.41 0l27.024 61.746L41.1 176H0Z" />
-        </svg>
-      )
-    case 'openai':
-      return (
-        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-          <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365 2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" />
-        </svg>
-      )
-    case 'google':
-      return (
-        <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-        </svg>
-      )
-    default:
-      return <Sparkles className={className} />
+const RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
+  RECOMMENDED_PROVIDER_ORDER.map((providerId, index) => [providerId, index])
+)
+const COZEA_MANAGED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'xai'])
+
+interface LocalProviderStatus {
+  provider: string
+  connected: boolean
+  expiresAt?: number
+  accountId?: string
+  googleMode?: 'vertex' | 'gemini'
+  googleProjectId?: string
+  googleLocation?: string
+  cloudKind?: string
+  lastError?: string
+}
+
+interface ProviderCatalogRow {
+  id: string
+  name: string
+  logoUrl?: string
+  modelCount: number
+  envKeys: string[]
+  authStrategies: Array<'api_key' | 'oauth' | 'cloud_credentials'>
+  localConnectSupported: boolean
+  description: string
+}
+
+interface ProvidersApiResponse {
+  providers: ProviderCatalogRow[]
+  pagination?: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
   }
+  source?: 'models.dev' | 'cache' | 'fallback'
+  updatedAt?: number
+}
+
+type ProviderAuthMethod =
+  | 'oauth'
+  | 'api_key'
+  | 'cloud_credentials'
+  | 'device'
+  | 'manual_code'
+  | 'vertex'
+  | 'gemini'
+  | 'gemini_api_key'
+
+interface AIProps {
+  surface?: 'page' | 'drawer'
+}
+
+type UsageRange = '7d' | '30d' | '90d'
+
+interface UsagePoint {
+  date: string
+  tokens: number
+  requests: number
+}
+
+const FALLBACK_PROVIDER_ROWS: ProviderCatalogRow[] = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    logoUrl: getProviderLogoUrl('openai'),
+    modelCount: 0,
+    envKeys: ['OPENAI_API_KEY'],
+    authStrategies: ['oauth', 'api_key'],
+    localConnectSupported: true,
+    description: 'OAuth + API key',
+  },
+  {
+    id: 'google',
+    name: 'Google',
+    logoUrl: getProviderLogoUrl('google'),
+    modelCount: 0,
+    envKeys: ['GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key / Gemini OAuth / Vertex token',
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    logoUrl: getProviderLogoUrl('anthropic'),
+    modelCount: 0,
+    envKeys: ['ANTHROPIC_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key',
+  },
+  {
+    id: 'xai',
+    name: 'xAI',
+    logoUrl: getProviderLogoUrl('xai'),
+    modelCount: 0,
+    envKeys: ['XAI_API_KEY'],
+    authStrategies: ['api_key'],
+    localConnectSupported: true,
+    description: 'API key',
+  },
+  {
+    id: 'github-copilot',
+    name: 'GitHub Copilot',
+    logoUrl: getProviderLogoUrl('github-copilot'),
+    modelCount: 0,
+    envKeys: [],
+    authStrategies: ['oauth'],
+    localConnectSupported: true,
+    description: 'OAuth',
+  },
+  {
+    id: 'gitlab',
+    name: 'GitLab',
+    logoUrl: getProviderLogoUrl('gitlab'),
+    modelCount: 0,
+    envKeys: [],
+    authStrategies: ['oauth'],
+    localConnectSupported: true,
+    description: 'OAuth',
+  },
+]
+
+function formatAuthStrategies(strategies: Array<'api_key' | 'oauth' | 'cloud_credentials'>): string {
+  if (strategies.length === 0) return 'Unknown'
+  return strategies
+    .map((strategy) => {
+      if (strategy === 'api_key') return 'API key'
+      if (strategy === 'oauth') return 'OAuth'
+      return 'Cloud credentials'
+    })
+    .join(' + ')
+}
+
+const ProviderIcon = ({
+  provider,
+  logoUrl,
+  className,
+}: {
+  provider: string
+  logoUrl?: string
+  className?: string
+}) => {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [provider, logoUrl])
+
+  if (imageFailed) {
+    return <Sparkles className={className} />
+  }
+
+  return (
+    <img
+      alt={`${provider} logo`}
+      className={className}
+      loading="lazy"
+      onError={() => setImageFailed(true)}
+      src={logoUrl || getProviderLogoUrl(provider)}
+    />
+  )
 }
 
 // Format tokens as K/M
@@ -106,8 +246,25 @@ const formatTokens = (tokens: number): string => {
   return tokens.toString()
 }
 
-export function AI() {
-  const { user, logout, currentOrganization, convexUserId } = useAuth()
+const formatCurrencyFromCents = (cents: number, currency: string = 'USD'): string => {
+  const normalized = Number.isFinite(cents) ? cents : 0
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(normalized / 100)
+}
+
+const usageChartConfig: ChartConfig = {
+  tokens: {
+    label: 'Tokens',
+    color: 'var(--chart-1)',
+  },
+}
+
+export function AI({ surface = 'page' }: AIProps) {
+  const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
 
   // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
   const freshOrg = useQuery(
@@ -117,12 +274,6 @@ export function AI() {
   const convexOrg = useCachedQuery(
     `ai-org-${currentOrganization?.organizationId}`,
     freshOrg
-  )
-
-  // Get AI credentials status
-  const credentialsStatus = useQuery(
-    api.organizations.getAiCredentialsStatus,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
   // Get usage summary
@@ -137,116 +288,380 @@ export function AI() {
     convexOrg?._id ? { organizationId: convexOrg._id, limit: 50 } : 'skip'
   )
 
-  // Mutations
-  const updateAiCredentials = useMutation(api.organizations.updateAiCredentials)
-  const updateAiSettings = useMutation(api.organizations.updateAiSettings)
+  const walletSummary = useQuery(
+    api.aiWallets.getWalletForViewer,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
+  )
 
-  // Dialog state for adding/updating keys
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null)
-  const [keyInput, setKeyInput] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
+  const usageDateRange = useMemo(() => {
+    const now = Date.now()
+    const daysToSubtract =
+      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    return {
+      startDate: now - daysToSubtract * 24 * 60 * 60 * 1000,
+      endDate: now,
+    }
+  }, [usageTimeRange])
+
+  const usageAggregates = useQuery(
+    api.aiUsage.getAggregates,
+    convexOrg?._id
+      ? {
+          organizationId: convexOrg._id,
+          period: 'daily' as const,
+          startDate: usageDateRange.startDate,
+          endDate: usageDateRange.endDate,
+        }
+      : 'skip'
+  )
+
+  // Dialog state for provider connection
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
+  const [openaiMethod, setOpenaiMethod] = useState<'oauth' | 'device' | 'api_key'>('oauth')
+  const [anthropicMethod, setAnthropicMethod] = useState<'oauth' | 'api_key'>('api_key')
+  const [googleMethod, setGoogleMethod] = useState<'vertex' | 'gemini' | 'gemini_api_key'>('gemini')
+  const [providerApiKey, setProviderApiKey] = useState('')
+  const [cloudCredentials, setCloudCredentials] = useState<ProviderCloudCredentials>({})
+  const [manualCode, setManualCode] = useState('')
+  const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  // Settings state
-  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false)
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, LocalProviderStatus>>({})
+  const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogRow[]>([])
+  const [availableProviderMethods, setAvailableProviderMethods] = useState<Record<string, ProviderAuthMethod[]>>({})
+  const [providersError, setProvidersError] = useState<string | null>(null)
 
   // Usage history pagination
   const [usagePage, setUsagePage] = useState(0)
   const usagePageSize = 5
 
-  const handleOpenKeyDialog = (provider: Provider) => {
+  // Provider table pagination
+  const [providerPage, setProviderPage] = useState(0)
+  const providerPageSize = 6
+
+  const setCloudCredentialField = (key: keyof ProviderCloudCredentials, value: string) => {
+    setCloudCredentials((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  }
+
+  const refreshProviderStatuses = async () => {
+    if (!window.electronAPI?.providerAuth) return
+    try {
+      const statuses = await window.electronAPI.providerAuth.getStatus()
+      const next: Record<string, LocalProviderStatus> = {}
+      for (const status of statuses) {
+        next[status.provider] = status as LocalProviderStatus
+      }
+      setProviderStatuses(next)
+    } catch (err) {
+      console.error('Failed to load provider status:', err)
+    }
+  }
+
+  useEffect(() => {
+    if (!accessToken) return
+
+    const controller = new AbortController()
+    setProvidersError(null)
+
+    fetch(`${AI_BASE_URL}/providers?page=1&pageSize=500`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load providers (${response.status})`)
+        }
+        return (await response.json()) as ProvidersApiResponse
+      })
+      .then((payload) => {
+        if (!payload?.providers?.length) {
+          setProviderCatalog(FALLBACK_PROVIDER_ROWS)
+          return
+        }
+        setProviderCatalog(payload.providers)
+      })
+      .catch((error) => {
+        if ((error as { name?: string }).name === 'AbortError') return
+        console.warn('Failed to fetch provider catalog:', error)
+        setProvidersError(error instanceof Error ? error.message : 'Failed to load provider catalog')
+        setProviderCatalog(FALLBACK_PROVIDER_ROWS)
+      })
+
+    return () => controller.abort()
+  }, [accessToken])
+
+  useEffect(() => {
+    if (!window.electronAPI?.providerAuth) return
+
+    window.electronAPI.providerAuth
+      .listProviders()
+      .then((providers) => {
+        const next: Record<string, ProviderAuthMethod[]> = {}
+        for (const provider of providers) {
+          next[provider.provider] = provider.methods as ProviderAuthMethod[]
+        }
+        setAvailableProviderMethods(next)
+      })
+      .catch((error) => {
+        console.warn('Failed to load provider auth methods:', error)
+      })
+  }, [])
+
+  useEffect(() => {
+    void refreshProviderStatuses()
+  }, [])
+
+  // Refresh status on focus so expired tokens show as disconnected (matches useConnectedProviders used by chat)
+  useEffect(() => {
+    const onFocus = () => void refreshProviderStatuses()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+
+  const handleOpenConnectDialog = (provider: string) => {
+    if (!provider) return
     setSelectedProvider(provider)
-    setKeyInput('')
+    setOpenaiMethod('oauth')
+    setAnthropicMethod('api_key')
+    setGoogleMethod('gemini')
+    setProviderApiKey('')
+    setCloudCredentials({})
+    setManualCode('')
+    setManualAuthUrl(null)
     setSaveError(null)
-    setKeyDialogOpen(true)
+    setConnectDialogOpen(true)
   }
 
-  const handleSaveKey = async () => {
-    if (!convexOrg || !convexUserId || !selectedProvider) return
+  const invalidateModelCatalog = () => {
+    if (!currentOrganization?.organizationId) return
+    clearModelCatalogCache(currentOrganization.organizationId)
+  }
 
-    setIsSaving(true)
+  const connectProvider = async (
+    provider: ConnectableProvider,
+    method?: ProviderAuthMethod,
+    authorizationCode?: string,
+    apiKey?: string,
+    cloudCredentialsInput?: ProviderCloudCredentials
+  ) => {
+    if (!window.electronAPI?.providerAuth) return
+    setIsSaving(provider)
     setSaveError(null)
-
     try {
-      await updateAiCredentials({
-        orgId: convexOrg._id,
-        userId: convexUserId,
-        [selectedProvider === 'anthropic' ? 'anthropicKey' : selectedProvider === 'openai' ? 'openaiKey' : 'googleKey']: keyInput || undefined,
+      const result = await window.electronAPI.providerAuth.connect({
+        provider,
+        method,
+        authorizationCode,
+        apiKey,
+        cloudCredentials: cloudCredentialsInput,
       })
-      setKeyDialogOpen(false)
-      setKeyInput('')
+      if (!result.success) {
+        setManualAuthUrl(result.authorizationUrl || null)
+        throw new Error(result.error || 'Provider connection failed')
+      }
+      await refreshProviderStatuses()
+      invalidateModelCatalog()
+      setConnectDialogOpen(false)
+      setManualCode('')
+      setManualAuthUrl(null)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save API key')
+      setSaveError(err instanceof Error ? err.message : 'Failed to connect provider')
     } finally {
-      setIsSaving(false)
+      setIsSaving(null)
     }
   }
 
-  const handleRemoveKey = async (provider: Provider) => {
-    if (!convexOrg || !convexUserId) return
-
-    setIsSaving(true)
+  const handleDisconnect = async (provider: ConnectableProvider) => {
+    if (!window.electronAPI?.providerAuth) return
+    setIsSaving(provider)
+    setSaveError(null)
     try {
-      await updateAiCredentials({
-        orgId: convexOrg._id,
-        userId: convexUserId,
-        [provider === 'anthropic' ? 'anthropicKey' : provider === 'openai' ? 'openaiKey' : 'googleKey']: '',
-      })
+      await window.electronAPI.providerAuth.disconnect(provider)
+      await refreshProviderStatuses()
+      invalidateModelCatalog()
     } catch (err) {
-      console.error('Failed to remove key:', err)
+      setSaveError(err instanceof Error ? err.message : 'Failed to disconnect provider')
     } finally {
-      setIsSaving(false)
+      setIsSaving(null)
     }
   }
-
-  // Calculate credit usage
-  const credits = convexOrg?.credits
-  const subscription = convexOrg?.subscription
-  const totalCredits = credits?.subscriptionCreditsTotal || 0
-  const remainingCredits = credits?.subscriptionCreditsRemaining || 0
-  const usedCredits = totalCredits - remainingCredits
-  const usagePercent = totalCredits > 0 ? (usedCredits / totalCredits) * 100 : 0
 
   // Get aggregate usage data
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
-  const totalCreditsUsed = aggregate?.totalCreditsUsed || 0
+  const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
+  const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
+  const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
+  const activeWalletContext =
+    walletSummary?.walletContexts?.active === 'workspace_seat'
+      ? 'Workspace seat wallet'
+      : walletSummary?.walletContexts?.active === 'personal'
+        ? 'Personal wallet'
+        : 'No active wallet'
+  const now = Date.now()
+  const chartData = useMemo<UsagePoint[]>(() => {
+    const daysToShow =
+      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const dates: UsagePoint[] = []
+    const currentDate = new Date()
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'AI' }]}
-    >
-      <div className="space-y-6">
-        {/* Subscription Status Banner */}
-        {subscription?.plan === 'free' && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">Free Plan</p>
-                    <p className="text-sm text-muted-foreground">
-                      Add your own API keys to use AI features, or upgrade for included credits.
-                    </p>
-                  </div>
-                </div>
-                <Button variant="default" size="sm" onClick={() => window.location.href = '/workspace/billing'}>
-                  Upgrade to Pro
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+    for (let i = daysToShow - 1; i >= 0; i -= 1) {
+      const date = new Date(currentDate)
+      date.setDate(date.getDate() - i)
+      date.setHours(0, 0, 0, 0)
+      dates.push({
+        date: date.toISOString().split('T')[0],
+        tokens: 0,
+        requests: 0,
+      })
+    }
 
+    if (!usageAggregates) {
+      return dates
+    }
+
+    const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
+    for (const aggregate of usageAggregates) {
+      const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
+      const index = indexByDate.get(dateStr)
+      if (index === undefined) continue
+      dates[index] = {
+        ...dates[index],
+        tokens: aggregate.totalTokens,
+        requests: aggregate.requestCount,
+      }
+    }
+
+    return dates
+  }, [usageAggregates, usageTimeRange])
+  const providerRows = useMemo(() => {
+    const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
+
+    return [...rows].sort((a, b) => {
+      const aRank = RECOMMENDED_PROVIDER_RANK.get(a.id)
+      const bRank = RECOMMENDED_PROVIDER_RANK.get(b.id)
+      const aIsRecommended = aRank !== undefined
+      const bIsRecommended = bRank !== undefined
+
+      if (aIsRecommended && bIsRecommended) {
+        return aRank - bRank
+      }
+      if (aIsRecommended) return -1
+      if (bIsRecommended) return 1
+
+      return a.name.localeCompare(b.name)
+    }).filter((provider) => !COZEA_MANAGED_PROVIDER_IDS.has(provider.id.trim().toLowerCase()))
+  }, [providerCatalog])
+  const selectedProviderInfo = selectedProvider
+    ? providerRows.find((provider) => provider.id === selectedProvider)
+    : undefined
+  const selectedProviderMethods = selectedProvider
+    ? availableProviderMethods[selectedProvider] ?? []
+    : []
+  const selectedProviderAuthStrategies = selectedProviderInfo?.authStrategies ?? []
+  const selectedProviderUsesCloudCredentials =
+    selectedProviderAuthStrategies.includes('cloud_credentials') ||
+    selectedProviderMethods.includes('cloud_credentials') ||
+    selectedProvider === 'amazon-bedrock' ||
+    selectedProvider === 'google-vertex' ||
+    selectedProvider === 'google-vertex-anthropic' ||
+    selectedProvider === 'azure' ||
+    selectedProvider === 'azure-cognitive-services' ||
+    selectedProvider === 'sap-ai-core'
+  const isCustomSelectedProvider = selectedProvider ? !isBuiltinProvider(selectedProvider) : false
+  const requiresApiKeyInput =
+    (isCustomSelectedProvider && !selectedProviderUsesCloudCredentials) ||
+    (selectedProvider === 'xai') ||
+    (selectedProvider === 'openai' && openaiMethod === 'api_key') ||
+    (selectedProvider === 'google' && googleMethod === 'gemini_api_key') ||
+    (selectedProvider === 'anthropic' && anthropicMethod === 'api_key')
+
+  const requiresCloudCredentialInput = selectedProviderUsesCloudCredentials
+  const hasCloudValue = (value?: string) => typeof value === 'string' && value.trim().length > 0
+  const hasCloudCredentialsInput =
+    hasCloudValue(cloudCredentials.projectId) ||
+    hasCloudValue(cloudCredentials.region) ||
+    hasCloudValue(cloudCredentials.profile) ||
+    hasCloudValue(cloudCredentials.baseUrl) ||
+    hasCloudValue(cloudCredentials.apiKey) ||
+    hasCloudValue(cloudCredentials.apiToken) ||
+    hasCloudValue(cloudCredentials.token) ||
+    hasCloudValue(cloudCredentials.accessKeyId) ||
+    hasCloudValue(cloudCredentials.secretAccessKey) ||
+    hasCloudValue(cloudCredentials.serviceKey)
+
+  const providerSupportsMethod = (method: ProviderAuthMethod): boolean => {
+    if (selectedProviderMethods.length === 0) return true
+    return selectedProviderMethods.includes(method)
+  }
+
+  useEffect(() => {
+    if (selectedProvider && COZEA_MANAGED_PROVIDER_IDS.has(selectedProvider.trim().toLowerCase())) {
+      setSelectedProvider(null)
+    }
+  }, [selectedProvider])
+
+  useEffect(() => {
+    if (selectedProvider === 'openai') {
+      const fallback: Array<typeof openaiMethod> = ['oauth', 'device', 'api_key']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(openaiMethod)) {
+        setOpenaiMethod(supported[0])
+      }
+    }
+
+    if (selectedProvider === 'anthropic') {
+      const fallback: Array<typeof anthropicMethod> = ['api_key', 'oauth']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(anthropicMethod)) {
+        setAnthropicMethod(supported[0])
+      }
+    }
+
+    if (selectedProvider === 'google') {
+      const fallback: Array<typeof googleMethod> = ['gemini', 'gemini_api_key', 'vertex']
+      const supported = fallback.filter((item) => providerSupportsMethod(item))
+      if (supported.length > 0 && !supported.includes(googleMethod)) {
+        setGoogleMethod(supported[0])
+      }
+    }
+  }, [anthropicMethod, googleMethod, openaiMethod, selectedProvider, selectedProviderMethods])
+
+  const pagedProviderRows = providerRows.slice(
+    providerPage * providerPageSize,
+    (providerPage + 1) * providerPageSize
+  )
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(providerRows.length / providerPageSize) - 1)
+    if (providerPage > maxPage) {
+      setProviderPage(maxPage)
+    }
+  }, [providerPage, providerRows.length])
+
+  const content = (
+    <>
+      <div
+        className={
+          surface === 'drawer'
+            ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
+            : 'space-y-6 pb-10'
+        }
+      >
         {/* Usage Overview */}
         <div className="px-4">
-          <div className="flex flex-wrap md:flex-nowrap divide-x divide-border w-full">
+          <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-border w-full">
             {/* Requests MTD */}
-            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+            <div className="sm:flex-1 px-6 py-2">
               <p className="text-sm text-muted-foreground mb-1">Requests (MTD)</p>
               <p className="text-2xl font-semibold">
                 {(aggregate?.requestCount || 0).toLocaleString()}
@@ -254,96 +669,165 @@ export function AI() {
             </div>
 
             {/* Tokens MTD */}
-            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
+            <div className="sm:flex-1 px-6 py-2">
               <p className="text-sm text-muted-foreground mb-1">Tokens (MTD)</p>
               <p className="text-2xl font-semibold">
                 {formatTokens(totalTokens)}
               </p>
             </div>
 
-            {/* Estimated Cost MTD */}
-            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
-              <p className="text-sm text-muted-foreground mb-1">Cost (MTD)</p>
+            <div className="sm:flex-1 px-6 py-2">
+              <p className="text-sm text-muted-foreground mb-1">AI Wallet (Available)</p>
               <p className="text-2xl font-semibold">
-                {totalCreditsUsed.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">cr</span>
+                {formatCurrencyFromCents(walletAvailableCents, walletCurrency)}
               </p>
-            </div>
-
-            {/* Budget Usage */}
-            <div className="w-1/2 md:w-auto md:flex-1 px-6 py-2">
-              <div className="flex items-center gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Budget</p>
-                  <p className="text-2xl font-semibold">{Math.round(usagePercent)}%</p>
-                </div>
-                {/* Circular Progress */}
-                <div className="relative h-10 w-10">
-                  <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      className="stroke-muted"
-                      strokeWidth="3"
-                    />
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      className="stroke-primary"
-                      strokeWidth="3"
-                      strokeDasharray={`${usagePercent} 100`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">{activeWalletContext}</p>
+              <p className="text-xs text-muted-foreground">
+                {walletIncludedCents > 0
+                  ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
+                  : 'No included wallet on current context'}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* API Keys */}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0 px-0">
+            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">AI Token Usage</p>
+                  <p className="text-sm text-muted-foreground">
+                    Daily token consumption across this workspace
+                  </p>
+                </div>
+                <Select
+                  value={usageTimeRange}
+                  onValueChange={(value) =>
+                    setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
+                  }
+                >
+                  <SelectTrigger className="w-[140px]" aria-label="Select time range">
+                    <SelectValue placeholder="Last 30 days" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
+                    <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                    <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <ChartContainer config={usageChartConfig} className="aspect-auto h-[200px] w-full">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="fillAiTokens" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-tokens)" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="var(--color-tokens)" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={32}
+                    tickFormatter={(value) => {
+                      const date = new Date(value)
+                      return date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    }}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) => {
+                          return new Date(value).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        }}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <Area
+                    dataKey="tokens"
+                    type="natural"
+                    fill="url(#fillAiTokens)"
+                    stroke="var(--color-tokens)"
+                  />
+                </AreaChart>
+              </ChartContainer>
+            </div>
+
+          </CardContent>
+        </Card>
+
+        {/* Provider Credentials */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5" />
-              API Keys
+              Manual Provider Connections
             </CardTitle>
             <CardDescription>
-              Connect your AI provider accounts. Keys are encrypted at rest.
+              Connect non-managed providers with your own credentials. Cozea-managed providers are handled automatically.
             </CardDescription>
+            {providersError && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">{providersError}</p>
+            )}
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-1/4">Provider</TableHead>
-                    <TableHead className="w-1/4">Status</TableHead>
-                    <TableHead className="w-1/4">Models</TableHead>
-                    <TableHead className="w-1/4 text-right"></TableHead>
+                    <TableHead className="w-1/5">Provider</TableHead>
+                    <TableHead className="w-1/5">Status</TableHead>
+                    <TableHead className="w-1/5">Models</TableHead>
+                    <TableHead className="w-1/5">Auth Options</TableHead>
+                    <TableHead className="w-1/5 text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {(Object.keys(providerInfo) as Provider[]).map((provider) => {
-                    const info = providerInfo[provider]
-                    const status = credentialsStatus?.[provider]
-                    const isConnected = status?.connected || false
-                    const isAllowed = convexOrg?.aiSettings?.allowedProviders?.includes(provider) ?? true
+                <TableBody className="[&_tr]:border-border/60 [&_tr:last-child]:border-b-0">
+                  {pagedProviderRows.map((provider) => {
+                    const status = providerStatuses[provider.id]
+                    const isConnectable = provider.localConnectSupported
+                    // Use same logic as useConnectedProviders: connected only if not expired (so AI page matches chat model list)
+                    const isConnected =
+                      isConnectable &&
+                      (status?.connected ?? false) &&
+                      (status?.expiresAt == null || status.expiresAt > now)
+                    const isPolicyManagedProvider = COZEA_MANAGED_PROVIDER_IDS.has(provider.id)
+                    const isAllowed =
+                      !isPolicyManagedProvider ||
+                      (
+                        convexOrg?.aiSettings?.allowedProviders?.includes(
+                          provider.id as 'openai' | 'anthropic' | 'google' | 'xai' | 'moonshotai'
+                        ) ?? true
+                      )
 
                     return (
-                      <TableRow key={provider}>
+                      <TableRow key={provider.id} className="last:border-b-0">
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                              <ProviderIcon provider={provider} className="h-4 w-4" />
+                              <ProviderIcon provider={provider.id} logoUrl={provider.logoUrl} className="h-4 w-4" />
                             </div>
-                            <span className="font-medium">{info.name}</span>
+                            <span className="font-medium">{provider.name}</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {isConnected ? (
                               <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                                <span className="h-2 w-2 rounded-full bg-green-500" />
+                                <CheckCircle2 className="h-3.5 w-3.5" />
                                 Connected
                               </span>
                             ) : (
@@ -352,36 +836,64 @@ export function AI() {
                                 Not connected
                               </span>
                             )}
-                            {!isAllowed && (
-                              <Badge variant="outline" className="text-amber-500 ml-2">
-                                Disabled
-                              </Badge>
-                            )}
+                          </div>
+                          {status?.lastError && (
+                            <p className="text-xs text-amber-500 mt-1">{status.lastError}</p>
+                          )}
+                          {status?.cloudKind && (
+                            <p className="text-xs text-muted-foreground mt-1">Cloud: {status.cloudKind}</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-muted-foreground">
+                            <p>{provider.modelCount.toLocaleString()} models</p>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-muted-foreground">{info.models} models</span>
+                          <div className="text-muted-foreground">
+                            <p>{formatAuthStrategies(provider.authStrategies)}</p>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {isConnected && (
+                            {!isAllowed ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => handleRemoveKey(provider)}
-                                disabled={isSaving}
+                                disabled
                               >
-                                Remove
+                                Disabled
+                              </Button>
+                            ) : isPolicyManagedProvider ? null : isConnectable ? (
+                              isConnected ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => void handleDisconnect(provider.id as ConnectableProvider)}
+                                  disabled={isSaving === provider.id}
+                                >
+                                  Disconnect
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleOpenConnectDialog(provider.id)}
+                                  disabled={isSaving === provider.id}
+                                >
+                                  Connect
+                                </Button>
+                              )
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled
+                              >
+                                Coming soon
                               </Button>
                             )}
-                            <Button
-                              variant={isConnected ? 'outline' : 'default'}
-                              size="sm"
-                              onClick={() => handleOpenKeyDialog(provider)}
-                            >
-                              {isConnected ? 'Update' : 'Connect'}
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -390,6 +902,34 @@ export function AI() {
                 </TableBody>
               </Table>
             </div>
+            {providerRows.length > providerPageSize && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm text-muted-foreground">
+                  {providerPage * providerPageSize + 1}-
+                  {Math.min((providerPage + 1) * providerPageSize, providerRows.length)} of {providerRows.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setProviderPage((p) => p - 1)}
+                    disabled={providerPage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setProviderPage((p) => p + 1)}
+                    disabled={(providerPage + 1) * providerPageSize >= providerRows.length}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -405,282 +945,414 @@ export function AI() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 py-0 overflow-hidden">
-            {recentUsage === undefined ? (
-              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-                <Table className="w-full [&_th]:px-4 [&_td]:px-4">
-                  <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[12%]">Date</TableHead>
-                      <TableHead className="w-[18%]">Provider</TableHead>
-                      <TableHead className="w-[30%]">Model</TableHead>
-                      <TableHead className="w-[13%] text-right">Requests</TableHead>
-                      <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                      <TableHead className="w-[14%] text-right">Cost</TableHead>
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[12%]">Date</TableHead>
+                    <TableHead className="w-[18%]">Provider</TableHead>
+                    <TableHead className="w-[44%]">Model</TableHead>
+                    <TableHead className="w-[14%] text-right">Requests</TableHead>
+                    <TableHead className="w-[14%] text-right">Tokens</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {(recentUsage ?? []).length > 0 ? (
+                    (recentUsage ?? [])
+                      .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
+                      .map((usage) => (
+                        <TableRow key={usage._id}>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <ProviderIcon
+                                provider={usage.provider}
+                                className="h-4 w-4"
+                              />
+                              <span className="capitalize">{usage.provider}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm">{usage.model}</span>
+                          </TableCell>
+                          <TableCell className="text-right">1</TableCell>
+                          <TableCell className="text-right">
+                            {(usage.totalTokens || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
+                        {recentUsage === undefined
+                          ? 'Loading usage history...'
+                          : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                    {Array.from({ length: usagePageSize }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><div className="h-4 w-16 bg-muted rounded animate-pulse" /></TableCell>
-                        <TableCell><div className="h-4 w-24 bg-muted rounded animate-pulse" /></TableCell>
-                        <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
-                        <TableCell className="text-right"><div className="h-4 w-8 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                        <TableCell className="text-right"><div className="h-4 w-12 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                        <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : recentUsage && recentUsage.length > 0 ? (
-              <>
-                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-                  <Table className="w-full [&_th]:px-4 [&_td]:px-4">
-                    <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[12%]">Date</TableHead>
-                        <TableHead className="w-[18%]">Provider</TableHead>
-                        <TableHead className="w-[30%]">Model</TableHead>
-                        <TableHead className="w-[13%] text-right">Requests</TableHead>
-                        <TableHead className="w-[13%] text-right">Tokens</TableHead>
-                        <TableHead className="w-[14%] text-right">Cost</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                      {recentUsage
-                        .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
-                        .map((usage) => (
-                          <TableRow key={usage._id}>
-                            <TableCell className="text-muted-foreground">
-                              {new Date(usage.timestamp).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  provider={usage.provider as Provider}
-                                  className="h-4 w-4"
-                                />
-                                <span className="capitalize">{usage.provider}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <span className="font-mono text-sm">{usage.model}</span>
-                            </TableCell>
-                            <TableCell className="text-right">1</TableCell>
-                            <TableCell className="text-right">
-                              {(usage.totalTokens || 0).toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <span className="text-muted-foreground">
-                                {(usage.creditsUsed || 0).toFixed(2)} cr
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {recentUsage && recentUsage.length > usagePageSize && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
+                <span className="text-sm text-muted-foreground">
+                  {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setUsagePage(p => p - 1)}
+                    disabled={usagePage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setUsagePage(p => p + 1)}
+                    disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
                 </div>
-                {recentUsage.length > usagePageSize && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
-                    <span className="text-sm text-muted-foreground">
-                      {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => setUsagePage(p => p - 1)}
-                        disabled={usagePage === 0}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => setUsagePage(p => p + 1)}
-                        disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="font-medium">No usage history yet</p>
-                <p className="text-sm">
-                  AI usage will appear here as your team uses AI features.
-                </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* AI Settings (Admin only) */}
-        {currentOrganization?.role === 'admin' && (
-          <div className="px-6">
-            <h2 className="text-lg font-semibold">AI Settings</h2>
-            <p className="text-sm text-muted-foreground mb-4">Configure AI features for your workspace</p>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Web Search</p>
-                  <p className="text-xs text-muted-foreground">
-                    Allow AI to search the web for information
-                  </p>
-                </div>
-                <Switch
-                  checked={convexOrg?.aiSettings?.allowWebSearch ?? false}
-                  disabled={isUpdatingSettings}
-                  onCheckedChange={async (checked) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
-                          allowWebSearch: checked,
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Provider Tools</p>
-                  <p className="text-xs text-muted-foreground">
-                    Allow AI to use provider-specific tools (code interpreter, etc.)
-                  </p>
-                </div>
-                <Switch
-                  checked={convexOrg?.aiSettings?.allowProviderTools ?? false}
-                  disabled={isUpdatingSettings}
-                  onCheckedChange={async (checked) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
-                          allowProviderTools: checked,
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Reasoning Depth</p>
-                  <p className="text-xs text-muted-foreground">
-                    Maximum reasoning depth for AI models
-                  </p>
-                </div>
-                <Select
-                  value={convexOrg?.aiSettings?.maxReasoningDepth || 'high'}
-                  disabled={isUpdatingSettings}
-                  onValueChange={async (value) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || ['anthropic', 'openai', 'google'],
-                          byokPolicy: convexOrg.aiSettings?.byokPolicy || 'required',
-                          maxReasoningDepth: value as 'low' | 'medium' | 'high',
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* API Key Dialog */}
-      <Dialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen}>
+      {/* Provider Connection Dialog */}
+      <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedProvider && credentialsStatus?.[selectedProvider]?.connected
-                ? `Update ${providerInfo[selectedProvider]?.name} API Key`
-                : `Connect ${selectedProvider ? providerInfo[selectedProvider]?.name : ''}`}
+              Connect {selectedProviderInfo?.name || 'Provider'}
             </DialogTitle>
             <DialogDescription>
-              Enter your API key. It will be encrypted and stored securely.
+              Auth is stored locally on this device using OS-backed encryption.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                placeholder={selectedProvider ? providerInfo[selectedProvider].placeholder : ''}
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-              />
-            </div>
+            {selectedProvider === 'openai' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">OpenAI method</p>
+                <Select
+                  value={openaiMethod}
+                  onValueChange={(value) => setOpenaiMethod(value as 'oauth' | 'device' | 'api_key')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerSupportsMethod('oauth') && (
+                      <SelectItem value="oauth">OAuth (ChatGPT account)</SelectItem>
+                    )}
+                    {providerSupportsMethod('device') && (
+                      <SelectItem value="device">Device code (no callback)</SelectItem>
+                    )}
+                    {providerSupportsMethod('api_key') && (
+                      <SelectItem value="api_key">API key (local)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {selectedProvider === 'anthropic' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Anthropic method</p>
+                <Select
+                  value={anthropicMethod}
+                  onValueChange={(value) => setAnthropicMethod(value as 'oauth' | 'api_key')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerSupportsMethod('api_key') && (
+                      <SelectItem value="api_key">API key (local)</SelectItem>
+                    )}
+                    {providerSupportsMethod('oauth') && (
+                      <SelectItem value="oauth">OAuth</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {selectedProvider === 'google' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Google source</p>
+                <Select
+                  value={googleMethod}
+                  onValueChange={(value) =>
+                    setGoogleMethod(value as 'vertex' | 'gemini' | 'gemini_api_key')
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerSupportsMethod('gemini') && (
+                      <SelectItem value="gemini">Gemini OAuth (Google account)</SelectItem>
+                    )}
+                    {providerSupportsMethod('gemini_api_key') && (
+                      <SelectItem value="gemini_api_key">API key (local)</SelectItem>
+                    )}
+                    {providerSupportsMethod('vertex') && (
+                      <SelectItem value="vertex">Vertex local token source</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {requiresApiKeyInput && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">API key</p>
+                <p className="text-xs text-muted-foreground pb-1">
+                  Stored only on this device with OS-backed encryption.
+                </p>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Paste API key"
+                  className="bg-secondary/60 border-border/50"
+                  value={providerApiKey}
+                  onChange={(e) => setProviderApiKey(e.target.value)}
+                />
+              </div>
+            )}
+            {requiresCloudCredentialInput && (
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium">Cloud credentials</p>
+                {selectedProvider === 'amazon-bedrock' && (
+                  <>
+                    <Input
+                      placeholder="AWS region (for example us-east-1)"
+                      value={cloudCredentials.region || ''}
+                      onChange={(event) => setCloudCredentialField('region', event.target.value)}
+                    />
+                    <Input
+                      placeholder="AWS profile (optional)"
+                      value={cloudCredentials.profile || ''}
+                      onChange={(event) => setCloudCredentialField('profile', event.target.value)}
+                    />
+                    <Input
+                      placeholder="AWS access key id (optional)"
+                      value={cloudCredentials.accessKeyId || ''}
+                      onChange={(event) => setCloudCredentialField('accessKeyId', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="AWS secret access key (optional)"
+                      value={cloudCredentials.secretAccessKey || ''}
+                      onChange={(event) => setCloudCredentialField('secretAccessKey', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="AWS bearer token (optional)"
+                      value={cloudCredentials.token || ''}
+                      onChange={(event) => setCloudCredentialField('token', event.target.value)}
+                    />
+                  </>
+                )}
+                {(selectedProvider === 'google-vertex' || selectedProvider === 'google-vertex-anthropic') && (
+                  <>
+                    <Input
+                      placeholder="Google Cloud project ID"
+                      value={cloudCredentials.projectId || ''}
+                      onChange={(event) => setCloudCredentialField('projectId', event.target.value)}
+                    />
+                    <Input
+                      placeholder="Location (optional, for example us-east5)"
+                      value={cloudCredentials.location || ''}
+                      onChange={(event) => setCloudCredentialField('location', event.target.value)}
+                    />
+                  </>
+                )}
+                {(selectedProvider === 'azure' || selectedProvider === 'azure-cognitive-services') && (
+                  <>
+                    <Input
+                      placeholder="Azure base URL"
+                      value={cloudCredentials.baseUrl || ''}
+                      onChange={(event) => setCloudCredentialField('baseUrl', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Azure API key"
+                      value={cloudCredentials.apiKey || ''}
+                      onChange={(event) => setCloudCredentialField('apiKey', event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Azure bearer token (optional)"
+                      value={cloudCredentials.token || ''}
+                      onChange={(event) => setCloudCredentialField('token', event.target.value)}
+                    />
+                    <Input
+                      placeholder="API version (optional)"
+                      value={cloudCredentials.apiVersion || ''}
+                      onChange={(event) => setCloudCredentialField('apiVersion', event.target.value)}
+                    />
+                  </>
+                )}
+                {selectedProvider === 'sap-ai-core' && (
+                  <>
+                    <Input
+                      placeholder="SAP AI Core base URL (optional)"
+                      value={cloudCredentials.baseUrl || ''}
+                      onChange={(event) => setCloudCredentialField('baseUrl', event.target.value)}
+                    />
+                    <Input
+                      placeholder="SAP AI Core service key JSON"
+                      value={cloudCredentials.serviceKey || ''}
+                      onChange={(event) => setCloudCredentialField('serviceKey', event.target.value)}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+            {(selectedProvider === 'google' || (selectedProvider === 'anthropic' && anthropicMethod === 'oauth')) && manualAuthUrl && (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">Manual code fallback</p>
+                <p className="text-xs text-muted-foreground">
+                  Automatic callback failed. Open the auth page, then paste the authorization code.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void window.electronAPI.shell.openExternal(manualAuthUrl)}
+                >
+                  Open {selectedProvider === 'google' ? 'Google' : 'Anthropic'} Auth Page
+                </Button>
+                <input
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  placeholder="Paste authorization code"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                />
+              </div>
+            )}
             {saveError && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                {saveError}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  {saveError}
+                </div>
+                {selectedProvider === 'openai' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void connectProvider('openai', 'device')}
+                    disabled={isSaving === 'openai'}
+                  >
+                    Try OpenAI Device Auth
+                  </Button>
+                )}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setKeyDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setConnectDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveKey} disabled={!keyInput || isSaving}>
-              {isSaving ? (
+            <Button
+              onClick={() => {
+                if (!selectedProvider) return
+                if (selectedProvider === 'openai') {
+                  if (openaiMethod === 'api_key') {
+                    void connectProvider('openai', 'api_key', undefined, providerApiKey.trim())
+                    return
+                  }
+                  void connectProvider('openai', openaiMethod)
+                  return
+                }
+                if (selectedProvider === 'google') {
+                  if (googleMethod === 'gemini_api_key') {
+                    void connectProvider('google', 'gemini_api_key', undefined, providerApiKey.trim())
+                    return
+                  }
+                  if (manualAuthUrl && manualCode.trim()) {
+                    void connectProvider('google', 'gemini', manualCode.trim())
+                    return
+                  }
+                  void connectProvider('google', googleMethod)
+                  return
+                }
+                if (selectedProvider === 'anthropic') {
+                  if (anthropicMethod === 'api_key') {
+                    void connectProvider('anthropic', 'api_key', undefined, providerApiKey.trim())
+                    return
+                  }
+                  if (manualAuthUrl && manualCode.trim()) {
+                    void connectProvider('anthropic', 'manual_code', manualCode.trim())
+                    return
+                  }
+                  void connectProvider('anthropic', 'oauth')
+                  return
+                }
+                if (selectedProvider === 'xai') {
+                  void connectProvider('xai', 'api_key', undefined, providerApiKey.trim())
+                  return
+                }
+                if (selectedProviderUsesCloudCredentials) {
+                  void connectProvider(selectedProvider, 'cloud_credentials', undefined, undefined, cloudCredentials)
+                  return
+                }
+                const isCustomProvider = !isBuiltinProvider(selectedProvider)
+                if (isCustomProvider) {
+                  void connectProvider(selectedProvider, 'api_key', undefined, providerApiKey.trim())
+                  return
+                }
+                void connectProvider(selectedProvider, 'oauth')
+              }}
+              disabled={
+                !selectedProvider ||
+                isSaving === selectedProvider ||
+                (requiresApiKeyInput && providerApiKey.trim().length === 0) ||
+                (requiresCloudCredentialInput && !hasCloudCredentialsInput) ||
+                (selectedProvider === 'anthropic' && anthropicMethod === 'oauth' && !!manualAuthUrl && manualCode.trim().length === 0) ||
+                (selectedProvider === 'google' &&
+                  googleMethod === 'gemini_api_key' &&
+                  providerApiKey.trim().length === 0) ||
+                (selectedProvider === 'google' &&
+                  !!manualAuthUrl &&
+                  manualCode.trim().length === 0)
+              }
+            >
+              {isSaving === selectedProvider ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  Connecting...
                 </>
               ) : (
-                'Save'
+                'Connect'
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'AI' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

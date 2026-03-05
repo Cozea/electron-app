@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { ArrowRight, Loader2 } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
 import type { WizardRepoSource } from '@/hooks/useWizardState'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
@@ -280,39 +279,20 @@ export function RepoSourceStep({
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : gridEntries.length > 0 ? (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={selectedDirectoryPath ?? 'root'}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                  >
-                    <motion.div
-                      className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-x-10 gap-y-7 px-3 py-4"
-                      initial="hidden"
-                      animate="show"
-                      variants={{
-                        hidden: { opacity: 1 },
-                        show: {
-                          opacity: 1,
-                          transition: { staggerChildren: 0.02, delayChildren: 0.02 },
-                        },
+                <div
+                  className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-x-10 gap-y-7 px-3 py-4 animate-in fade-in slide-in-from-bottom-2 duration-200"
+                >
+                  {gridEntries.map((entry) => (
+                    <FileGridItem
+                      key={`${entry.kind ?? 'entry'}:${entry.path}`}
+                      entry={entry}
+                      onOpenDirectory={(path) => {
+                        if (!entry.isDirectory) return
+                        setSelectedDirectoryPath(path)
                       }}
-                    >
-                      {gridEntries.map((entry) => (
-                        <FileGridItem
-                          key={`${entry.kind ?? 'entry'}:${entry.path}`}
-                          entry={entry}
-                          onOpenDirectory={(path) => {
-                            if (!entry.isDirectory) return
-                            setSelectedDirectoryPath(path)
-                          }}
-                        />
-                      ))}
-                    </motion.div>
-                  </motion.div>
-                </AnimatePresence>
+                    />
+                  ))}
+                </div>
               ) : (
                 <div className="py-10 text-center text-sm text-muted-foreground">
                   No files
@@ -411,7 +391,7 @@ function FileGridItem({
   }, [entry.isDirectory, entry.kind, entry.name, entry.path, isInView, thumbnailOk, thumbnailRequested, wantsThumbnail])
 
   return (
-    <motion.button
+    <button
       ref={buttonRef}
       type="button"
       className={cn(
@@ -419,12 +399,6 @@ function FileGridItem({
         "bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
         "flex flex-col items-center gap-2"
       )}
-      variants={{
-        hidden: { opacity: 0, y: 6, scale: 0.985 },
-        show: { opacity: 1, y: 0, scale: 1 },
-      }}
-      transition={{ duration: 0.16, ease: 'easeOut' }}
-      whileTap={{ scale: 0.97 }}
       onClick={() => {
         if (entry.isDirectory) onOpenDirectory(entry.path)
       }}
@@ -484,6 +458,6 @@ function FileGridItem({
           {entry.kind === 'up' ? 'Back' : entry.name}
         </p>
       </div>
-    </motion.button>
+    </button>
   )
 }

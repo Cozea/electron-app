@@ -2,7 +2,7 @@ import { CheckCircle2, Circle, Loader2, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
-// Matches the build_tasks tool schema (following TodoWrite pattern)
+// Matches the todowrite tool schema (following TodoWrite pattern)
 export interface BuildTask {
   content: string      // Imperative form: "Create project structure"
   activeForm: string   // Present continuous: "Creating project structure"

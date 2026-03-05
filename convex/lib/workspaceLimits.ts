@@ -1,5 +1,7 @@
-import type { QueryCtx } from "../_generated/server"
+import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
+
+type StorageCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
 
 // ============================================
 // PROJECT LIMITS
@@ -12,17 +14,25 @@ import type { Id } from "../_generated/dataModel"
 export function getPlanProjectLimit(plan: string): number {
   switch (plan) {
     case "free":
-      return 5
+      // Free is local-first and intentionally constrained on shared infra.
+      return 1
     case "pro":
-      return 10
-    case "max":
-      return 20
-    case "team":
-      return 20
-    case "enterprise":
-      return -1 // Unlimited
-    default:
+      // Pro
       return 5
+    case "max":
+      // Max
+      return 20
+    case "startup":
+      // Startup centralized billing - limits are not enforced yet.
+      return -1
+    case "team":
+      // Legacy alias for Startup.
+      return -1
+    case "enterprise":
+      // Enterprise
+      return -1
+    default:
+      return 1
   }
 }
 
@@ -39,7 +49,7 @@ export interface ProjectLimitStatus {
  * Check if an organization can create more projects based on their subscription
  */
 export async function checkProjectLimit(
-  ctx: QueryCtx,
+  ctx: StorageCtx,
   orgId: Id<"organizations">
 ): Promise<ProjectLimitStatus> {
   const org = await ctx.db.get(orgId)
@@ -103,15 +113,23 @@ export async function checkProjectLimit(
 export function getPlanStorageLimit(plan: string): number {
   switch (plan) {
     case "free":
+      // Free keeps cloud infra optional/minimal.
       return 1 * 1024 * 1024 * 1024 // 1 GB
     case "pro":
-      return 10 * 1024 * 1024 * 1024 // 10 GB
+      // Pro
+      return 5 * 1024 * 1024 * 1024 // 5 GB
     case "max":
-      return 20 * 1024 * 1024 * 1024 // 20 GB
-    case "team":
+      // Max
       return 30 * 1024 * 1024 * 1024 // 30 GB
+    case "startup":
+      // Startup centralized billing - limits are not enforced yet.
+      return -1
+    case "team":
+      // Legacy alias for Startup.
+      return -1
     case "enterprise":
-      return -1 // Unlimited
+      // Enterprise
+      return -1
     default:
       return 1 * 1024 * 1024 * 1024 // 1 GB
   }
@@ -126,11 +144,13 @@ export function getPlanStorageLimitGB(plan: string): number {
     case "free":
       return 1
     case "pro":
-      return 10
+      return 5
     case "max":
-      return 20
-    case "team":
       return 30
+    case "startup":
+      return -1
+    case "team":
+      return -1
     case "enterprise":
       return -1 // Unlimited
     default:
@@ -139,12 +159,12 @@ export function getPlanStorageLimitGB(plan: string): number {
 }
 
 export interface StorageBreakdown {
-  sourceAndConfig: number // projectFiles (active)
+  sourceAndConfig: number // replica bundle + replica LFS (fallback: projectFiles active)
   collaborationData: number // yjsUpdates
   aiHistory: number // aiConversations
   buildCache: number // builderRuns logs
   snapshots: number // yjsDocuments
-  gitHistory: number // projectFiles (superseded)
+  gitHistory: number // legacy projectFiles (superseded)
   databaseBackups: number // reserved
   assets: number // projectAssets
 }
@@ -181,7 +201,7 @@ function emptyBreakdown(): StorageBreakdown {
  * This is expensive - use cached values from org.storageUsage when possible
  */
 export async function estimateStorageBreakdown(
-  ctx: QueryCtx,
+  ctx: StorageCtx,
   orgId: Id<"organizations">
 ): Promise<StorageBreakdown> {
   const breakdown = emptyBreakdown()
@@ -195,23 +215,40 @@ export async function estimateStorageBreakdown(
   const projectIds = projects.map((p) => p._id)
 
   for (const projectId of projectIds) {
-    // Source & Config: sum of projectFiles.sizeBytes (active)
-    const activeFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "active")
-      )
-      .collect()
-    breakdown.sourceAndConfig += activeFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+    const replica = await ctx.db
+      .query("projectReplicaGit")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .first()
 
-    // Git History: sum of projectFiles.sizeBytes (superseded)
-    const supersededFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "superseded")
-      )
+    const lfsObjects = await ctx.db
+      .query("projectReplicaLfsObjects")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect()
-    breakdown.gitHistory += supersededFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+
+    const lfsBytes = lfsObjects.reduce((sum, entry) => sum + Math.max(0, entry.size), 0)
+    const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+    const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
+
+    if (useReplicaAccounting) {
+      breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
+    } else {
+      // Fallback for projects that have not written replica bundle size yet.
+      const activeFiles = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project_and_status", (q) =>
+          q.eq("projectId", projectId).eq("status", "active")
+        )
+        .collect()
+      breakdown.sourceAndConfig += activeFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+
+      const supersededFiles = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project_and_status", (q) =>
+          q.eq("projectId", projectId).eq("status", "superseded")
+        )
+        .collect()
+      breakdown.gitHistory += supersededFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+    }
 
     // Assets: sum of projectAssets.size
     const assets = await ctx.db
@@ -259,7 +296,7 @@ export async function estimateStorageBreakdown(
  * The cron job will populate the cache periodically
  */
 export async function checkStorageUsage(
-  ctx: QueryCtx,
+  ctx: StorageCtx,
   orgId: Id<"organizations">
 ): Promise<StorageUsageStatus> {
   const org = await ctx.db.get(orgId)
@@ -314,6 +351,65 @@ export async function checkStorageUsage(
       : usagePercent >= 90
         ? `Storage almost full (${usagePercent.toFixed(0)}%). Consider upgrading.`
         : undefined,
+  }
+}
+
+export interface StorageCapacityResult {
+  allowed: boolean
+  projectedBytes: number
+  limitBytes: number
+  isUnlimited: boolean
+  message?: string
+}
+
+/**
+ * Check whether an organization can consume additional storage bytes.
+ * Uses cached org.storageUsage as the current source of truth for fast-path enforcement.
+ */
+export async function canConsumeStorage(
+  ctx: StorageCtx,
+  orgId: Id<"organizations">,
+  additionalBytes: number
+): Promise<StorageCapacityResult> {
+  const storageStatus = await checkStorageUsage(ctx, orgId)
+  const normalizedAdditional = Math.max(0, additionalBytes)
+
+  if (!storageStatus.allowed && !storageStatus.isUnlimited) {
+    return {
+      allowed: false,
+      projectedBytes: storageStatus.currentBytes,
+      limitBytes: storageStatus.limitBytes,
+      isUnlimited: false,
+      message: storageStatus.message || "Storage limit reached.",
+    }
+  }
+
+  if (storageStatus.isUnlimited) {
+    return {
+      allowed: true,
+      projectedBytes: storageStatus.currentBytes + normalizedAdditional,
+      limitBytes: -1,
+      isUnlimited: true,
+    }
+  }
+
+  const projectedBytes = storageStatus.currentBytes + normalizedAdditional
+  if (projectedBytes > storageStatus.limitBytes) {
+    const overflow = projectedBytes - storageStatus.limitBytes
+    return {
+      allowed: false,
+      projectedBytes,
+      limitBytes: storageStatus.limitBytes,
+      isUnlimited: false,
+      message: `Storage limit would be exceeded by ${formatBytes(overflow)}.`,
+    }
+  }
+
+  return {
+    allowed: true,
+    projectedBytes,
+    limitBytes: storageStatus.limitBytes,
+    isUnlimited: false,
   }
 }
 

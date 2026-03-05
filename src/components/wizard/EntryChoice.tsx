@@ -21,7 +21,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
-import { FolderGit2 } from 'lucide-react'
+import { Brain, FolderGit2 } from 'lucide-react'
 import {
   IconArrowUp,
   IconSquare,
@@ -29,20 +29,31 @@ import {
   IconPaperclip,
   IconChevronDown,
   IconCheck,
-  IconUser,
-  IconRobot,
-  IconBolt,
-  IconCircle,
-  IconProgress,
-  IconCircleDashed,
-  IconBrain,
 } from '@tabler/icons-react'
 import type { CreationPath } from '@/hooks/useWizardState'
+import { useAuth } from '@/contexts/AuthContext'
 import {
+  getProviderDisplayName,
+  isConnectedProvider,
+  useConnectedProviders,
+  type ConnectedProvider,
+} from '@/hooks/useConnectedProviders'
+import {
+  loadGlobalModelSettings,
   loadModelSettings,
   saveModelSettings,
+  type StoredModelSettings,
+  updateGlobalModelSettings,
+  writeStoredModelSettings,
 } from '@/lib/modelSettingsStorage'
 import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
+import {
+  VARIANT_DEFINITIONS,
+  getSupportedVariantsForModel,
+  normalizeVariantForModel,
+  type RuntimeModelCapabilities,
+  type RuntimeProvider,
+} from '@/lib/ai/runtimeProfiles'
 import {
   Context,
   ContextTrigger,
@@ -51,13 +62,17 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
-import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import type { ModelOption } from '@/lib/ai/modelOptions'
+import {
+  getModelCatalog,
+  type ModelApiModel,
+} from '@/lib/ai/modelCatalogClient'
 
 export interface PromptSettings {
   model: string
-  agentType: 'agent' | 'assistant'
-  reasoningDepth: 'low' | 'medium' | 'high'
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  agentId: 'plan'
+  surface: 'wizard'
+  variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
 interface EntryChoiceProps {
@@ -77,12 +92,6 @@ const GUIDED_OPTIONS = [
   },
 ]
 
-// Model catalog per CrossCode Pricing Spec v3
-// Tiers: Fast (1/2 credits), Standard (5/10 credits), Powerful (25/50 credits)
-// Context window sizes are managed in ContextDisplay.tsx via getContextWindowSize()
-
-const defaultModels = DEFAULT_MODELS
-
 export function EntryChoice({
   onSelect,
   promptValue = '',
@@ -90,6 +99,9 @@ export function EntryChoice({
   onPromptSubmit,
   isSubmitting
 }: EntryChoiceProps) {
+  const { accessToken, currentOrganization } = useAuth()
+  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
+  const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Defensive: ensure promptValue is always a string before calling trim
@@ -98,46 +110,61 @@ export function EntryChoice({
   const canSubmitPrompt = trimmedLength > 0
 
   // AI input state
-  const [model, setModel] = useState('gemini-3-pro')
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
+  const [model, setModel] = useState(initialGlobalModelSettings.model ?? '')
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState('Agent')
-  const [selectedPerformance, setSelectedPerformance] = useState('High')
-  const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high'>('medium')
-  const [modelSettings, setModelSettings] = useState<Record<string, { selectedAgent?: 'Agent' | 'Assistant'; selectedPerformance?: 'High' | 'Medium' | 'Low'; thinkingEffort?: 'low' | 'medium' | 'high' }>>(
+  const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId)
+  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
   )
 
-  const selectedModelData = defaultModels.find((m) => m.id === model)
+  const providerScopedModels = useMemo(() => {
+    const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
+    if (!providerAuthAvailable || !providerStatusLoaded) return supportedModels
+    if (connectedProviders.length === 0) return []
+    const connectedSet = new Set(connectedProviders)
+    return supportedModels.filter((m) => connectedSet.has(m.chefSlug as ConnectedProvider))
+  }, [availableModels, connectedProviders, providerAuthAvailable, providerStatusLoaded])
+
+  const selectedModelData = providerScopedModels.find((m) => m.id === model)
   const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
   const activeProvider = selectedModelData?.chefSlug
-  const visibleChefs =
-    allowCrossProviderSwitching || !selectedModelData
-      ? ['Anthropic', 'OpenAI', 'Google']
-      : [selectedModelData.chef]
   const visibleModels =
     allowCrossProviderSwitching || !activeProvider
-      ? defaultModels
-      : defaultModels.filter((m) => m.chefSlug === activeProvider)
-  const visibleModelsByChef = useMemo(() => {
-    const grouped = new Map<string, ModelOption[]>()
-    for (const candidate of visibleModels) {
-      const bucket = grouped.get(candidate.chef)
-      if (bucket) {
-        bucket.push(candidate)
-      } else {
-        grouped.set(candidate.chef, [candidate])
-      }
-    }
-    return grouped
-  }, [visibleModels])
-  const isOpusModel = model.includes('opus')
-  const defaultModelSettings = useMemo(
-    () => ({
-      selectedAgent: 'Agent' as const,
-      selectedPerformance: 'High' as const,
-      thinkingEffort: 'medium' as const,
-    }),
-    []
+      ? providerScopedModels
+      : providerScopedModels.filter((m) => m.chefSlug === activeProvider)
+  const visibleChefs = useMemo(
+    () => Array.from(new Set(visibleModels.map((m) => m.chef))),
+    [visibleModels]
+  )
+  const hasSelectableModel = Boolean(selectedModelData)
+  const canSubmitWithModel = canSubmitPrompt && hasSelectableModel
+  const selectedModelCapabilities = useMemo(
+    () => modelCapabilities[model] ?? null,
+    [model, modelCapabilities]
+  )
+  const supportsAttachments =
+    !selectedModelCapabilities ||
+    selectedModelCapabilities.supportsImageInput ||
+    selectedModelCapabilities.supportsPdfInput
+  const supportedVariants = useMemo(
+    () =>
+      getSupportedVariantsForModel({
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelData?.chefSlug, selectedModelCapabilities]
+  )
+  const normalizedVariantId = useMemo(
+    () =>
+      normalizeVariantForModel(variantId, {
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelCapabilities, selectedModelData?.chefSlug, variantId]
   )
 
   const modelSettingsRef = useRef(modelSettings)
@@ -146,43 +173,92 @@ export function EntryChoice({
   }, [modelSettings])
 
   useEffect(() => {
-    const stored = modelSettingsRef.current[model]
-    const next = stored ?? defaultModelSettings
-    setSelectedAgent(next.selectedAgent ?? 'Agent')
-    setSelectedPerformance(next.selectedPerformance ?? 'High')
-    setThinkingEffort(next.thinkingEffort ?? 'medium')
-  }, [model, defaultModelSettings])
-
-  useEffect(() => {
-    const nextSettings: { selectedAgent: 'Agent' | 'Assistant'; selectedPerformance: 'High' | 'Medium' | 'Low'; thinkingEffort: 'low' | 'medium' | 'high' } = {
-      selectedAgent: selectedAgent as 'Agent' | 'Assistant',
-      selectedPerformance: selectedPerformance as 'High' | 'Medium' | 'Low',
-      thinkingEffort: thinkingEffort as 'low' | 'medium' | 'high',
+    if (!model) return
+    const nextSettings: StoredModelSettings = {
+      agentId: 'plan',
+      surface: 'wizard',
     }
     setModelSettings((prev) => {
-      const updated = { ...prev, [model]: nextSettings }
+      const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
       saveModelSettings(updated)
       return updated
     })
-  }, [model, selectedAgent, selectedPerformance, thinkingEffort])
+  }, [model])
 
-  const performanceToDisplay: Record<string, string> = {
-    High: 'x3',
-    Medium: 'x2',
-    Low: 'x1',
-  }
+  useEffect(() => {
+    if (!model) return
+    updateGlobalModelSettings({
+      model,
+      variantId: variantId ?? normalizedVariantId,
+    })
+  }, [model, variantId, normalizedVariantId])
+
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
+
+    let cancelled = false
+
+    getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
+    })
+      .then((data) => {
+        if (cancelled) return
+        if (!data?.models) return
+        const nextCapabilities: Record<string, RuntimeModelCapabilities> = {}
+        const mapped = data.models
+          .filter((m): m is ModelApiModel & { provider: ConnectedProvider } => isConnectedProvider(m.provider))
+          .map((m) => {
+            if (m.capabilities) {
+              nextCapabilities[m.id] = m.capabilities
+            }
+            return {
+              id: m.id,
+              name: m.displayName,
+              chef: getProviderDisplayName(m.provider),
+              chefSlug: m.provider,
+              tier: m.tier,
+              providers: [m.provider],
+            }
+          })
+        setAvailableModels(mapped)
+        setModelCapabilities(nextCapabilities)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.warn('Failed to fetch models:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    accessToken,
+    connectedProviders,
+    currentOrganization?.organizationId,
+    providerAuthAvailable,
+    providerStatusLoaded,
+  ])
+
+  useEffect(() => {
+    if (providerScopedModels.length === 0) return
+    if (!providerScopedModels.some((item) => item.id === model)) {
+      setModel(providerScopedModels[0].id)
+    }
+  }, [providerScopedModels, model])
 
   const getSettings = (): PromptSettings => ({
     model,
-    agentType: selectedAgent.toLowerCase() as 'agent' | 'assistant',
-    reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    thinkingEffort: isOpusModel ? thinkingEffort : undefined,
+    agentId: 'plan',
+    surface: 'wizard',
+    variantId: normalizedVariantId,
   })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (canSubmitPrompt && !isSubmitting) {
+      if (canSubmitWithModel && !isSubmitting) {
         onPromptSubmit(getSettings(), safePromptValue.trim())
       }
     }
@@ -238,6 +314,7 @@ export function EntryChoice({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                    disabled={!supportsAttachments}
                   >
                     <IconPlus className="size-3" />
                   </Button>
@@ -249,78 +326,83 @@ export function EntryChoice({
                   <DropdownMenuGroup className="space-y-1">
                     <DropdownMenuItem
                       className="rounded-[calc(1rem-6px)] text-xs"
+                      disabled={!supportsAttachments}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <IconPaperclip size={16} className="opacity-60" />
-                      Attach Files
+                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <ModelSelector
-                onOpenChange={setModelSelectorOpen}
-                open={modelSelectorOpen}
-              >
-                <ModelSelectorTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                  >
-                    {selectedModelData?.chefSlug && (
-                      <ModelSelectorLogo provider={selectedModelData.chefSlug} />
-                    )}
-                    {selectedModelData?.name && (
-                      <ModelSelectorName className="ml-1">
-                        {selectedModelData.name}
-                      </ModelSelectorName>
-                    )}
-                    <IconChevronDown className="size-3 ml-1" />
-                  </Button>
-                </ModelSelectorTrigger>
-                <ModelSelectorContent>
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {visibleChefs.map((chef) => (
-                      <ModelSelectorGroup heading={chef} key={chef}>
-                        {(visibleModelsByChef.get(chef) ?? [])
-                          .map((m) => (
-                            <ModelSelectorItem
-                              key={m.id}
-                              onSelect={() => {
-                                setModel(m.id)
-                                setModelSelectorOpen(false)
-                              }}
-                              value={m.id}
-                            >
-                              <ModelSelectorLogo provider={m.chefSlug} />
-                              <ModelSelectorName>{m.name}</ModelSelectorName>
-                              <ModelSelectorLogoGroup>
-                                {m.providers.map((provider) => (
-                                  <ModelSelectorLogo key={provider} provider={provider} />
-                                ))}
-                              </ModelSelectorLogoGroup>
-                              {model === m.id ? (
-                                <IconCheck className="ml-auto size-4" />
-                              ) : (
-                                <div className="ml-auto size-4" />
-                              )}
-                            </ModelSelectorItem>
-                          ))}
-                      </ModelSelectorGroup>
-                    ))}
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
+              {hasSelectableModel && (
+                <ModelSelector
+                  onOpenChange={setModelSelectorOpen}
+                  open={modelSelectorOpen}
+                >
+                  <ModelSelectorTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                    >
+                      {selectedModelData?.chefSlug && (
+                        <ModelSelectorLogo provider={selectedModelData.chefSlug} />
+                      )}
+                      {selectedModelData?.name && (
+                        <ModelSelectorName className="ml-1">
+                          {selectedModelData.name}
+                        </ModelSelectorName>
+                      )}
+                      <IconChevronDown className="size-3 ml-1" />
+                    </Button>
+                  </ModelSelectorTrigger>
+                  <ModelSelectorContent>
+                    <ModelSelectorInput placeholder="Search models..." />
+                    <ModelSelectorList>
+                      <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                      {visibleChefs.map((chef) => (
+                        <ModelSelectorGroup heading={chef} key={chef}>
+                          {visibleModels
+                            .filter((m) => m.chef === chef)
+                            .map((m) => (
+                              <ModelSelectorItem
+                                key={m.id}
+                                onSelect={() => {
+                                  setModel(m.id)
+                                  setModelSelectorOpen(false)
+                                }}
+                                value={m.id}
+                              >
+                                <ModelSelectorLogo provider={m.chefSlug} />
+                                <ModelSelectorName>{m.name}</ModelSelectorName>
+                                <ModelSelectorLogoGroup>
+                                  {m.providers.map((provider) => (
+                                    <ModelSelectorLogo key={provider} provider={provider} />
+                                  ))}
+                                </ModelSelectorLogoGroup>
+                                {model === m.id ? (
+                                  <IconCheck className="ml-auto size-4" />
+                                ) : (
+                                  <div className="ml-auto size-4" />
+                                )}
+                              </ModelSelectorItem>
+                            ))}
+                        </ModelSelectorGroup>
+                      ))}
+                    </ModelSelectorList>
+                  </ModelSelectorContent>
+                </ModelSelector>
+              )}
             </div>
 
             <Button
               type="button"
-              disabled={!canSubmitPrompt || isSubmitting}
+              disabled={!canSubmitWithModel || isSubmitting}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
+                if (!canSubmitWithModel) return
                 console.log('[EntryChoice] Submitting with model:', model)
                 onPromptSubmit(getSettings(), safePromptValue.trim())
               }}
@@ -333,143 +415,83 @@ export function EntryChoice({
             </Button>
           </div>
         </div>
+        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
+          <p className="text-xs text-amber-600">
+            Connect an AI provider in Workspace AI settings to select a model.
+          </p>
+        )}
 
         {/* Options row below input */}
         <div className="flex items-center gap-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+          {hasSelectableModel && (
+            <>
+              <div
+                className={`grid overflow-hidden transition-all duration-200 ease-out ${
+                  supportedVariants.length > 1
+                    ? 'grid-cols-[1fr] opacity-100 translate-y-0'
+                    : 'grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none'
+                }`}
               >
-                <IconUser className="size-3" />
-                <span>{selectedAgent}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
-            >
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedAgent('Agent')}
-                >
-                  <IconUser size={16} className="opacity-60" />
-                  Agent
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedAgent('Assistant')}
-                >
-                  <IconRobot size={16} className="opacity-60" />
-                  Assistant
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <div className="min-w-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                      >
+                        <Brain className="size-3" />
+                        <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                        <IconChevronDown className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
+                    >
+                      <DropdownMenuGroup className="space-y-1">
+                        {supportedVariants.map((variant) => (
+                          <DropdownMenuItem
+                            key={variant}
+                            className="rounded-[calc(1rem-6px)] text-xs"
+                            onClick={() => setVariantId(variant)}
+                          >
+                            <Brain size={16} className="opacity-60" />
+                            {VARIANT_DEFINITIONS[variant]?.label ?? variant}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+              <div
+                className={`grid overflow-hidden transition-all duration-200 ease-out ${
+                  supportedVariants.length <= 1
+                    ? 'grid-cols-[1fr] opacity-100 translate-y-0'
+                    : 'grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none'
+                }`}
+              >
+                <div className="min-w-0 h-6 px-2 flex items-center rounded-full border border-transparent text-muted-foreground text-xs">
+                  <Brain className="size-3 mr-1" />
+                  <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                </div>
+              </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+              {/* Context window usage */}
+              <Context
+                maxTokens={getContextWindowSize(model)}
+                usedTokens={0}
+                modelId={model}
               >
-                <IconBolt className="size-3" />
-                <span>{performanceToDisplay[selectedPerformance]}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
-            >
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance('High')}
-                >
-                  <IconCircle size={16} className="opacity-60" />
-                  High
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance('Medium')}
-                >
-                  <IconProgress size={16} className="opacity-60" />
-                  Medium
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-[calc(1rem-6px)] text-xs"
-                  onClick={() => setSelectedPerformance('Low')}
-                >
-                  <IconCircleDashed size={16} className="opacity-60" />
-                  Low
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Thinking Effort - only for Opus models */}
-          {isOpusModel && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                >
-                  <IconBrain className="size-3" />
-                  <span>{thinkingEffort.charAt(0).toUpperCase() + thinkingEffort.slice(1)}</span>
-                  <IconChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
-              >
-                <DropdownMenuGroup className="space-y-1">
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setThinkingEffort('high')}
-                  >
-                    <IconCircle size={16} className="opacity-60" />
-                    High (deeper reasoning)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setThinkingEffort('medium')}
-                  >
-                    <IconProgress size={16} className="opacity-60" />
-                    Medium (balanced)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setThinkingEffort('low')}
-                  >
-                    <IconCircleDashed size={16} className="opacity-60" />
-                    Low (faster)
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <ContextTrigger className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs" />
+                <ContextContent>
+                  <ContextContentHeader />
+                  <ContextContentFooter />
+                </ContextContent>
+              </Context>
+            </>
           )}
-
-          {/* Context window usage */}
-          <Context
-            maxTokens={getContextWindowSize(model)}
-            usedTokens={0}
-            modelId={model}
-          >
-            <ContextTrigger className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs" />
-            <ContextContent>
-              <ContextContentHeader />
-              <ContextContentFooter />
-            </ContextContent>
-          </Context>
 
           <div className="flex-1" />
 

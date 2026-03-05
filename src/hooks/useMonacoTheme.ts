@@ -10,7 +10,7 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
 function isDarkTheme(theme: ResolvedTheme): boolean {
-  return theme === 'dark' || theme === 'navy' || theme === 'wine' || theme === 'forest'
+  return theme === 'dark' || theme === 'navy' || theme === 'wine' || theme === 'forest' || theme === 'clay'
 }
 
 function rgbToHex(rgb: string, fallback: string): string {

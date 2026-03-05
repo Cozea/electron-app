@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useChat } from '@ai-sdk/react'
+import { useCozeaChat } from '@/hooks/useCozeaChat'
 import { useMutation } from 'convex/react'
-import {
-  DefaultChatTransport,
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
-} from 'ai'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
@@ -25,27 +20,29 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import {
+  buildEncodedProviderAuthHeader,
+  inferProviderFromModelId,
+  isManagedProvider,
+} from '@/lib/ai/providerAuth'
+import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
+import { getModelCatalog } from '@/lib/ai/modelCatalogClient'
+import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
-  collectToolDiagnosticsSummary,
+  collectMutatingToolDiagnosticsSummary,
   summarizeLintDiagnostics,
   type PipelineDiagnostic,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
+import { isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
+import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
 
-// Builder-specific tools that should always be executed locally
-// These are defined inline on the server but not in Convex's tools table
-const BUILDER_LOCAL_TOOLS = new Set([
-  'build_tasks',
-  'mark_complete',
-  'create_file',
-  'read_file',
-  'list_dir',
-  'run_in_terminal',
-  'get_terminal_output',
-  'replace_string_in_file',
-  'multi_replace_string_in_file',
+// Fallback for workflow tools if metadata is briefly stale during startup.
+const BUILDER_WORKFLOW_FALLBACK_TOOLS = new Set([
+  'todowrite',
+  'build_complete',
 ])
 
 // Project type from Convex
@@ -53,6 +50,17 @@ interface Project {
   _id: Id<'projects'>
   name: string
   slug: string
+  targetPlatform?: string
+  buildContract?: {
+    previewMode?: string
+    frameworkClass?: string
+    toolchain?: Record<string, unknown>
+    commands?: Record<string, unknown>
+    constraints?: Record<string, unknown>
+    fallbackPolicy?: Record<string, unknown>
+    successCriteria?: Record<string, unknown>
+    telemetryHints?: Record<string, unknown>
+  }
   template?: string
   stack?: {
     backend?: string
@@ -81,9 +89,12 @@ interface Project {
   }
   promptSettings?: {
     model: string
-    agentType: 'agent' | 'assistant'
-    reasoningDepth: 'low' | 'medium' | 'high'
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+    surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+    variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    toolsEnabled?: boolean
+    webSearchEnabled?: boolean
+    providerOptions?: Record<string, unknown>
   }
 }
 
@@ -95,7 +106,7 @@ interface ToolMeta extends MessageToolMeta {
   requiresApproval: boolean
   riskLevel: 'safe' | 'moderate' | 'dangerous'
   executionEnvironment: 'local' | 'server' | 'provider'
-  provider?: 'anthropic' | 'openai' | 'google'
+  provider?: 'openai' | 'google'
   toolType?: 'function' | 'provider' | 'dynamic'
   providerToolId?: string
   providerToolArgs?: Record<string, unknown>
@@ -140,8 +151,104 @@ interface BuilderConversationProps {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+function normalizeBuildTaskStatus(value: unknown): BuildTask['status'] | null {
+  if (value === 'pending' || value === 'in_progress' || value === 'completed') {
+    return value
+  }
+  if (value === 'in-progress' || value === 'inprogress' || value === 'active') {
+    return 'in_progress'
+  }
+  if (value === 'complete' || value === 'done') {
+    return 'completed'
+  }
+  return null
+}
+
+function normalizeBuildTaskList(value: unknown): BuildTask[] | null {
+  if (!Array.isArray(value)) return null
+
+  const tasks: BuildTask[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+
+    const content = typeof entry.content === 'string' ? entry.content.trim() : ''
+    const status = normalizeBuildTaskStatus(entry.status)
+    if (!content || !status) continue
+
+    const activeForm =
+      typeof entry.activeForm === 'string' && entry.activeForm.trim().length > 0
+        ? entry.activeForm.trim()
+        : content
+
+    const files = Array.isArray(entry.files)
+      ? entry.files
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim())
+      : undefined
+
+    tasks.push({
+      content,
+      activeForm,
+      status,
+      ...(files && files.length > 0 ? { files } : {}),
+    })
+  }
+
+  if (tasks.length === 0 && value.length > 0) {
+    return null
+  }
+
+  return tasks
+}
+
+function parseTodowriteTasksPayload(input: Record<string, unknown>): BuildTask[] | null {
+  const fromTasks = normalizeBuildTaskList(input.tasks)
+  if (fromTasks !== null) return fromTasks
+
+  const fromTodos = normalizeBuildTaskList(input.todos)
+  if (fromTodos !== null) return fromTodos
+
+  if (typeof input.tasks_json === 'string') {
+    const parsed = parseJsonArrayLoose(input.tasks_json)
+    const fromTasksJson = normalizeBuildTaskList(parsed)
+    if (fromTasksJson !== null) return fromTasksJson
+  }
+
+  return null
+}
+
+function parseTodowriteTasksAny(value: unknown): BuildTask[] | null {
+  if (!isRecord(value)) return null
+  return parseTodowriteTasksPayload(value)
+}
+
 const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
 const TERMINAL_TRUNCATION_MESSAGE = '\n...output truncated...\n'
+const NATIVE_BUILD_COMMAND_PATTERNS: RegExp[] = [
+  /\belectron\b/i,
+  /\belectron-builder\b/i,
+  /\breact-native\b/i,
+  /\bexpo\b/i,
+  /\bxcodebuild\b/i,
+  /\bfastlane\b/i,
+  /\bandroid\b/i,
+  /\bgradle\b/i,
+  /\bflutter\b/i,
+  /\bswift\b/i,
+]
+
+function detectUnsupportedNativeBuildCommand(command: string): string | null {
+  const normalized = command.trim()
+  if (!normalized) return null
+
+  for (const pattern of NATIVE_BUILD_COMMAND_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return 'Current builder supports web projects only. Native desktop/mobile commands are not supported in this release.'
+    }
+  }
+
+  return null
+}
 
 const truncateTerminalOutput = (output: string) => {
   if (output.length <= MAX_TERMINAL_OUTPUT_LENGTH) return output
@@ -152,42 +259,7 @@ const truncateTerminalOutput = (output: string) => {
 const appendTerminalOutput = (current: string, chunk: string) =>
   truncateTerminalOutput(current + chunk)
 
-type TerminalExecutionStatus = 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled'
-
-function getTerminalExecutionState(args: {
-  running: boolean
-  exitCode: number | null
-  timedOut: boolean
-  cancelled: boolean
-}): { success: boolean; status: TerminalExecutionStatus; error?: string } {
-  if (args.running) {
-    return { success: true, status: 'running' }
-  }
-  if (args.cancelled) {
-    return {
-      success: false,
-      status: 'cancelled',
-      error: 'Command was cancelled by user.',
-    }
-  }
-  if (args.timedOut) {
-    return {
-      success: false,
-      status: 'timed_out',
-      error: 'Command timed out before completion.',
-    }
-  }
-  if (typeof args.exitCode === 'number' && args.exitCode !== 0) {
-    return {
-      success: false,
-      status: 'failed',
-      error: `Command exited with code ${args.exitCode}.`,
-    }
-  }
-  return { success: true, status: 'completed' }
-}
-
-type ChatHookResult = ReturnType<typeof useChat>
+type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 export function BuilderConversation({
   project,
@@ -207,11 +279,10 @@ export function BuilderConversation({
 
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [toolPolicy, setToolPolicy] = useState<{
-    allowProviderTools: boolean
-    allowWebSearch: boolean
-    maxReasoningDepth: 'low' | 'medium' | 'high'
-  } | null>(null)
+  const [toolsLoaded, setToolsLoaded] = useState(false)
+  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
+  const [providerAuthResolved, setProviderAuthResolved] = useState(false)
+  const [providerAuthRevision, setProviderAuthRevision] = useState(0)
   const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
@@ -226,7 +297,6 @@ export function BuilderConversation({
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
-  const userStoppedRef = useRef(false)
   const lastStopRequestCountRef = useRef(stopRequestCount)
 
   useEffect(() => {
@@ -245,36 +315,176 @@ export function BuilderConversation({
     terminalSessionsRef.current = terminalSessions
   }, [terminalSessions])
 
-  // Auto-continuation refs (defined early for use in error handling)
-  const latestTasksRef = useRef<BuildTask[]>([])
-  const continuationSentRef = useRef(false)
-  const continuationCountRef = useRef(0)
-  const MAX_CONTINUATIONS = 50 // Safety limit to prevent infinite loops
+  useEffect(() => {
+    if (!window.electronAPI?.providerAuth?.onStatusChanged) return
+    const unsubscribe = window.electronAPI.providerAuth.onStatusChanged(() => {
+      setProviderAuthRevision((current) => current + 1)
+    })
+    return unsubscribe
+  }, [])
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
+  const preflightDiagnostic = useMemo(() => {
+    const expected = {
+      targetPlatform: 'web',
+      buildContract: {
+        previewMode: 'web',
+        frameworkClass: 'web-framework',
+      },
+    }
+
+    if (project.targetPlatform !== 'web') {
+      return {
+        code: 'BUILD_PRECHECK_TARGET_PLATFORM_MISMATCH',
+        message: 'Current builder supports web projects only.',
+        detail: undefined,
+        expected,
+        actual: {
+          targetPlatform: project.targetPlatform,
+          buildContract: project.buildContract ?? null,
+        },
+      }
+    }
+
+    const contractValidation = validateWebOnlyBuildContract(project.buildContract)
+    if (!contractValidation.valid) {
+      return {
+        code: 'BUILD_PRECHECK_CONTRACT_INVALID',
+        message: 'Current builder supports web projects only.',
+        detail: contractValidation.error,
+        expected,
+        actual: {
+          targetPlatform: project.targetPlatform,
+          buildContract: project.buildContract ?? null,
+        },
+      }
+    }
+
+    return null
+  }, [project.buildContract, project.targetPlatform])
+  const preflightFailedRef = useRef(false)
   const promptSettings = project.promptSettings
+  const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const [catalogFallbackModel, setCatalogFallbackModel] = useState<string>('')
+  const [modelResolutionAttempted, setModelResolutionAttempted] = useState(false)
+  const requestedModel =
+    typeof promptSettings?.model === 'string' && promptSettings.model.trim().length > 0
+      ? promptSettings.model
+      : (initialGlobalModelSettings.model ?? '')
+  const model = requestedModel || catalogFallbackModel
+  const hasModel = model.trim().length > 0
   console.log('[Builder] Project promptSettings:', promptSettings)
-  console.log('[Builder] Using model:', promptSettings?.model ?? 'gemini-3-pro (default)')
-  const model = promptSettings?.model ?? 'gemini-3-pro'
-  const requestedReasoningDepth = promptSettings?.reasoningDepth ?? 'high'
-  const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? requestedReasoningDepth
-  const effectiveReasoningDepth = useMemo(() => {
-    const order = { low: 0, medium: 1, high: 2 }
-    return order[requestedReasoningDepth] > order[maxReasoningDepth]
-      ? maxReasoningDepth
-      : requestedReasoningDepth
-  }, [requestedReasoningDepth, maxReasoningDepth])
-  // Builder always needs tools to create files and track progress
-  const enableTools = true
-  // Web search always enabled for builder
-  const enableWebSearch = true
-  const actionType = promptSettings?.agentType ?? 'agent'
-  const thinkingEffort = promptSettings?.thinkingEffort
+  console.log('[Builder] Using model:', model)
+  // Builder execution is pinned to the project prompt settings.
+  const enableTools = promptSettings?.toolsEnabled ?? true
+  const enableWebSearch = promptSettings?.webSearchEnabled ?? true
+  const variantId = promptSettings?.variantId
+  const providerOptions = promptSettings?.providerOptions
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
     return { Authorization: `Bearer ${accessToken}` }
   }, [accessToken])
+
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
+
+    if (requestedModel) {
+      setCatalogFallbackModel('')
+      setModelResolutionAttempted(true)
+      return
+    }
+
+    if (!accessToken || !organizationId) {
+      setCatalogFallbackModel('')
+      setModelResolutionAttempted(false)
+      return
+    }
+
+    setModelResolutionAttempted(false)
+    getModelCatalog({
+      organizationId,
+      accessToken,
+    })
+      .then((data) => {
+        if (cancelled) return
+        const fallback =
+          data.models.find((candidate) => isManagedProvider(candidate.provider) && candidate.id.trim().length > 0)?.id
+          ?? data.models.find((candidate) => candidate.id.trim().length > 0)?.id
+          ?? ''
+        setCatalogFallbackModel(fallback)
+        setModelResolutionAttempted(true)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setCatalogFallbackModel('')
+        setModelResolutionAttempted(true)
+        console.warn('Failed to resolve builder model from catalog:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, currentOrganization?.organizationId, requestedModel])
+
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
+    if (!organizationId) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(false)
+      return
+    }
+
+    if (!hasModel) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
+      return
+    }
+
+    const provider = inferProviderFromModelId(model)
+    if (!provider) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
+      return
+    }
+    if (isManagedProvider(provider)) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
+      return
+    }
+
+    setProviderAuthResolved(false)
+    void (async () => {
+      const maxAttempts = 4
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const result = await buildEncodedProviderAuthHeader({
+          provider,
+          modelId: model,
+          organizationId,
+        })
+        if (cancelled) return
+        if (result.header) {
+          setProviderAuthHeader(result.header)
+          setProviderAuthResolved(true)
+          return
+        }
+
+        setProviderAuthHeader(null)
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+        }
+      }
+
+      if (cancelled) return
+      setProviderAuthResolved(true)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasModel, model, currentOrganization?.organizationId, providerAuthRevision])
 
   // Sync tools
   useEffect(() => {
@@ -285,10 +495,23 @@ export function BuilderConversation({
 
   // Fetch tools
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-    const controller = new AbortController()
+    if (!accessToken || !currentOrganization?.organizationId || !hasModel) {
+      setAvailableTools([])
+      setToolsLoaded(false)
+      return
+    }
 
-    fetch(`${AI_BASE_URL}/tools?organizationId=${encodeURIComponent(currentOrganization.organizationId)}`, {
+    setToolsLoaded(false)
+    const controller = new AbortController()
+    const query = new URLSearchParams({
+      organizationId: currentOrganization.organizationId,
+      model,
+      agentId: 'build',
+      surface: 'builder',
+      hasProjectContext: localPath ? '1' : '0',
+    })
+
+    fetch(`${AI_BASE_URL}/tools?${query.toString()}`, {
       headers,
       signal: controller.signal,
     })
@@ -299,41 +522,25 @@ export function BuilderConversation({
       .then((data) => {
         if (!data?.tools) return
         setAvailableTools(data.tools as ToolMeta[])
-        if (data?.policy) {
-          setToolPolicy(data.policy)
-        }
       })
       .catch((err) => {
         if ((err as { name?: string }).name === 'AbortError') return
         console.warn('Failed to fetch tools:', err)
       })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        setToolsLoaded(true)
+      })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers])
-
-  // Request config ref
-  const requestConfigRef = useRef({
-    accessToken,
-    organizationId: currentOrganization?.organizationId || null,
-    projectId: project._id,
-    conversationId,
-  })
-
-  useEffect(() => {
-    requestConfigRef.current = {
-      accessToken,
-      organizationId: currentOrganization?.organizationId || null,
-      projectId: project._id,
-      conversationId,
-    }
-  }, [accessToken, currentOrganization?.organizationId, project._id, conversationId])
+  }, [accessToken, currentOrganization?.organizationId, hasModel, headers, localPath, model])
 
   // Build initial prompt with full plan context
   const initialPrompt = useMemo(() => {
     const planContext = {
       name: project.name,
       template: project.template || 'custom',
-      stack: project.stack || { backend: 'supabase', hosting: 'vercel', aiProvider: 'anthropic' },
+      stack: project.stack || { backend: 'supabase', hosting: 'vercel', aiProvider: 'openai' },
       visuals: project.visuals || { uiLibrary: 'shadcn', primaryColor: '#6366f1' },
       pages: project.generatedPlan?.pages || [],
       entities: project.generatedPlan?.entities || [],
@@ -353,59 +560,34 @@ Entities/Data models:
 ${JSON.stringify(planContext.entities, null, 2)}
 
 IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
-1. First call build_tasks to define your task list with all tasks set to status: "pending"
-2. Before starting each task, call build_tasks with that task's status changed to "in_progress"
-3. After completing each task, call build_tasks with that task's status changed to "completed"
+1. First call todowrite to define your task list with all tasks set to status: "pending"
+2. Before starting each task, call todowrite with that task's status changed to "in_progress"
+3. After completing each task, call todowrite with that task's status changed to "completed"
 4. Repeat steps 2-3 for each task until all tasks are "completed"
 
-This updates the progress UI so the user can track your work in real-time. The user sees your progress through the build_tasks tool calls, so call it frequently!
+This updates the progress UI so the user can track your work in real-time. The user sees your progress through the todowrite tool calls, so call it frequently!
 
-Note: If the tool schema expects tasks_json, it MUST be a strict JSON array string with double quotes, not a JS object literal.
+Note: Provide structured task arrays using the "todos" field.
 
-Now begin by defining your task list with build_tasks, then start working through them one by one, updating statuses as you go.`
+Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
-  // Chat transport
-  const chatTransport = useMemo(() => {
-    return new DefaultChatTransport({
-      api: AI_API_URL,
-      headers: (): Record<string, string> => {
-        const token = requestConfigRef.current.accessToken
-        return token ? { Authorization: `Bearer ${token}` } : {}
-      },
-      body: () => ({
-        model,
-        organizationId: requestConfigRef.current.organizationId,
-        projectId: requestConfigRef.current.projectId,
-        conversationId: requestConfigRef.current.conversationId,
-        feature: 'project-builder',
-        actionType,
-        enableTools,
-        enableWebSearch,
-        reasoningDepth: effectiveReasoningDepth,
-        thinkingEffort,
-      }),
-      prepareSendMessagesRequest: ({ messages, body, messageId }) => {
-        const api = `${AI_BASE_URL}/agent`
-        const requestBody = body ?? {}
-        const nextBody = {
-          ...requestBody,
-          messages,
-          ...(messageId ? { requestId: messageId } : {}),
-        }
-        return { api, body: nextBody }
-      },
-    })
-  }, [model, actionType, enableTools, enableWebSearch, effectiveReasoningDepth, thinkingEffort])
+  const projectContextPayload = useMemo(() => ({
+    name: project.name,
+    slug: project.slug,
+    runtime: 'local' as const,
+    localPath: localPath || undefined,
+    currentPage: null,
+    inspectedElement: null,
+  }), [project.name, project.slug, localPath])
 
-  const isAgentMode = actionType === 'agent'
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
     if (toolMeta.executionEnvironment !== 'local') return false
-    if (isAgentMode) return false // Agent mode auto-executes without approval
-    return toolMeta.requiresApproval ?? false
-  }, [isAgentMode])
+    // Builder profile always auto-executes local tools.
+    return false
+  }, [])
 
   const normalizeProjectPath = useCallback((filePath?: string) => {
     if (!filePath) return localPath
@@ -420,22 +602,6 @@ Now begin by defining your task list with build_tasks, then start working throug
     return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
   }, [])
 
-  const getToolFilePaths = useCallback((toolName: string, input: Record<string, unknown> | null): string[] => {
-    if (!input) return []
-    if (toolName === 'create_file' || toolName === 'replace_string_in_file') {
-      const filePath = input.filePath
-      return typeof filePath === 'string' && filePath.trim().length > 0 ? [filePath] : []
-    }
-    if (toolName === 'multi_replace_string_in_file') {
-      const replacements = Array.isArray(input.replacements) ? input.replacements : []
-      return replacements
-        .filter(isRecord)
-        .map((replacement) => replacement.filePath)
-        .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
-    }
-    return []
-  }, [])
-
   const enrichToolOutputWithDiagnostics = useCallback(async (
     toolName: string,
     toolInput: Record<string, unknown> | null,
@@ -443,16 +609,16 @@ Now begin by defining your task list with build_tasks, then start working throug
   ) => {
     if (!localPath) return output
 
-    const filePaths = getToolFilePaths(toolName, toolInput)
-    if (filePaths.length === 0) return output
+    if (!toolInput || !isFileMutatingTool(toolName)) return output
 
-    const summary = await collectToolDiagnosticsSummary({
+    const summary = await collectMutatingToolDiagnosticsSummary({
       projectPath: localPath,
-      filePaths,
+      toolName,
+      toolInput,
     })
 
     return attachToolDiagnosticsToOutput(output, summary)
-  }, [getToolFilePaths, localPath])
+  }, [localPath])
 
   const getFinalDiagnosticsSummary = useCallback(async () => {
     if (!localPath || !window.electronAPI?.diagnostics) return null
@@ -573,41 +739,24 @@ Now begin by defining your task list with build_tasks, then start working throug
     }
 
     try {
-      if (toolName === 'build_tasks') {
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        let tasks: BuildTask[] | null = null
-
+      if (toolName === 'todowrite') {
         if (!toolInput) {
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'build_tasks failed: input must be an object.',
+            errorText: 'todowrite failed: input must be an object.',
           })
           return
         }
 
-        if (Array.isArray(toolInput.tasks)) {
-          tasks = toolInput.tasks as BuildTask[]
-        } else if (typeof toolInput.tasks_json === 'string') {
-          const parsed = parseJsonArrayLoose(toolInput.tasks_json)
-          if (parsed) {
-            tasks = parsed as BuildTask[]
-          } else {
-            void addToolOutput({
-              state: 'output-error',
-              tool: toolName,
-              toolCallId,
-              errorText: 'build_tasks failed: tasks_json must be a valid JSON array string. Re-read the tool schema and retry with strict JSON.',
-            })
-            return
-          }
-        } else {
+        const tasks = parseTodowriteTasksPayload(toolInput)
+        if (tasks === null) {
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'build_tasks failed: missing tasks or tasks_json input.',
+            errorText: 'todowrite failed: provide tasks, todos, or valid tasks_json.',
           })
           return
         }
@@ -649,9 +798,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'mark_complete') {
+      if (toolName === 'build_complete') {
         const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
-        console.log('[Builder] mark_complete called with summary:', summary)
+        console.log('[Builder] build_complete called with summary:', summary)
         const finalDiagnostics = await getFinalDiagnosticsSummary()
         if (!completedRef.current) {
           completedRef.current = true
@@ -679,9 +828,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'create_file') {
+      if (toolName === 'write') {
         if (!toolInput || typeof toolInput.filePath !== 'string' || typeof toolInput.content !== 'string') {
-          throw new Error('create_file requires filePath and content')
+          throw new Error('write requires filePath and content')
         }
         const filePath = toolInput.filePath
         const content = toolInput.content
@@ -702,6 +851,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             toolInput,
             { success: true, path: filePath }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -711,9 +861,9 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'read_file') {
+      if (toolName === 'read') {
         if (!toolInput || typeof toolInput.filePath !== 'string') {
-          throw new Error('read_file requires filePath')
+          throw new Error('read requires filePath')
         }
         const result = await window.electronAPI.project.readFile({
           projectPath: localPath,
@@ -736,7 +886,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'list_dir') {
+      if (toolName === 'list') {
         const targetPath = normalizeProjectPath(
           typeof toolInput?.path === 'string' ? toolInput.path : ''
         )
@@ -749,14 +899,14 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'replace_string_in_file') {
+      if (toolName === 'edit') {
         if (
           !toolInput ||
           typeof toolInput.filePath !== 'string' ||
           typeof toolInput.oldString !== 'string' ||
           typeof toolInput.newString !== 'string'
         ) {
-          throw new Error('replace_string_in_file requires filePath, oldString, and newString')
+          throw new Error('edit requires filePath, oldString, and newString')
         }
         const filePath = toolInput.filePath
         const oldString = toolInput.oldString
@@ -791,6 +941,7 @@ Now begin by defining your task list with build_tasks, then start working throug
             toolInput,
             { filePath, replacements: 1 }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -800,59 +951,92 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'multi_replace_string_in_file') {
-        interface ReplacementInput {
+      if (toolName === 'multiedit') {
+        interface EditInput {
           filePath: string
           oldString: string
           newString: string
+          replaceAll?: boolean
         }
-        const replacements = Array.isArray(toolInput?.replacements)
-          ? toolInput?.replacements.filter(isRecord).map((replacement) => ({
-              filePath: replacement.filePath,
-              oldString: replacement.oldString,
-              newString: replacement.newString,
-            })).filter((replacement) =>
-              typeof replacement.filePath === 'string' &&
-              typeof replacement.oldString === 'string' &&
-              typeof replacement.newString === 'string'
-            ) as ReplacementInput[]
-          : []
+        const defaultFilePath =
+          typeof toolInput?.filePath === 'string' && toolInput.filePath.trim().length > 0
+            ? toolInput.filePath
+            : null
+        const edits = Array.isArray(toolInput?.edits)
+          ? toolInput.edits
+          : Array.isArray(toolInput?.replacements)
+            ? toolInput.replacements
+            : []
+        const normalizedEdits: EditInput[] = []
+        for (const edit of edits) {
+          if (!isRecord(edit)) continue
+          const resolvedFilePath =
+            typeof edit.filePath === 'string' && edit.filePath.trim().length > 0
+              ? edit.filePath
+              : defaultFilePath
+          const oldString = edit.oldString
+          const newString = edit.newString
+          if (
+            typeof resolvedFilePath !== 'string' ||
+            typeof oldString !== 'string' ||
+            typeof newString !== 'string'
+          ) {
+            continue
+          }
+          normalizedEdits.push({
+            filePath: resolvedFilePath,
+            oldString,
+            newString,
+            replaceAll: typeof edit.replaceAll === 'boolean' ? edit.replaceAll : undefined,
+          })
+        }
 
-        const paths = replacements.map((r) => r.filePath)
+        if (normalizedEdits.length === 0) {
+          throw new Error('multiedit requires filePath and at least one valid edit operation')
+        }
+
+        const paths = normalizedEdits.map((edit) => edit.filePath)
         await withFileLocks(paths, async () => {
           const results: Array<{ filePath: string; replacements: number }> = []
-          for (const replacement of replacements) {
+          for (const edit of normalizedEdits) {
             const readResult = await window.electronAPI.project.readFile({
               projectPath: localPath,
-              filePath: replacement.filePath,
+              filePath: edit.filePath,
             })
             if (!readResult.success || readResult.content === undefined) {
-              throw new Error(readResult.error || `File not found: ${replacement.filePath}`)
+              throw new Error(readResult.error || `File not found: ${edit.filePath}`)
             }
             const content = readResult.content
-            const occurrences = content.split(replacement.oldString).length - 1
+            if (edit.oldString.length === 0) {
+              throw new Error(`oldString must be non-empty for file: ${edit.filePath}`)
+            }
+            const occurrences = content.split(edit.oldString).length - 1
             if (occurrences === 0) {
-              throw new Error(`Old string not found in file: ${replacement.filePath}`)
+              throw new Error(`Old string not found in file: ${edit.filePath}`)
             }
-            if (occurrences > 1) {
-              throw new Error(`Old string must match exactly one occurrence in file: ${replacement.filePath}`)
+            if (!edit.replaceAll && occurrences > 1) {
+              throw new Error(`Old string must match exactly one occurrence in file: ${edit.filePath}`)
             }
-            const updated = content.replace(replacement.oldString, replacement.newString)
+            const updated = edit.replaceAll
+              ? content.split(edit.oldString).join(edit.newString)
+              : content.replace(edit.oldString, edit.newString)
+            const replacementCount = edit.replaceAll ? occurrences : 1
             const writeResult = await window.electronAPI.project.writeFile({
               projectPath: localPath,
-              filePath: replacement.filePath,
+              filePath: edit.filePath,
               content: updated,
             })
             if (!writeResult.success) {
-              throw new Error(writeResult.error || `Failed to write file: ${replacement.filePath}`)
+              throw new Error(writeResult.error || `Failed to write file: ${edit.filePath}`)
             }
-            results.push({ filePath: replacement.filePath, replacements: 1 })
+            results.push({ filePath: edit.filePath, replacements: replacementCount })
           }
           const enrichedOutput = await enrichToolOutputWithDiagnostics(
             toolName,
             toolInput,
             { results }
           )
+          if (cancelledToolCallsRef.current.has(toolCallId)) return
           void addToolOutput({
             tool: toolName,
             toolCallId,
@@ -862,274 +1046,25 @@ Now begin by defining your task list with build_tasks, then start working throug
         return
       }
 
-      if (toolName === 'get_terminal_output') {
-        const terminalId = toolInput && typeof toolInput.id === 'string' ? toolInput.id.trim() : ''
-        if (!terminalId) {
-          throw new Error('get_terminal_output requires id')
+      if (toolName === 'bash') {
+        const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
+        const description = toolInput && typeof toolInput.description === 'string' ? toolInput.description : ''
+        if (!command) {
+          throw new Error('bash requires command')
         }
-
-        const session = terminalOutputByIdRef.current.get(terminalId)
-        if (session) {
-          const running = session.endedAt === null
-          const executionState = getTerminalExecutionState({
-            running,
-            exitCode: session.exitCode,
-            timedOut: session.timedOut,
-            cancelled: session.cancelled,
-          })
+        if (!description.trim()) {
+          throw new Error('bash requires description')
+        }
+        const unsupportedNativeMessage = detectUnsupportedNativeBuildCommand(command)
+        if (unsupportedNativeMessage) {
           void addToolOutput({
+            state: 'output-error',
             tool: toolName,
             toolCallId,
-            output: JSON.stringify({
-              id: session.id,
-              command: session.command,
-              stdout: session.stdout,
-              stderr: session.stderr,
-              exitCode: session.exitCode,
-              running,
-              startedAt: session.startedAt,
-              endedAt: session.endedAt,
-              timedOut: session.timedOut,
-              cancelled: session.cancelled,
-              success: executionState.success,
-              status: executionState.status,
-              ...(executionState.error ? { error: executionState.error } : {}),
-            }),
+            errorText: unsupportedNativeMessage,
           })
           return
         }
-
-        const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
-          toolName,
-          input: toolInput ?? { id: terminalId },
-          toolCallId,
-        })
-
-        if (runtimeResult.success) {
-          if (cancelledToolCallsRef.current.has(toolCallId)) return
-          void addToolOutput({
-            tool: toolName,
-            toolCallId,
-            output: runtimeResult.output,
-          })
-        } else {
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: runtimeResult.error || 'Tool failed',
-          })
-        }
-        return
-      }
-
-      if (toolName === 'run_in_terminal' && localPath) {
-        const command = toolInput && typeof toolInput.command === 'string' ? toolInput.command : ''
-        if (!command) {
-          throw new Error('run_in_terminal requires command')
-        }
-        const isBackground = Boolean(toolInput?.isBackground)
-        const timeout = typeof toolInput?.timeout === 'number' ? toolInput.timeout : 120000 // 2 min default
-
-        try {
-          // Create a PTY terminal session for interactive command execution
-          const createResult = await window.electronAPI.terminal.create({
-            projectPath: localPath,
-            cwd: localPath,
-            cols: 120,
-            rows: 30,
-          })
-
-          if (!createResult.terminalId) {
-            throw new Error('Failed to create terminal session')
-          }
-
-          const terminalId = createResult.terminalId
-          let output = ''
-          let exitCode: number | null = null
-          let completed = false
-          let unsubOutput: (() => void) | null = null
-          let unsubExit: (() => void) | null = null
-          let listenersReleased = false
-
-          const releaseListeners = () => {
-            if (listenersReleased) return
-            listenersReleased = true
-            if (unsubOutput) {
-              unsubOutput()
-              unsubOutput = null
-            }
-            if (unsubExit) {
-              unsubExit()
-              unsubExit = null
-            }
-            terminalListenerCleanupRef.current.delete(toolCallId)
-          }
-
-          terminalListenerCleanupRef.current.set(toolCallId, releaseListeners)
-          terminalOutputByIdRef.current.set(terminalId, {
-            id: terminalId,
-            command,
-            stdout: '',
-            stderr: '',
-            startedAt: Date.now(),
-            endedAt: null,
-            exitCode: null,
-            timedOut: false,
-            cancelled: false,
-          })
-
-          // Track this terminal session for live UI rendering
-          setTerminalSessions(prev => {
-            const next = new Map(prev)
-            next.set(toolCallId, terminalId)
-            return next
-          })
-
-          // Set up output listener
-          const outputHandler = (event: { terminalId: string; data: string }) => {
-            if (event.terminalId === terminalId) {
-              output = appendTerminalOutput(output, event.data)
-              const session = terminalOutputByIdRef.current.get(terminalId)
-              if (session) {
-                session.stdout = appendTerminalOutput(session.stdout, event.data)
-              }
-            }
-          }
-
-          // Set up exit listener
-          const exitPromise = new Promise<{ exitCode: number | null }>((resolve) => {
-            const exitHandler = (event: { terminalId: string; exitCode: number | null }) => {
-              if (event.terminalId === terminalId) {
-                completed = true
-                const session = terminalOutputByIdRef.current.get(terminalId)
-                if (session) {
-                  session.exitCode = event.exitCode ?? null
-                  session.endedAt = Date.now()
-                }
-                // Remove from active sessions when terminal exits
-                setTerminalSessions(prev => {
-                  const next = new Map(prev)
-                  next.delete(toolCallId)
-                  return next
-                })
-                releaseListeners()
-                resolve({ exitCode: event.exitCode })
-              }
-            }
-            unsubExit = window.electronAPI.terminal.onExit(exitHandler)
-          })
-
-          unsubOutput = window.electronAPI.terminal.onOutput(outputHandler)
-
-          // Send the command to the terminal
-          setTimeout(() => {
-            window.electronAPI.terminal.input({
-              terminalId,
-              data: command + '\r',
-            })
-          }, 100)
-
-          if (isBackground) {
-            // For background processes, return immediately with terminal ID
-            if (cancelledToolCallsRef.current.has(toolCallId)) return
-            void addToolOutput({
-              tool: toolName,
-              toolCallId,
-              output: JSON.stringify({
-                id: terminalId,
-                command,
-                isBackground: true,
-                running: true,
-                success: true,
-                status: 'running',
-                message: 'Background process started. Use get_terminal_output to check status.',
-              }),
-            })
-          } else {
-            // For foreground processes, wait for completion or timeout
-            const timeoutPromise = timeout > 0
-              ? new Promise<{ exitCode: number | null }>((resolve) => {
-                  setTimeout(() => {
-                    if (!completed) {
-                      resolve({ exitCode: -1 })
-                    }
-                  }, timeout)
-                })
-              : new Promise<never>(() => {}) // Never resolves if no timeout
-
-            const result = await Promise.race([exitPromise, timeoutPromise])
-            exitCode = result.exitCode
-
-            // If timed out, kill the process
-            if (!completed && timeout > 0) {
-              const session = terminalOutputByIdRef.current.get(terminalId)
-              if (session) {
-                session.timedOut = true
-                session.exitCode = -1
-                session.endedAt = Date.now()
-              }
-              try {
-                await window.electronAPI.terminal.kill({ terminalId })
-              } catch {
-                // Ignore kill errors
-              }
-              // Remove from active sessions on timeout
-              setTerminalSessions(prev => {
-                const next = new Map(prev)
-                next.delete(toolCallId)
-                return next
-              })
-              output = appendTerminalOutput(
-                output,
-                '\n[Process timed out after ' + (timeout / 1000) + ' seconds]'
-              )
-            }
-
-            releaseListeners()
-
-            if (cancelledToolCallsRef.current.has(toolCallId)) return
-            const timedOut = !completed && timeout > 0
-            const executionState = getTerminalExecutionState({
-              running: false,
-              exitCode,
-              timedOut,
-              cancelled: false,
-            })
-            void addToolOutput({
-              tool: toolName,
-              toolCallId,
-              output: JSON.stringify({
-                id: terminalId,
-                command,
-                stdout: output,
-                stderr: '',
-                exitCode,
-                timedOut,
-                cancelled: false,
-                success: executionState.success,
-                status: executionState.status,
-                ...(executionState.error ? { error: executionState.error } : {}),
-              }),
-            })
-          }
-        } catch (err) {
-          // Remove from active sessions on error
-          terminalListenerCleanupRef.current.get(toolCallId)?.()
-          setTerminalSessions(prev => {
-            const next = new Map(prev)
-            next.delete(toolCallId)
-            return next
-          })
-          if (cancelledToolCallsRef.current.has(toolCallId)) return
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: err instanceof Error ? err.message : 'Failed to run command',
-          })
-        }
-        return
       }
 
       if (!toolInput) {
@@ -1145,6 +1080,7 @@ Now begin by defining your task list with build_tasks, then start working throug
       const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
         toolName,
         input: toolInput,
+        projectPath: localPath,
         toolCallId,
       })
 
@@ -1155,6 +1091,7 @@ Now begin by defining your task list with build_tasks, then start working throug
           toolInput,
           runtimeResult.output
         )
+        if (cancelledToolCallsRef.current.has(toolCallId)) return
         void addToolOutput({
           tool: toolName,
           toolCallId,
@@ -1211,81 +1148,84 @@ Now begin by defining your task list with build_tasks, then start working throug
     })
   }, [])
 
-  // Handle tool calls - intercept build_tasks and file operations
+  // Handle tool calls with assistant-style local execution rules.
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
     const { toolName, input, toolCallId } = toolCall
+    const addToolOutput = addToolOutputRef.current
+    if (!addToolOutput) return
+
     const toolMeta = toolsByNameRef.current[toolName]
+    const isBuilderWorkflowTool = BUILDER_WORKFLOW_FALLBACK_TOOLS.has(toolName)
+    const isLocalTool = isBuilderWorkflowTool || toolMeta?.executionEnvironment === 'local'
 
-    // Check if this is a builder-local tool (may not be in toolsByName)
-    const isBuilderLocalTool = BUILDER_LOCAL_TOOLS.has(toolName)
-    const isLocalTool = isBuilderLocalTool || toolMeta?.executionEnvironment === 'local'
-
-    if (isLocalTool && !isBuilderLocalTool && shouldRequireLocalApproval(toolMeta)) {
+    if (!isLocalTool) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: toolMeta
+          ? 'Tool is not available in the builder local runtime.'
+          : `Unknown tool: ${toolName}`,
+      })
       return
     }
 
-    if (isLocalTool) {
-      await runLocalTool(toolName, toolCallId, input)
+    if (!isBuilderWorkflowTool && shouldRequireLocalApproval(toolMeta)) {
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: 'Tool execution requires approval and is not supported in this builder flow.',
+      })
+      return
     }
+
+    await runLocalTool(toolName, toolCallId, input)
   }, [runLocalTool, shouldRequireLocalApproval])
-
-  // Track if auto-continue is handling errors (don't propagate to parent during recovery)
-  const isRecoveringRef = useRef(false)
-  const lastErrorRef = useRef<string | null>(null)
-
-  // Check if we should allow auto-continue to handle the error
-  const shouldAllowRecovery = useCallback(() => {
-    const tasks = latestTasksRef.current
-    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
-    const canContinue = continuationCountRef.current < MAX_CONTINUATIONS
-    return hasIncompleteTasks && canContinue && !completedRef.current
-  }, [])
 
   // useChat hook
   const {
-    messages,
     status,
     error,
     sendMessage,
     stop,
     addToolOutput,
-  } = useChat({
-    transport: chatTransport,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onToolCall: handleToolCall,
-    onError: (err: unknown) => {
-      console.error('Builder chat error:', err)
-
-      const billingErr = parseBillingError(err)
-      if (billingErr) {
-        // Billing errors are always fatal
-        setBillingError(billingErr)
-        onBillingError?.(billingErr)
-        onError(billingErr.title || 'Billing Error')
-        return
-      }
-
-      const message = err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-          ? err
-          : 'Build failed'
-      lastErrorRef.current = message
-
-      // Check if we should let auto-continue recover from this error
-      if (shouldAllowRecovery()) {
-        console.log('[Builder] Error occurred but allowing recovery via auto-continue:', message)
-        isRecoveringRef.current = true
-        // Don't propagate error yet - auto-continue will try to recover
-        return
-      }
-
-      onError(message)
+    dedupedMessages,
+    retryHint: hookRetryHint,
+    autoRetryState,
+  } = useCozeaChat({
+    transportArgs: {
+      accessToken,
+      organizationId: currentOrganization?.organizationId,
+      model,
+      conversationId,
+      agentId: 'build',
+      surface: 'builder',
+      variantId,
+      enableTools,
+      enableWebSearch,
+      extraBody: {
+        projectContext: projectContextPayload,
+        ...(providerOptions ? { providerOptions } : {}),
+      },
+      providerAuthHeader,
+    },
+    autoRetry: {
+      enabled: true,
+      maxAttempts: 2,
+      initialDelayMs: 2000,
+      maxDelayMs: 30000,
+      backoffFactor: 2,
+    },
+    chatOptions: {
+      onToolCall: handleToolCall,
+    },
+    onBillingError: (err) => {
+      onBillingError?.(err as any)
+      onError(err.title || 'Billing Error')
     },
   })
 
@@ -1297,7 +1237,7 @@ Now begin by defining your task list with build_tasks, then start working throug
 
     const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
 
-    for (const message of messages) {
+    for (const message of dedupedMessages) {
       if (message.role !== 'assistant') continue
       if (!Array.isArray(message.parts)) continue
 
@@ -1331,7 +1271,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         errorText: reasonText,
       })
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   const cancelActiveTerminalSessions = useCallback(async () => {
     const activeEntries = Array.from(terminalSessionsRef.current.entries())
@@ -1357,9 +1297,17 @@ Now begin by defining your task list with build_tasks, then start working throug
   }, [])
 
   useEffect(() => {
+    if (!modelResolutionAttempted) return
+    if (hasModel) return
+    if (preflightFailedRef.current) return
+    preflightFailedRef.current = true
+    completedRef.current = true
+    onError('Build preflight failed: no AI models are available for this workspace.')
+  }, [hasModel, modelResolutionAttempted, onError])
+
+  useEffect(() => {
     if (stopRequestCount === lastStopRequestCountRef.current) return
     lastStopRequestCountRef.current = stopRequestCount
-    userStoppedRef.current = true
 
     cancelPendingToolOutputs('Cancelled by user.')
     void cancelActiveTerminalSessions()
@@ -1369,54 +1317,85 @@ Now begin by defining your task list with build_tasks, then start working throug
 
   // Send initial message on mount
   useEffect(() => {
-    if (!hasSentInitialMessageRef.current && accessToken && project._id) {
+    if (preflightDiagnostic) return
+    if (!hasModel) return
+    if (!providerAuthResolved) return
+    if (!toolsLoaded) return
+    if (!hasSentInitialMessageRef.current && accessToken && currentOrganization?.organizationId && project._id) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [accessToken, project._id, initialPrompt, sendMessage])
+  }, [
+    accessToken,
+    currentOrganization?.organizationId,
+    initialPrompt,
+    hasModel,
+    preflightDiagnostic,
+    project._id,
+    providerAuthResolved,
+    toolsLoaded,
+    sendMessage,
+  ])
 
-  // Track error state - only propagate if recovery isn't possible
   useEffect(() => {
-    if (error) {
-      const billingErr = parseBillingError(error)
-      if (billingErr) {
-        setBillingError(billingErr)
-        onBillingError?.(billingErr)
-        onError(billingErr.title || 'Billing Error')
-        return
-      }
+    if (!preflightDiagnostic || preflightFailedRef.current) return
+    preflightFailedRef.current = true
+    completedRef.current = true
+    console.error('[Builder] Build preflight failed', preflightDiagnostic)
+    onError(
+      `Build preflight failed (${preflightDiagnostic.code}): ${preflightDiagnostic.message}` +
+      (preflightDiagnostic.detail ? ` ${preflightDiagnostic.detail}` : '')
+    )
+  }, [onError, preflightDiagnostic])
 
-      // Check if we should let auto-continue recover from this error
-      if (shouldAllowRecovery()) {
-        console.log('[Builder] Error state detected but allowing recovery')
-        isRecoveringRef.current = true
-        return
-      }
-
-      const message = error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : 'Build failed'
-      onError(message)
-    }
-  }, [error, onError, onBillingError, shouldAllowRecovery])
-
-  // Clear recovery state when streaming starts (continuation is working)
+  // Track error state and defer propagation while shared auto-retry is scheduled.
   useEffect(() => {
-    if (status === 'streaming' && isRecoveringRef.current) {
-      console.log('[Builder] Recovery successful, clearing error state')
-      isRecoveringRef.current = false
-      lastErrorRef.current = null
-    }
-  }, [status])
+    if (!error) return
 
-  // Fallback: extract build_tasks updates directly from streamed messages
+    const billingErr = parseBillingError(error)
+    if (billingErr) {
+      setBillingError(billingErr)
+      onBillingError?.(billingErr)
+      onError(billingErr.title || 'Billing Error')
+      return
+    }
+
+    if (autoRetryState.scheduled) {
+      return
+    }
+
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : 'Build failed'
+
+    if (hookRetryHint?.code === 'duplicate_response_item_id' && autoRetryState.exhausted) {
+      onError('Build paused: provider rejected duplicated response item IDs. Please retry once to continue.')
+      return
+    }
+
+    if (autoRetryState.exhausted && hookRetryHint?.retryable) {
+      onError(`${message} (automatic retries exhausted)`)
+      return
+    }
+
+    onError(message)
+  }, [
+    autoRetryState.exhausted,
+    autoRetryState.scheduled,
+    error,
+    hookRetryHint,
+    onBillingError,
+    onError,
+  ])
+
+  // Fallback: extract todowrite updates directly from streamed messages
   useEffect(() => {
     let latestTasks: BuildTask[] | null = null
 
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i]
+    for (let i = dedupedMessages.length - 1; i >= 0; i -= 1) {
+      const message = dedupedMessages[i]
       if (message.role !== 'assistant') continue
       for (const part of message.parts) {
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
@@ -1426,34 +1405,31 @@ Now begin by defining your task list with build_tasks, then start working throug
         const toolName = part.type === 'dynamic-tool'
           ? toolPart.toolName
           : part.type.replace(/^tool-/, '')
-        if (toolName !== 'build_tasks') continue
+        if (toolName !== 'todowrite') continue
 
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        if (toolPart.input?.tasks) {
-          latestTasks = toolPart.input.tasks as BuildTask[]
+        const inputTasks = parseTodowriteTasksAny(toolPart.input)
+        if (inputTasks !== null) {
+          latestTasks = inputTasks
           break
-        }
-        if (toolPart.input?.tasks_json) {
-          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
-          if (parsed) {
-            latestTasks = parsed as BuildTask[]
-            break
-          }
         }
 
         if (typeof toolPart.output === 'string') {
           try {
             const parsed = JSON.parse(toolPart.output)
-            if (parsed?.tasks) {
-              latestTasks = parsed.tasks as BuildTask[]
+            const parsedTasks = parseTodowriteTasksAny(parsed)
+            if (parsedTasks !== null) {
+              latestTasks = parsedTasks
               break
             }
           } catch {
             // ignore parse errors
           }
-        } else if (isRecord(toolPart.output) && Array.isArray(toolPart.output.tasks)) {
-          latestTasks = toolPart.output.tasks as BuildTask[]
-          break
+        } else {
+          const outputTasks = parseTodowriteTasksAny(toolPart.output)
+          if (outputTasks !== null) {
+            latestTasks = outputTasks
+            break
+          }
         }
       }
       if (latestTasks) break
@@ -1484,92 +1460,7 @@ Now begin by defining your task list with build_tasks, then start working throug
         setTimeout(() => onComplete(), 500)
       }
     }
-  }, [messages, onTasksUpdate, onComplete])
-
-  // Track latest tasks for continuation logic
-  useEffect(() => {
-    // Extract latest tasks from messages (same logic as above effect)
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i]
-      if (message.role !== 'assistant') continue
-      for (const part of message.parts) {
-        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) continue
-        const toolPart = part as ToolPart
-        const toolName = part.type === 'dynamic-tool' ? toolPart.toolName : part.type.replace(/^tool-/, '')
-        if (toolName !== 'build_tasks') continue
-        // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
-        if (toolPart.input?.tasks) {
-          latestTasksRef.current = toolPart.input.tasks as BuildTask[]
-          return
-        }
-        if (toolPart.input?.tasks_json) {
-          const parsed = parseJsonArrayLoose(toolPart.input.tasks_json)
-          if (parsed) {
-            latestTasksRef.current = parsed as BuildTask[]
-            return
-          }
-        }
-      }
-    }
-  }, [messages])
-
-  // Auto-continue when model stops without completing all tasks (fixes Gemini stopping early)
-  useEffect(() => {
-    if (userStoppedRef.current) {
-      continuationSentRef.current = false
-      return
-    }
-
-    // Only check when not loading and not completed
-    if (status === 'streaming' || status === 'submitted' || completedRef.current) {
-      continuationSentRef.current = false
-      return
-    }
-
-    // Check if there are incomplete tasks
-    const tasks = latestTasksRef.current
-    const hasIncompleteTasks = tasks.length > 0 && tasks.some((t: BuildTask) => t.status !== 'completed')
-
-    // Safety check - don't continue forever
-    if (continuationCountRef.current >= MAX_CONTINUATIONS) {
-      console.log('[Builder] Max continuations reached, stopping auto-continue')
-      return
-    }
-
-    if (!continuationSentRef.current && messages.length > 0 && hasIncompleteTasks) {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === 'assistant') {
-        // Check if message only has reasoning/metadata (no actual output)
-        const hasOnlyReasoning = lastMessage.parts.length > 0 &&
-          lastMessage.parts.every(p =>
-            p.type === 'reasoning' ||
-            p.type === 'step-start' ||
-            p.type === 'data-usage' ||
-            (p.type === 'text' && !(p as { type: 'text'; text: string }).text?.trim())
-          )
-
-        // Always continue if there are incomplete tasks and model stopped
-        // This handles both: MALFORMED_FUNCTION_CALL (only reasoning) and normal stops after tool calls
-        console.log('[Builder] Model stopped with incomplete tasks, forcing continuation', {
-          hasOnlyReasoning,
-          taskCount: tasks.length,
-          incompleteTasks: tasks.filter((t: BuildTask) => t.status !== 'completed').length,
-          continuationCount: continuationCountRef.current
-        })
-
-        continuationSentRef.current = true
-        continuationCountRef.current += 1
-
-        const prompt = hasOnlyReasoning
-          ? 'You stopped mid-thought. Continue and use tools to complete the current task.'
-          : 'Continue with the next task. Use tools to create files and update build_tasks.'
-
-        setTimeout(() => {
-          void sendMessage({ text: prompt })
-        }, 500)
-      }
-    }
-  }, [status, messages, sendMessage])
+  }, [dedupedMessages, onTasksUpdate, onComplete])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()
@@ -1584,18 +1475,51 @@ Now begin by defining your task list with build_tasks, then start working throug
     return map
   }, [availableTools])
 
-  const isLoading = status === 'streaming' || status === 'submitted'
+  const hasPendingToolCalls = useMemo(() => {
+    for (const message of dedupedMessages) {
+      if (message.role !== 'assistant') continue
+      if (!Array.isArray(message.parts)) continue
+
+      for (const part of message.parts) {
+        if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
+          continue
+        }
+
+        const toolPart = part as ToolPart
+        const state = toolPart.state || 'input-streaming'
+        if (state === 'output-available' || state === 'output-error' || state === 'output-denied') {
+          continue
+        }
+
+        return true
+      }
+    }
+
+    return false
+  }, [dedupedMessages])
+
+  const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
+  const setAgentWorking = useCollaborationActivityStore(
+    (state) => state.actions.setAgentWorking
+  )
+
+  useEffect(() => {
+    setAgentWorking(isLoading)
+    return () => {
+      setAgentWorking(false)
+    }
+  }, [isLoading, setAgentWorking])
 
   // Filter out the initial plan prompt message (first user message with plan context)
   const visibleMessages = useMemo(() => {
-    return messages.filter((message, index) => {
+    return dedupedMessages.filter((message, index) => {
       // Hide the first user message (the auto-sent plan prompt)
       if (message.role === 'user' && index === 0) {
         return false
       }
       return true
     })
-  }, [messages])
+  }, [dedupedMessages])
 
   return (
     <div className={cn('flex flex-col overflow-hidden w-full', className)}>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
+import type { DevCommandSuggestion } from "@shared/electronApiTypes"
 import {
     getDevServerConfig,
     detectPackageManager,
@@ -12,6 +13,7 @@ import {
     hasPackageJson,
 } from "@/utils/projectDetector"
 import { useProblemsStore, type ProblemSeverity } from "@/stores/useProblemsStore"
+import { DevCommandPickerDialog } from "./DevCommandPickerDialog"
 
 const stripAnsi = (input: string) =>
     // eslint-disable-next-line no-control-regex
@@ -38,6 +40,24 @@ const isProblemHeader = (line: string) =>
 const formatTerminalTabTitle = (label: string, port: number | null | undefined) =>
     port ? `${label} · localhost:${port}` : label
 
+const getPersistedDevCommand = (projectPath: string): string | null => {
+    const key = `dev-command:${encodeURIComponent(projectPath)}`
+    const raw = localStorage.getItem(key)
+    return raw?.trim() || null
+}
+
+const persistDevCommand = (projectPath: string, command: string) => {
+    const key = `dev-command:${encodeURIComponent(projectPath)}`
+    localStorage.setItem(key, command.trim())
+}
+
+const isWindowsClient = (): boolean => {
+    if (typeof navigator === 'undefined') return false
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+    return /win/i.test(platformHint)
+}
+
 interface ServerControlProps {
     projectPath?: string | null
     // Optional stored framework info from Convex (uses detection as fallback)
@@ -51,13 +71,19 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const terminals = useTerminalStore((state) => state.terminals)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const [isUpdating, setIsUpdating] = useState(false)
+    const [showCommandPicker, setShowCommandPicker] = useState(false)
+    const [commandSuggestions, setCommandSuggestions] = useState<DevCommandSuggestion[]>([])
+    const [commandPickerDefault, setCommandPickerDefault] = useState<string | undefined>(undefined)
+    const pendingCommandSelectionRef = useRef<{ label: string; port: number } | null>(null)
 
     // Track the dev server terminal ID
     const devServerTerminalIdRef = useRef<string | null>(null)
     const devServerProjectPathRef = useRef<string | null>(null)
     const devServerLabelRef = useRef<string>('Dev Server')
+    const devServerRunIdRef = useRef<string | null>(null)
+    const pendingReadyProbeKeyRef = useRef<string | null>(null)
 
-    // Ref for timeout fallback when ready patterns don't match
+    // Ref for startup watchdog when ready patterns/probes don't confirm in time
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const pendingProblemRef = useRef<{ message: string; severity: ProblemSeverity } | null>(null)
     const previousProjectPathRef = useRef<string | null>(projectPath ?? null)
@@ -69,6 +95,125 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             readyTimeoutRef.current = null
         }
     }, [])
+
+    const createRunId = useCallback((): string => {
+        if (crypto?.randomUUID) return crypto.randomUUID()
+        return `pages-devsrv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    }, [])
+
+    const addTimelineEvent = useCallback((event: {
+        runId?: string | null
+        type: 'start_requested' | 'start_succeeded' | 'start_failed' | 'output' | 'ready_detected' | 'probe_succeeded' | 'probe_failed' | 'stopped' | 'exited'
+        message: string
+        details?: Record<string, unknown>
+    }) => {
+        actions.addPreviewTimelineEvent({
+            category: 'dev-server',
+            runId: event.runId ?? devServerRunIdRef.current,
+            type: event.type,
+            message: event.message,
+            details: event.details,
+        })
+    }, [actions])
+
+    const markRunUnhealthy = useCallback((reason: string, runId?: string | null) => {
+        const currentRunId = runId ?? devServerRunIdRef.current
+        actions.setServerStatus('unhealthy')
+        actions.setServerLifecycle({
+            runId: currentRunId ?? null,
+            state: 'unhealthy',
+            unhealthyReason: reason,
+        })
+        actions.setPreviewReadiness({
+            runId: currentRunId ?? null,
+            reachable: false,
+            lastCheckedAt: Date.now(),
+            lastFailureReason: 'server_unreachable',
+            lastFailureMessage: reason,
+        })
+        addTimelineEvent({
+            runId: currentRunId,
+            type: 'probe_failed',
+            message: reason,
+            details: { failureReason: 'server_unreachable' },
+        })
+    }, [actions, addTimelineEvent])
+
+    const probeServerReachability = useCallback(async (
+        runId: string,
+        port: number,
+        source: 'ready-pattern' | 'port-detected'
+    ) => {
+        if (!projectPath) return
+        if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) return
+
+        const probeKey = `${runId}:${port}`
+        if (pendingReadyProbeKeyRef.current === probeKey) {
+            return
+        }
+        pendingReadyProbeKeyRef.current = probeKey
+
+        const previewUrl = `http://localhost:${port}`
+        try {
+            const probe = await window.electronAPI.preview.probeUrl({
+                url: previewUrl,
+                timeoutMs: 2500,
+            })
+
+            if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) {
+                return
+            }
+
+            if (probe.success && probe.reachable) {
+                actions.setServerStatus('running')
+                actions.setServerLifecycle({
+                    runId,
+                    state: 'ready',
+                    readyAt: Date.now(),
+                    lastOutputAt: Date.now(),
+                    unhealthyReason: null,
+                })
+                actions.setPreviewReadiness({
+                    runId,
+                    reachable: true,
+                    lastCheckedAt: Date.now(),
+                    lastFailureReason: null,
+                    lastFailureMessage: null,
+                })
+                if (devServerTerminalIdRef.current) {
+                    updateTerminalStatus(devServerTerminalIdRef.current, 'running')
+                    updateTerminalDisplay(devServerTerminalIdRef.current, {
+                        phase: 'active',
+                        lastHeartbeatAt: Date.now(),
+                    })
+                }
+                addTimelineEvent({
+                    runId,
+                    type: 'probe_succeeded',
+                    message: `Dev server reachable at ${previewUrl}`,
+                    details: {
+                        source,
+                        statusCode: probe.statusCode,
+                    },
+                })
+                clearReadyTimeout()
+                return
+            }
+
+            const reason = probe.error || 'Dev server process started but preview URL is not reachable yet.'
+            markRunUnhealthy(reason, runId)
+        } catch (error) {
+            if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) {
+                return
+            }
+            const message = error instanceof Error ? error.message : 'Dev server reachability probe failed'
+            markRunUnhealthy(message, runId)
+        } finally {
+            if (pendingReadyProbeKeyRef.current === probeKey) {
+                pendingReadyProbeKeyRef.current = null
+            }
+        }
+    }, [actions, addTimelineEvent, clearReadyTimeout, markRunUnhealthy, projectPath, updateTerminalDisplay, updateTerminalStatus])
 
     const reportProblemsFromOutput = useCallback((data: string) => {
         if (!projectPath) return
@@ -127,15 +272,19 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             removeTerminal(devServerTerminalIdRef.current)
             devServerTerminalIdRef.current = null
             devServerProjectPathRef.current = null
+            devServerRunIdRef.current = null
+            pendingReadyProbeKeyRef.current = null
+            actions.resetPreviewReadiness()
         }
 
         previousProjectPathRef.current = nextProjectPath
-    }, [projectPath, removeTerminal])
+    }, [actions, projectPath, removeTerminal])
 
     // Do not kill dev server on route unmount; keep it alive until explicit stop or project switch.
     useEffect(() => {
         return () => {
             clearReadyTimeout()
+            pendingReadyProbeKeyRef.current = null
         }
     }, [clearReadyTimeout])
 
@@ -158,9 +307,17 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
                 devServerTerminalIdRef.current = null
                 devServerProjectPathRef.current = null
+                devServerRunIdRef.current = null
                 actions.setServerStatus('stopped')
                 actions.setServerPort(null)
                 actions.setServerPid(null)
+                actions.setServerLifecycle({
+                    runId: null,
+                    state: 'stopped',
+                    stoppedAt: Date.now(),
+                    unhealthyReason: null,
+                })
+                actions.resetPreviewReadiness()
             }
 
             const existingDevTerminal = Object.values(terminals).find((terminal) =>
@@ -183,6 +340,13 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     actions.setServerStatus('stopped')
                     actions.setServerPort(null)
                     actions.setServerPid(null)
+                    actions.setServerLifecycle({
+                        runId: null,
+                        state: 'stopped',
+                        stoppedAt: Date.now(),
+                        unhealthyReason: null,
+                    })
+                    actions.resetPreviewReadiness()
                 }
                 return
             }
@@ -190,6 +354,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             devServerTerminalIdRef.current = existingDevTerminal.id
             devServerProjectPathRef.current = projectPath
             devServerLabelRef.current = existingDevTerminal.label || existingDevTerminal.profileName || 'Dev Server'
+            devServerRunIdRef.current = existingDevTerminal.runId ?? null
 
             if (typeof existingDevTerminal.port === 'number') {
                 actions.setServerPort(existingDevTerminal.port)
@@ -197,10 +362,34 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
             if (existingDevTerminal.status === 'error') {
                 actions.setServerStatus('error')
+                actions.setServerLifecycle({
+                    runId: devServerRunIdRef.current,
+                    state: 'error',
+                    unhealthyReason: 'Dev server terminal reported an error state',
+                })
                 return
             }
 
-            actions.setServerStatus(existingDevTerminal.status === 'starting' ? 'starting' : 'running')
+            if (existingDevTerminal.status === 'starting') {
+                actions.setServerStatus('starting')
+                actions.setServerLifecycle({
+                    runId: devServerRunIdRef.current,
+                    state: 'starting',
+                    command: existingDevTerminal.command ?? null,
+                })
+                return
+            }
+
+            actions.setServerStatus('running')
+            actions.setServerLifecycle({
+                runId: devServerRunIdRef.current,
+                state: 'ready',
+                command: existingDevTerminal.command ?? null,
+                readyAt: Date.now(),
+            })
+            if (typeof existingDevTerminal.port === 'number' && devServerRunIdRef.current) {
+                void probeServerReachability(devServerRunIdRef.current, existingDevTerminal.port, 'port-detected')
+            }
         })().catch((error) => {
             console.error('[ServerControl] Failed to re-bind dev server terminal:', error)
         })
@@ -208,7 +397,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         return () => {
             cancelled = true
         }
-    }, [actions, projectPath, terminals])
+    }, [actions, probeServerReachability, projectPath, terminals])
 
     // Subscribe to terminal events for dev server detection
     useEffect(() => {
@@ -225,11 +414,30 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
 
         // Handle output from terminal to detect server ready
-        const unsubOutput = window.electronAPI.terminal.onOutput(({ terminalId, data }) => {
+        const unsubOutput = window.electronAPI.terminal.onOutput(({ terminalId, data, runId }) => {
             if (terminalId === devServerTerminalIdRef.current) {
+                if (runId && devServerRunIdRef.current && runId !== devServerRunIdRef.current) {
+                    return
+                }
+
+                if (runId && !devServerRunIdRef.current) {
+                    devServerRunIdRef.current = runId
+                }
+
+                const activeRunId = devServerRunIdRef.current
+                actions.setServerLifecycle({
+                    runId: activeRunId,
+                    lastOutputAt: Date.now(),
+                })
+
                 // Forward output to store so DevServerPanel can display it
                 actions.addServerOutput(data)
                 reportProblemsFromOutput(data)
+                addTimelineEvent({
+                    runId: activeRunId,
+                    type: 'output',
+                    message: 'Received dev server output',
+                })
 
                 const detectedPort = extractPort(data)
                 if (detectedPort) {
@@ -267,24 +475,58 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 ]
                 const cleaned = stripAnsi(data)
                 if (readyPatterns.some(pattern => pattern.test(cleaned))) {
-                    actions.setServerStatus('running')
-                    if (devServerTerminalIdRef.current) {
-                        updateTerminalStatus(devServerTerminalIdRef.current, 'running')
+                    addTimelineEvent({
+                        runId: activeRunId,
+                        type: 'ready_detected',
+                        message: 'Detected ready pattern in terminal output',
+                        details: {
+                            detectedPort,
+                        },
+                    })
+                    const candidatePort = detectedPort ?? useProjectPagesStore.getState().serverPort
+                    if (candidatePort && activeRunId) {
+                        void probeServerReachability(activeRunId, candidatePort, 'ready-pattern')
+                    } else if (candidatePort) {
+                        actions.setServerStatus('running')
+                        actions.setServerLifecycle({
+                            state: 'ready',
+                            readyAt: Date.now(),
+                        })
+                        if (devServerTerminalIdRef.current) {
+                            updateTerminalStatus(devServerTerminalIdRef.current, 'running')
+                        }
                     }
-                    clearReadyTimeout()
                 }
             }
         })
 
         // Handle terminal exit
-        const unsubExit = window.electronAPI.terminal.onExit(({ terminalId }) => {
+        const unsubExit = window.electronAPI.terminal.onExit(({ terminalId, runId }) => {
             if (terminalId === devServerTerminalIdRef.current) {
+                if (runId && devServerRunIdRef.current && runId !== devServerRunIdRef.current) {
+                    return
+                }
+
+                const activeRunId = devServerRunIdRef.current
                 actions.setServerStatus('stopped')
                 actions.setServerPort(null)
                 actions.setServerPid(null)
+                actions.setServerLifecycle({
+                    runId: activeRunId,
+                    state: 'stopped',
+                    stoppedAt: Date.now(),
+                    unhealthyReason: null,
+                })
+                actions.resetPreviewReadiness()
                 devServerTerminalIdRef.current = null
                 devServerProjectPathRef.current = null
+                devServerRunIdRef.current = null
                 clearReadyTimeout()
+                addTimelineEvent({
+                    runId: activeRunId,
+                    type: 'exited',
+                    message: 'Dev server terminal exited',
+                })
             }
         })
 
@@ -293,98 +535,216 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             unsubExit()
             clearReadyTimeout()
         }
-    }, [actions, clearReadyTimeout, updateTerminalDisplay, updateTerminalStatus, reportProblemsFromOutput])
+    }, [actions, addTimelineEvent, clearReadyTimeout, probeServerReachability, updateTerminalDisplay, updateTerminalStatus, reportProblemsFromOutput])
+
+    const launchDevServerTerminal = useCallback(async (
+        projectPathValue: string,
+        baseCommand: string,
+        config: { label: string; port: number },
+        runId: string
+    ) => {
+        // Check if we need to install dependencies first
+        let command = baseCommand
+        const hasPackage = await hasPackageJson(projectPathValue)
+        if (hasPackage) {
+            const pm = await detectPackageManager(projectPathValue)
+            const depsInstalled = await checkDependenciesInstalled(projectPathValue, pm)
+            if (!depsInstalled) {
+                const installCmd = getInstallCommand(pm)
+                command = `${installCmd} && ${baseCommand}`
+                console.log(`[DevServer] Dependencies missing, will run: ${command}`)
+            }
+        }
+
+        const result = await window.electronAPI.terminal.create({
+            projectPath: projectPathValue,
+            profileId: isWindowsClient() ? 'cmd' : undefined,
+            cols: 80,
+            rows: 24,
+            runId,
+        })
+
+        if (!result.success || !result.terminalId) {
+            throw new Error(result.error || 'Failed to create dev server terminal')
+        }
+
+        devServerTerminalIdRef.current = result.terminalId
+        devServerProjectPathRef.current = projectPathValue
+        devServerRunIdRef.current = runId
+
+        devServerLabelRef.current = config.label
+        actions.beginServerRun(runId, command)
+        actions.setServerStatus('starting')
+        actions.setServerPort(config.port)
+        actions.setPreviewReadiness({
+            runId,
+            reachable: false,
+            bridgeReady: false,
+            embedded: false,
+            lastCheckedAt: null,
+            lastFailureReason: null,
+            lastFailureMessage: null,
+        })
+        addTerminal({
+            id: result.terminalId,
+            profileId: 'dev-server',
+            profileName: config.label,
+            projectPath: projectPathValue,
+            label: config.label,
+            kind: 'dev-server',
+            runId,
+            phase: 'starting',
+            command,
+            port: config.port,
+            nameSource: 'auto',
+            title: formatTerminalTabTitle(config.label, config.port),
+            status: 'starting',
+            hasOutput: false,
+        })
+
+        setPanelOpen(true)
+        addTimelineEvent({
+            runId,
+            type: 'start_succeeded',
+            message: 'Dev server terminal created',
+            details: {
+                terminalId: result.terminalId,
+                command,
+                port: config.port,
+            },
+        })
+
+        setTimeout(() => {
+            void window.electronAPI.terminal.input({
+                terminalId: result.terminalId!,
+                data: `${command}\r\n`
+            })
+        }, 100)
+
+        const timeout = command.includes('install') ? 120000 : 15000
+        clearReadyTimeout()
+        readyTimeoutRef.current = setTimeout(() => {
+            const currentStatus = useProjectPagesStore.getState().serverStatus
+            if (currentStatus === 'starting') {
+                const timeoutMessage = 'Startup watchdog elapsed before readiness was confirmed.'
+                console.warn('[DevServer] Timeout without readiness confirmation')
+                actions.addServerOutput(`\n[DevServer] ${timeoutMessage}\n`)
+                markRunUnhealthy(timeoutMessage, runId)
+            }
+        }, timeout)
+    }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, markRunUnhealthy, setPanelOpen])
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return
+        if (serverStatus === 'starting' || serverStatus === 'running') return
 
         try {
             setIsUpdating(true)
+            const runId = createRunId()
+            devServerRunIdRef.current = runId
+            actions.beginServerRun(runId)
             actions.setServerStatus('starting')
             actions.clearServerOutput()
-
-            // Get dev server config (uses stored values or detects from package.json)
-            const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
-
-            // Check if we need to install dependencies first
-            let command = config.command
-            const hasPackage = await hasPackageJson(projectPath)
-            if (hasPackage) {
-                const pm = await detectPackageManager(projectPath)
-                const depsInstalled = await checkDependenciesInstalled(projectPath, pm)
-                if (!depsInstalled) {
-                    // Chain install + dev command so both run in the same terminal
-                    const installCmd = getInstallCommand(pm)
-                    command = `${installCmd} && ${config.command}`
-                    console.log(`[DevServer] Dependencies missing, will run: ${command}`)
-                }
-            }
-
-            // Create a terminal for the dev server
-            const result = await window.electronAPI.terminal.create({
-                projectPath,
-                cols: 80,
-                rows: 24,
+            addTimelineEvent({
+                runId,
+                type: 'start_requested',
+                message: 'Start requested from Pages toolbar',
             })
 
-            if (result.success && result.terminalId) {
-                devServerTerminalIdRef.current = result.terminalId
-                devServerProjectPathRef.current = projectPath
+            const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
+            const persistedCommand = getPersistedDevCommand(projectPath)
+            const selectedCommand = persistedCommand || config.command
 
-                // Add terminal to store with dev server title
-                devServerLabelRef.current = config.label
-                addTerminal({
-                    id: result.terminalId,
-                    profileId: 'dev-server',
-                    profileName: config.label,
-                    projectPath,
-                    label: config.label,
-                    kind: 'dev-server',
-                    command,
-                    port: config.port,
-                    nameSource: 'auto',
-                    title: formatTerminalTabTitle(config.label, config.port),
-                    status: 'starting',
-                    hasOutput: false,
+            if (!persistedCommand && config.requiresUserSelection) {
+                pendingCommandSelectionRef.current = { label: config.label, port: config.port }
+                setCommandSuggestions(config.suggestions)
+                setCommandPickerDefault(selectedCommand)
+                setShowCommandPicker(true)
+                actions.setServerStatus('stopped')
+                actions.setServerLifecycle({
+                    runId,
+                    state: 'stopped',
+                    stoppedAt: Date.now(),
                 })
-
-                // Open the terminal panel
-                setPanelOpen(true)
-
-                // Send the command to the terminal
-                // Small delay to ensure terminal is ready
-                setTimeout(() => {
-                    window.electronAPI.terminal.input({
-                        terminalId: result.terminalId!,
-                        data: `${command}\r`
-                    })
-                }, 100)
-
-                actions.setServerPort(config.port)
-
-                // Set a timeout fallback in case ready patterns don't match
-                // Use longer timeout if installing dependencies
-                const timeout = command.includes('install') ? 120000 : 15000
-                clearReadyTimeout()
-                readyTimeoutRef.current = setTimeout(() => {
-                    const currentStatus = useProjectPagesStore.getState().serverStatus
-                    if (currentStatus === 'starting') {
-                        console.log('[DevServer] Timeout: assuming server is ready')
-                        actions.setServerStatus('running')
-                    }
-                }, timeout)
-            } else {
-                actions.setServerStatus('error')
-                actions.addServerOutput(`Error: ${result.error}\n`)
+                actions.resetPreviewReadiness()
+                devServerRunIdRef.current = null
+                return
             }
+
+            await launchDevServerTerminal(projectPath, selectedCommand, {
+                label: config.label,
+                port: config.port,
+            }, runId)
         } catch (e) {
             console.error(e)
             actions.setServerStatus('error')
+            actions.setServerLifecycle({
+                runId: devServerRunIdRef.current,
+                state: 'error',
+                unhealthyReason: e instanceof Error ? e.message : 'Failed to start server',
+            })
             actions.addServerOutput(`Error: ${e instanceof Error ? e.message : 'Failed to start server'}\n`)
+            addTimelineEvent({
+                runId: devServerRunIdRef.current,
+                type: 'start_failed',
+                message: e instanceof Error ? e.message : 'Failed to start server',
+            })
         } finally {
             setIsUpdating(false)
         }
-    }, [projectPath, storedDevCommand, storedDevPort, actions, clearReadyTimeout, addTerminal, setPanelOpen])
+    }, [
+        actions,
+        addTimelineEvent,
+        createRunId,
+        launchDevServerTerminal,
+        projectPath,
+        serverStatus,
+        storedDevCommand,
+        storedDevPort,
+    ])
+
+    const handleCommandPickerConfirm = useCallback(async (command: string) => {
+        if (!projectPath) return
+        const pending = pendingCommandSelectionRef.current
+        if (!pending) return
+
+        try {
+            setShowCommandPicker(false)
+            setIsUpdating(true)
+            const runId = createRunId()
+            devServerRunIdRef.current = runId
+            actions.beginServerRun(runId, command)
+            actions.setServerStatus('starting')
+            actions.clearServerOutput()
+            persistDevCommand(projectPath, command)
+            addTimelineEvent({
+                runId,
+                type: 'start_requested',
+                message: 'Start requested after command selection',
+                details: {
+                    command,
+                },
+            })
+            await launchDevServerTerminal(projectPath, command, pending, runId)
+        } catch (e) {
+            console.error(e)
+            actions.setServerStatus('error')
+            actions.setServerLifecycle({
+                runId: devServerRunIdRef.current,
+                state: 'error',
+                unhealthyReason: e instanceof Error ? e.message : 'Failed to start server',
+            })
+            actions.addServerOutput(`Error: ${e instanceof Error ? e.message : 'Failed to start server'}\n`)
+            addTimelineEvent({
+                runId: devServerRunIdRef.current,
+                type: 'start_failed',
+                message: e instanceof Error ? e.message : 'Failed to start server',
+            })
+        } finally {
+            pendingCommandSelectionRef.current = null
+            setIsUpdating(false)
+        }
+    }, [actions, addTimelineEvent, createRunId, launchDevServerTerminal, projectPath])
 
     // Auto-start dev server when entering the pages page (runs after handleStart is defined)
     const hasAutoStartedRef = useRef(false)
@@ -409,6 +769,8 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         try {
             setIsUpdating(true)
             clearReadyTimeout()
+            pendingReadyProbeKeyRef.current = null
+            const activeRunId = devServerRunIdRef.current
 
             // Kill the terminal
             await window.electronAPI.terminal.kill({ terminalId: devServerTerminalIdRef.current })
@@ -417,50 +779,80 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             actions.setServerStatus('stopped')
             actions.setServerPort(null)
             actions.setServerPid(null)
+            actions.setServerLifecycle({
+                runId: activeRunId,
+                state: 'stopped',
+                stoppedAt: Date.now(),
+                unhealthyReason: null,
+            })
+            actions.resetPreviewReadiness()
+            addTimelineEvent({
+                runId: activeRunId,
+                type: 'stopped',
+                message: 'Dev server stopped by user',
+            })
             devServerTerminalIdRef.current = null
             devServerProjectPathRef.current = null
+            devServerRunIdRef.current = null
         } catch (e) {
             console.error(e)
         } finally {
             setIsUpdating(false)
         }
-    }, [actions, clearReadyTimeout, removeTerminal])
+    }, [actions, addTimelineEvent, clearReadyTimeout, removeTerminal])
 
     return (
-        <div className="flex items-center gap-2">
-            {serverStatus === 'stopped' || serverStatus === 'error' || serverStatus === 'starting' ? (
-                <Tooltip>
-                    <TooltipTrigger asChild>
+        <>
+            <DevCommandPickerDialog
+                open={showCommandPicker}
+                defaultCommand={commandPickerDefault}
+                suggestions={commandSuggestions}
+                onOpenChange={(open) => {
+                    setShowCommandPicker(open)
+                    if (!open) {
+                        pendingCommandSelectionRef.current = null
+                    }
+                }}
+                onConfirm={(command) => {
+                    void handleCommandPickerConfirm(command)
+                }}
+            />
+
+            <div className="flex items-center gap-2">
+                {serverStatus === 'stopped' || serverStatus === 'error' || serverStatus === 'unhealthy' || serverStatus === 'starting' ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
+                                onClick={handleStart}
+                                disabled={isUpdating || !projectPath}
+                            >
+                                {isUpdating || serverStatus === 'starting' ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Play className="h-4 w-4 ml-0.5 fill-current" />
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Start Dev Server</TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <div className="flex items-center">
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-foreground/70 hover:text-foreground hover:bg-accent"
-                            onClick={handleStart}
-                            disabled={isUpdating || !projectPath}
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
+                            onClick={handleStop}
+                            title="Stop server"
+                            disabled={isUpdating}
                         >
-                            {isUpdating || serverStatus === 'starting' ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Play className="h-4 w-4 ml-0.5 fill-current" />
-                            )}
+                            <Square className="h-3.5 w-3.5 fill-current" />
                         </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Start Dev Server</TooltipContent>
-                </Tooltip>
-            ) : (
-                <div className="flex items-center">
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
-                        onClick={handleStop}
-                        title="Stop server"
-                        disabled={isUpdating}
-                    >
-                        <Square className="h-3.5 w-3.5 fill-current" />
-                    </Button>
-                </div>
-            )}
-        </div>
+                    </div>
+                )}
+            </div>
+        </>
     )
 }

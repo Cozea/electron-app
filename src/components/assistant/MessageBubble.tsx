@@ -44,6 +44,7 @@ export interface MessageBubbleProps {
   message: UIMessage
   toolsByName: Map<string, MessageToolMeta>
   status: 'ready' | 'submitted' | 'streaming' | 'error'
+  showTodowriteTools?: boolean
   shouldRequireLocalApproval?: (toolMeta?: MessageToolMeta) => boolean
   onApproveTool?: (toolName: string, toolCallId: string, input: unknown, approvalId?: string) => void
   onDenyTool?: (toolName: string, toolCallId: string, approvalId?: string) => void
@@ -138,6 +139,7 @@ function MessageBubbleComponent({
   message,
   toolsByName,
   status,
+  showTodowriteTools = false,
   shouldRequireLocalApproval,
   onApproveTool,
   onDenyTool,
@@ -262,15 +264,18 @@ function MessageBubbleComponent({
             const toolState = getToolState(toolPart.state)
 
             // Special handling for task-based tools (like Claude Code's TodoWrite)
-            const isTaskTool = toolName === 'todo_list' || toolName === 'build_tasks'
-            const hasTaskInput = Array.isArray(toolInput?.tasks) || typeof toolInput?.tasks_json === 'string'
+            const isTaskTool = toolName === 'todowrite'
+            const hasTaskInput =
+              Array.isArray(toolInput?.tasks) ||
+              Array.isArray(toolInput?.todos) ||
+              typeof toolInput?.tasks_json === 'string'
 
-            // Skip rendering build_tasks entirely - it's shown in the controls pill
-            if (toolName === 'build_tasks') {
+            // Builder surface keeps todowrite in the controls pill.
+            if (toolName === 'todowrite' && !showTodowriteTools) {
               return null
             }
             // Special handling for terminal tools
-            const isTerminalTool = toolName === 'run_in_terminal' || toolName === 'get_terminal_output'
+            const isTerminalTool = toolName === 'bash'
             // Special handling for file edit tools (show Monaco diff)
             const isEditTool = isFileEditTool(toolName)
             // Special handling for web search tools (show only sources)
@@ -281,7 +286,7 @@ function MessageBubbleComponent({
               toolName === 'bing_search'
 
             // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read_file'
+            const isStaticTool = toolName === 'read'
 
             // Render static (non-expandable) tools
             if (isStaticTool) {
@@ -346,8 +351,8 @@ function MessageBubbleComponent({
                     />
                   )}
 
-                  {/* For non-task/non-terminal/non-edit/non-list_dir/non-web_search tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list_dir' && toolInput && (
+                  {/* For non-task/non-terminal/non-edit/non-list/non-web_search tools, show raw input */}
+                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
                     <ToolInput input={formatToolPayload(toolInput)} />
                   )}
 
@@ -465,20 +470,7 @@ function MessageBubbleComponent({
   )
 }
 
-function areMessageBubblePropsEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
-  return (
-    prev.message === next.message &&
-    prev.toolsByName === next.toolsByName &&
-    prev.status === next.status &&
-    prev.shouldRequireLocalApproval === next.shouldRequireLocalApproval &&
-    prev.onApproveTool === next.onApproveTool &&
-    prev.onDenyTool === next.onDenyTool &&
-    prev.terminalSessions === next.terminalSessions &&
-    prev.projectPath === next.projectPath
-  )
-}
-
-export const MessageBubble = memo(MessageBubbleComponent, areMessageBubblePropsEqual)
+export const MessageBubble = memo(MessageBubbleComponent)
 
 function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
   const textParts = parts
@@ -526,10 +518,12 @@ function extractTerminalOutput(output: unknown): string {
 
 function extractTasksFromInput(input: unknown): TaskData[] {
   const payload = isRecord(input) ? input : null
-  // Handle both formats: direct tasks array (Anthropic/OpenAI) or tasks_json string (Google/Gemini)
+  // Handle tasks/todos arrays and tasks_json compatibility payloads.
   let tasks: unknown[] = []
   if (payload && Array.isArray(payload.tasks)) {
     tasks = payload.tasks
+  } else if (payload && Array.isArray(payload.todos)) {
+    tasks = payload.todos
   } else if (payload && typeof payload.tasks_json === 'string') {
     const parsed = parseJsonArrayLoose(payload.tasks_json)
     if (parsed) tasks = parsed
@@ -564,7 +558,13 @@ function extractTasksFromToolOutput(output: unknown): TaskData[] {
   }
 
   const taskContainer = isRecord(payload) ? payload : null
-  const tasks = Array.isArray(taskContainer?.tasks) ? taskContainer?.tasks : []
+  const tasks = Array.isArray(taskContainer?.tasks)
+    ? taskContainer.tasks
+    : Array.isArray(taskContainer?.todos)
+      ? taskContainer.todos
+      : typeof taskContainer?.tasks_json === 'string'
+        ? parseJsonArrayLoose(taskContainer.tasks_json) ?? []
+        : []
   return tasks
     .filter(isRecord)
     .map((task) => {

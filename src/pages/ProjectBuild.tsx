@@ -1,4 +1,5 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import * as Y from 'yjs'
 import { api } from '../../convex/_generated/api'
@@ -16,7 +17,6 @@ import {
 import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 
 import {
-  Loader2,
   Monitor,
   MonitorOff,
 } from 'lucide-react'
@@ -31,60 +31,7 @@ import {
   type PipelineDiagnostic,
   type ToolDiagnosticsSummary,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
-
-// MIME type mapping for file extensions
-const MIME_TYPES: Record<string, string> = {
-  ts: 'text/typescript',
-  tsx: 'text/typescript',
-  js: 'application/javascript',
-  jsx: 'application/javascript',
-  json: 'application/json',
-  css: 'text/css',
-  html: 'text/html',
-  md: 'text/markdown',
-  txt: 'text/plain',
-  svg: 'image/svg+xml',
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  ico: 'image/x-icon',
-}
-
-function getMimeType(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || ''
-  return MIME_TYPES[ext] || 'text/plain'
-}
-
-const BINARY_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico'])
-
-function isBinaryPath(filePath: string): boolean {
-  const fileName = filePath.split('/').pop() ?? filePath
-  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
-  return !!ext && BINARY_EXTENSIONS.has(ext)
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  const chunkSize = 0x8000
-  let binary = ''
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-
-  return btoa(binary)
-}
-
-// Compute SHA-256 checksum of text content.
-async function computeHash(content: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const bytes = encoder.encode(content)
-  const hash = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
+import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? '' : 's'}`
@@ -106,7 +53,7 @@ function formatDiagnosticLocation(file: string, line?: number, column?: number):
 
 export function ProjectBuild() {
   const { projectId } = useParams<{ projectId: string }>()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { user, logout, convexUserId } = useAuth()
 
   // Load project from Convex
@@ -120,12 +67,6 @@ export function ProjectBuild() {
     project?._id && convexUserId ? { projectId: project._id, userId: convexUserId } : 'skip'
   )
 
-  // Cloud files for this project
-  const projectFiles = useQuery(
-    api.projectFiles.listForProject,
-    project?._id ? { projectId: project._id } : 'skip'
-  )
-
   const latestBuilderRun = useQuery(
     api.builderRuns.getLatestForProject,
     project?._id ? { projectId: project._id } : 'skip'
@@ -134,8 +75,6 @@ export function ProjectBuild() {
   // Mutations
   const updateStatus = useMutation(api.projects.updateStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
-  const saveFile = useMutation(api.projectFiles.saveFile)
   const startBuilderRun = useMutation(api.builderRuns.startRun)
   const checkpointBuilderRun = useMutation(api.builderRuns.checkpointRun)
   const updateBuilderRunStatus = useMutation(api.builderRuns.updateRunStatus)
@@ -176,23 +115,21 @@ export function ProjectBuild() {
   // Preview panel state
   const [showPreview, setShowPreview] = useState(true)
 
-  // Detect when npm install completes by checking build tasks
-  const npmInstallComplete = useMemo(() => {
+  // Detect when dependency installation completes by checking build tasks.
+  const dependencyInstallComplete = useMemo(() => {
     if (buildTasks.length === 0) return false
-    // Look for completed install dependency tasks
     return buildTasks.some(
       (task) =>
         task.status === 'completed' &&
         (task.content.toLowerCase().includes('install') ||
-          task.content.toLowerCase().includes('dependencies') ||
-          task.content.toLowerCase().includes('npm'))
+          task.content.toLowerCase().includes('dependencies'))
     )
   }, [buildTasks])
 
-  // Dev server manager - starts automatically when npm install completes
+  // Dev server manager starts after dependency installation completes.
   const devServer = useDevServerManager({
-    projectPath: npmInstallComplete ? localPath : null,
-    autoStart: npmInstallComplete && isAIGenerating,
+    projectPath: dependencyInstallComplete ? localPath : null,
+    autoStart: dependencyInstallComplete && isAIGenerating,
   })
 
   useEffect(() => {
@@ -284,6 +221,8 @@ export function ProjectBuild() {
   useEffect(() => {
     if (devServer.status === 'ready' && devServer.url) {
       addLog(`Dev server ready at ${devServer.url}`)
+    } else if (devServer.status === 'unhealthy' && devServer.error) {
+      addLog(`Dev server unhealthy: ${devServer.error}`)
     } else if (devServer.status === 'error' && devServer.error) {
       addLog(`Dev server error: ${devServer.error}`)
     } else if (devServer.status === 'starting') {
@@ -536,7 +475,7 @@ export function ProjectBuild() {
     addLog(`Template: ${project.template || 'custom'}`)
     addLog(`Pages: ${project.generatedPlan?.pages?.length || 0}`)
     addLog(`Entities: ${project.generatedPlan?.entities?.length || 0}`)
-    setStatusMessage('AI is analyzing your project plan...')
+    setStatusMessage('Preparing build environment...')
 
     try {
       await updateStatus({ projectId: project._id, status: 'building' })
@@ -590,6 +529,26 @@ export function ProjectBuild() {
       }
 
       addLog(`Using folder: ${path}`)
+
+      const preflight = await ensureProjectRuntimeToolchains(path, (progress) => {
+        setStatusMessage(progress.message)
+      })
+
+      if (!preflight.success) {
+        const failedLabel = preflight.failedRuntime ? runtimeLabel(preflight.failedRuntime) : 'required'
+        throw new Error(preflight.error || `${failedLabel} runtime is unavailable.`)
+      }
+
+      if (preflight.required.length > 0) {
+        const installedNames = preflight.installed.map(runtimeLabel)
+        if (installedNames.length > 0) {
+          addLog(`Installed runtimes: ${installedNames.join(', ')}`)
+        } else {
+          addLog('Runtime check passed (already available).')
+        }
+      }
+
+      setStatusMessage('AI is analyzing your project plan...')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       addLog(`Error: ${errorMessage}`)
@@ -631,64 +590,44 @@ export function ProjectBuild() {
     updateStatus,
   ])
 
-  const uploadFileToCloud = useCallback(async (
-    file: { path: string; content: string }
-  ) => {
-    if (!project || !convexUserId) return
-
-    try {
-      const checksum = await computeHash(file.content)
-
-      // Determine correct MIME type based on file extension
-      const mimeType = getMimeType(file.path)
-
-      const uploadUrl = await generateUploadUrl({ projectId: project._id })
-      const blob = new Blob([file.content], { type: mimeType })
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': mimeType },
-        body: blob,
-      })
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`)
+  const enqueueReplicaSnapshot = useCallback(
+    async (reason: string, source: 'agent' | 'user' | 'external' = 'agent') => {
+      if (!project?._id || !localPath) return
+      try {
+        const result = await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
+          projectId: String(project._id),
+          projectPath: localPath,
+          source,
+          reason,
+        })
+        if (result.success) {
+          addLog(`Replica snapshot queued (${result.queued} pending)`)
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown error'
+        addLog(`Replica snapshot enqueue failed: ${msg}`)
       }
-      const { storageId } = await response.json()
-
-      const fileName = file.path.split('/').pop() || file.path
-      await saveFile({
-        projectId: project._id,
-        userId: convexUserId,
-        storageId,
-        fileName,
-        filePath: file.path,
-        fileType: mimeType,
-        sizeBytes: blob.size,
-        checksum,
-      })
-      addLog(`Uploaded to cloud: ${file.path}`)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error'
-      addLog(`Upload failed for ${file.path}: ${msg}`)
-    }
-  }, [project, convexUserId, generateUploadUrl, saveFile, addLog])
+    },
+    [addLog, localPath, project?._id]
+  )
 
   const handleFileCreated = useCallback((file: { path: string; content: string }) => {
     addLog(`Created: ${file.path}`)
     // Track created files for Yjs initialization
     createdFilesRef.current.push(file)
-    void uploadFileToCloud(file)
-  }, [addLog, uploadFileToCloud])
+    void enqueueReplicaSnapshot(`builder-created:${file.path}`, 'agent')
+  }, [addLog, enqueueReplicaSnapshot])
 
-  // Pull files from cloud to local folder
+  // Pull files from canonical Git replica to local folder
   const pullFilesFromCloud = useCallback(async () => {
-    if (!project || !projectFiles || projectFiles.length === 0 || !convexUserId) return
+    if (!project || !convexUserId) return
 
     setIsPulling(true)
     setPullProgress(0)
-    addLog('Starting pull from cloud...')
+    addLog('Starting pull from canonical replica...')
 
     try {
-      // 1. Create local folder if doesn't exist
+      // 1. Ensure local folder exists.
       let targetPath = localPath
       const folderExists = await window.electronAPI.project.exists(project.slug)
 
@@ -728,48 +667,65 @@ export function ProjectBuild() {
         throw new Error('Could not determine local path')
       }
 
-      // 2. Download and write each file
-      const totalFiles = projectFiles.length
-      for (let i = 0; i < projectFiles.length; i++) {
-        const file = projectFiles[i]
-        if (!file.url) {
-          addLog(`Skipping ${file.filePath} - no download URL`)
-          continue
-        }
-
-        addLog(`Pulling: ${file.filePath}`)
-
-        // Download file content from Convex storage URL
-        const response = await fetch(file.url)
-        if (!response.ok) throw new Error(`Failed to download ${file.filePath}`)
-        const binary = isBinaryPath(file.filePath)
-        const content = binary
-          ? arrayBufferToBase64(await response.arrayBuffer())
-          : await response.text()
-
-        // Write to local folder (binary-safe)
-        const writeResult = await window.electronAPI.sync.writeFiles({
-          projectPath: targetPath,
-          files: [
-            {
-              path: file.filePath,
-              content,
-              encoding: binary ? 'base64' : 'utf8',
-            },
-          ],
-        })
-
-        if (writeResult.successCount < 1) {
-          const error = writeResult.results[0]?.error ?? 'Unknown error'
-          throw new Error(`Failed to write ${file.filePath}: ${error}`)
-        }
-
-        addLog(`Saved: ${file.filePath}`)
-        setPullProgress(Math.round(((i + 1) / totalFiles) * 100))
+      setPullProgress(20)
+      const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+        projectId: String(project._id),
+        projectPath: targetPath,
+      })
+      if (!bootstrap.success) {
+        throw new Error(bootstrap.error || 'Failed to bootstrap replica')
       }
 
-      addLog(`Pull complete! ${totalFiles} files synced.`)
-      setStatusMessage('Files synced from cloud')
+      setPullProgress(45)
+      const plan = await window.electronAPI.sync.gitReplicaPlan({
+        projectId: String(project._id),
+        projectPath: targetPath,
+      })
+      if (!plan.success) {
+        throw new Error(plan.error || 'Failed to plan replica sync')
+      }
+
+      const totalChanges =
+        plan.downloads.length +
+        plan.uploads.length +
+        plan.localDeletes.length +
+        plan.cloudDeletes.length +
+        plan.autoMerged.length +
+        plan.conflicts.length
+
+      if (totalChanges === 0) {
+        setPullProgress(100)
+        addLog('Replica already up to date.')
+        setStatusMessage('Files synced from replica')
+        setRunStatus('completed')
+        setProgress(100)
+        return
+      }
+
+      const conflictDecisions = Object.fromEntries(
+        plan.conflicts.map((conflict) => [conflict.path, 'cloud' as const])
+      )
+
+      setPullProgress(75)
+      const execute = await window.electronAPI.sync.gitReplicaExecute({
+        projectId: String(project._id),
+        projectPath: targetPath,
+        sessionId: plan.sessionId,
+        conflictDecisions,
+      })
+      if (!execute.success) {
+        throw new Error(execute.error || 'Replica apply failed')
+      }
+      if (execute.requiresConflictResolution) {
+        throw new Error('Replica pull requires conflict resolution')
+      }
+      if (!execute.applied) {
+        throw new Error('Replica pull did not apply changes')
+      }
+
+      setPullProgress(100)
+      addLog(`Pull complete from replica (${totalChanges} change(s)).`)
+      setStatusMessage('Files synced from replica')
       setRunStatus('completed')
       setProgress(100)
     } catch (error) {
@@ -785,43 +741,54 @@ export function ProjectBuild() {
     convexUserId,
     localPath,
     project,
-    projectFiles,
     updateMemberLocalPath,
   ])
 
-  // Check if we need to auto-pull (cloud files exist, no local folder)
+  // Resolve initial flow: pull existing replica state if needed, otherwise start AI build.
   useEffect(() => {
-    if (!project || projectFiles === undefined || autoPullTriggeredRef.current) return
+    if (!project || autoPullTriggeredRef.current) return
     if (!convexUserId) return
-    if (isAIGenerating || isPulling) return
+    if (isAIGenerating || isPulling || runStatus !== 'idle') return
 
-    const checkAndAutoPull = async () => {
-      const hasCloudFiles = projectFiles && projectFiles.length > 0
-      if (!hasCloudFiles) return
+    let cancelled = false
 
-      // Check if local folder exists
-      const folderExists = await window.electronAPI.project.exists(project.slug)
+    const resolveInitialAction = async () => {
+      try {
+        const folderExists = await window.electronAPI.project.exists(project.slug)
+        if (cancelled) return
 
-      if (!folderExists) {
-        addLog('Cloud files found but no local folder - auto-pulling...')
+        const status = await window.electronAPI.sync.gitReplicaStatus({
+          projectId: String(project._id),
+        })
+        if (cancelled) return
+
+        const hasCanonicalReplica = Boolean(status.success && status.canonicalHeadCommit)
+        if (hasCanonicalReplica && !folderExists) {
+          addLog('Replica state found but no local folder - auto-pulling...')
+          autoPullTriggeredRef.current = true
+          await pullFilesFromCloud()
+          return
+        }
+
+        if (!hasCanonicalReplica) {
+          addLog('No canonical replica state found - starting new build...')
+          autoPullTriggeredRef.current = true
+          await startAIBuild()
+        }
+      } catch (error) {
+        if (cancelled) return
+        const msg = error instanceof Error ? error.message : 'Unknown error'
+        addLog(`Initial replica check failed (${msg}) - starting build...`)
         autoPullTriggeredRef.current = true
-        await pullFilesFromCloud()
+        await startAIBuild()
       }
     }
 
-    checkAndAutoPull()
-  }, [project, projectFiles, convexUserId, isAIGenerating, isPulling, addLog, pullFilesFromCloud])
-
-  // Start build automatically when project loads (only if no cloud files to pull)
-  useEffect(() => {
-    if (project && !isPulling && !isAIGenerating && runStatus === 'idle') {
-      // Only auto-start if there are no cloud files (otherwise auto-pull handles it)
-      if (projectFiles !== undefined && projectFiles.length === 0) {
-        // Always use AI build - the AI will handle file generation
-        startAIBuild()
-      }
+    void resolveInitialAction()
+    return () => {
+      cancelled = true
     }
-  }, [project, projectFiles, isAIGenerating, runStatus, isPulling, startAIBuild])
+  }, [project, convexUserId, isAIGenerating, isPulling, runStatus, addLog, pullFilesFromCloud, startAIBuild])
 
   const handleRetry = () => {
     setHasError(false)
@@ -862,44 +829,8 @@ export function ProjectBuild() {
     }
   }
 
-  // Loading state
-  if (project === undefined) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[
-          { label: 'Projects', href: '/projects' },
-          { label: 'Loading...' },
-        ]}
-      >
-        <div className="h-full flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  // Project not found
-  if (project === null) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[
-          { label: 'Projects', href: '/projects' },
-          { label: 'Not Found' },
-        ]}
-      >
-        <div className="h-full flex flex-col items-center justify-center gap-4">
-          <div className="text-foreground text-lg">Project not found</div>
-          <Button variant="outline" onClick={() => navigate('/projects')}>
-            Back to Projects
-          </Button>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const isProjectLoading = project === undefined
+  const isProjectMissing = project === null
 
   return (
     <DashboardLayout
@@ -907,10 +838,10 @@ export function ProjectBuild() {
       onLogout={logout}
       breadcrumbs={[
         { label: 'Projects', href: '/projects' },
-        { label: project.name },
-        { label: 'Build' },
+        { label: isProjectLoading ? 'Loading...' : isProjectMissing || !project ? 'Not Found' : project.name },
+        ...(isProjectLoading || isProjectMissing || !project ? [] : [{ label: 'Build' }]),
       ]}
-      header={(
+      header={!isProjectLoading && !isProjectMissing ? (
         <Button
           variant="outline"
           size="sm"
@@ -929,11 +860,23 @@ export function ProjectBuild() {
             </>
           )}
         </Button>
-      )}
+      ) : undefined}
       headerContentInsetClassName="pt-11"
       contentMode="fixed"
     >
-      <div className="h-full flex flex-col overflow-hidden">
+      {isProjectLoading ? (
+        <div className="h-full flex items-center justify-center text-muted-foreground">
+          Loading project...
+        </div>
+      ) : isProjectMissing || !project ? (
+        <div className="h-full flex flex-col items-center justify-center gap-4">
+          <div className="text-foreground text-lg">Project not found</div>
+          <Button variant="outline" onClick={() => navigate('/projects')}>
+            Back to Projects
+          </Button>
+        </div>
+      ) : (
+        <div className="h-full flex flex-col overflow-hidden">
         {/* Progress Bar - Pulling (Moved from header) */}
         {isPulling && (
           <div className="px-6 py-4 border-b">
@@ -946,116 +889,76 @@ export function ProjectBuild() {
 
         {/* Split Pane Layout: Builder Conversation + Live Preview */}
         <div className="flex-1 overflow-hidden">
-          {showPreview ? (
-            <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
-              {/* Builder Conversation Panel - Left Side */}
-              <ResizablePanel defaultSize={40} minSize={25} id="builder-conversation" className="min-w-0">
-                <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-                  <div className="flex-1 min-h-0 relative">
-                    {localPath && project ? (
-                      <BuilderConversation
-                        project={project}
-                        localPath={localPath}
-                        stopRequestCount={stopRequestCount}
-                        onTasksUpdate={handleTasksUpdate}
-                        onFileCreated={handleFileCreated}
-                        onComplete={handleAIComplete}
-                        onError={handleAIError}
-                        onBillingError={setBillingError}
-                        className="h-full"
-                      />
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        <p>Loading project...</p>
-                      </div>
-                    )}
-                    {/* Floating Controls Pill */}
-                    <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
-                      {billingError && (
-                        <BillingError
-                          error={billingError}
-                          className="mx-auto w-full max-w-2xl"
-                        />
-                      )}
-                      <BuilderControlsPill
-                        statusMessage={statusMessage}
-                        isAIGenerating={isAIGenerating}
-                        isAIComplete={isAIComplete}
-                        hasError={hasError}
-                        isPulling={isPulling}
-                        buildTasks={buildTasks}
-                        onStop={handleAIStop}
-                        onRetry={handleRetry}
-                        onPull={pullFilesFromCloud}
-                        onOpenProject={handleOpenProject}
-                        onStartBuild={startAIBuild}
-                        onCancelProject={handleCancelProject}
-                      />
+          <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
+            {/* Builder Conversation Panel - Left Side */}
+            <ResizablePanel defaultSize={showPreview ? 40 : 100} minSize={25} id="builder-conversation" className="min-w-0">
+              <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+                <div className="flex-1 min-h-0 relative">
+                  {localPath && project ? (
+                    <BuilderConversation
+                      project={project}
+                      localPath={localPath}
+                      stopRequestCount={stopRequestCount}
+                      onTasksUpdate={handleTasksUpdate}
+                      onFileCreated={handleFileCreated}
+                      onComplete={handleAIComplete}
+                      onError={handleAIError}
+                      onBillingError={setBillingError}
+                      className="h-full"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <p>Loading project...</p>
                     </div>
+                  )}
+                  {/* Floating Controls Pill */}
+                  <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
+                    {billingError && (
+                      <BillingError
+                        error={billingError}
+                        className="mx-auto w-full max-w-2xl"
+                      />
+                    )}
+                    <BuilderControlsPill
+                      statusMessage={statusMessage}
+                      isAIGenerating={isAIGenerating}
+                      isAIComplete={isAIComplete}
+                      hasError={hasError}
+                      isPulling={isPulling}
+                      buildTasks={buildTasks}
+                      onStop={handleAIStop}
+                      onRetry={handleRetry}
+                      onPull={pullFilesFromCloud}
+                      onOpenProject={handleOpenProject}
+                      onStartBuild={startAIBuild}
+                      onCancelProject={handleCancelProject}
+                    />
                   </div>
                 </div>
-              </ResizablePanel>
-
-              {/* Resize Handle */}
-              <ResizableHandle withHandle />
-
-              {/* Preview Panel - Right Side */}
-              <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
-                <BuildPreviewPanel
-                  status={devServer.status}
-                  url={devServer.url}
-                  error={devServer.error}
-                  onRefresh={devServer.restart}
-                  onCapture={capturePreviewScreenshot}
-                  className="h-full relative sidebar-fade-border sidebar-fade-border-left"
-                />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          ) : (
-            /* Full-width Builder Conversation when preview is hidden */
-            <div className="h-full flex flex-col overflow-hidden">
-              <div className="flex-1 min-h-0 relative">
-                {localPath && project && (
-                  <BuilderConversation
-                    project={project}
-                    localPath={localPath}
-                    stopRequestCount={stopRequestCount}
-                    onTasksUpdate={handleTasksUpdate}
-                    onFileCreated={handleFileCreated}
-                    onComplete={handleAIComplete}
-                    onError={handleAIError}
-                    onBillingError={setBillingError}
-                    className="h-full"
-                  />
-                )}
-                {/* Floating Controls Pill */}
-                <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
-                  {billingError && (
-                    <BillingError
-                      error={billingError}
-                      className="mx-auto w-full max-w-2xl"
-                    />
-                  )}
-                  <BuilderControlsPill
-                    statusMessage={statusMessage}
-                    isAIGenerating={isAIGenerating}
-                    isAIComplete={isAIComplete}
-                    hasError={hasError}
-                    isPulling={isPulling}
-                    buildTasks={buildTasks}
-                    onStop={handleAIStop}
-                    onRetry={handleRetry}
-                    onPull={pullFilesFromCloud}
-                    onOpenProject={handleOpenProject}
-                    onStartBuild={startAIBuild}
-                    onCancelProject={handleCancelProject}
-                  />
-                </div>
               </div>
-            </div>
-          )}
+            </ResizablePanel>
+
+            {/* Resize Handle and Preview Panel (hidden if not showPreview) */}
+            {showPreview && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
+                  <BuildPreviewPanel
+                    status={devServer.status}
+                    url={devServer.url}
+                    error={devServer.error}
+                    timeline={devServer.timeline}
+                    onRefresh={devServer.restart}
+                    onCapture={capturePreviewScreenshot}
+                    className="h-full relative sidebar-fade-border sidebar-fade-border-left"
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         </div>
-      </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

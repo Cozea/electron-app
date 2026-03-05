@@ -109,8 +109,10 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
 
         // Get CSS variable value and convert to hex
         const getThemeColor = (cssVar: string, fallback: string): string => {
-            const themeRoot = container.closest('.dark, .navy, .wine, .sunny, .forest') || document.documentElement
-            const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+            const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
+            const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
+            const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+            const computed = localComputed || rootComputed
 
             if (!computed) {
                 return fallback
@@ -130,10 +132,66 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
             return colorToHex(resolvedColor)
         }
 
+        const relativeLuminance = (hex: string): number => {
+            const normalized = hex.replace('#', '')
+            if (normalized.length !== 6) return 0
+            const r = parseInt(normalized.slice(0, 2), 16) / 255
+            const g = parseInt(normalized.slice(2, 4), 16) / 255
+            const b = parseInt(normalized.slice(4, 6), 16) / 255
+            const channel = (value: number) =>
+                value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+            return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+        }
+
+        const buildAnsiPalette = (useDarkPalette: boolean) => {
+            if (useDarkPalette) {
+                return {
+                    black: '#09090b',
+                    red: '#f87171',
+                    green: '#4ade80',
+                    yellow: '#facc15',
+                    blue: '#60a5fa',
+                    magenta: '#c084fc',
+                    cyan: '#22d3ee',
+                    white: '#d4d4d8',
+                    brightBlack: '#52525b',
+                    brightRed: '#fca5a5',
+                    brightGreen: '#86efac',
+                    brightYellow: '#fde047',
+                    brightBlue: '#93c5fd',
+                    brightMagenta: '#d8b4fe',
+                    brightCyan: '#67e8f9',
+                    brightWhite: '#f4f4f5',
+                }
+            }
+
+            return {
+                black: '#2f333d',
+                red: '#d73a49',
+                green: '#22863a',
+                yellow: '#9a6700',
+                blue: '#005cc5',
+                magenta: '#6f42c1',
+                cyan: '#0a7ea4',
+                white: '#57606a',
+                brightBlack: '#6e7781',
+                brightRed: '#cf222e',
+                brightGreen: '#1a7f37',
+                brightYellow: '#8a4600',
+                brightBlue: '#0969da',
+                brightMagenta: '#8250df',
+                brightCyan: '#1b7c83',
+                brightWhite: '#24292f',
+            }
+        }
+
         // Map theme colors
-        const background = getThemeColor('--terminal-panel-bg', '#1a1a1a')
-        const foreground = getThemeColor('--sidebar-foreground', '#fafafa')
+        const secondaryFallback = getThemeColor('--secondary', '#1a1a1a')
+        const background = getThemeColor('--terminal-panel-bg', secondaryFallback)
+        const foreground = getThemeColor('--foreground', '#fafafa')
         const muted = getThemeColor('--muted', '#27272a')
+        const useDarkPalette = relativeLuminance(background) < 0.45
+        const ansi = buildAnsiPalette(useDarkPalette)
 
         const term = new Terminal({
             cols,
@@ -144,23 +202,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
                 cursor: foreground,
                 cursorAccent: background,
                 selectionBackground: muted,
-                // ANSI colors
-                black: '#09090b',
-                red: '#f87171',
-                green: '#4ade80',
-                yellow: '#facc15',
-                blue: '#60a5fa',
-                magenta: '#c084fc',
-                cyan: '#22d3ee',
-                white: '#d4d4d8',
-                brightBlack: '#52525b',
-                brightRed: '#fca5a5',
-                brightGreen: '#86efac',
-                brightYellow: '#fde047',
-                brightBlue: '#93c5fd',
-                brightMagenta: '#d8b4fe',
-                brightCyan: '#67e8f9',
-                brightWhite: '#f4f4f5',
+                ...ansi,
             },
             fontSize: 12,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -173,7 +215,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
             scrollback: 10000,
             allowProposedApi: true,
             drawBoldTextInBrightColors: true,
-            minimumContrastRatio: 1,
+            minimumContrastRatio: 4.5,
         })
 
         const fitAddon = new FitAddon()
@@ -333,7 +375,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
     return (
         <div
             className={cn("relative w-full h-full overflow-hidden", className)}
-            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+            style={{ backgroundColor: "var(--terminal-panel-bg, var(--secondary))" }}
             onContextMenu={handleContextMenu}
         >
             {selectedText.trim().length > 0 && (

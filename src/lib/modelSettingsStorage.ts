@@ -1,21 +1,130 @@
-export type StoredModelSettings = {
-  selectedAgent?: "Agent" | "Assistant";
-  selectedPerformance?: "High" | "Medium" | "Low";
-  thinkingEffort?: "low" | "medium" | "high";
-};
+import type { AgentId, VariantId, AISurface } from '@/lib/ai/runtimeProfiles'
 
-const STORAGE_KEY = "crosscode.ai.modelSettings.v1";
+export type StoredModelSettings = {
+  agentId?: AgentId;
+  variantId?: VariantId;
+  surface?: AISurface;
+}
+
+const STORAGE_KEY = "cozea.ai.modelSettings.v2";
+const LEGACY_STORAGE_SUFFIX = ".ai.modelSettings.v2";
+const GLOBAL_STORAGE_KEY = "cozea.ai.globalSettings.v1";
+const LEGACY_GLOBAL_STORAGE_SUFFIX = ".ai.globalSettings.v1";
+
+export type GlobalModelSettings = {
+  model?: string;
+  variantId?: VariantId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseLegacyModelKey(key: string): { surface?: AISurface; model?: string } {
+  const separatorIndex = key.indexOf(':')
+  if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
+    return { model: key || undefined }
+  }
+  const surface = key.slice(0, separatorIndex)
+  const model = key.slice(separatorIndex + 1)
+  const normalizedSurface: AISurface | undefined =
+    surface === 'wizard' ||
+    surface === 'builder' ||
+    surface === 'assistant_panel' ||
+    surface === 'assistant_project'
+      ? surface
+      : undefined
+  return {
+    surface: normalizedSurface,
+    model: model || undefined,
+  }
+}
+
+function findLegacyStorageValue(preferredKey: string, suffix: string): string | null {
+  if (typeof window === "undefined") return null
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i)
+    if (!key || key === preferredKey) continue
+    if (key.endsWith(suffix)) {
+      return window.localStorage.getItem(key)
+    }
+  }
+  return null
+}
+
+export function getModelSettingsKey(model: string, surface: AISurface): string {
+  return `${surface}:${model}`
+}
+
+export function readStoredModelSettings(
+  settings: Record<string, StoredModelSettings>,
+  model: string,
+  surface: AISurface
+): StoredModelSettings | undefined {
+  return settings[getModelSettingsKey(model, surface)]
+}
+
+export function writeStoredModelSettings(
+  settings: Record<string, StoredModelSettings>,
+  model: string,
+  surface: AISurface,
+  value: StoredModelSettings
+): Record<string, StoredModelSettings> {
+  return {
+    ...settings,
+    [getModelSettingsKey(model, surface)]: {
+      ...value,
+      surface,
+    },
+  }
+}
 
 export function loadModelSettings(): Record<string, StoredModelSettings> {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const legacyRaw = !raw ? findLegacyStorageValue(STORAGE_KEY, LEGACY_STORAGE_SUFFIX) : null;
+    const effectiveRaw = raw || legacyRaw;
+    if (!effectiveRaw) return {};
+
+    const parsed = JSON.parse(effectiveRaw);
     if (!parsed || typeof parsed !== "object") return {};
+
+    if (!raw && legacyRaw) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+
     return parsed as Record<string, StoredModelSettings>;
   } catch {
     return {};
+  }
+}
+
+function loadStoredGlobalModelSettingsRaw(): GlobalModelSettings | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(GLOBAL_STORAGE_KEY);
+    const legacyRaw = !raw
+      ? findLegacyStorageValue(GLOBAL_STORAGE_KEY, LEGACY_GLOBAL_STORAGE_SUFFIX)
+      : null;
+    const effectiveRaw = raw || legacyRaw;
+    if (!effectiveRaw) return null;
+
+    const parsed = JSON.parse(effectiveRaw)
+    if (!isRecord(parsed)) return null
+
+    const normalized: GlobalModelSettings = {
+      model: typeof parsed.model === 'string' ? parsed.model : undefined,
+      variantId: typeof parsed.variantId === 'string' ? parsed.variantId as VariantId : undefined,
+    }
+
+    if (!raw && legacyRaw) {
+      window.localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(normalized));
+    }
+
+    return normalized
+  } catch {
+    return null
   }
 }
 
@@ -26,4 +135,82 @@ export function saveModelSettings(settings: Record<string, StoredModelSettings>)
   } catch {
     // Ignore storage errors (e.g., quota exceeded or disabled storage)
   }
+}
+
+function migrateGlobalSettingsFromLegacy(): GlobalModelSettings {
+  const legacy = loadModelSettings()
+  const entries = Object.entries(legacy)
+    .map(([key, value]) => {
+      const parsedKey = parseLegacyModelKey(key)
+      let model = parsedKey.model
+      // Basic normalization to scoped ID for legacy hits
+      if (model && !model.includes('/')) {
+        if (model.includes('gpt-')) model = `openai/${model}`
+        else if (model.includes('claude-')) model = `anthropic/${model}`
+        else if (model.includes('gemini-')) model = `google/${model}`
+        else if (model.includes('grok-')) model = `xai/${model}`
+        else if (model.includes('copilot-')) model = `github-copilot/${model}`
+      }
+      return {
+        surface: parsedKey.surface,
+        model,
+        variantId: value.variantId,
+      }
+    })
+    .filter((item) => item.model)
+
+  if (entries.length === 0) return {}
+
+  const surfacePriority: AISurface[] = ['assistant_panel', 'assistant_project', 'wizard', 'builder']
+  for (const surface of surfacePriority) {
+    const hit = entries.find((entry) => entry.surface === surface)
+    if (hit) {
+      return {
+        model: hit.model,
+        variantId: hit.variantId,
+      }
+    }
+  }
+
+  return {
+    model: entries[0]?.model,
+    variantId: entries[0]?.variantId,
+  }
+}
+
+export function loadGlobalModelSettings(): GlobalModelSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    const persisted = loadStoredGlobalModelSettingsRaw()
+    if (persisted) return persisted
+
+    const migrated = migrateGlobalSettingsFromLegacy()
+    if (migrated.model || migrated.variantId) {
+      saveGlobalModelSettings(migrated)
+    }
+    return migrated
+  } catch {
+    return {};
+  }
+}
+
+export function saveGlobalModelSettings(settings: GlobalModelSettings) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage errors (e.g., quota exceeded or disabled storage)
+  }
+}
+
+export function updateGlobalModelSettings(
+  updates: Partial<GlobalModelSettings>
+): GlobalModelSettings {
+  const current = loadGlobalModelSettings()
+  const next = {
+    ...current,
+    ...updates,
+  }
+  saveGlobalModelSettings(next)
+  return next
 }

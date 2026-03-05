@@ -14,6 +14,118 @@ interface TokenPayload {
   iat?: number
 }
 
+interface CreateOrganizationResponse {
+  organization: {
+    id: string
+    name: string
+  }
+  membership: {
+    id: string
+    role?: string
+    status?: string
+  }
+}
+
+interface ListOrganizationsResponse {
+  organizations?: OrganizationMembership[]
+}
+
+const PERSONAL_WORKSPACE_PREFIX = 'personal:'
+const PERSONAL_MEMBERSHIP_PREFIX = 'personal-membership:'
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://api.cozea.app'
+
+function isPersonalWorkspaceOrganizationId(organizationId: string): boolean {
+  return organizationId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+}
+
+function getPersonalWorkspaceName(user: User): string {
+  if (user.firstName && user.firstName.trim().length > 0) {
+    return `${user.firstName.trim()}'s Workspace`
+  }
+  const emailPrefix = user.email.split('@')[0]?.trim()
+  if (emailPrefix) {
+    return `${emailPrefix}'s Workspace`
+  }
+  return 'My Workspace'
+}
+
+function createPersonalWorkspaceMembership(user: User): OrganizationMembership {
+  const organizationId = `${PERSONAL_WORKSPACE_PREFIX}${user.id}`
+  return {
+    id: `${PERSONAL_MEMBERSHIP_PREFIX}${user.id}`,
+    organizationId,
+    organizationName: getPersonalWorkspaceName(user),
+    role: 'admin',
+    status: 'active',
+    workspaceType: 'personal',
+  }
+}
+
+function withPersonalWorkspaceMembership(
+  user: User,
+  memberships: OrganizationMembership[]
+): OrganizationMembership[] {
+  return normalizeOrganizations([...memberships, createPersonalWorkspaceMembership(user)])
+}
+
+function normalizeMembershipStatus(status: string | undefined): OrganizationMembership['status'] {
+  if (status === 'inactive' || status === 'pending') {
+    return status
+  }
+  return 'active'
+}
+
+function decodeBase64Url(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return atob(padded)
+  } catch {
+    return null
+  }
+}
+
+function normalizeOrganizations(input: OrganizationMembership[]): OrganizationMembership[] {
+  const byOrganizationId = new Map<string, OrganizationMembership>()
+
+  const score = (org: OrganizationMembership): number => {
+    let value = 0
+    if (org.status === 'active') value += 4
+    if (org.convexOrgId) value += 2
+    if (org.role === 'admin') value += 2
+    else if (org.role === 'member') value += 1
+    return value
+  }
+
+  for (const org of input) {
+    const key = org.organizationId || org.id
+    if (!key) continue
+
+    const normalizedOrg: OrganizationMembership = {
+      ...org,
+      organizationId: key,
+      workspaceType: org.workspaceType ?? (isPersonalWorkspaceOrganizationId(key) ? 'personal' : 'organization'),
+    }
+
+    const existing = byOrganizationId.get(key)
+    if (!existing) {
+      byOrganizationId.set(key, normalizedOrg)
+      continue
+    }
+
+    const existingScore = score(existing)
+    const incomingScore = score(normalizedOrg)
+
+    if (incomingScore > existingScore) {
+      byOrganizationId.set(key, { ...existing, ...normalizedOrg })
+    } else if (incomingScore === existingScore) {
+      byOrganizationId.set(key, { ...existing, ...normalizedOrg })
+    }
+  }
+
+  return Array.from(byOrganizationId.values())
+}
+
 /**
  * Decode a JWT token without verification (client-side only)
  * Used to check expiry before making requests
@@ -22,7 +134,9 @@ function decodeToken(token: string): TokenPayload | null {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return null
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const rawPayload = decodeBase64Url(parts[1])
+    if (!rawPayload) return null
+    const payload = JSON.parse(rawPayload)
     return payload
   } catch {
     return null
@@ -37,7 +151,8 @@ function decodeToken(token: string): TokenPayload | null {
 function isTokenExpired(token: string | null, bufferSeconds = 30): boolean {
   if (!token) return true
   const payload = decodeToken(token)
-  if (!payload?.exp) return true
+  // Opaque/non-JWT tokens can be valid but undecodable here.
+  if (!payload?.exp) return false
   const expiresAt = payload.exp * 1000 // Convert to ms
   const bufferMs = bufferSeconds * 1000
   return Date.now() >= expiresAt - bufferMs
@@ -46,10 +161,10 @@ function isTokenExpired(token: string | null, bufferSeconds = 30): boolean {
 /**
  * Get time until token expires in milliseconds
  */
-function getTokenTimeToExpiry(token: string | null): number {
+function getTokenTimeToExpiry(token: string | null): number | null {
   if (!token) return 0
   const payload = decodeToken(token)
-  if (!payload?.exp) return 0
+  if (!payload?.exp) return null
   return Math.max(0, payload.exp * 1000 - Date.now())
 }
 
@@ -59,6 +174,7 @@ interface AuthContextType {
   accessToken: string | null
   organizations: OrganizationMembership[]
   currentOrganization: OrganizationMembership | null
+  workspaceSelectionRequired: boolean
   isAuthenticated: boolean
   isLoading: boolean
   authError: string | null
@@ -66,6 +182,7 @@ interface AuthContextType {
   login: () => Promise<void>
   logout: () => Promise<void>
   refreshToken: () => Promise<boolean>
+  createOrganizationWorkspace: (name: string) => Promise<OrganizationMembership>
   setOrganizations: (orgs: OrganizationMembership[]) => void
   setCurrentOrganization: (org: OrganizationMembership | null) => void
 }
@@ -84,9 +201,13 @@ const STORAGE_KEY_TOKEN = 'auth_token'
 const STORAGE_KEY_ORGS = 'auth_orgs'
 const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
 const LOGIN_FLOW_TIMEOUT_MS = 90_000
+const MIN_TOKEN_REFRESH_INTERVAL_MS = 30_000
+const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 10 * 60 * 1000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const organizationsRef = useRef<OrganizationMembership[]>([])
+  const currentOrganizationRef = useRef<OrganizationMembership | null>(null)
 
   // Initialize state from localStorage for instant load
   const [user, setUser] = useState<User | null>(() => {
@@ -105,7 +226,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organizations, setOrganizationsState] = useState<OrganizationMembership[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_ORGS)
-      return stored ? JSON.parse(stored) : []
+      const parsed = stored ? (JSON.parse(stored) as OrganizationMembership[]) : []
+      return normalizeOrganizations(parsed)
     } catch { return [] }
   })
 
@@ -114,7 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedOrgs = localStorage.getItem(STORAGE_KEY_ORGS)
       const storedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT_ORG_ID)
       if (storedOrgs && storedCurrentId) {
-        const orgs: OrganizationMembership[] = JSON.parse(storedOrgs)
+        const orgs = normalizeOrganizations(JSON.parse(storedOrgs) as OrganizationMembership[])
         return orgs.find(o => o.id === storedCurrentId || o.organizationId === storedCurrentId) || null
       }
       return null
@@ -127,6 +249,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [authError, setAuthError] = useState<string | null>(null)
   const [convexLoading, setConvexLoading] = useState(false)
+  const [workspaceSelectionRequired, setWorkspaceSelectionRequired] = useState(false)
+
+  useEffect(() => {
+    organizationsRef.current = organizations
+    currentOrganizationRef.current = currentOrganization
+  }, [organizations, currentOrganization])
 
   // Query Convex for user's organizations (source of truth)
   const convexUserWithOrgs = useQuery(
@@ -139,28 +267,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (convexUserWithOrgs?.organizations && convexUserWithOrgs.organizations.length > 0) {
       // Convert Convex orgs to OrganizationMembership format (filter out nulls)
       const orgs = convexUserWithOrgs.organizations as Array<ConvexOrganizationShape | null>
-      const convexOrgs: OrganizationMembership[] = orgs
-        .filter((org): org is ConvexOrganizationShape => org !== null)
-        .map((org) => ({
-          id: org.workosId || org._id, // Keep WorkOS ID for consistency
-          organizationId: org.workosId || org._id, // WorkOS organization ID
-          organizationName: org.name,
-          role: org.role || 'member',
-          status: 'active' as const,
-          convexOrgId: org._id, // Store Convex document ID separately
-        }))
+      const convexOrgs = normalizeOrganizations(
+        orgs
+          .filter((org): org is ConvexOrganizationShape => org !== null)
+          .map((org) => ({
+            id: org.workosId || org._id, // Keep WorkOS ID for consistency
+            organizationId: org.workosId || org._id, // WorkOS organization ID
+            organizationName: org.name,
+            role: org.role || 'member',
+            status: 'active' as const,
+            convexOrgId: org._id, // Store Convex document ID separately
+            workspaceType: isPersonalWorkspaceOrganizationId(org.workosId || org._id)
+              ? ('personal' as const)
+              : ('organization' as const),
+          }))
+      )
 
       // Update with Convex data if convexOrgId is missing (to fix race condition)
-      const needsConvexOrgId = !currentOrganization?.convexOrgId || organizations.some(org => !org.convexOrgId)
+      const currentOrg = currentOrganizationRef.current
+      const existingOrganizations = organizationsRef.current
+      const needsConvexOrgId = !currentOrg?.convexOrgId || existingOrganizations.some(org => !org.convexOrgId)
       if (convexOrgs.length > 0 && needsConvexOrgId) {
         setOrganizationsState(convexOrgs)
-        // Update current org with the one that has convexOrgId
-        const currentOrgId = currentOrganization?.organizationId
-        const updatedCurrentOrg = currentOrgId
-          ? convexOrgs.find(org => org.organizationId === currentOrgId)
-          : convexOrgs[0]
-        if (updatedCurrentOrg) {
-          setCurrentOrganization(updatedCurrentOrg)
+        if (!workspaceSelectionRequired) {
+          // Update current org with the one that has convexOrgId
+          const currentOrgId = currentOrg?.organizationId
+          const updatedCurrentOrg = currentOrgId
+            ? convexOrgs.find(org => org.organizationId === currentOrgId)
+            : convexOrgs[0]
+          if (updatedCurrentOrg) {
+            setCurrentOrganization(updatedCurrentOrg)
+          }
         }
         // Persist to local session
         window.electronAPI.auth.updateOrganizations(convexOrgs)
@@ -170,7 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Query completed but no orgs
       setConvexLoading(false)
     }
-  }, [convexUserWithOrgs, organizations, currentOrganization])
+  }, [convexUserWithOrgs, workspaceSelectionRequired])
 
   // Derived state: user needs onboarding if authenticated, Convex loaded, and has no orgs
   const needsOnboarding = !!user && !convexLoading && convexUserWithOrgs !== undefined &&
@@ -178,20 +315,137 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Wrapper to update organizations and set current org
   const setOrganizations = useCallback((orgs: OrganizationMembership[]) => {
-    setOrganizationsState(orgs)
+    const normalized = user
+      ? withPersonalWorkspaceMembership(user, orgs)
+      : normalizeOrganizations(orgs)
+    setOrganizationsState(normalized)
     // Set current org to first active one if not already set
-    if (orgs.length > 0 && !currentOrganization) {
-      const activeOrg = orgs.find(o => o.status === 'active') || orgs[0]
+    if (normalized.length > 0 && !currentOrganization) {
+      const activeOrg = normalized.find(o => o.status === 'active') || normalized[0]
       setCurrentOrganization(activeOrg)
     }
-  }, [currentOrganization])
+  }, [currentOrganization, user])
 
   // Convex mutations for syncing
   const syncUserToConvex = useMutation(api.users.syncFromWorkOS)
   const syncOrgToConvex = useMutation(api.organizations.syncFromWorkOS)
   const syncMembershipToConvex = useMutation(api.organizations.syncMembershipFromWorkOS)
+  const reconcileMembershipsToConvex = useMutation(api.organizations.reconcileMembershipSetFromWorkOS)
 
-  const handleSession = useCallback(async (session: Session | null) => {
+  const createOrganizationWorkspace = useCallback(async (name: string): Promise<OrganizationMembership> => {
+    if (!user || !accessToken) {
+      throw new Error('You must be signed in to create a workspace')
+    }
+
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      throw new Error('Workspace name is required')
+    }
+
+    const createResponse = await fetch(`${AUTH_SERVER_URL}/organizations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ name: trimmedName }),
+    })
+
+    if (!createResponse.ok) {
+      let errorMessage = 'Failed to create organization'
+      try {
+        const errorData = (await createResponse.json()) as { error?: string }
+        if (errorData.error) {
+          errorMessage = errorData.error
+        }
+      } catch {
+        // noop
+      }
+      throw new Error(errorMessage)
+    }
+
+    const created = (await createResponse.json()) as CreateOrganizationResponse
+
+    const createdConvexOrgId = await syncOrgToConvex({
+      workosId: created.organization.id,
+      name: created.organization.name,
+    })
+
+    const createdMembership: OrganizationMembership = {
+      id: created.membership.id,
+      organizationId: created.organization.id,
+      organizationName: created.organization.name,
+      role: created.membership.role || 'admin',
+      status: normalizeMembershipStatus(created.membership.status),
+      workspaceType: 'organization',
+      convexOrgId: createdConvexOrgId,
+    }
+
+    await syncMembershipToConvex({
+      workosId: createdMembership.id,
+      workosOrgId: createdMembership.organizationId,
+      workosUserId: user.id,
+      role: createdMembership.role,
+      status: createdMembership.status,
+    })
+
+    let nextOrganizations: OrganizationMembership[]
+    try {
+      const listResponse = await fetch(`${AUTH_SERVER_URL}/organizations`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (!listResponse.ok) {
+        throw new Error('Failed to list organizations after creation')
+      }
+
+      const listed = (await listResponse.json()) as ListOrganizationsResponse
+      const convexOrgIdsByWorkosId = new Map(
+        organizationsRef.current
+          .filter((organization) => organization.workspaceType !== 'personal' && organization.convexOrgId)
+          .map((organization) => [organization.organizationId, organization.convexOrgId])
+      )
+      convexOrgIdsByWorkosId.set(createdMembership.organizationId, createdConvexOrgId)
+
+      const listedOrganizations = (listed.organizations || []).map((organization) => {
+        const organizationId = organization.organizationId || organization.id
+        return {
+          ...organization,
+          organizationId,
+          workspaceType: 'organization' as const,
+          convexOrgId: convexOrgIdsByWorkosId.get(organizationId),
+        }
+      })
+
+      nextOrganizations = withPersonalWorkspaceMembership(user, listedOrganizations)
+    } catch {
+      const existingOrganizations = organizationsRef.current.filter(
+        (organization) => organization.workspaceType !== 'personal'
+      )
+      nextOrganizations = withPersonalWorkspaceMembership(user, [
+        ...existingOrganizations,
+        createdMembership,
+      ])
+    }
+
+    setOrganizationsState(nextOrganizations)
+    localStorage.setItem(STORAGE_KEY_ORGS, JSON.stringify(nextOrganizations))
+    await window.electronAPI.auth.updateOrganizations(nextOrganizations)
+
+    const selectedOrganization =
+      nextOrganizations.find((organization) => organization.organizationId === createdMembership.organizationId) ||
+      createdMembership
+
+    setCurrentOrganization(selectedOrganization)
+    setWorkspaceSelectionRequired(false)
+    localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, selectedOrganization.organizationId)
+
+    return selectedOrganization
+  }, [accessToken, syncMembershipToConvex, syncOrgToConvex, user])
+
+  const handleSession = useCallback(async (session: Session | null, source: 'startup' | 'callback' = 'startup') => {
     if (session) {
       setAuthError(null)
       setUser(session.user)
@@ -200,27 +454,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(session.accessToken)
       localStorage.setItem(STORAGE_KEY_TOKEN, session.accessToken)
 
-      const orgs = session.organizations || []
+      const orgs = withPersonalWorkspaceMembership(session.user, session.organizations || [])
       setOrganizationsState(orgs)
       localStorage.setItem(STORAGE_KEY_ORGS, JSON.stringify(orgs))
+      const shouldPromptWorkspaceSelection = source === 'callback' && orgs.length > 1
+      setWorkspaceSelectionRequired(shouldPromptWorkspaceSelection)
 
       // Set current org to first active one
       if (orgs.length > 0) {
-        // use existing choice if available
-        const storedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT_ORG_ID)
-        let activeOrg: OrganizationMembership | undefined
+        if (shouldPromptWorkspaceSelection) {
+          setCurrentOrganization(null)
+          localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
+        } else {
+          // use existing choice if available
+          const storedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT_ORG_ID)
+          let activeOrg: OrganizationMembership | undefined
 
-        if (storedCurrentId) {
-          activeOrg = orgs.find(o => o.id === storedCurrentId || o.organizationId === storedCurrentId)
-        }
+          if (storedCurrentId) {
+            activeOrg = orgs.find(o => o.id === storedCurrentId || o.organizationId === storedCurrentId)
+          }
 
-        if (!activeOrg) {
-          activeOrg = orgs.find(o => o.status === 'active') || orgs[0]
-        }
+          if (!activeOrg) {
+            activeOrg = orgs.find(o => o.status === 'active') || orgs[0]
+          }
 
-        if (activeOrg) {
-          setCurrentOrganization(activeOrg)
-          localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, activeOrg.organizationId)
+          if (activeOrg) {
+            setCurrentOrganization(activeOrg)
+            localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, activeOrg.organizationId)
+          }
         }
       } else {
         setCurrentOrganization(null)
@@ -240,22 +501,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setConvexUserId(userId)
 
         // Sync organizations and memberships to Convex - must succeed for billing
-        for (const org of session.organizations || []) {
+        for (const org of orgs) {
           // Sync org
           await syncOrgToConvex({
             workosId: org.organizationId,
             name: org.organizationName,
           })
+        }
 
-          // Sync membership
+        const personalWorkspace = orgs.find((org) => org.workspaceType === 'personal')
+        if (personalWorkspace) {
           await syncMembershipToConvex({
-            workosId: org.id,
-            workosOrgId: org.organizationId,
+            workosId: personalWorkspace.id,
+            workosOrgId: personalWorkspace.organizationId,
             workosUserId: session.user.id,
-            role: org.role,
-            status: org.status,
+            role: 'admin',
+            status: 'active',
           })
         }
+
+        await reconcileMembershipsToConvex({
+          workosUserId: session.user.id,
+          memberships: orgs
+            .filter((org) => org.workspaceType !== 'personal')
+            .map((org) => ({
+              workosId: org.id,
+              workosOrgId: org.organizationId,
+              role: org.role,
+              status: org.status,
+            })),
+        })
       } catch (err) {
         console.error('Failed to sync to Convex - billing will not work:', err)
         // Re-throw so the error is visible - sync must succeed for billing
@@ -268,6 +543,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOrganizationsState([])
       setCurrentOrganization(null)
       setConvexLoading(false)
+      setWorkspaceSelectionRequired(false)
 
       // Clear local storage
       localStorage.removeItem(STORAGE_KEY_USER)
@@ -276,7 +552,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
     }
     setIsLoading(false)
-  }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex])
+  }, [syncUserToConvex, syncOrgToConvex, syncMembershipToConvex, reconcileMembershipsToConvex])
 
   const clearLoginTimeout = useCallback(() => {
     if (loginTimeoutRef.current) {
@@ -293,7 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!session) {
           // No stored session
-          handleSession(null)
+          handleSession(null, 'startup')
           return
         }
 
@@ -303,17 +579,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const refreshedSession = await window.electronAPI.auth.refresh()
           if (refreshedSession) {
             console.log('[Auth] Token refreshed successfully on startup')
-            handleSession(refreshedSession)
+            handleSession(refreshedSession, 'startup')
           } else {
             // Refresh failed - session fully expired, need to re-login
             console.log('[Auth] Token refresh failed, session expired')
-            handleSession(null)
+            handleSession(null, 'startup')
           }
         } else {
           // Token is still valid
           const ttl = getTokenTimeToExpiry(session.accessToken)
-          console.log(`[Auth] Token valid, expires in ${Math.round(ttl / 1000)}s`)
-          handleSession(session)
+          if (ttl === null) {
+            console.log('[Auth] Token valid, expiry unknown')
+          } else {
+            console.log(`[Auth] Token valid, expires in ${Math.round(ttl / 1000)}s`)
+          }
+          handleSession(session, 'startup')
         }
       } catch (error) {
         console.error('[Auth] Failed to load session:', error)
@@ -332,7 +612,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth callbacks
     const cleanupSuccess = window.electronAPI.auth.onSuccess((session) => {
       clearLoginTimeout()
-      handleSession(session)
+      handleSession(session, 'callback')
     })
 
     const cleanupError = window.electronAPI.auth.onError((error) => {
@@ -384,6 +664,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizationsState([])
     setCurrentOrganization(null)
     setConvexLoading(false)
+    setWorkspaceSelectionRequired(false)
     setIsLoading(false)
 
     // Clear local storage
@@ -393,31 +674,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
   }, [clearLoginTimeout])
 
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null)
+  const lastRefreshAttemptAtRef = useRef<number>(0)
+
   // Refresh the access token using the refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const newSession = await window.electronAPI.auth.refresh()
-      if (newSession) {
-        setAccessToken(newSession.accessToken)
-        localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
-        return true
-      }
-      // Refresh failed - session expired, need to re-login
-      setUser(null)
-      setConvexUserId(null)
-      setAccessToken(null)
-      localStorage.removeItem(STORAGE_KEY_TOKEN)
-      setOrganizationsState([])
-      setCurrentOrganization(null)
-      return false
-    } catch (err) {
-      console.error('Token refresh failed:', err)
-      return false
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current
     }
-  }, [])
 
-  // Smart auto-refresh: refresh when 80% of token lifetime has passed
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingRefresh = (async (): Promise<boolean> => {
+      try {
+        const newSession = await window.electronAPI.auth.refresh()
+        if (newSession) {
+          setAccessToken(newSession.accessToken)
+          localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
+          return true
+        }
+        // Refresh failed - session expired, need to re-login
+        setUser(null)
+        setConvexUserId(null)
+        setAccessToken(null)
+        localStorage.removeItem(STORAGE_KEY_TOKEN)
+        setOrganizationsState([])
+        setCurrentOrganization(null)
+        setWorkspaceSelectionRequired(false)
+        return false
+      } catch (err) {
+        console.error('Token refresh failed:', err)
+        return false
+      } finally {
+        refreshInFlightRef.current = null
+      }
+    })()
+
+    refreshInFlightRef.current = pendingRefresh
+    return pendingRefresh
+  }, [])
 
   useEffect(() => {
     if (accessToken && user) {
@@ -426,28 +720,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(refreshTimeoutRef.current)
       }
 
-      // Calculate when to refresh:
-      // - around 80% of token lifetime
-      // - but never later than 30 seconds before expiry
-      const timeToExpiry = getTokenTimeToExpiry(accessToken)
-      const refreshIn = Math.min(
-        timeToExpiry * 0.8,
-        timeToExpiry - 30000
-      )
-
-      if (refreshIn > 0) {
-        console.log(`[Auth] Scheduling token refresh in ${Math.round(refreshIn / 1000)}s`)
+      const scheduleRefresh = (delayMs: number) => {
         refreshTimeoutRef.current = setTimeout(async () => {
-          console.log('[Auth] Auto-refreshing token...')
+          const elapsed = Date.now() - lastRefreshAttemptAtRef.current
+          if (elapsed < MIN_TOKEN_REFRESH_INTERVAL_MS) {
+            scheduleRefresh(MIN_TOKEN_REFRESH_INTERVAL_MS - elapsed)
+            return
+          }
+          lastRefreshAttemptAtRef.current = Date.now()
           const success = await refreshToken()
           if (!success) {
-            console.log('[Auth] Auto-refresh failed')
+            console.warn('[Auth] Auto-refresh failed')
           }
-        }, refreshIn)
+        }, delayMs)
+      }
+
+      const timeToExpiry = getTokenTimeToExpiry(accessToken)
+      let refreshIn: number
+      if (timeToExpiry === null) {
+        refreshIn = UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS
       } else {
+        // Refresh around 80% of lifetime, but no later than 30 seconds pre-expiry.
+        refreshIn = Math.min(timeToExpiry * 0.8, timeToExpiry - 30000)
+      }
+
+      if (refreshIn > 0) {
+        scheduleRefresh(refreshIn)
+      } else if (timeToExpiry !== null) {
         // Token is already expired or about to expire, refresh immediately
-        console.log('[Auth] Token expiring, refreshing immediately...')
-        refreshToken()
+        scheduleRefresh(0)
       }
 
       return () => {
@@ -466,6 +767,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken,
         organizations,
         currentOrganization,
+        workspaceSelectionRequired,
         isAuthenticated: !!user,
         isLoading: isLoading, // Only block on initial hydration, not background sync
         authError,
@@ -473,10 +775,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshToken,
+        createOrganizationWorkspace,
         setOrganizations,
         setCurrentOrganization: (org) => {
           setCurrentOrganization(org)
           if (org) {
+            setWorkspaceSelectionRequired(false)
             localStorage.setItem(STORAGE_KEY_CURRENT_ORG_ID, org.organizationId)
           } else {
             localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)

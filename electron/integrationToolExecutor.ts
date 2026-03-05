@@ -8,6 +8,8 @@
 import { spawn, type SpawnOptions } from 'node:child_process'
 import * as integrationKeys from './integrationKeys'
 import * as integrationCrypto from './integrationCrypto'
+import { createRuntimeEnv } from './runtime/runtimeEnv'
+import { getRuntimePathPrefixes } from './runtime/runtimeResolver'
 
 // ============================================
 // Types
@@ -393,10 +395,10 @@ export async function executeIntegrationTool(
   const credEnv = buildEnvFromCredentials(request.credentials, toolDef.envMapping)
 
   // Merge with process env (credentials take precedence)
-  const env: Record<string, string> = {
+  const env = createRuntimeEnv(getRuntimePathPrefixes(), {
     ...process.env as Record<string, string>,
     ...credEnv,
-  }
+  }) as Record<string, string>
 
   // Handle special case for Firebase service account JSON
   // The service account key needs to be written to a temp file

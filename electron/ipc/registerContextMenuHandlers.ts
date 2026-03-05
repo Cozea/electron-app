@@ -178,4 +178,69 @@ export function registerContextMenuHandlers(
       })
     }
   )
+
+  ipcMain.handle(
+    'contextMenu:showNative',
+    async (
+      event,
+      options: {
+        x: number
+        y: number
+        editable?: boolean
+        selectionText?: string
+        linkUrl?: string
+      }
+    ): Promise<{ shown: boolean }> => {
+      const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
+      const isEditable = options.editable ?? false
+      const hasSelection = Boolean(options.selectionText?.trim())
+
+      const template: Electron.MenuItemConstructorOptions[] = []
+
+      if (options.linkUrl) {
+        template.push(
+          {
+            label: 'Open Link',
+            click: () => {
+              void shell.openExternal(options.linkUrl!)
+            },
+          },
+          {
+            label: 'Copy Link',
+            click: () => {
+              clipboard.writeText(options.linkUrl!)
+            },
+          },
+          { type: 'separator' }
+        )
+      }
+
+      if (isEditable) {
+        template.push(
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        )
+      } else if (hasSelection) {
+        template.push({ role: 'copy' })
+      }
+
+      if (template.length === 0) {
+        return { shown: false }
+      }
+
+      const menu = Menu.buildFromTemplate(template)
+      menu.popup({
+        window: window || undefined,
+        x: options.x,
+        y: options.y,
+      })
+
+      return { shown: true }
+    }
+  )
 }
