@@ -4,19 +4,22 @@ import { useParams, useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
     Settings,
+    Users,
     AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { buildLegacyProjectPath, buildProjectPath } from '../lib/projectRoutes'
 
 const settingsSections = [
     { id: 'general', label: 'General', icon: Settings },
+    { id: 'team', label: 'Team', icon: Users },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
 ]
 
 export function SettingsSectionsList() {
     const navigate = useViewTransitionNavigate()
-    const { slug } = useParams<{ slug: string }>()
+    const { slug, projectId } = useParams<{ slug?: string; projectId?: string }>()
     const location = useLocation()
 
     // Extract current section from URL (e.g., /projects/my-project/settings/general)
@@ -30,9 +33,11 @@ export function SettingsSectionsList() {
         : 'general'
 
     const handleSectionClick = (sectionId: string) => {
-        if (slug) {
-            navigate(`/projects/${slug}/settings/${sectionId}`)
+        if (projectId) {
+            navigate(buildProjectPath(projectId, `settings/${sectionId}`))
+            return
         }
+        if (slug) navigate(buildLegacyProjectPath(slug, `settings/${sectionId}`))
     }
 
     return (

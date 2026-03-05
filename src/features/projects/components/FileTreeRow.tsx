@@ -78,12 +78,16 @@ export function FileTreeRow({
 }: FileTreeRowProps) {
   const renderLineage = (depth: number) => {
     if (depth <= 0) return null
-    return (
-      <div
-        className="pointer-events-none absolute inset-y-0 border-l border-sidebar-border/70"
-        style={{ left: lineageLeft(depth) }}
-      />
-    )
+    return Array.from({ length: depth }, (_, index) => {
+      const level = index + 1
+      return (
+        <div
+          key={`lineage-${level}`}
+          className="file-tree-lineage pointer-events-none absolute inset-y-0 border-l border-border/80"
+          style={{ left: lineageLeft(level) }}
+        />
+      )
+    })
   }
 
   if (row.kind === 'loadingPlaceholder') {

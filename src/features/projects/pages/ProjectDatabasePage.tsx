@@ -11,10 +11,10 @@ import {
 
 export function ProjectDatabasePage() {
   return (
-    <div className="flex flex-col h-full bg-[var(--sidebar)]">
+    <div className="flex flex-col h-full bg-content-surface">
       {/* Content */}
       <div className="flex-1 flex items-center justify-center p-6">
-        <Card className="max-w-md w-full p-12 border-0 bg-sidebar/50 shadow-none">
+        <Card className="max-w-md w-full p-12 border-0 bg-content-surface shadow-none">
           <Empty className="py-0">
             <EmptyHeader>
               <EmptyMedia>

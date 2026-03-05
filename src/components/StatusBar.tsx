@@ -2,7 +2,7 @@ import { GitBranch, CheckCircle2 } from "lucide-react"
 
 export function StatusBar() {
     return (
-        <footer className="h-6 w-full shrink-0 flex items-center justify-between bg-sidebar px-2 text-[11px] text-sidebar-foreground/70 select-none relative z-50 bdry-t bdry-sidebar">
+        <footer className="h-6 w-full shrink-0 flex items-center justify-between bg-content-surface px-2 text-[11px] text-sidebar-foreground/70 select-none relative z-50 bdry-t bdry-sidebar">
             <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer">
                     <GitBranch className="h-2.5 w-2.5" />

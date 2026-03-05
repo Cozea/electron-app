@@ -78,8 +78,8 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       return colorToHex(resolvedColor)
     }
 
-    const background = getThemeColor('--sidebar', '#1a1a1a')
-    const foreground = getThemeColor('--sidebar-foreground', '#fafafa')
+    const background = getThemeColor('--tool-surface', '#1a1a1a')
+    const foreground = getThemeColor('--tool-surface-foreground', '#fafafa')
     const muted = getThemeColor('--muted', '#27272a')
 
     const term = new Terminal({
@@ -195,7 +195,7 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
   }, [command, output])
 
   return (
-    <div className={cn('bg-sidebar text-foreground border border-border/50 overflow-hidden relative group px-3 py-2 rounded-md', className)}>
+    <div className={cn('bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] overflow-hidden relative group px-3 py-2 rounded-md', className)}>
       {/* Copy button - appears on hover */}
       <Button
         variant="ghost"

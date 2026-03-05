@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { X, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useFileTabsStore, pathsReferToSameFile } from "@/stores/useFileTabsStore"
 import { useEditorStore } from "@/stores/useEditorStore"
 import { getFileIcon } from "@/lib/fileExplorer/fileIcons"
 import { UnsavedChangesDialog } from "@/components/editor/UnsavedChangesDialog"
+import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -16,9 +17,9 @@ import {
 const EMPTY_ARRAY: string[] = []
 
 export function EditorTabs() {
-    const { slug } = useParams<{ slug: string }>()
+    const { project, slugParam, projectIdParam } = useAccessibleProject()
     const [searchParams, setSearchParams] = useSearchParams()
-    const projectId = slug || ''
+    const projectId = project?.slug ?? slugParam ?? projectIdParam ?? ''
 
     const filePath = searchParams.get('path')
 
@@ -141,19 +142,24 @@ export function EditorTabs() {
 
     useEffect(() => {
         if (!projectId) return
+
         const urlPath = searchParams.get('path')
+
         if (activeFile) {
-            if (urlPath !== activeFile && !pathsReferToSameFile(activeFile, urlPath ?? '')) {
-                if (!urlPath) {
-                    setSearchParams({ path: activeFile })
-                }
+            if (!urlPath || !pathsReferToSameFile(activeFile, urlPath)) {
+                const nextParams = new URLSearchParams(searchParams)
+                nextParams.set('path', activeFile)
+                setSearchParams(nextParams, { replace: true })
             }
-        } else if (openFiles.length === 0 && urlPath) {
-            const newParams = new URLSearchParams(searchParams)
-            newParams.delete('path')
-            setSearchParams(newParams)
+            return
         }
-    }, [activeFile, openFiles.length, projectId, searchParams, setSearchParams])
+
+        if (urlPath) {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('path')
+            setSearchParams(nextParams, { replace: true })
+        }
+    }, [activeFile, projectId, searchParams, setSearchParams])
 
     useEffect(() => {
         const el = scrollerRef.current

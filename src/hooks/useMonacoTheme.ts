@@ -52,6 +52,134 @@ function resolveThemeColor(cssVar: string, fallback: string): string {
 
 export type MonacoThemeVariant = 'default' | 'muted' | 'sidebar'
 
+interface MonacoTokenPalette {
+  keyword: string
+  operator: string
+  type: string
+  function: string
+  string: string
+  number: string
+  variable: string
+  constant: string
+  comment: string
+  tag: string
+  attr: string
+}
+
+function getTokenPalette(resolvedTheme: ResolvedTheme): MonacoTokenPalette {
+  switch (resolvedTheme) {
+    case 'navy':
+      return {
+        keyword: '#8fb4ff',
+        operator: '#7fc6d6',
+        type: '#c4d6ff',
+        function: '#7cb4ff',
+        string: '#8fd5a8',
+        number: '#f2bf87',
+        variable: '#d7deeb',
+        constant: '#dca3ff',
+        comment: '#7c8ba3',
+        tag: '#89a9ff',
+        attr: '#a8c7ff',
+      }
+    case 'wine':
+      return {
+        keyword: '#f39abc',
+        operator: '#d8b2bf',
+        type: '#f4cad8',
+        function: '#c8b8ff',
+        string: '#9ecf9f',
+        number: '#f0c295',
+        variable: '#eedee5',
+        constant: '#ffb6d9',
+        comment: '#9d8290',
+        tag: '#f7a5c8',
+        attr: '#ecc5d7',
+      }
+    case 'clay':
+      return {
+        keyword: '#e4b388',
+        operator: '#c4bda8',
+        type: '#e8d3ad',
+        function: '#9cc0de',
+        string: '#aac992',
+        number: '#eebc7f',
+        variable: '#e8dfd4',
+        constant: '#d9b4a8',
+        comment: '#988a7e',
+        tag: '#e5bf94',
+        attr: '#dbc3a3',
+      }
+    case 'forest':
+      return {
+        keyword: '#95ccb0',
+        operator: '#7bc0a9',
+        type: '#c8deb8',
+        function: '#93bfe3',
+        string: '#a9d99a',
+        number: '#dcb982',
+        variable: '#d7e4da',
+        constant: '#9fd6b8',
+        comment: '#8aa094',
+        tag: '#9bcdb4',
+        attr: '#b9d9c8',
+      }
+    case 'dark':
+    default:
+      return {
+        keyword: '#c792ea',
+        operator: '#89ddff',
+        type: '#ecc48d',
+        function: '#82aaff',
+        string: '#c3e88d',
+        number: '#f78c6c',
+        variable: '#d6deeb',
+        constant: '#ffcb6b',
+        comment: '#7f8896',
+        tag: '#f07178',
+        attr: '#c3e88d',
+      }
+  }
+}
+
+function getTokenRules(resolvedTheme: ResolvedTheme, foreground: string): monaco.editor.ITokenThemeRule[] {
+  if (resolvedTheme === 'light') {
+    return []
+  }
+
+  const palette = getTokenPalette(resolvedTheme)
+  return [
+    { token: '', foreground: foreground.slice(1) },
+    { token: 'comment', foreground: palette.comment.slice(1), fontStyle: 'italic' },
+    { token: 'comment.doc', foreground: palette.comment.slice(1), fontStyle: 'italic' },
+    { token: 'keyword', foreground: palette.keyword.slice(1) },
+    { token: 'keyword.control', foreground: palette.keyword.slice(1) },
+    { token: 'keyword.operator', foreground: palette.operator.slice(1) },
+    { token: 'operator', foreground: palette.operator.slice(1) },
+    { token: 'delimiter', foreground: foreground.slice(1) },
+    { token: 'number', foreground: palette.number.slice(1) },
+    { token: 'constant', foreground: palette.constant.slice(1) },
+    { token: 'string', foreground: palette.string.slice(1) },
+    { token: 'string.escape', foreground: palette.number.slice(1) },
+    { token: 'regexp', foreground: palette.number.slice(1) },
+    { token: 'type', foreground: palette.type.slice(1) },
+    { token: 'type.identifier', foreground: palette.type.slice(1) },
+    { token: 'class', foreground: palette.type.slice(1) },
+    { token: 'interface', foreground: palette.type.slice(1) },
+    { token: 'enum', foreground: palette.type.slice(1) },
+    { token: 'namespace', foreground: palette.type.slice(1) },
+    { token: 'function', foreground: palette.function.slice(1) },
+    { token: 'method', foreground: palette.function.slice(1) },
+    { token: 'function.call', foreground: palette.function.slice(1) },
+    { token: 'variable', foreground: palette.variable.slice(1) },
+    { token: 'variable.parameter', foreground: palette.variable.slice(1) },
+    { token: 'variable.language', foreground: palette.constant.slice(1) },
+    { token: 'property', foreground: palette.variable.slice(1) },
+    { token: 'tag', foreground: palette.tag.slice(1) },
+    { token: 'attribute.name', foreground: palette.attr.slice(1) },
+  ]
+}
+
 function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, variant: MonacoThemeVariant = 'default'): void {
   const dark = isDarkTheme(resolvedTheme)
 
@@ -63,6 +191,7 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   const accent = resolveThemeColor('--accent', dark ? '#2a2a2a' : '#f4f4f5')
   const primary = resolveThemeColor('--primary', dark ? '#d4d4d8' : '#111111')
   const sidebar = resolveThemeColor('--sidebar', dark ? '#1a1a1a' : '#fafafa')
+  const tokenRules = getTokenRules(resolvedTheme, foreground)
 
   // Determine editor background based on variant
   let editorBackground = background
@@ -71,8 +200,8 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
     editorBackground = withAlpha(muted, 0.2)
     gutterBackground = withAlpha(muted, 0.2)
   } else if (variant === 'sidebar') {
-    // Use transparent editor surfaces; the parent container provides `.bg-sidebar`.
-    // This keeps Monaco exactly in sync with sidebar class rendering (including theme mixes).
+    // Use transparent editor surfaces; the parent container provides the workspace surface class.
+    // This keeps Monaco exactly in sync with the parent surface rendering (including theme mixes).
     editorBackground = '#00000000'
     gutterBackground = '#00000000'
   }
@@ -83,10 +212,11 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   monaco.editor.defineTheme(themeName, {
     base: dark ? 'vs-dark' : 'vs',
     inherit: true,
-    rules: [],
+    rules: tokenRules,
     colors: {
       'editor.background': editorBackground,
       'editor.foreground': foreground,
+      'editor.semanticHighlighting.enabled': resolvedTheme === 'light' ? 'true' : 'false',
       'editorGutter.background': gutterBackground,
       'minimap.background': minimapBackground,
       'minimapGutter.background': overviewRulerBackground,
@@ -114,6 +244,17 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
       'editor.selectionBackground': withAlpha(accent, dark ? 0.45 : 0.6),
       'editor.inactiveSelectionBackground': withAlpha(accent, dark ? 0.25 : 0.35),
       'editor.lineHighlightBackground': withAlpha(muted, dark ? 0.35 : 0.6),
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.rangeHighlightBackground': withAlpha(accent, dark ? 0.22 : 0.3),
+      'editor.rangeHighlightBorder': '#00000000',
+      'editor.selectionHighlightBackground': withAlpha(primary, dark ? 0.14 : 0.16),
+      'editor.selectionHighlightBorder': '#00000000',
+      'editor.wordHighlightBackground': withAlpha(primary, dark ? 0.1 : 0.08),
+      'editor.wordHighlightStrongBackground': withAlpha(primary, dark ? 0.14 : 0.12),
+      'editor.wordHighlightBorder': '#00000000',
+      'editor.wordHighlightStrongBorder': '#00000000',
+      'editorBracketMatch.background': withAlpha(accent, dark ? 0.22 : 0.2),
+      'editorBracketMatch.border': '#00000000',
       'editorIndentGuide.background': withAlpha(border, dark ? 0.45 : 0.8),
       'editorIndentGuide.activeBackground': withAlpha(border, 1),
       'editorWidget.background': muted,
@@ -127,6 +268,7 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
       'editorHoverWidget.border': border,
     },
   })
+  monaco.editor.setTheme(themeName)
 }
 
 export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): string {

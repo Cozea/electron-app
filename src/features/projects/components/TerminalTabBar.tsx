@@ -199,8 +199,7 @@ export function TerminalTabBar({
 
     return (
         <div
-            className="flex items-center justify-between w-full h-9"
-            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
+            className="flex items-center justify-between w-full h-9 bg-content-surface"
         >
             {/* Left: Terminal tabs + Problems tab */}
             <div className="app-scrollbar flex items-center h-full flex-1 min-w-0 overflow-x-auto gap-1 px-2">

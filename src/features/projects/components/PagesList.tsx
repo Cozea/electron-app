@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type MouseEvent } from "react"
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useQuery } from "convex/react"
-import { api } from "../../../../convex/_generated/api"
-import { useAuth } from "@/contexts/AuthContext"
 import { scanForRoutes, type ScannedRoute } from "@/utils/routeScanner"
 import { getFileIcon } from "@/lib/fileExplorer/fileIcons"
 import { FileText, Loader2, RefreshCw, ExternalLink, AppWindow } from "lucide-react"
@@ -12,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
+import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
+import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 
 export function PagesList() {
-    const { slug } = useParams<{ slug: string }>()
     const navigate = useViewTransitionNavigate()
     const [searchParams] = useSearchParams()
-    const { currentOrganization } = useAuth()
+    const { project, projectIdParam, slugParam } = useAccessibleProject()
     const { serverStatus, serverPort } = useProjectPagesStore()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
@@ -30,17 +28,11 @@ export function PagesList() {
     const [isLoading, setIsLoading] = useState(false)
     const [framework, setFramework] = useState<string | null>(null)
 
-    // Get Convex organization
-    const convexOrg = useQuery(
-        api.organizations.getByWorkosId,
-        currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-    )
-
-    // Load project by slug
-    const project = useQuery(
-        api.projects.getBySlug,
-        convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-    )
+    const projectBasePath = useMemo(() => {
+        if (project?._id) return buildProjectPath(String(project._id))
+        if (projectIdParam) return buildProjectPath(projectIdParam)
+        return slugParam ? `/projects/${slugParam}` : null
+    }, [project?._id, projectIdParam, slugParam])
 
     // Extract stored framework info
     const storedFrameworkInfo = useMemo(() => {
@@ -76,7 +68,8 @@ export function PagesList() {
 
     const handlePageClick = (index: number) => {
         // Navigate to the pages view with this route focused
-        navigate(`/projects/${slug}/pages?focus=${index}`)
+        if (!projectBasePath) return
+        navigate(`${projectBasePath}/pages?focus=${index}`)
     }
 
     const handleOpenInBrowser = (e: MouseEvent, route: ScannedRoute) => {

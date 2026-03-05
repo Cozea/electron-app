@@ -163,7 +163,7 @@ export function CodeDiffViewer({
   const fileName = filePath ? getFileName(filePath) : null
 
   return (
-    <div className={cn('overflow-hidden rounded-md border border-border/50 bg-sidebar text-foreground', className)}>
+    <div className={cn('overflow-hidden rounded-md border border-border/50 bg-content-surface text-foreground', className)}>
       {showHeader && fileName && (
         <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
           {getFileIcon(fileName, { width: 16, height: 16 })}

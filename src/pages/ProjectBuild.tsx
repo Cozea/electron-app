@@ -32,6 +32,7 @@ import {
   type ToolDiagnosticsSummary,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? '' : 's'}`
@@ -810,7 +811,7 @@ export function ProjectBuild() {
     }
 
     // Navigate to the project page (same as clicking a project card)
-    navigate(`/projects/${project.slug}`)
+    navigate(buildProjectPath(String(project._id)))
   }
 
   const handleCancelProject = async () => {
@@ -950,7 +951,7 @@ export function ProjectBuild() {
                     timeline={devServer.timeline}
                     onRefresh={devServer.restart}
                     onCapture={capturePreviewScreenshot}
-                    className="h-full relative sidebar-fade-border sidebar-fade-border-left"
+                    className="h-full relative panel-fade-border panel-fade-border-left"
                   />
                 </ResizablePanel>
               </>

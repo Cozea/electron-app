@@ -105,7 +105,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
   return (
     <div
       className={cn(
-        'mx-auto w-full max-w-2xl rounded-2xl border bg-sidebar backdrop-blur-sm shadow-lg',
+        'mx-auto w-full max-w-2xl rounded-2xl border bg-content-surface backdrop-blur-sm shadow-lg',
         className
       )}
     >

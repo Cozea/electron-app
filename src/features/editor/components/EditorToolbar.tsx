@@ -2,11 +2,11 @@ import { Play, Save, Settings, PanelTop, TerminalSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEditorStore } from "@/stores/useEditorStore"
 import { useFileTabsStore } from "@/stores/useFileTabsStore"
-import { useParams } from "react-router-dom"
+import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
 
 export function EditorToolbar() {
-    const { slug } = useParams<{ slug: string }>()
-    const projectId = slug // Using slug as ID for now or need real ID
+    const { project, slugParam, projectIdParam } = useAccessibleProject()
+    const projectId = project?.slug ?? slugParam ?? projectIdParam ?? ''
 
     const activeFile = useFileTabsStore(state => projectId ? state.projectTabs[projectId]?.activeFile : null)
     const saveFile = useEditorStore(state => state.actions.saveFile)

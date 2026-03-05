@@ -469,7 +469,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
 
     return (
         <div className={cn(
-            "flex flex-col border-t border-border bg-background w-full mt-auto relative",
+            "flex flex-col border-t border-sidebar-border bg-content-surface w-full mt-auto relative",
             className
         )}>
             {/* Resize Handle */}
@@ -488,7 +488,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
             />
 
             {/* Tab Bar - VS Code style */}
-            <div className="flex items-center justify-between bg-sidebar w-full h-9">
+            <div className="flex items-center justify-between bg-content-surface w-full h-9">
                 <div className="flex items-center h-full">
                     {tabs.map((tab) => (
                         <button
@@ -561,7 +561,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
                     {/* Console tab with xterm */}
                     <div
                         className={cn(
-                            "relative bg-sidebar overflow-hidden",
+                            "relative bg-content-surface overflow-hidden",
                             activeTab !== "console" && "hidden"
                         )}
                         style={{ height: `${consolePanelHeight}px` }}
@@ -628,7 +628,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
 
                         {/* Loading state overlay */}
                         {!hasOutput && serverStatus === 'starting' && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-sidebar/80 text-muted-foreground z-10">
+                            <div className="absolute inset-0 flex items-center justify-center bg-content-surface/80 text-muted-foreground z-10">
                                 <span className="flex items-center gap-2">
                                     <span className="inline-flex gap-0.5">
                                         <span className="animate-pulse">●</span>

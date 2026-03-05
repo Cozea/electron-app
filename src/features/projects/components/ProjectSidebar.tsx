@@ -44,6 +44,7 @@ import { ContextSwitcher } from "@/components/context-switcher"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { ProjectSyncIndicator } from "./ProjectSyncIndicator"
 import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
+import { buildLegacyProjectPath, buildProjectPath } from "../lib/projectRoutes"
 
 // Placeholders / Components
 import { PagesList } from "./PagesList"
@@ -84,10 +85,9 @@ const routeMap: Record<string, string> = {
     "Settings": "settings",
 }
 
-function getActiveTabFromPathname(pathname: string, slug?: string): string | null {
-    if (!slug) return null
+function getActiveTabFromPathname(pathname: string, base: string | null): string | null {
+    if (!base) return null
 
-    const base = `/projects/${slug}`
     if (pathname === base || pathname === `${base}/`) return "Files"
     if (pathname === `${base}/pages` || pathname.startsWith(`${base}/pages/`)) return "Pages"
     if (pathname === `${base}/tasks` || pathname.startsWith(`${base}/tasks/`)) return "Tasks"
@@ -171,16 +171,22 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
     const applyWindowControlsInset = isMacClient()
     const navigate = useViewTransitionNavigate()
-    const { slug } = useParams<{ slug: string }>()
+    const { slug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const location = useLocation()
     const { currentOrganization, convexUserId } = useAuth()
     const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
     const preloadedTabsRef = React.useRef<Set<string>>(new Set())
 
+    const routeBasePath = React.useMemo(() => {
+        if (routeProjectId) return buildProjectPath(routeProjectId)
+        if (slug) return buildLegacyProjectPath(slug)
+        return null
+    }, [routeProjectId, slug])
+
     const routeActiveTab = React.useMemo(
-        () => getActiveTabFromPathname(location.pathname, slug),
-        [location.pathname, slug]
+        () => getActiveTabFromPathname(location.pathname, routeBasePath),
+        [location.pathname, routeBasePath]
     )
     const isFilesRoute = routeActiveTab === "Files"
     const isPagesRoute = routeActiveTab === "Pages"
@@ -209,33 +215,47 @@ export function ProjectSidebar({
         slug ? getSyncFeedLastSeen(slug) : 0
     )
 
-    // Update lastSeenTimestamp when slug changes
+    // Get project context from canonical route first; fallback to legacy slug resolution.
+    const projectById = useQuery(
+        api.projects.getAccessibleById,
+        providedProjectId
+            ? 'skip'
+            : routeProjectId && convexUserId
+                ? { projectId: routeProjectId as Id<"projects">, userId: convexUserId }
+                : 'skip'
+    )
+    const projectBySlug = useQuery(
+        api.projects.getAccessibleBySlug,
+        providedProjectId
+            ? "skip"
+            : !routeProjectId && slug && convexUserId
+                ? {
+                    slug,
+                    userId: convexUserId,
+                    preferredOrganizationId: currentOrganization?.convexOrgId as Id<"organizations"> | undefined,
+                }
+                : 'skip'
+    )
+    const project =
+        routeProjectId
+            ? projectById
+            : projectBySlug?.status === 'ok'
+                ? projectBySlug.project
+                : null
+
+    // Update lastSeenTimestamp when project identity changes
     React.useEffect(() => {
-        if (slug) {
-            setLastSeenTimestamp(getSyncFeedLastSeen(slug))
+        const feedSlug = slug ?? project?.slug
+        if (feedSlug) {
+            setLastSeenTimestamp(getSyncFeedLastSeen(feedSlug))
         }
-    }, [slug])
-
-    // Resolve project ID once (avoid duplicate org/project queries when parent already has it).
-    const convexOrg = useQuery(
-        api.organizations.getByWorkosId,
-        providedProjectId
-            ? 'skip'
-            : currentOrganization?.organizationId
-                ? { workosId: currentOrganization.organizationId }
-                : 'skip'
-    )
-
-    // Get project by slug
-    const project = useQuery(
-        api.projects.getBySlug,
-        providedProjectId
-            ? 'skip'
-            : convexOrg?._id && slug
-                ? { organizationId: convexOrg._id, slug }
-                : 'skip'
-    )
+    }, [project?.slug, slug])
     const resolvedProjectId = providedProjectId ?? project?._id ?? null
+    const navigationBasePath = resolvedProjectId
+        ? buildProjectPath(String(resolvedProjectId))
+        : slug
+            ? buildLegacyProjectPath(slug)
+            : null
 
     // Get unread sync feed count
     const unreadCount = useQuery(
@@ -463,13 +483,13 @@ export function ProjectSidebar({
 
                                                             // Navigate to the route
                                                             const route = routeMap[item.title]
-                                                            if (route !== undefined && slug) {
-                                                                navigate(`/projects/${slug}${route ? `/${route}` : ''}`)
+                                                            if (route !== undefined && navigationBasePath) {
+                                                                navigate(`${navigationBasePath}${route ? `/${route}` : ''}`)
                                                             }
 
                                                             // Mark sync feed as seen when clicking
-                                                            if (isSyncFeed && slug) {
-                                                                markSyncFeedAsSeen(slug)
+                                                            if (isSyncFeed && project?.slug) {
+                                                                markSyncFeedAsSeen(project.slug)
                                                                 setLastSeenTimestamp(Date.now())
                                                             }
 
@@ -491,12 +511,12 @@ export function ProjectSidebar({
                                                             </Badge>
                                                         )}
                                                         {'alpha' in item && item.alpha && (
-                                                            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
                                                                 alpha
                                                             </Badge>
                                                         )}
                                                         {'beta' in item && item.beta && (
-                                                            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
                                                                 beta
                                                             </Badge>
                                                         )}
@@ -547,7 +567,11 @@ export function ProjectSidebar({
                         side="left"
                         variant="sidebar"
                         collapsible="none"
-                        className="shrink-0 h-full bg-sidebar flex-1 min-w-0 relative sidebar-fade-border sidebar-fade-border-right"
+                        style={{
+                            "--sidebar": "var(--main-nav-sidebar-surface)",
+                            "--sidebar-surface": "var(--main-nav-sidebar-surface)",
+                        } as React.CSSProperties}
+                        className="file-tree-panel-border shrink-0 h-full bg-sidebar flex-1 min-w-0 relative border-l border-border/55"
                     >
                         <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
                             <div className="ml-auto flex items-center gap-2 titlebar-no-drag">

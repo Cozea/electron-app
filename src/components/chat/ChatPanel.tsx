@@ -9,7 +9,7 @@ export function ChatPanel() {
 
     return (
         <div className={cn(
-            "bg-background flex flex-col transition-all duration-300 ease-in-out bdry-l relative sidebar-fade-border",
+            "bg-content-surface flex flex-col transition-all duration-300 ease-in-out relative border-l border-border",
             mode === 'fullscreen' ? "w-full absolute inset-0 z-50" : "w-[400px]"
         )}>
             <div className="h-14 bdry-b flex items-center justify-between px-4">

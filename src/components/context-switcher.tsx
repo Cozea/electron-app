@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
 import { useQuery, useMutation } from 'convex/react'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
+import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -44,7 +45,6 @@ export function ContextSwitcher() {
   const { isMobile } = useSidebar()
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
-  const { slug } = useParams<{ slug: string }>()
   const { currentOrganization, user, organizations } = useAuth()
 
   const [open, setOpen] = useState(false)
@@ -60,40 +60,83 @@ export function ContextSwitcher() {
       : 'skip'
   )
 
-  // Get current project
-  const currentProject = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
-
-  // Get recent projects
-  const projects = useQuery(
-    api.projects.listForOrganization,
-    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
-  )
-
   const convexUser = useQuery(
     api.users.getByWorkosId,
     user?.id ? { workosId: user.id } : 'skip'
   )
 
+  const routeProject = useMemo(
+    () => parseProjectRoute(location.pathname),
+    [location.pathname]
+  )
+
+  const currentProjectById = useQuery(
+    api.projects.getAccessibleById,
+    routeProject.projectId && convexUser?._id
+      ? { projectId: routeProject.projectId as Id<'projects'>, userId: convexUser._id }
+      : 'skip'
+  )
+
+  const currentProjectBySlug = useQuery(
+    api.projects.getAccessibleBySlug,
+    !routeProject.projectId && routeProject.slug && convexUser?._id
+      ? {
+          slug: routeProject.slug,
+          userId: convexUser._id,
+          preferredOrganizationId: convexOrg?._id,
+        }
+      : 'skip'
+  )
+
+  const currentProject =
+    routeProject.projectId
+      ? currentProjectById
+      : currentProjectBySlug?.status === 'ok'
+        ? currentProjectBySlug.project
+        : null
+
+  // Get recent projects
+  const projects = useQuery(
+    currentOrganization?.workspaceType === 'personal'
+      ? api.projects.listForPersonalWorkspaceMemberView
+      : api.projects.listForOrganization,
+    currentOrganization?.workspaceType === 'personal'
+      ? convexUser?._id
+        ? { userId: convexUser._id }
+        : 'skip'
+      : convexOrg?._id
+        ? { organizationId: convexOrg._id }
+        : 'skip'
+  )
+
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
+  const normalizedProjects = useMemo(
+    () => {
+      const rows = projects ?? []
+      return rows.filter((project): project is NonNullable<typeof project> => project !== null)
+    },
+    [projects]
+  )
+
   // Get recent projects (up to 4, sorted by last updated)
-  const recentProjects = projects
-    ? [...projects]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 4)
-    : []
+  const recentProjects = [...normalizedProjects]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 4)
 
   // Determine if we're in a project context
-  const isInProject = location.pathname.startsWith('/projects/') && slug
+  const isInProject = location.pathname.startsWith('/projects/') && !!(routeProject.projectId || routeProject.slug)
   const navigationState = location.state as ProjectNavigationState | null
   const selectedProjectFromList = useMemo(() => {
-    if (!slug || !projects) return null
-    return projects.find((project) => project.slug === slug) ?? null
-  }, [projects, slug])
-  const hasMatchingNavigationState = navigationState?.projectSlug === slug
+    if (routeProject.projectId) {
+      return normalizedProjects.find((project) => String(project._id) === routeProject.projectId) ?? null
+    }
+    if (routeProject.slug) {
+      return normalizedProjects.find((project) => project.slug === routeProject.slug) ?? null
+    }
+    return null
+  }, [normalizedProjects, routeProject.projectId, routeProject.slug])
+  const hasMatchingNavigationState = navigationState?.projectSlug === (routeProject.slug ?? selectedProjectFromList?.slug)
   const navigationNameHint =
     hasMatchingNavigationState ? navigationState?.projectName : undefined
   const navigationTemplateHint =
@@ -158,7 +201,7 @@ export function ContextSwitcher() {
 
       setTimeout(() => {
         setOpen(false)
-        navigate(`/projects/${project.slug}`, {
+        navigate(buildProjectPath(String(project._id)), {
           state: {
             projectSlug: project.slug,
             projectName: project.name ?? undefined,
@@ -225,7 +268,9 @@ export function ContextSwitcher() {
                     ? currentProject?.name ??
                       navigationNameHint ??
                       selectedProjectFromList?.name ??
-                      slug
+                      routeProject.slug ??
+                      routeProject.projectId ??
+                      'Project'
                     : organization.name}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">

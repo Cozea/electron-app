@@ -33,6 +33,11 @@ interface McpClientSpec {
 
 const JSON_RPC_VERSION = '2.0'
 const DEFAULT_MCP_TIMEOUT_MS = 20_000
+const DEFAULT_MCP_INIT_TIMEOUT_MS = 30_000
+const JSON_RPC_METHOD_NOT_FOUND = -32601
+const JSON_RPC_INTERNAL_ERROR = -32603
+
+type JsonRpcId = string | number
 
 const TOOL_PACKAGE_MAP: Record<McpServiceKind, { binary: string; packageName: string }> = {
   filesystem: {
@@ -120,7 +125,7 @@ class StdioMcpClient {
   private disposed = false
   private nextId = 1
   private stdoutBuffer = Buffer.alloc(0)
-  private pending = new Map<number, {
+  private pending = new Map<JsonRpcId, {
     resolve: (value: unknown) => void
     reject: (error: Error) => void
     timeout: NodeJS.Timeout
@@ -173,13 +178,21 @@ class StdioMcpClient {
       'initialize',
       {
         protocolVersion: '2025-03-26',
-        capabilities: {},
+        capabilities: {
+          sampling: {
+            context: {},
+            tools: {},
+          },
+          elicitation: {
+            form: {},
+          },
+        },
         clientInfo: {
           name: 'cozea-electron',
           version: process.env.npm_package_version || '0.0.0',
         },
       },
-      15_000
+      DEFAULT_MCP_INIT_TIMEOUT_MS
     )
     this.notify('notifications/initialized', {})
     this.initialized = true
@@ -269,39 +282,25 @@ class StdioMcpClient {
     }
 
     const payload = JSON.stringify(message)
-    const header = `Content-Length: ${Buffer.byteLength(payload, 'utf8')}\r\n\r\n`
-    this.child.stdin.write(header + payload)
+    this.child.stdin.write(`${payload}\n`)
   }
 
   private drainStdoutBuffer(): void {
     while (this.stdoutBuffer.length > 0) {
-      const headerEnd = this.stdoutBuffer.indexOf('\r\n\r\n')
-      if (headerEnd === -1) {
+      const newlineIndex = this.stdoutBuffer.indexOf('\n')
+      if (newlineIndex === -1) {
         return
       }
 
-      const headerText = this.stdoutBuffer.slice(0, headerEnd).toString('utf8')
-      const contentLengthMatch = /content-length:\s*(\d+)/i.exec(headerText)
-      if (!contentLengthMatch) {
-        // Unexpected framing: drop the unreadable header chunk and continue.
-        this.stdoutBuffer = this.stdoutBuffer.slice(headerEnd + 4)
-        continue
-      }
+      const line = this.stdoutBuffer
+        .slice(0, newlineIndex)
+        .toString('utf8')
+        .replace(/\r$/, '')
+        .trim()
+      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1)
 
-      const contentLength = Number(contentLengthMatch[1])
-      if (!Number.isFinite(contentLength) || contentLength < 0) {
-        this.stdoutBuffer = this.stdoutBuffer.slice(headerEnd + 4)
-        continue
-      }
-
-      const frameEnd = headerEnd + 4 + contentLength
-      if (this.stdoutBuffer.length < frameEnd) {
-        return
-      }
-
-      const bodyText = this.stdoutBuffer.slice(headerEnd + 4, frameEnd).toString('utf8')
-      this.stdoutBuffer = this.stdoutBuffer.slice(frameEnd)
-      this.handleIncomingMessage(bodyText)
+      if (line.length === 0) continue
+      this.handleIncomingMessage(line)
     }
   }
 
@@ -313,14 +312,20 @@ class StdioMcpClient {
 
     const message = parsed as {
       id?: unknown
+      method?: unknown
+      params?: unknown
       result?: unknown
       error?: JsonRpcErrorShape
     }
 
-    if (typeof message.id !== 'number') {
+    if (typeof message.method === 'string') {
+      if (typeof message.id === 'number' || typeof message.id === 'string') {
+        this.handleServerRequest(message.id, message.method, message.params)
+      }
       return
     }
 
+    if (typeof message.id !== 'number' && typeof message.id !== 'string') return
     const pending = this.pending.get(message.id)
     if (!pending) return
     this.pending.delete(message.id)
@@ -341,6 +346,130 @@ class StdioMcpClient {
       pending.reject(error)
       this.pending.delete(id)
     }
+  }
+
+  private handleServerRequest(id: JsonRpcId, method: string, params: unknown): void {
+    try {
+      if (method === 'sampling/createMessage') {
+        const command = this.extractCommandForSecuritySampling(params)
+        const isDangerous = command ? this.isLikelyDangerousCommand(command) : false
+
+        const toolName = isDangerous ? 'deny' : 'allow'
+        const toolArgs = isDangerous
+          ? {
+            reasoning: command
+              ? `Command "${command}" was blocked by local safety policy.`
+              : 'Command was blocked by local safety policy.',
+            suggested_alternatives: [
+              'Run a safer read-only command first to inspect files.',
+              'Review the command and remove destructive operations.',
+            ],
+          }
+          : {
+            reasoning: command
+              ? `Command "${command}" appears safe under local policy.`
+              : 'Command appears safe under local policy.',
+          }
+
+        this.respondWithResult(id, {
+          model: 'cozea-local-security',
+          stopReason: 'stop',
+          role: 'assistant',
+          content: {
+            type: 'text',
+            text: JSON.stringify({
+              tool_calls: [
+                {
+                  id: `call_${Math.random().toString(36).slice(2, 10)}`,
+                  type: 'function',
+                  function: {
+                    name: toolName,
+                    arguments: JSON.stringify(toolArgs),
+                  },
+                },
+              ],
+            }),
+          },
+        })
+        return
+      }
+
+      if (method === 'elicitation/create') {
+        this.respondWithResult(id, { action: 'decline' })
+        return
+      }
+
+      this.respondWithError(id, JSON_RPC_METHOD_NOT_FOUND, `Method not found: ${method}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.respondWithError(id, JSON_RPC_INTERNAL_ERROR, message)
+    }
+  }
+
+  private respondWithResult(id: JsonRpcId, result: unknown): void {
+    this.writeMessage({
+      jsonrpc: JSON_RPC_VERSION,
+      id,
+      result,
+    })
+  }
+
+  private respondWithError(id: JsonRpcId, code: number, message: string, data?: unknown): void {
+    this.writeMessage({
+      jsonrpc: JSON_RPC_VERSION,
+      id,
+      error: {
+        code,
+        message,
+        ...(data !== undefined ? { data } : {}),
+      },
+    })
+  }
+
+  private extractCommandForSecuritySampling(params: unknown): string | null {
+    if (!params || typeof params !== 'object') return null
+    const record = params as Record<string, unknown>
+    const messages = Array.isArray(record.messages) ? record.messages : []
+
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i]
+      if (!message || typeof message !== 'object') continue
+      const content = (message as Record<string, unknown>).content
+
+      const text = (() => {
+        if (typeof content === 'string') return content
+        if (content && typeof content === 'object') {
+          const asRecord = content as Record<string, unknown>
+          if (typeof asRecord.text === 'string') return asRecord.text
+        }
+        return ''
+      })()
+
+      if (!text) continue
+      const shellBlockMatch = text.match(/```shell\s*([\s\S]*?)```/i)
+      if (shellBlockMatch?.[1]) return shellBlockMatch[1].trim()
+
+      const lineMatch = text.match(/command:\s*([^\n]+)/i)
+      if (lineMatch?.[1]) return lineMatch[1].trim()
+    }
+
+    return null
+  }
+
+  private isLikelyDangerousCommand(command: string): boolean {
+    const value = command.toLowerCase()
+    const patterns: RegExp[] = [
+      /\brm\s+-rf\s+\/\b/,
+      /\bsudo\s+rm\b/,
+      /\bmkfs\b/,
+      /\bdd\s+if=.*\sof=\/dev\//,
+      /\bshutdown\b/,
+      /\breboot\b/,
+      /\bkillall\b/,
+      /\bcurl\b.+\|\s*(sh|bash|zsh)\b/,
+      /\bwget\b.+\|\s*(sh|bash|zsh)\b/,
+    ]
+    return patterns.some((pattern) => pattern.test(value))
   }
 }
 
@@ -598,7 +727,10 @@ export class LocalMcpToolRuntime {
     if (kind === 'shell') {
       baseEnv.MCP_SHELL_DEFAULT_WORKDIR = resolvedRoot
       baseEnv.MCP_ALLOWED_WORKDIRS = `${resolvedRoot},/tmp`
-      baseEnv.MCP_SHELL_SECURITY_MODE = baseEnv.MCP_SHELL_SECURITY_MODE || 'restrictive'
+      // Keep enhanced mode functional by default while avoiding overly strict fallback.
+      if (!baseEnv.MCP_SHELL_SECURITY_MODE) {
+        baseEnv.MCP_SHELL_SECURITY_MODE = 'permissive'
+      }
     }
 
     if (kind === 'git') {
@@ -631,4 +763,3 @@ export class LocalMcpToolRuntime {
     }
   }
 }
-

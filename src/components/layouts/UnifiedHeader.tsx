@@ -1,6 +1,8 @@
 import {
   Fragment,
+  type KeyboardEvent,
   type ReactNode,
+  useId,
   useCallback,
   useEffect,
   useMemo,
@@ -8,10 +10,26 @@ import {
   useState,
 } from "react"
 import { Link } from "react-router-dom"
+import {
+  ChevronDown,
+  Copy,
+  Inbox,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Send,
+  Share2,
+  ShieldOff,
+  Trash2,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { scheduleTask } from "@/lib/scheduler"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
+import { useAuth } from "@/contexts/AuthContext"
+import type { Id } from "../../../convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { api } from "../../../convex/_generated/api"
 import {
   Breadcrumb,
   BreadcrumbEllipsis,
@@ -23,6 +41,32 @@ import {
 } from "@/components/ui/breadcrumb"
 import { CommandSearch } from "@/components/CommandSearch"
 import { LayoutToggles } from "@/components/layouts/LayoutToggles"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
@@ -34,6 +78,666 @@ interface UnifiedHeaderProps {
   contentInsetLeft?: number
   contentInsetRight?: number
   compactHeaderActions?: boolean
+  projectInviteContext?: {
+    projectId: Id<"projects"> | null
+    projectName?: string | null
+  } | null
+}
+
+type ProjectInviteRole = "project_manager" | "developer" | "designer" | "viewer"
+
+const PROJECT_INVITE_ROLE_OPTIONS: Array<{ value: ProjectInviteRole; label: string }> = [
+  { value: "project_manager", label: "Project Manager" },
+  { value: "developer", label: "Developer" },
+  { value: "designer", label: "Designer" },
+  { value: "viewer", label: "Viewer" },
+]
+
+const DEFAULT_SITE_URL = "https://cozea.app"
+
+function getSiteBaseUrl(): string {
+  const configured = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim()
+  const candidate = configured || DEFAULT_SITE_URL
+  return candidate.replace(/\/+$/, "")
+}
+
+function buildProjectJoinUrl(token: string): string {
+  return `${getSiteBaseUrl()}/join/project/${encodeURIComponent(token)}`
+}
+
+function formatTimestamp(value: number | null | undefined): string {
+  if (!value) return "Never"
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function cleanConvexError(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : fallback
+  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
+}
+
+function HeaderInboxButton() {
+  const { currentOrganization, convexUserId } = useAuth()
+  const isPersonalWorkspace = currentOrganization?.workspaceType === "personal"
+  const acceptInvite = useMutation(api.projectInvites.acceptInvite)
+  const declineInvite = useMutation(api.projectInvites.declineInvite)
+  const incomingInvites = useQuery(
+    api.projectInvites.listIncomingForUser,
+    isPersonalWorkspace && convexUserId ? { userId: convexUserId } : "skip"
+  )
+  const [activeInviteAction, setActiveInviteAction] = useState<{
+    inviteId: Id<"projectInvites">
+    action: "accept" | "decline"
+  } | null>(null)
+  const [inviteActionError, setInviteActionError] = useState<string | null>(null)
+  const invitesHeadingId = useId()
+  const pendingCount = incomingInvites?.length ?? 0
+
+  const formatInviteTimestamp = useCallback((invitedAt: number) => {
+    return new Date(invitedAt).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }, [])
+
+  const handleInviteAction = useCallback(
+    async (inviteId: Id<"projectInvites">, action: "accept" | "decline") => {
+      if (!convexUserId) return
+      setInviteActionError(null)
+      setActiveInviteAction({ inviteId, action })
+
+      try {
+        if (action === "accept") {
+          await acceptInvite({ inviteId, userId: convexUserId })
+        } else {
+          await declineInvite({ inviteId, userId: convexUserId })
+        }
+      } catch (error) {
+        setInviteActionError(
+          error instanceof Error ? error.message : "Unable to process invite action."
+        )
+      } finally {
+        setActiveInviteAction(null)
+      }
+    },
+    [acceptInvite, convexUserId, declineInvite]
+  )
+
+  const getWorkspaceInitial = useCallback((workspaceName: string | undefined | null) => {
+    const source = (workspaceName ?? "?").trim()
+    return source.charAt(0).toUpperCase() || "?"
+  }, [])
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-7 w-7 text-muted-foreground hover:text-foreground"
+          title="Project invites"
+        >
+          <Inbox className="h-4 w-4" />
+          {pendingCount > 0 ? (
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+          ) : null}
+          <span className="sr-only">Project invites</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[24rem] p-0">
+        <DropdownMenuLabel id={invitesHeadingId} className="px-3 py-2.5">
+          Project Invites
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {!isPersonalWorkspace ? (
+          <div className="px-3 py-4 text-xs text-muted-foreground">
+            Project invites are shown in personal workspaces.
+          </div>
+        ) : incomingInvites === undefined ? (
+          <div className="px-3 py-4 text-xs text-muted-foreground">Loading invites...</div>
+        ) : pendingCount === 0 ? (
+          <div className="px-3 py-4 text-xs text-muted-foreground">No pending project invites.</div>
+        ) : (
+          <div className="max-h-[30rem] space-y-2 overflow-y-auto px-2.5 py-2.5" role="list" aria-labelledby={invitesHeadingId}>
+            {incomingInvites.slice(0, 8).map((invite) => {
+              const isAccepting =
+                activeInviteAction?.inviteId === invite._id && activeInviteAction.action === "accept"
+              const isDeclining =
+                activeInviteAction?.inviteId === invite._id && activeInviteAction.action === "decline"
+              const isBusy = isAccepting || isDeclining
+
+              return (
+                <div
+                  key={String(invite._id)}
+                  role="listitem"
+                  className="rounded-2xl border border-border/60 bg-card/70 px-3 py-2.5 backdrop-blur-sm"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-full bg-gradient-to-br from-fuchsia-500 via-rose-500 to-amber-400 p-[1.5px]">
+                      <Avatar className="h-8 w-8 rounded-full bg-background">
+                        <AvatarImage
+                          src={invite.ownerUser?.profileImageUrl ?? undefined}
+                          alt={invite.ownerWorkspace?.name ?? "Owner"}
+                        />
+                        <AvatarFallback className="text-xs font-semibold">
+                          {getWorkspaceInitial(invite.ownerWorkspace?.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="truncate text-sm font-semibold leading-5 text-foreground">
+                        {invite.project?.name ?? "Unknown Project"}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {invite.ownerWorkspace?.name ?? "Unknown owner"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Invited {formatInviteTimestamp(invite.invitedAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-end gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 rounded-full px-3 text-xs"
+                      disabled={isBusy || activeInviteAction !== null}
+                      onClick={() => {
+                        void handleInviteAction(invite._id, "decline")
+                      }}
+                    >
+                      {isDeclining ? "Declining..." : "Decline"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 rounded-full px-3 text-xs"
+                      disabled={isBusy || activeInviteAction !== null}
+                      onClick={() => {
+                        void handleInviteAction(invite._id, "accept")
+                      }}
+                    >
+                      {isAccepting ? "Accepting..." : "Accept"}
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+            {inviteActionError ? (
+              <p className="px-1 pt-1 text-xs text-destructive" role="status">
+                {inviteActionError}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function HeaderProjectShareButton({
+  projectId,
+  projectName,
+}: {
+  projectId: Id<"projects"> | null
+  projectName?: string | null
+}) {
+  const { convexUserId } = useAuth()
+  const inviteMember = useMutation(api.projectInvites.inviteMember)
+  const createOrUpdateActiveLink = useMutation(api.projectJoinLinks.createOrUpdateActiveLink)
+  const rotateJoinLink = useMutation(api.projectJoinLinks.rotateLink)
+  const revokeJoinLink = useMutation(api.projectJoinLinks.revokeLink)
+  const memberRole = useQuery(
+    api.projectMembers.getMemberRole,
+    projectId && convexUserId ? { projectId, userId: convexUserId } : "skip"
+  )
+  const joinLinkState = useQuery(
+    api.projectJoinLinks.getForProject,
+    projectId && convexUserId ? { projectId, userId: convexUserId } : "skip"
+  )
+  const [isInviteOpen, setIsInviteOpen] = useState(false)
+  const [emailInput, setEmailInput] = useState("")
+  const [inviteMembers, setInviteMembers] = useState<
+    Array<{ email: string; role: ProjectInviteRole }>
+  >([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [joinLinkRole, setJoinLinkRole] = useState<ProjectInviteRole>("developer")
+  const [joinLinkError, setJoinLinkError] = useState<string | null>(null)
+  const [joinLinkNotice, setJoinLinkNotice] = useState<string | null>(null)
+  const [joinLinkAction, setJoinLinkAction] = useState<"copy" | "rotate" | "disable" | null>(null)
+  const roleCheckPending = Boolean(projectId && convexUserId && memberRole === undefined)
+  const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager")
+  const activeJoinLink = joinLinkState?.activeLink ?? null
+  const canManageJoinLinks = canInvite && (joinLinkState?.isPersonalProject ?? true)
+
+  useEffect(() => {
+    if (!isInviteOpen || !activeJoinLink) return
+    setJoinLinkRole(activeJoinLink.role)
+  }, [activeJoinLink, isInviteOpen])
+
+  const queueInviteEmail = useCallback((rawEmail: string) => {
+    const email = rawEmail.trim().toLowerCase()
+    if (!email) return
+    if (!email.includes("@")) {
+      setInviteError(`Invalid email: ${rawEmail.trim()}`)
+      return
+    }
+
+    setInviteMembers((current) => {
+      if (current.some((member) => member.email === email)) return current
+      return [...current, { email, role: "developer" }]
+    })
+  }, [])
+
+  const handleAddEmail = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter" && event.key !== ",") return
+      event.preventDefault()
+      const segments = emailInput
+        .split(",")
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+      if (!segments.length) return
+
+      setInviteError(null)
+      segments.forEach((segment) => queueInviteEmail(segment))
+      setEmailInput("")
+    },
+    [emailInput, queueInviteEmail]
+  )
+
+  const handleRemoveFromInviteList = useCallback((index: number) => {
+    setInviteMembers((current) => current.filter((_, i) => i !== index))
+  }, [])
+
+  const handleUpdateRole = useCallback((index: number, role: ProjectInviteRole) => {
+    setInviteMembers((current) =>
+      current.map((member, i) => (i === index ? { ...member, role } : member))
+    )
+  }, [])
+
+  const handleInviteOpenChange = useCallback((open: boolean) => {
+    setIsInviteOpen(open)
+    if (!open) {
+      setEmailInput("")
+      setInviteMembers([])
+      setInviteError(null)
+      setIsSubmitting(false)
+      setJoinLinkError(null)
+      setJoinLinkNotice(null)
+      setJoinLinkAction(null)
+    }
+  }, [])
+
+  const handleSendInvites = useCallback(async () => {
+    if (!projectId || !convexUserId || !canInvite || inviteMembers.length === 0) return
+
+    setIsSubmitting(true)
+    setInviteError(null)
+
+    try {
+      const failed: Array<{ email: string; error: string }> = []
+
+      for (const member of inviteMembers) {
+        try {
+          await inviteMember({
+            projectId,
+            email: member.email,
+            role: member.role,
+            invitedBy: convexUserId,
+          })
+        } catch (error) {
+          failed.push({
+            email: member.email,
+            error: cleanConvexError(error, "Failed to send invite"),
+          })
+        }
+      }
+
+      if (failed.length === 0) {
+        handleInviteOpenChange(false)
+        return
+      }
+
+      const failedSet = new Set(failed.map((entry) => entry.email))
+      setInviteMembers((current) => current.filter((member) => failedSet.has(member.email)))
+      setInviteError(failed.map((entry) => `${entry.email}: ${entry.error}`).join(" | "))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [
+    canInvite,
+    convexUserId,
+    handleInviteOpenChange,
+    inviteMember,
+    inviteMembers,
+    projectId,
+  ])
+
+  const handleCopyJoinLink = useCallback(async () => {
+    if (!projectId || !convexUserId || !canManageJoinLinks) return
+    setJoinLinkAction("copy")
+    setJoinLinkError(null)
+    setJoinLinkNotice(null)
+
+    try {
+      const link = await createOrUpdateActiveLink({
+        projectId,
+        actorUserId: convexUserId,
+        role: joinLinkRole,
+      })
+      const shareUrl = buildProjectJoinUrl(link.token)
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available")
+      }
+      await navigator.clipboard.writeText(shareUrl)
+      setJoinLinkNotice("Invite link copied to clipboard.")
+    } catch (error) {
+      setJoinLinkError(cleanConvexError(error, "Failed to copy invite link"))
+    } finally {
+      setJoinLinkAction(null)
+    }
+  }, [
+    canManageJoinLinks,
+    convexUserId,
+    createOrUpdateActiveLink,
+    joinLinkRole,
+    projectId,
+  ])
+
+  const handleRotateJoinLink = useCallback(async () => {
+    if (!projectId || !convexUserId || !canManageJoinLinks) return
+    setJoinLinkAction("rotate")
+    setJoinLinkError(null)
+    setJoinLinkNotice(null)
+
+    try {
+      await rotateJoinLink({
+        projectId,
+        actorUserId: convexUserId,
+        role: joinLinkRole,
+      })
+      setJoinLinkNotice("Invite link rotated.")
+    } catch (error) {
+      setJoinLinkError(cleanConvexError(error, "Failed to rotate invite link"))
+    } finally {
+      setJoinLinkAction(null)
+    }
+  }, [canManageJoinLinks, convexUserId, joinLinkRole, projectId, rotateJoinLink])
+
+  const handleDisableJoinLink = useCallback(async () => {
+    if (!projectId || !convexUserId || !canManageJoinLinks) return
+    setJoinLinkAction("disable")
+    setJoinLinkError(null)
+    setJoinLinkNotice(null)
+
+    try {
+      await revokeJoinLink({
+        projectId,
+        actorUserId: convexUserId,
+      })
+      setJoinLinkNotice("Invite link disabled.")
+    } catch (error) {
+      setJoinLinkError(cleanConvexError(error, "Failed to disable invite link"))
+    } finally {
+      setJoinLinkAction(null)
+    }
+  }, [canManageJoinLinks, convexUserId, projectId, revokeJoinLink])
+
+  return (
+    <Dialog open={isInviteOpen} onOpenChange={handleInviteOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+          disabled={!projectId || roleCheckPending}
+          title="Share project"
+        >
+          {roleCheckPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Share2 className="h-3.5 w-3.5" />
+          )}
+          Share
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Share project</DialogTitle>
+          <DialogDescription>
+            Invite collaborators to <span className="font-medium text-foreground">{projectName ?? "this project"}</span>.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!canInvite ? (
+          <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
+            Only project managers can invite collaborators.
+          </div>
+        ) : (
+          <>
+            {joinLinkError ? (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {joinLinkError}
+              </div>
+            ) : null}
+            {inviteError ? (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {inviteError}
+              </div>
+            ) : null}
+            {joinLinkNotice ? (
+              <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {joinLinkNotice}
+              </div>
+            ) : null}
+
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/35 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Link2 className="h-4 w-4 text-muted-foreground" />
+                  Invite link
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  {activeJoinLink ? "Active" : "Disabled"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-2">
+                <span className="text-xs text-muted-foreground">Join role</span>
+                <Select
+                  value={joinLinkRole}
+                  onValueChange={(value) => setJoinLinkRole(value as ProjectInviteRole)}
+                  disabled={joinLinkAction !== null}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {activeJoinLink ? (
+                <div className="rounded-lg border border-border/60 bg-background/70 px-2.5 py-2">
+                  <p className="truncate text-[11px] font-medium text-foreground">
+                    {buildProjectJoinUrl(activeJoinLink.token)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Updated {formatTimestamp(activeJoinLink.updatedAt)} • Used {activeJoinLink.useCount} times
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  No active link yet. Copy to create one.
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-full px-3 text-xs"
+                  onClick={() => {
+                    void handleCopyJoinLink()
+                  }}
+                  disabled={joinLinkAction !== null || !canManageJoinLinks}
+                >
+                  {joinLinkAction === "copy" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                  Copy link
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-full px-3 text-xs"
+                  onClick={() => {
+                    void handleRotateJoinLink()
+                  }}
+                  disabled={joinLinkAction !== null || !canManageJoinLinks}
+                >
+                  {joinLinkAction === "rotate" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Rotate link
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-full px-3 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    void handleDisableJoinLink()
+                  }}
+                  disabled={joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink}
+                >
+                  {joinLinkAction === "disable" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ShieldOff className="h-3.5 w-3.5" />
+                  )}
+                  Disable link
+                </Button>
+              </div>
+            </div>
+
+            <Input
+              type="email"
+              placeholder="Enter email addresses..."
+              value={emailInput}
+              onChange={(event) => {
+                setEmailInput(event.target.value)
+              }}
+              onKeyDown={handleAddEmail}
+              disabled={isSubmitting}
+            />
+
+            {inviteMembers.length > 0 ? (
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-background to-transparent" />
+                <div className="app-scrollbar max-h-64 space-y-1 overflow-y-auto py-2">
+                  {inviteMembers.map((member, index) => (
+                    <div key={member.email} className="flex items-center justify-between px-1 py-2">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="text-sm">
+                            {member.email.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="max-w-[220px] truncate font-medium">{member.email}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                              disabled={isSubmitting}
+                            >
+                              {PROJECT_INVITE_ROLE_OPTIONS.find(
+                                (option) => option.value === member.role
+                              )?.label ?? "Role"}
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                              <DropdownMenuItem
+                                key={option.value}
+                                onClick={() => {
+                                  handleUpdateRole(index, option.value)
+                                }}
+                              >
+                                {option.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            handleRemoveFromInviteList(index)
+                          }}
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Remove invite</span>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm text-muted-foreground">
+                <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
+              </span>
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleSendInvites()
+                }}
+                disabled={inviteMembers.length === 0 || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Send invites
+              </Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 export function UnifiedHeader({
@@ -46,7 +750,10 @@ export function UnifiedHeader({
   contentInsetLeft = 0,
   contentInsetRight = 0,
   compactHeaderActions = true,
+  projectInviteContext = null,
 }: UnifiedHeaderProps) {
+  const { currentOrganization } = useAuth()
+  const isPersonalWorkspace = currentOrganization?.workspaceType === "personal"
   const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
   const isMacClient = typeof window !== "undefined" && window.electronAPI?.platform === "darwin"
   const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== "closed")
@@ -214,6 +921,16 @@ export function UnifiedHeader({
 
   const isTabsPrimaryLayout =
     breadcrumbs.length === 0 && !breadcrumbAddon && Boolean(header)
+  const collaborationControl = isPersonalWorkspace
+    ? projectInviteContext
+      ? (
+          <HeaderProjectShareButton
+            projectId={projectInviteContext.projectId}
+            projectName={projectInviteContext.projectName}
+          />
+        )
+      : <HeaderInboxButton />
+    : null
 
   if (isTabsPrimaryLayout) {
     return (
@@ -240,6 +957,7 @@ export function UnifiedHeader({
           <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             <CommandSearch />
+            {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>
@@ -372,6 +1090,7 @@ export function UnifiedHeader({
           )}
           <div className="flex items-center gap-0.5">
             <CommandSearch />
+            {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
               <>

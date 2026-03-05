@@ -172,6 +172,35 @@ function parseJsonValue(value: string): unknown {
   }
 }
 
+function parseFilesystemListingText(text: string): Array<{ name: string; type: 'directory' | 'file' }> {
+  const entries: Array<{ name: string; type: 'directory' | 'file' }> = []
+  const lines = text.split(/\r?\n/g)
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (!line) continue
+
+    const tagged = line.match(/^\[(FILE|DIR)\]\s+(.+)$/i)
+    if (tagged) {
+      const kind = tagged[1].toUpperCase()
+      const name = tagged[2].trim()
+      if (!name) continue
+      entries.push({
+        name,
+        type: kind === 'DIR' ? 'directory' : 'file',
+      })
+      continue
+    }
+
+    const fallbackName = line.replace(/\/$/, '')
+    if (!fallbackName) continue
+    entries.push({
+      name: fallbackName,
+      type: line.endsWith('/') ? 'directory' : 'file',
+    })
+  }
+  return entries
+}
+
 function buildReadFileOutput(args: {
   filePath: string
   content: string
@@ -216,6 +245,11 @@ function extractStructuredOrText(value: unknown): unknown {
 }
 
 function normalizeListEntries(value: unknown): Array<{ name: string; type: 'directory' | 'file' }> | null {
+  if (typeof value === 'string') {
+    const parsed = parseFilesystemListingText(value)
+    return parsed.length > 0 ? parsed : null
+  }
+
   if (!Array.isArray(value)) return null
 
   const result: Array<{ name: string; type: 'directory' | 'file' }> = []
@@ -250,6 +284,16 @@ function normalizeListEntries(value: unknown): Array<{ name: string; type: 'dire
 }
 
 function normalizeSearchPaths(value: unknown, fallbackRoot: string): string[] | null {
+  if (typeof value === 'string') {
+    const lines = value
+      .split(/\r?\n/g)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .map((entry) => entry.replace(/^\[[A-Z]+\]\s+/i, ''))
+      .map((entry) => path.isAbsolute(entry) ? entry : path.resolve(fallbackRoot, entry))
+    return lines.length > 0 ? lines : null
+  }
+
   if (Array.isArray(value)) {
     const paths = value
       .filter((entry): entry is string => typeof entry === 'string')
@@ -262,43 +306,16 @@ function normalizeSearchPaths(value: unknown, fallbackRoot: string): string[] | 
   const record = asRecord(value)
   if (!record) return null
   const listCandidate = record.results ?? record.matches ?? record.files ?? record.paths
+  if (typeof listCandidate === 'string') {
+    return normalizeSearchPaths(listCandidate, fallbackRoot)
+  }
   if (Array.isArray(listCandidate)) {
     return normalizeSearchPaths(listCandidate, fallbackRoot)
   }
-  return null
-}
-
-function normalizeGrepMatches(value: unknown, fallbackRoot: string): Array<{ filePath: string; line: number; text: string }> | null {
-  if (!Array.isArray(value)) return null
-  const result: Array<{ filePath: string; line: number; text: string }> = []
-
-  for (const entry of value) {
-    const record = asRecord(entry)
-    if (!record) continue
-    const fileRaw =
-      typeof record.filePath === 'string'
-        ? record.filePath
-        : typeof record.path === 'string'
-          ? record.path
-          : null
-    const textRaw =
-      typeof record.text === 'string'
-        ? record.text
-        : typeof record.lineText === 'string'
-          ? record.lineText
-          : typeof record.content === 'string'
-            ? record.content
-            : ''
-    const lineRaw = Number(record.line ?? record.lineNumber ?? 0)
-    if (!fileRaw) continue
-    result.push({
-      filePath: path.isAbsolute(fileRaw) ? fileRaw : path.resolve(fallbackRoot, fileRaw),
-      line: Number.isFinite(lineRaw) && lineRaw > 0 ? Math.round(lineRaw) : 1,
-      text: textRaw,
-    })
+  if (typeof record.content === 'string') {
+    return normalizeSearchPaths(record.content, fallbackRoot)
   }
-
-  return result
+  return null
 }
 
 function quoteShellArg(value: string): string {
@@ -364,8 +381,9 @@ async function listDirViaMcp(
 
   const parsed = extractStructuredOrText(result.value)
   const record = asRecord(parsed)
-  const entriesCandidate = record?.entries ?? record?.children ?? parsed
+  const entriesCandidate = record?.entries ?? record?.children ?? record?.content ?? parsed
   const entries = normalizeListEntries(entriesCandidate)
+    ?? normalizeListEntries(LocalMcpToolRuntime.extractTextFromToolResult(result.value))
   if (!entries) return null
 
   const ignorePatterns = Array.isArray(input.ignore)
@@ -479,35 +497,8 @@ async function grepSearchViaMcp(
       ? resolveToolPath(input.path, workingDir)
       : workingDir
 
-  const result = await localMcpToolRuntime.callTool({
-    kind: 'repo-search',
-    workspaceRoot: workingDir,
-    preferredNames: ['search_repo', 'search', 'grep_search', 'grep'],
-    argVariants: [
-      { pattern: input.pattern, path: searchDir, include: input.include },
-      { query: input.pattern, path: searchDir, include: input.include },
-      { search: input.pattern, root: searchDir },
-      { term: input.pattern, directory: searchDir },
-    ],
-    timeoutMs: 20_000,
-  })
-
-  if (result.ok) {
-    const parsed = extractStructuredOrText(result.value)
-    const record = asRecord(parsed)
-    const matchesCandidate = record?.results ?? record?.matches ?? parsed
-    const matches = normalizeGrepMatches(matchesCandidate, searchDir)
-    if (matches) {
-      return {
-        pattern: input.pattern,
-        path: searchDir,
-        results: matches.slice(0, 200),
-        total: Math.min(matches.length, 200),
-        truncated: matches.length > 200,
-        timedOut: false,
-      }
-    }
-  }
+  // mcp-repo-search is URL-clone oriented and cannot search a local workspace path directly.
+  // For project-scoped grep, rely on shell MCP + ripgrep.
 
   const includeArg =
     typeof input.include === 'string' && input.include.trim().length > 0
@@ -629,11 +620,6 @@ async function runInTerminalViaMcp(args: {
         working_directory: resolvedWorkdir,
       },
       { command: args.command, working_directory: resolvedWorkdir },
-      { command: args.command, cwd: resolvedWorkdir },
-      { command: args.command, workingDirectory: resolvedWorkdir },
-      { command: args.command, workdir: resolvedWorkdir },
-      { cmd: args.command, cwd: resolvedWorkdir },
-      { input: args.command, cwd: resolvedWorkdir },
       { command: args.command },
     ],
     timeoutMs,

@@ -114,6 +114,9 @@ interface RemotePricingResponse {
 interface WalletReserveResponse {
   ok?: boolean
   holdId?: string
+  reason?: string
+  availableCents?: number
+  requiredCents?: number
 }
 
 interface WalletCaptureResponse {
@@ -341,6 +344,23 @@ function resolveRequestId(candidate: string | undefined): string {
     return crypto.randomUUID()
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return undefined
+    }
+    const parsed = Number(trimmed)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return undefined
 }
 
 function normalizePricingNumber(value: unknown): number | null {
@@ -714,6 +734,80 @@ export class LocalAiRuntimeService {
     })) as WalletCaptureResponse
   }
 
+  private async logLocalUsageToRemote(args: {
+    authorization: string
+    organizationId: string
+    model: string
+    provider?: string
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    reasoningTokens?: number
+    cachedInputTokens?: number
+    requestId?: string
+    conversationId?: string
+    feature?: string
+    actionType?: string
+    projectId?: string
+    durationMs?: number
+    finishReason?: string
+    rawFinishReason?: string
+    keySource: 'organization' | 'provider_auth'
+    aiBaseUrlHeader?: string
+  }): Promise<string | null> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/local/usage`
+
+    try {
+      const payload = await this.fetchRemoteJson({
+        authorization: args.authorization,
+        endpoint,
+        method: 'POST',
+        body: {
+          organizationId: args.organizationId,
+          model: args.model,
+          ...(typeof args.provider === 'string' && args.provider.trim().length > 0
+            ? { provider: args.provider.trim().toLowerCase() }
+            : {}),
+          promptTokens: Math.max(0, Math.floor(args.promptTokens)),
+          completionTokens: Math.max(0, Math.floor(args.completionTokens)),
+          totalTokens: Math.max(0, Math.floor(args.totalTokens)),
+          ...(typeof args.reasoningTokens === 'number' ? { reasoningTokens: args.reasoningTokens } : {}),
+          ...(typeof args.cachedInputTokens === 'number' ? { cachedInputTokens: args.cachedInputTokens } : {}),
+          ...(args.requestId ? { requestId: args.requestId } : {}),
+          ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+          ...(args.feature ? { feature: args.feature } : {}),
+          ...(args.actionType ? { actionType: args.actionType } : {}),
+          ...(args.projectId ? { projectId: args.projectId } : {}),
+          ...(typeof args.durationMs === 'number' ? { durationMs: args.durationMs } : {}),
+          ...(args.finishReason ? { finishReason: args.finishReason } : {}),
+          ...(args.rawFinishReason ? { rawFinishReason: args.rawFinishReason } : {}),
+          keySource: args.keySource,
+        },
+      })
+
+      if (typeof payload.error === 'string' && payload.error.trim().length > 0) {
+        return payload.error
+      }
+      return null
+    } catch (error) {
+      if (error instanceof RemoteAiHttpError) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          return 'Usage tracking endpoint is unavailable on the server. Deploy the latest AI routes.'
+        }
+
+        if (typeof error.payload.message === 'string' && error.payload.message.trim().length > 0) {
+          return error.payload.message.trim()
+        }
+        if (typeof error.payload.error === 'string' && error.payload.error.trim().length > 0) {
+          return error.payload.error.trim()
+        }
+        return `Failed to log local usage (${error.statusCode})`
+      }
+      return 'Failed to log local usage'
+    }
+  }
+
   private async lookupPricingFromRemote(args: {
     authorization: string
     model: string
@@ -1037,6 +1131,25 @@ export class LocalAiRuntimeService {
               aiBaseUrlHeader,
             })
             if (!reserveResult.ok || !reserveResult.holdId) {
+              if (reserveResult.reason && reserveResult.reason !== 'insufficient_funds') {
+                sendJson(res, 409, {
+                  error: 'wallet_reservation_conflict',
+                  code: reserveResult.reason === 'request_id_conflict'
+                    ? 'WALLET_REQUEST_ID_CONFLICT'
+                    : reserveResult.reason === 'hold_not_active'
+                      ? 'WALLET_HOLD_NOT_ACTIVE'
+                      : 'WALLET_RESERVE_CONFLICT',
+                  message: reserveResult.reason === 'request_id_conflict'
+                    ? 'Wallet hold request ID is already in use.'
+                    : reserveResult.reason === 'hold_not_active'
+                      ? 'Existing wallet hold for this request is no longer active.'
+                      : 'Wallet reservation failed due to a hold conflict.',
+                  reason: reserveResult.reason,
+                  availableCents: reserveResult.availableCents,
+                  requiredCents: reserveResult.requiredCents,
+                })
+                return
+              }
               sendJson(res, 402, {
                 error: 'wallet_insufficient_funds',
                 message: 'Your available AI wallet balance is not enough for this request.',
@@ -1197,6 +1310,44 @@ export class LocalAiRuntimeService {
                     }
                   }
 
+                  const projectId =
+                    isRecord(parsedBody.projectContext) &&
+                    typeof parsedBody.projectContext.slug === 'string' &&
+                    parsedBody.projectContext.slug.trim().length > 0
+                      ? parsedBody.projectContext.slug.trim()
+                      : undefined
+                  const durationMs = Date.now() - startedAt
+
+                  if (authorization) {
+                    const usageLogError = await this.logLocalUsageToRemote({
+                      authorization,
+                      organizationId,
+                      model,
+                      provider: modelInfo.provider,
+                      promptTokens,
+                      completionTokens,
+                      totalTokens,
+                      reasoningTokens: reasoningTokens || undefined,
+                      cachedInputTokens: cachedInputTokens || undefined,
+                      requestId,
+                      conversationId: parsedBody.conversationId,
+                      feature,
+                      actionType:
+                        typeof resolvedPolicy.agentId === 'string' && resolvedPolicy.agentId.trim().length > 0
+                          ? resolvedPolicy.agentId.trim()
+                          : undefined,
+                      projectId,
+                      durationMs,
+                      finishReason,
+                      rawFinishReason,
+                      keySource: managedProvider ? 'organization' : 'provider_auth',
+                      aiBaseUrlHeader,
+                    })
+                    if (usageLogError) {
+                      usageError = usageError ? `${usageError}; ${usageLogError}` : usageLogError
+                    }
+                  }
+
                   writer.write({
                     type: 'data-usage',
                     data: {
@@ -1210,7 +1361,7 @@ export class LocalAiRuntimeService {
                       ...(spendCents !== undefined ? { spendCents } : {}),
                       keySource: managedProvider ? 'organization' : 'provider_auth',
                       runtime: 'local',
-                      durationMs: Date.now() - startedAt,
+                      durationMs,
                       finishReason,
                       rawFinishReason,
                       ...(usageError ? { error: usageError } : {}),

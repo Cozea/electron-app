@@ -1,7 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
+import { Link } from 'react-router-dom'
 import { FileViewer } from '../components/FileViewer'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import { Button } from '@/components/ui/button'
@@ -21,30 +18,17 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from '@/components/ui/empty'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 export function ProjectDetailPage() {
-  const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
-
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
-
-  const projectId = slug || ''
+  const { project, slugParam, projectIdParam } = useAccessibleProject()
+  const projectKey = project?.slug ?? slugParam ?? projectIdParam ?? ''
 
   // File tabs store
   const fileTabsStore = useFileTabsStore()
-  const { activeFile } = projectId
-    ? fileTabsStore.actions.getProjectTabs(projectId)
+  const { activeFile } = projectKey
+    ? fileTabsStore.actions.getProjectTabs(projectKey)
     : { activeFile: null }
 
   // Loading state - show shell immediately
@@ -65,7 +49,7 @@ export function ProjectDetailPage() {
   }
 
   // Ensure stores are initialized even if project is loading (we have the slug)
-  if (!slug) return null
+  if (!projectKey) return null
 
   // Editor Layout - always shown, with tabs when files are open
   return (
@@ -95,20 +79,7 @@ export function ProjectDetailPage() {
 
 // Dashboard component - can be used separately or on a different route
 export function ProjectDashboard() {
-  const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
+  const { project } = useAccessibleProject()
 
   // Format dates
   const formatDate = (timestamp: number) => {
@@ -149,7 +120,7 @@ export function ProjectDashboard() {
           <p className="text-muted-foreground">{project.description || 'No description'}</p>
         </div>
         <Button asChild>
-          <Link to={`/projects/${slug}?path=README.md`}>
+          <Link to={`${buildProjectPath(String(project._id))}?path=README.md`}>
             <Code className="h-4 w-4 mr-2" />
             Open Editor
           </Link>
@@ -191,7 +162,7 @@ export function ProjectDashboard() {
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
-          to={`/projects/${slug}?path=README.md`}
+          to={`${buildProjectPath(String(project._id))}?path=README.md`}
           className="p-6 rounded-lg border bg-card hover:bg-accent transition-colors"
         >
           <Code className="h-6 w-6 mb-2" />
@@ -201,7 +172,7 @@ export function ProjectDashboard() {
           </p>
         </Link>
         <Link
-          to={`/projects/${slug}/settings`}
+          to={buildProjectPath(String(project._id), 'settings')}
           className="p-6 rounded-lg border bg-card hover:bg-accent transition-colors"
         >
           <Settings className="h-6 w-6 mb-2" />

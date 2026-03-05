@@ -20,6 +20,16 @@ const ProjectLayout = lazy(() =>
     default: module.ProjectLayout,
   }))
 )
+const ProjectJoinPage = lazy(() =>
+  import('@/features/projects/pages/ProjectJoinPage').then((module) => ({
+    default: module.ProjectJoinPage,
+  }))
+)
+const LegacyProjectRedirectPage = lazy(() =>
+  import('@/features/projects/pages/LegacyProjectRedirectPage').then((module) => ({
+    default: module.LegacyProjectRedirectPage,
+  }))
+)
 const NewProject = lazy(() =>
   import('@/pages/NewProject').then((module) => ({ default: module.NewProject }))
 )
@@ -113,9 +123,10 @@ export const appRoutes: RouteObject[] = [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'projects', element: <Projects /> },
       { path: 'projects/new', element: <NewProject /> },
+      { path: 'projects/join/:token', element: <ProjectJoinPage /> },
       { path: 'projects/:projectId/build', element: <ProjectBuild /> },
       {
-        path: 'projects/:slug',
+        path: 'projects/p/:projectId',
         element: <ProjectLayout />,
         children: [
           { index: true, element: <ProjectDetailPage /> },
@@ -133,6 +144,8 @@ export const appRoutes: RouteObject[] = [
           { path: '*', element: <ProjectDetailPage /> },
         ],
       },
+      { path: 'projects/:slug', element: <LegacyProjectRedirectPage /> },
+      { path: 'projects/:slug/*', element: <LegacyProjectRedirectPage /> },
       {
         path: 'teams',
         element: (

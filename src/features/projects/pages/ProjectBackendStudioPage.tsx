@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useQuery } from "convex/react"
 import { ConvexHttpClient } from "convex/browser"
 import type { FunctionReference } from "convex/server"
 import {
@@ -16,8 +14,6 @@ import {
   type OnSelectionChangeParams,
   type ReactFlowInstance,
 } from "@xyflow/react"
-import { api } from "../../../../convex/_generated/api"
-import { useAuth } from "@/contexts/AuthContext"
 import { useProjectHeader } from "@/hooks/useProjectHeader"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 import { buildBackendStudioGraph, type StudioGraphNodeData } from "../studio/graphBuilder"
@@ -54,6 +50,8 @@ import {
   Table2,
   Zap,
 } from "lucide-react"
+import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
+import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
 
 type StudioNode = ReactFlowNode<StudioGraphNodeData, "studio">
 
@@ -210,10 +208,14 @@ function normalizePath(path: string): string {
 
 export function ProjectBackendStudioPage() {
   const navigate = useViewTransitionNavigate()
-  const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
+  const { project, projectIdParam, slugParam } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
+  const projectBasePath = useMemo(() => {
+    if (project?._id) return buildProjectPath(String(project._id))
+    if (projectIdParam) return buildProjectPath(projectIdParam)
+    return slugParam ? buildLegacyProjectPath(slugParam) : null
+  }, [project?._id, projectIdParam, slugParam])
 
   const [isScanning, setIsScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -463,11 +465,11 @@ export function ProjectBackendStudioPage() {
   }, [projectPath])
 
   const handleOpenSource = useCallback(() => {
-    if (!slug) return
+    if (!projectBasePath) return
     const filePath = selectedData?.filePath
     if (!filePath) return
-    navigate(`/projects/${slug}?path=${encodeURIComponent(filePath)}`)
-  }, [navigate, selectedData?.filePath, slug])
+    navigate(`${projectBasePath}?path=${encodeURIComponent(filePath)}`)
+  }, [navigate, projectBasePath, selectedData?.filePath])
 
   const handleRunSelected = useCallback(async () => {
     if (!selectedData || selectedData.kind !== "convex" || !selectedData.apiPath || !selectedData.operation) {
@@ -504,17 +506,6 @@ export function ProjectBackendStudioPage() {
       setIsRunning(false)
     }
   }, [convexHttpClient, runnerArgs, selectedData])
-
-  // Get Convex organization and project (used for title; scanning uses local projectPath)
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : "skip"
-  )
-
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : "skip"
-  )
 
   const headerControls = useMemo(
     () => (
@@ -748,7 +739,7 @@ export function ProjectBackendStudioPage() {
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize="28" minSize="20" maxSize="45" className="min-w-0">
-            <div className="relative h-full bg-sidebar/30 sidebar-fade-border">
+            <div className="relative h-full bg-content-surface panel-fade-border">
               <div className="h-9 px-3 flex items-center justify-between bg-background/60 backdrop-blur-sm">
                 <div className="text-sm font-medium">Inspector</div>
               </div>
@@ -799,7 +790,7 @@ export function ProjectBackendStudioPage() {
                       </div>
 
                       <div className="mt-3 flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={handleOpenSource} disabled={!selectedData.filePath || !slug}>
+                        <Button size="sm" variant="outline" onClick={handleOpenSource} disabled={!selectedData.filePath || !projectBasePath}>
                           <FileCode2 className="h-4 w-4 mr-2" />
                           Open source
                         </Button>

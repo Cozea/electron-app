@@ -197,13 +197,13 @@ export const BuilderTerminal = memo(function BuilderTerminal({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/50 bg-background/70 text-foreground overflow-hidden transition-all',
+        'rounded-lg bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] overflow-hidden transition-all',
         isExpanded ? 'h-96' : 'h-48',
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-[color:var(--tool-border)] px-3 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <TerminalIcon className="h-4 w-4" />
           <span>Terminal</span>

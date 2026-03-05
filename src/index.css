@@ -35,16 +35,27 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(0.935 0.004 258);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.875 0.01 258);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.86 0.006 258);
   --sidebar-ring: oklch(0.708 0 0);
-  --terminal-panel-bg: var(--sidebar);
-  --main-nav-sidebar-surface: var(--sidebar);
+  --terminal-panel-bg: var(--content-surface);
+  --tool-surface: var(--sidebar);
+  --tool-surface-foreground: var(--sidebar-foreground);
+  --tool-border: var(--sidebar-border);
+  --tool-diff-added-bg: color-mix(in oklab, #16a34a 12%, transparent);
+  --tool-diff-deleted-bg: color-mix(in oklab, #dc2626 14%, transparent);
+  --tool-diff-added-gutter-bg: #22c55e;
+  --tool-diff-deleted-gutter-bg: #ef4444;
+  --tool-diff-added-line-number-bg: color-mix(in oklab, #22c55e 16%, transparent);
+  --tool-diff-deleted-line-number-bg: color-mix(in oklab, #ef4444 18%, transparent);
+  --tool-diff-added-line-number-fg: #4ade80;
+  --tool-diff-deleted-line-number-fg: #f87171;
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --app-scrollbar-size: 8px;
   --app-scrollbar-radius: 9999px;
   --app-scrollbar-track: transparent;
@@ -73,7 +84,9 @@ body {
 
 /* Sidebar border with fade near top/bottom edges. */
 .sidebar-fade-border::before,
-.sidebar-fade-border::after {
+.sidebar-fade-border::after,
+.panel-fade-border::before,
+.panel-fade-border::after {
   content: "";
   position: absolute;
   top: 0;
@@ -92,38 +105,22 @@ body {
   isolation: auto;
 }
 
-:root[data-platform="darwin"] .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: transparent !important;
-}
-
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar-glass [data-slot="sidebar-inner"] {
     background-color: var(--main-nav-sidebar-surface) !important;
   }
 }
 
-.sidebar-fade-border::before {
+.sidebar-fade-border::before,
+.panel-fade-border::before {
   left: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-color: var(--sidebar-border);
 }
 
-.sidebar-fade-border::after {
+.sidebar-fade-border::after,
+.panel-fade-border::after {
   right: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-color: var(--sidebar-border);
 }
 
 /* Right-only fade border (hide left edge). */
@@ -131,29 +128,32 @@ body {
   opacity: 0;
 }
 
+.panel-fade-border-right::before {
+  opacity: 0;
+}
+
 .sidebar-fade-border-right::after {
   width: 1px;
   opacity: 0.9;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-color: var(--sidebar-border);
+}
+
+.panel-fade-border-right::after {
+  width: 1px;
+  opacity: 0.9;
+  background-color: var(--sidebar-border);
 }
 
 /* Fallback visible right-edge border for secondary sidebars. */
 .sidebar-fade-border-right {
-  background-image: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-image: linear-gradient(to bottom, var(--sidebar-border), var(--sidebar-border));
+  background-size: 1px 100%;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+
+.panel-fade-border-right {
+  background-image: linear-gradient(to bottom, var(--sidebar-border), var(--sidebar-border));
   background-size: 1px 100%;
   background-position: right top;
   background-repeat: no-repeat;
@@ -164,29 +164,32 @@ body {
   opacity: 0;
 }
 
+.panel-fade-border-left::after {
+  opacity: 0;
+}
+
 .sidebar-fade-border-left::before {
   width: 1px;
   opacity: 0.9;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-color: var(--sidebar-border);
+}
+
+.panel-fade-border-left::before {
+  width: 1px;
+  opacity: 0.9;
+  background-color: var(--sidebar-border);
 }
 
 /* Fallback visible left-edge border for secondary sidebars. */
 .sidebar-fade-border-left {
-  background-image: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 12%,
-    var(--sidebar-border) 50%,
-    color-mix(in oklab, var(--sidebar-border) 70%, transparent) 88%,
-    transparent
-  );
+  background-image: linear-gradient(to bottom, var(--sidebar-border), var(--sidebar-border));
+  background-size: 1px 100%;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
+
+.panel-fade-border-left {
+  background-image: linear-gradient(to bottom, var(--sidebar-border), var(--sidebar-border));
   background-size: 1px 100%;
   background-position: left top;
   background-repeat: no-repeat;
@@ -252,6 +255,7 @@ body {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-content-surface: var(--content-surface);
 }
 
 .dark {
@@ -278,15 +282,15 @@ body {
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.12 0.005 258);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.28 0 0);
+  --sidebar-accent: oklch(0.19 0.01 258);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: oklch(0.556 0 0);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
 }
 
 .navy {
@@ -313,15 +317,15 @@ body {
   --chart-3: hsl(240 60% 65%);
   --chart-4: hsl(280 60% 65%);
   --chart-5: hsl(320 60% 60%);
-  --sidebar: hsl(222 28% 14%);
+  --sidebar: hsl(222 28% 11%);
   --sidebar-foreground: hsl(210 30% 94%);
   --sidebar-primary: hsl(210 78% 62%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(222 30% 18%);
+  --sidebar-accent: hsl(222 30% 16%);
   --sidebar-accent-foreground: hsl(210 30% 94%);
-  --sidebar-border: hsl(222 20% 28%);
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(210 78% 62%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
 }
 
 .wine {
@@ -348,15 +352,15 @@ body {
   --chart-3: hsl(320 60% 55%);
   --chart-4: hsl(280 50% 55%);
   --chart-5: hsl(20 70% 55%);
-  --sidebar: hsl(340 30% 16%);
+  --sidebar: hsl(340 30% 13%);
   --sidebar-foreground: hsl(330 26% 94%);
   --sidebar-primary: hsl(345 72% 50%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(340 28% 20%);
+  --sidebar-accent: hsl(340 28% 18%);
   --sidebar-accent-foreground: hsl(330 22% 92%);
-  --sidebar-border: hsl(340 24% 32%);
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(345 72% 50%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
 }
 
 .clay {
@@ -383,15 +387,26 @@ body {
   --chart-3: hsl(35 45% 55%);
   --chart-4: hsl(20 50% 50%);
   --chart-5: hsl(40 40% 52%);
-  --sidebar: hsl(25 26% 14%);
+  --sidebar: hsl(25 26% 11%);
   --sidebar-foreground: hsl(35 25% 94%);
   --sidebar-primary: hsl(28 65% 52%);
   --sidebar-primary-foreground: hsl(25 30% 8%);
-  --sidebar-accent: hsl(25 24% 20%);
+  --sidebar-accent: hsl(25 24% 17%);
   --sidebar-accent-foreground: hsl(35 25% 94%);
-  --sidebar-border: hsl(25 22% 26%);
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(28 65% 52%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
+  --tool-surface-foreground: var(--secondary-foreground);
+  --tool-border: color-mix(in oklch, var(--border) 72%, black 28%);
+  --tool-diff-added-bg: color-mix(in oklch, var(--tool-surface) 88%, white 12%);
+  --tool-diff-deleted-bg: color-mix(in oklch, var(--tool-surface) 84%, black 16%);
+  --tool-diff-added-gutter-bg: color-mix(in oklch, var(--tool-surface) 86%, var(--tool-border) 14%);
+  --tool-diff-deleted-gutter-bg: color-mix(in oklch, var(--tool-surface) 78%, var(--tool-border) 22%);
+  --tool-diff-added-line-number-bg: color-mix(in oklch, var(--tool-surface) 88%, white 12%);
+  --tool-diff-deleted-line-number-bg: color-mix(in oklch, var(--tool-surface) 84%, black 16%);
+  --tool-diff-added-line-number-fg: color-mix(in oklch, var(--tool-surface-foreground) 66%, transparent);
+  --tool-diff-deleted-line-number-fg: color-mix(in oklch, var(--tool-surface-foreground) 66%, transparent);
 }
 
 .forest {
@@ -418,15 +433,15 @@ body {
   --chart-3: hsl(180 40% 40%);
   --chart-4: hsl(90 35% 45%);
   --chart-5: hsl(60 40% 45%);
-  --sidebar: hsl(150 22% 16%);
+  --sidebar: hsl(150 22% 13%);
   --sidebar-foreground: hsl(148 20% 94%);
   --sidebar-primary: hsl(150 42% 34%);
   --sidebar-primary-foreground: hsl(144 50% 94%);
-  --sidebar-accent: hsl(150 20% 20%);
+  --sidebar-accent: hsl(150 20% 17%);
   --sidebar-accent-foreground: hsl(148 18% 92%);
-  --sidebar-border: hsl(150 18% 30%);
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(150 42% 34%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), white 4%);
+  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
 }
 
 @layer base {
@@ -504,7 +519,6 @@ body {
   .app-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
-    scrollbar-gutter: stable;
   }
 
   .app-scrollbar::-webkit-scrollbar {
@@ -660,17 +674,31 @@ body {
 
 /* Vibrancy support: ensure backgrounds are translucent where needed */
 :root {
-  --sidebar-opacity: 0.8;
+  --sidebar-opacity: 0.94;
   --sidebar-surface: color-mix(
     in oklch,
     var(--sidebar),
     transparent calc(100% - var(--sidebar-opacity) * 100%)
   );
+  --content-surface: var(--background);
+}
+
+.dark,
+.navy,
+.wine,
+.forest,
+.clay {
+  --content-surface: var(--background);
 }
 
 .bg-sidebar {
   /* Override standard bg-sidebar to allow vibrancy to show through */
   background-color: var(--sidebar-surface);
+}
+
+.bg-content-surface {
+  /* Shared non-sidebar workspace surface (matches preview area backdrop) */
+  background-color: var(--content-surface);
 }
 
 .dark .bg-sidebar, 
@@ -679,14 +707,14 @@ body {
 .forest .bg-sidebar,
 .clay .bg-sidebar {
   /* Slightly more opaque on dark modes for readability */
-  --sidebar-opacity: 0.7;
+  --sidebar-opacity: 0.9;
 }
 
 .tab-scroll-fade-left {
   background: linear-gradient(
     to right,
-    var(--sidebar-surface),
-    color-mix(in oklch, var(--sidebar-surface) 82%, transparent),
+    var(--background),
+    color-mix(in oklch, var(--background) 82%, transparent),
     transparent
   );
 }
@@ -694,10 +722,28 @@ body {
 .tab-scroll-fade-right {
   background: linear-gradient(
     to left,
-    var(--sidebar-surface),
-    color-mix(in oklch, var(--sidebar-surface) 82%, transparent),
+    var(--background),
+    color-mix(in oklch, var(--background) 82%, transparent),
     transparent
   );
+}
+
+.light .file-tree-panel-border {
+  border-left-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.light .file-tree-lineage {
+  border-left-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.sidebar-stage-badge {
+  background-color: color-mix(in oklch, var(--border) 80%, transparent);
+  color: color-mix(in oklch, var(--foreground) 82%, transparent);
+}
+
+.light .sidebar-stage-badge {
+  background-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: color-mix(in oklch, var(--foreground) 62%, transparent);
 }
 
 .assistant-scroll-fade-top {

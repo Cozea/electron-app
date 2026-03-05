@@ -1,7 +1,9 @@
 import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
+
+const PERSONAL_WORKSPACE_PREFIX = "personal:"
 
 type OrganizationRole = "admin" | "member" | "viewer"
 
@@ -293,6 +295,167 @@ export const listForOrganization = query({
       }
       return p.status !== "deleted"
     })
+  },
+})
+
+// List projects visible in personal workspace context:
+// all personal-owned projects where the user is a project member.
+export const listForPersonalWorkspaceMemberView = query({
+  args: {
+    userId: v.id("users"),
+    status: v.optional(
+      v.union(
+        v.literal("draft"),
+        v.literal("generating"),
+        v.literal("building"),
+        v.literal("active"),
+        v.literal("archived"),
+        v.literal("deleted")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    const rows = await Promise.all(
+      memberships.map(async (membership) => {
+        const project = await ctx.db.get(membership.projectId)
+        if (!project) return null
+        if (args.status ? project.status !== args.status : project.status === "deleted") {
+          return null
+        }
+
+        const ownerWorkspace = await ctx.db.get(project.organizationId)
+        if (
+          !ownerWorkspace ||
+          !ownerWorkspace.workosId ||
+          !ownerWorkspace.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+        ) {
+          return null
+        }
+
+        return {
+          ...project,
+          role: membership.role,
+          ownerWorkspace: {
+            organizationId: ownerWorkspace._id,
+            workosId: ownerWorkspace.workosId,
+            name: ownerWorkspace.name,
+          },
+        }
+      })
+    )
+
+    const byProject = new Map<string, (typeof rows)[number]>()
+    for (const row of rows) {
+      if (!row) continue
+      const key = String(row._id)
+      const existing = byProject.get(key)
+      if (!existing || row.updatedAt > existing.updatedAt) {
+        byProject.set(key, row)
+      }
+    }
+
+    return Array.from(byProject.values())
+  },
+})
+
+export const getAccessibleById = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership) return null
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status === "deleted") return null
+    return project
+  },
+})
+
+export const getAccessibleBySlug = query({
+  args: {
+    slug: v.string(),
+    userId: v.id("users"),
+    preferredOrganizationId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    type Candidate = {
+      project: Doc<"projects">
+      role: Doc<"projectMembers">["role"]
+    }
+
+    const candidateRows = await Promise.all(
+      memberships.map(async (membership) => {
+        const project = await ctx.db.get(membership.projectId)
+        if (!project || project.status === "deleted") return null
+        if (project.slug !== args.slug) return null
+
+        return {
+          project,
+          role: membership.role,
+        } satisfies Candidate
+      })
+    )
+
+    const candidates: Candidate[] = candidateRows.filter(
+      (item): item is Candidate => item !== null
+    )
+
+    const scopedCandidates =
+      args.preferredOrganizationId !== undefined
+        ? candidates.filter(
+            (candidate) => candidate.project.organizationId === args.preferredOrganizationId
+          )
+        : candidates
+
+    if (scopedCandidates.length === 0) {
+      return {
+        status: "not_found" as const,
+      }
+    }
+
+    if (scopedCandidates.length > 1) {
+      const sorted = [...scopedCandidates].sort((a, b) => {
+        const updatedDelta = b.project.updatedAt - a.project.updatedAt
+        if (updatedDelta !== 0) return updatedDelta
+        return String(a.project._id).localeCompare(String(b.project._id))
+      })
+
+      return {
+        status: "ambiguous" as const,
+        slug: args.slug,
+        candidates: sorted.map((candidate) => ({
+          projectId: candidate.project._id,
+          organizationId: candidate.project.organizationId,
+          name: candidate.project.name,
+          role: candidate.role,
+          updatedAt: candidate.project.updatedAt,
+        })),
+      }
+    }
+
+    return {
+      status: "ok" as const,
+      project: scopedCandidates[0].project,
+      role: scopedCandidates[0].role,
+    }
   },
 })
 
@@ -652,6 +815,15 @@ export const deleteProject = mutation({
       .collect()
     for (const invite of invites) {
       await ctx.db.delete(invite._id)
+    }
+
+    // Delete all project join links
+    const joinLinks = await ctx.db
+      .query("projectJoinLinks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect()
+    for (const link of joinLinks) {
+      await ctx.db.delete(link._id)
     }
 
     // Mark project as deleted (soft delete for potential recovery)

@@ -26,7 +26,6 @@ import {
   IconArrowUp,
   IconSquare,
   IconPlus,
-  IconPaperclip,
   IconChevronDown,
   IconCheck,
 } from '@tabler/icons-react'
@@ -282,7 +281,7 @@ export function EntryChoice({
         </div>
 
         {/* AI Chat-style Input */}
-        <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
+        <div className="bg-secondary rounded-2xl overflow-hidden">
           <input
             ref={fileInputRef}
             type="file"
@@ -308,33 +307,16 @@ export function EntryChoice({
 
           <div className="mb-2 px-2 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
-                    disabled={!supportsAttachments}
-                  >
-                    <IconPlus className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="max-w-xs rounded-2xl p-1.5"
-                >
-                  <DropdownMenuGroup className="space-y-1">
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      disabled={!supportsAttachments}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <IconPaperclip size={16} className="opacity-60" />
-                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!supportsAttachments}
+                title={supportsAttachments ? 'Attach files' : 'Attachments unavailable'}
+              >
+                <IconPlus className="size-3" />
+              </Button>
 
               {hasSelectableModel && (
                 <ModelSelector
@@ -447,7 +429,7 @@ export function EntryChoice({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="start"
-                      className="max-w-xs rounded-2xl p-1.5 bg-popover border-border"
+                      className="max-w-xs rounded-2xl p-1.5 bg-secondary border-border"
                     >
                       <DropdownMenuGroup className="space-y-1">
                         {supportedVariants.map((variant) => (

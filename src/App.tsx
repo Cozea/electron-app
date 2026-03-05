@@ -128,6 +128,7 @@ function AppContent() {
   const {
     accessToken,
     currentOrganization,
+    refreshToken,
     isAuthenticated,
     isLoading,
     needsOnboarding,
@@ -143,18 +144,27 @@ function AppContent() {
       return
     }
     if (!accessToken || !currentOrganization?.organizationId) return
-    if (refreshedModelCatalogOrgRef.current === currentOrganization.organizationId) return
+    const organizationId = currentOrganization.organizationId
+    if (refreshedModelCatalogOrgRef.current === organizationId) return
 
-    refreshedModelCatalogOrgRef.current = currentOrganization.organizationId
-    clearModelCatalogCache(currentOrganization.organizationId)
+    clearModelCatalogCache(organizationId)
     void getModelCatalog({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       accessToken,
       forceRefresh: true,
-    }).catch((error) => {
-      console.warn('Failed to refresh model catalog on app start:', error)
     })
-  }, [accessToken, currentOrganization?.organizationId, isAuthenticated, isLoading, needsOnboarding])
+      .then(() => {
+        refreshedModelCatalogOrgRef.current = organizationId
+      })
+      .catch(async (error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message.toLowerCase().includes('unauthorized')) {
+          await refreshToken()
+          return
+        }
+        console.warn('Failed to refresh model catalog on app start:', error)
+      })
+  }, [accessToken, currentOrganization?.organizationId, isAuthenticated, isLoading, needsOnboarding, refreshToken])
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
@@ -195,7 +205,14 @@ function AppContent() {
   const isWorkspaceSelectRoute = location.pathname === '/workspaces/select'
   const isWorkspaceCreateRoute = location.pathname === '/workspaces/new'
   const isInviteRoute = location.pathname.startsWith('/invite/')
-  if (workspaceSelectionRequired && !isWorkspaceSelectRoute && !isWorkspaceCreateRoute && !isInviteRoute) {
+  const isProjectJoinRoute = location.pathname.startsWith('/projects/join/')
+  if (
+    workspaceSelectionRequired &&
+    !isWorkspaceSelectRoute &&
+    !isWorkspaceCreateRoute &&
+    !isInviteRoute &&
+    !isProjectJoinRoute
+  ) {
     return <Navigate to="/workspaces/select" replace />
   }
 
