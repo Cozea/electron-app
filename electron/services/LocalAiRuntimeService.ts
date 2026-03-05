@@ -87,7 +87,12 @@ type ChatContractResult = ChatContractFailure | ChatContractSuccess
 interface ModelInfo {
   provider: string
   providerModelId: string
+  displayName?: string
   tier?: 'fast' | 'standard' | 'powerful' | (string & {})
+  limit?: {
+    context?: number
+    output?: number
+  }
   cost?: {
     input?: number
     output?: number
@@ -138,6 +143,7 @@ interface CachedPricingEntry {
 
 interface LocalRuntimeDeps {
   getModelInfo: (modelId: string) => ModelInfo | undefined
+  getAllModels: () => Record<string, ModelInfo>
   normalizeModelVariant: (args: {
     requestedVariant: string | undefined
     provider: string
@@ -369,6 +375,50 @@ function normalizePricingNumber(value: unknown): number | null {
   return Math.max(0, parsed)
 }
 
+function normalizeTierRank(tier: ModelInfo['tier']): number {
+  if (tier === 'fast') return 0
+  if (tier === 'standard') return 1
+  if (tier === 'powerful') return 2
+  return 3
+}
+
+function estimateModelUnitCost(modelInfo: ModelInfo): number {
+  const inputCost = toFiniteNumber(modelInfo.cost?.input)
+  const outputCost = toFiniteNumber(modelInfo.cost?.output)
+
+  if (inputCost === undefined && outputCost === undefined) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  return Math.max(0, inputCost ?? 0) + Math.max(0, outputCost ?? 0)
+}
+
+function resolveSummarizerOverrideModelId(args: {
+  overrideValue: string
+  activeProvider: string
+  allModels: Record<string, ModelInfo>
+}): string | null {
+  const override = args.overrideValue.trim()
+  if (!override) return null
+
+  const activeProvider = args.activeProvider.trim().toLowerCase()
+  const exactModel = args.allModels[override]
+  if (exactModel && exactModel.provider.trim().toLowerCase() === activeProvider) {
+    return override
+  }
+
+  const parsed = parseScopedModelId(override)
+  if (parsed && parsed.provider === activeProvider && args.allModels[override]) {
+    return override
+  }
+
+  const providerModelMatch = Object.entries(args.allModels).find(([_, info]) => {
+    if (info.provider.trim().toLowerCase() !== activeProvider) return false
+    return info.providerModelId.trim() === override
+  })
+  return providerModelMatch ? providerModelMatch[0] : null
+}
+
 export class LocalAiRuntimeService {
   private static instance: LocalAiRuntimeService | null = null
 
@@ -451,6 +501,7 @@ export class LocalAiRuntimeService {
 
         this.runtimeDeps = {
           getModelInfo: modelCatalogModule.getModelInfo as LocalRuntimeDeps['getModelInfo'],
+          getAllModels: modelCatalogModule.getAllModels as LocalRuntimeDeps['getAllModels'],
           normalizeModelVariant: modelVariantsModule.normalizeModelVariant as LocalRuntimeDeps['normalizeModelVariant'],
           resolveAgentPolicy: profilesModule.resolveAgentPolicy as LocalRuntimeDeps['resolveAgentPolicy'],
           createProviderModelFromEnvelope: providerHelpersModule.createProviderModelFromEnvelope as LocalRuntimeDeps['createProviderModelFromEnvelope'],
@@ -465,6 +516,85 @@ export class LocalAiRuntimeService {
     }
 
     return null
+  }
+
+  private resolveCompactionSummarizer(args: {
+    runtimeDeps: LocalRuntimeDeps
+    activeModelInfo: ModelInfo
+    envelope: ProviderAuthEnvelope
+  }): {
+    modelId: string
+    modelInfo: ModelInfo
+    aiModel: unknown
+  } | null {
+    const activeProvider = args.activeModelInfo.provider.trim().toLowerCase()
+    if (!activeProvider) return null
+
+    const allModels = args.runtimeDeps.getAllModels()
+    const providerCandidates = Object.entries(allModels)
+      .filter(([_, info]) => info.provider.trim().toLowerCase() === activeProvider)
+      .sort((a, b) => {
+        const costDelta = estimateModelUnitCost(a[1]) - estimateModelUnitCost(b[1])
+        if (Number.isFinite(costDelta) && costDelta !== 0) {
+          return costDelta
+        }
+
+        const tierDelta = normalizeTierRank(a[1].tier) - normalizeTierRank(b[1].tier)
+        if (tierDelta !== 0) {
+          return tierDelta
+        }
+
+        const contextA = toFiniteNumber(a[1].limit?.context) ?? 0
+        const contextB = toFiniteNumber(b[1].limit?.context) ?? 0
+        if (contextA !== contextB) {
+          return contextB - contextA
+        }
+
+        return a[0].localeCompare(b[0])
+      })
+
+    if (providerCandidates.length === 0) {
+      return null
+    }
+
+    const overrideRaw = process.env.AI_AUTO_COMPACT_SUMMARIZER_MODEL
+    const overrideModelId =
+      typeof overrideRaw === 'string' && overrideRaw.trim().length > 0
+        ? resolveSummarizerOverrideModelId({
+            overrideValue: overrideRaw,
+            activeProvider,
+            allModels,
+          })
+        : null
+
+    const selectedTuple = overrideModelId
+      ? ([overrideModelId, allModels[overrideModelId]] as const)
+      : providerCandidates[0]
+    if (!selectedTuple || !selectedTuple[1]) {
+      return null
+    }
+
+    const [modelId, modelInfo] = selectedTuple
+    try {
+      const aiModel = args.runtimeDeps.createProviderModelFromEnvelope(
+        modelInfo.provider as LocalAiRuntimeProvider,
+        modelInfo.providerModelId,
+        args.envelope
+      )
+
+      return {
+        modelId,
+        modelInfo,
+        aiModel,
+      }
+    } catch (error) {
+      console.warn('Failed to initialize compaction summarizer model. Falling back to active model.', {
+        modelId,
+        provider: modelInfo.provider,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
   }
 
   private async fetchManagedProviderEnvelope(args: {
@@ -1192,6 +1322,12 @@ export class LocalAiRuntimeService {
           throw error
         }
 
+        const compactionSummarizer = this.resolveCompactionSummarizer({
+          runtimeDeps,
+          activeModelInfo: modelInfo,
+          envelope,
+        })
+
         const startedAt = Date.now()
         const stream = createUIMessageStream<UIMessage>({
           originalMessages: messages,
@@ -1199,6 +1335,13 @@ export class LocalAiRuntimeService {
             try {
               const pipeline = await runtimeDeps.executeChatPipeline({
                 aiModel,
+                ...(compactionSummarizer
+                  ? {
+                      summarizerModel: compactionSummarizer.aiModel,
+                      summarizerModelInfo: compactionSummarizer.modelInfo,
+                      summarizerModelId: compactionSummarizer.modelId,
+                    }
+                  : {}),
                 messages: messages as UIMessage[],
                 model,
                 modelInfo,

@@ -44,7 +44,7 @@ import {
   IconSquare,
   IconX,
 } from '@tabler/icons-react'
-import { Brain } from 'lucide-react'
+import { AlertTriangle, Brain, MousePointer2 } from 'lucide-react'
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -79,6 +79,10 @@ import {
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { getMutatingToolFilePaths, isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
+import {
+  parseInjectedPromptForCompaction,
+  type InjectedPromptPreview,
+} from '@/components/assistant/injectedPromptCompaction'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { ModelOption } from '@/lib/ai/modelOptions'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
@@ -323,6 +327,10 @@ export function AIConversation({
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
+  const [pendingPromptContext, setPendingPromptContext] = useState<{
+    raw: string
+    preview: InjectedPromptPreview
+  } | null>(null)
   const [ephemeralConversationId, setEphemeralConversationId] = useState(() => crypto.randomUUID())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -387,6 +395,12 @@ export function AIConversation({
   // Apply pending prompt injections (e.g. from screenshot capture or inspector actions)
   useEffect(() => {
     if (!pendingPrompt) return
+    const compacted = parseInjectedPromptForCompaction(pendingPrompt)
+    if (compacted) {
+      setPendingPromptContext({ raw: pendingPrompt, preview: compacted })
+      setPendingPrompt(null)
+      return
+    }
     setInput((prev) => (prev ? `${prev}\n\n${pendingPrompt}` : pendingPrompt))
     setPendingPrompt(null)
   }, [pendingPrompt, setPendingPrompt])
@@ -1455,6 +1469,7 @@ export function AIConversation({
   useEffect(() => {
     if (triggerClearChat > 0) {
       setMessages([])
+      setPendingPromptContext(null)
       useAssistantPanelStore.getState().setChatTitle("New Chat")
     }
   }, [triggerClearChat, setMessages])
@@ -1479,7 +1494,7 @@ export function AIConversation({
     e?.preventDefault();
     if (!hasSelectableModel) return;
     if (!providerAuthResolved) return;
-    if (!input.trim() && pendingAttachments.length === 0) return;
+    if (!input.trim() && pendingAttachments.length === 0 && !pendingPromptContext) return;
 
     // Clear any previous billing error when trying again
     setBillingError(null)
@@ -1501,8 +1516,15 @@ export function AIConversation({
     }
 
     // Build message with optional attachments
+    const trimmedInput = input.trim()
+    const textWithContext = pendingPromptContext
+      ? (trimmedInput
+        ? `${pendingPromptContext.raw}\n\nUser request: ${trimmedInput}`
+        : pendingPromptContext.raw)
+      : trimmedInput
+
     const messageOptions: { text: string; experimental_attachments?: Array<{ url: string; contentType: string }> } = {
-      text: input || 'Analyze this screenshot',
+      text: textWithContext || 'Analyze this screenshot',
     }
 
     // Include attachments if any
@@ -1515,6 +1537,7 @@ export function AIConversation({
 
     // Clear input immediately before sending (don't wait for response)
     setInput("")
+    setPendingPromptContext(null)
     clearPendingAttachments()
 
     // Send message (don't await - let it stream in the background)
@@ -1582,7 +1605,7 @@ export function AIConversation({
     }
   };
 
-  const hasDraftInput = input.trim().length > 0 || pendingAttachments.length > 0
+  const hasDraftInput = input.trim().length > 0 || pendingAttachments.length > 0 || pendingPromptContext !== null
   const submitDisabled = !isLoading && (!hasSelectableModel || !providerAuthResolved || !hasDraftInput)
 
   return (
@@ -1689,6 +1712,50 @@ export function AIConversation({
             attachments={pendingAttachments}
             onRemove={removePendingAttachment}
           />
+
+          {pendingPromptContext ? (
+            <div className="px-3 pt-3">
+              <div className="flex items-start gap-2">
+                {pendingPromptContext.preview.kind === 'inspector' ? (
+                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-2.5 py-1 text-[11px] text-foreground">
+                    <MousePointer2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate">
+                      {pendingPromptContext.preview.pillText || 'Inspected element'}
+                    </span>
+                  </div>
+                ) : pendingPromptContext.preview.kind === 'problem' ? (
+                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-2.5 py-1 text-[11px] text-foreground">
+                    <AlertTriangle className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate">
+                      {pendingPromptContext.preview.pillText || 'Problem'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-border/60 bg-background/35 px-2.5 py-2 min-w-0 flex-1">
+                    <div className="text-[11px] font-medium text-foreground">
+                      {pendingPromptContext.preview.title}
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {pendingPromptContext.preview.subtitle}
+                    </p>
+                    {pendingPromptContext.preview.snippet ? (
+                      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                        {pendingPromptContext.preview.snippet}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="text-muted-foreground/70 transition-colors hover:text-foreground"
+                  onClick={() => setPendingPromptContext(null)}
+                  aria-label="Remove context"
+                >
+                  <IconX className="size-4" />
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="px-3 pt-3 pb-2 grow">
             <form onSubmit={handleSubmit}>
