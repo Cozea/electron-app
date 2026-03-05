@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 
-export type AgentRuntimeKind = 'local' | 'cloud'
+export type AgentRuntimeKind = 'local'
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'canceled'
 
 export interface AgentRunRequest {
@@ -8,11 +8,11 @@ export interface AgentRunRequest {
   conversationId: string
   organizationId: string
   model: string
-  feature?: string
-  actionType?: string
+  agentId?: 'plan' | 'build'
+  surface?: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+  variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   enableTools?: boolean
   enableWebSearch?: boolean
-  reasoningDepth?: 'low' | 'medium' | 'high'
   messages: UIMessage[]
 }
 
@@ -32,6 +32,7 @@ export interface AgentToolCall {
 export interface AgentToolResult {
   success: boolean
   output?: unknown
+  diagnostics?: unknown
   error?: string
 }
 

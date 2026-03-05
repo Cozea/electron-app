@@ -5,8 +5,10 @@ import type { Id } from '../../convex/_generated/dataModel'
 type AssistantPanelMode = 'closed' | 'panel' | 'fullscreen'
 
 // Panel width constraints
-const MIN_PANEL_WIDTH = 320
-const MAX_PANEL_WIDTH = 2400
+export const MIN_PANEL_WIDTH = 320
+export const MAX_PANEL_WIDTH = 2400
+/** Max width when resizing by drag; use expand button for full width */
+export const MAX_DRAG_PANEL_WIDTH = 520
 const DEFAULT_PANEL_WIDTH = 400
 
 export interface PendingAttachment {

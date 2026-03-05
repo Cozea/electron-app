@@ -30,6 +30,28 @@ export class YjsProjectDoc {
    */
   private deletedPaths = new Set<string>()
 
+  private normalizePath(pathValue: string): string | null {
+    if (typeof pathValue !== 'string') return null
+    const trimmed = pathValue.trim()
+    if (!trimmed) return null
+
+    const slashNormalized = trimmed.replace(/\\/g, '/')
+    if (slashNormalized.startsWith('/')) return null
+    if (/^[a-zA-Z]:\//.test(slashNormalized)) return null
+
+    const segments = slashNormalized
+      .split('/')
+      .filter((segment) => segment.length > 0 && segment !== '.')
+
+    if (segments.length === 0) return null
+    for (const segment of segments) {
+      if (segment === '..') return null
+      if (segment.includes('\0')) return null
+    }
+
+    return segments.join('/')
+  }
+
   constructor(projectId: string) {
     this.doc = new Y.Doc({ guid: projectId })
     this.files = this.doc.getMap('files')
@@ -42,15 +64,18 @@ export class YjsProjectDoc {
    * Returns null if the file has been deleted to prevent resurrection.
    */
   getFileText(path: string): Y.Text | null {
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return null
+
     // Don't resurrect deleted files
-    if (this.deletedPaths.has(path)) {
+    if (this.deletedPaths.has(normalizedPath)) {
       return null
     }
 
-    if (!this.files.has(path)) {
-      this.files.set(path, new Y.Text())
+    if (!this.files.has(normalizedPath)) {
+      this.files.set(normalizedPath, new Y.Text())
     }
-    return this.files.get(path)!
+    return this.files.get(normalizedPath)!
   }
 
   /**
@@ -58,17 +83,21 @@ export class YjsProjectDoc {
    * Use this when you want to check if a file exists.
    */
   getExistingFileText(path: string): Y.Text | null {
-    if (this.deletedPaths.has(path)) {
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return null
+    if (this.deletedPaths.has(normalizedPath)) {
       return null
     }
-    return this.files.get(path) ?? null
+    return this.files.get(normalizedPath) ?? null
   }
 
   /**
    * Check if a file exists (not deleted and has content).
    */
   hasFile(path: string): boolean {
-    return !this.deletedPaths.has(path) && this.files.has(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return false
+    return !this.deletedPaths.has(normalizedPath) && this.files.has(normalizedPath)
   }
 
   /**
@@ -77,18 +106,24 @@ export class YjsProjectDoc {
    * allowing the remote creation to take effect.
    */
   clearDeletedStatus(path: string): void {
-    this.deletedPaths.delete(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return
+    this.deletedPaths.delete(normalizedPath)
   }
 
   /**
    * Check if a path is marked as deleted.
    */
   isDeleted(path: string): boolean {
-    return this.deletedPaths.has(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return false
+    return this.deletedPaths.has(normalizedPath)
   }
 
   initializeFile(path: string, content: string): void {
-    const yText = this.getFileText(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return
+    const yText = this.getFileText(normalizedPath)
     if (!yText) return
     this.doc.transact(() => {
       yText.delete(0, yText.length)
@@ -102,7 +137,9 @@ export class YjsProjectDoc {
    * instead of nuking all content and replacing it.
    */
   applyExternalChange(path: string, newContent: string, origin: string = 'agent'): void {
-    const yText = this.getFileText(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return
+    const yText = this.getFileText(normalizedPath)
     if (!yText) return
     const currentContent = yText.toString()
     if (currentContent === newContent) return
@@ -134,9 +171,12 @@ export class YjsProjectDoc {
    * Marks the path as deleted to prevent resurrection from late-arriving edits.
    */
   deletePath(path: string, origin: string = 'agent'): void {
-    const prefix = `${path}/`
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return
+
+    const prefix = `${normalizedPath}/`
     const keys = Array.from(this.files.keys())
-    const keysToDelete = keys.filter((key) => key === path || key.startsWith(prefix))
+    const keysToDelete = keys.filter((key) => key === normalizedPath || key.startsWith(prefix))
     if (keysToDelete.length === 0) return
 
     this.doc.transact(() => {
@@ -153,7 +193,9 @@ export class YjsProjectDoc {
    * Use when user explicitly wants to restore or when remote recreates.
    */
   restorePath(path: string): void {
-    this.deletedPaths.delete(path)
+    const normalizedPath = this.normalizePath(path)
+    if (!normalizedPath) return
+    this.deletedPaths.delete(normalizedPath)
   }
 
   /**
@@ -164,27 +206,30 @@ export class YjsProjectDoc {
    * - Activity log can track the rename
    */
   renamePath(oldPath: string, newPath: string, origin: string = 'user'): boolean {
-    const yText = this.files.get(oldPath)
+    const fromPath = this.normalizePath(oldPath)
+    const targetPath = this.normalizePath(newPath)
+    if (!fromPath || !targetPath) return false
+    const yText = this.files.get(fromPath)
     if (!yText) return false
 
     // Can't rename to existing file
-    if (this.files.has(newPath)) return false
+    if (this.files.has(targetPath)) return false
 
     this.doc.transact(() => {
       // Move the Y.Text to new path (preserves CRDT history)
-      this.files.set(newPath, yText)
-      this.files.delete(oldPath)
+      this.files.set(targetPath, yText)
+      this.files.delete(fromPath)
 
       // Update deleted paths tracking if needed
-      if (this.deletedPaths.has(oldPath)) {
-        this.deletedPaths.delete(oldPath)
-        this.deletedPaths.add(newPath)
+      if (this.deletedPaths.has(fromPath)) {
+        this.deletedPaths.delete(fromPath)
+        this.deletedPaths.add(targetPath)
       }
 
       // Track the rename for sync to other clients
       this.renames.set(crypto.randomUUID(), {
-        from: oldPath,
-        to: newPath,
+        from: fromPath,
+        to: targetPath,
         timestamp: Date.now(),
         isDirectory: false,
       })
@@ -198,15 +243,19 @@ export class YjsProjectDoc {
    * Preserves Y.Text instances for each file.
    */
   renameDirectory(oldPath: string, newPath: string, origin: string = 'user'): boolean {
-    const prefix = `${oldPath}/`
+    const fromPath = this.normalizePath(oldPath)
+    const targetPath = this.normalizePath(newPath)
+    if (!fromPath || !targetPath) return false
+
+    const prefix = `${fromPath}/`
     const keys = Array.from(this.files.keys())
-    const filesToRename = keys.filter((k) => k === oldPath || k.startsWith(prefix))
+    const filesToRename = keys.filter((k) => k === fromPath || k.startsWith(prefix))
 
     if (filesToRename.length === 0) return false
 
     // Check for conflicts
     for (const oldFilePath of filesToRename) {
-      const newFilePath = newPath + oldFilePath.slice(oldPath.length)
+      const newFilePath = targetPath + oldFilePath.slice(fromPath.length)
       if (this.files.has(newFilePath) && !filesToRename.includes(newFilePath)) {
         return false // Would overwrite a file not in the rename set
       }
@@ -214,7 +263,7 @@ export class YjsProjectDoc {
 
     this.doc.transact(() => {
       for (const oldFilePath of filesToRename) {
-        const newFilePath = newPath + oldFilePath.slice(oldPath.length)
+        const newFilePath = targetPath + oldFilePath.slice(fromPath.length)
         const yText = this.files.get(oldFilePath)!
         this.files.set(newFilePath, yText)
         this.files.delete(oldFilePath)
@@ -228,8 +277,8 @@ export class YjsProjectDoc {
 
       // Track the directory rename for sync
       this.renames.set(crypto.randomUUID(), {
-        from: oldPath,
-        to: newPath,
+        from: fromPath,
+        to: targetPath,
         timestamp: Date.now(),
         isDirectory: true,
       })

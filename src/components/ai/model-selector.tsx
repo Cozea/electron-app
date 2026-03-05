@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { getProviderLogoUrl } from "@/lib/ai/providerLogos";
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 
@@ -172,7 +173,7 @@ export const ModelSelectorLogo = ({
     alt={`${provider} logo`}
     className={cn("size-3 invert-on-dark", className)}
     height={12}
-    src={`https://models.dev/logos/${provider}.svg`}
+    src={getProviderLogoUrl(provider)}
     width={12}
   />
 );

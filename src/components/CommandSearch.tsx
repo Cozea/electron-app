@@ -5,8 +5,9 @@
  * and searching across the app.
  */
 
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
   CornerDownLeft,
   Search,
@@ -14,6 +15,7 @@ import {
   Terminal,
   Settings,
   CreditCard,
+  Bot,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -34,18 +36,43 @@ import {
 } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { useAuth } from '@/contexts/AuthContext'
+import { isPersonalWorkspace } from '@/lib/workspaces'
 
 interface CommandSearchProps {
   className?: string
 }
 
-const navigationItems = [
+interface NavigationItem {
+  href: string
+  label: string
+  icon: typeof FolderOpen
+  keywords: string[]
+  requiresOrganizationWorkspace?: boolean
+}
+
+const navigationItems: NavigationItem[] = [
   { href: '/projects', label: 'Projects', icon: FolderOpen, keywords: ['projects', 'apps', 'code', 'home', 'main'] },
   { href: '/workspace/integrations', label: 'CLI Tools', icon: Terminal, keywords: ['cli', 'tools', 'integrations', 'connect', 'services', 'terminal'] },
-  { href: '/workspace/billing', label: 'Billing', icon: CreditCard, keywords: ['billing', 'subscription', 'payment', 'credits'] },
-  { href: '/teams', label: 'Team Members', icon: Users, keywords: ['team', 'members', 'organization'] },
-  { href: '/workspace/general', label: 'Workspace Settings', icon: Settings, keywords: ['workspace', 'settings', 'general'] },
+  { href: '/settings/billing', label: 'Billing', icon: CreditCard, keywords: ['billing', 'subscription', 'payment'] },
+  { href: '/settings/ai', label: 'AI Settings', icon: Bot, keywords: ['ai', 'providers', 'models', 'settings'] },
+  {
+    href: '/teams',
+    label: 'Team Members',
+    icon: Users,
+    keywords: ['team', 'members', 'organization'],
+    requiresOrganizationWorkspace: true,
+  },
+  {
+    href: '/workspace/general',
+    label: 'Workspace Settings',
+    icon: Settings,
+    keywords: ['workspace', 'settings', 'general'],
+    requiresOrganizationWorkspace: true,
+  },
   { href: '/settings/account', label: 'Account Settings', icon: Settings, keywords: ['account', 'profile', 'settings'] },
+  { href: '/settings/tooling', label: 'Tooling Settings', icon: Terminal, keywords: ['tooling', 'runtime', 'framework', 'settings'] },
 ]
 
 const actionItems = [
@@ -55,8 +82,19 @@ const actionItems = [
 
 export function CommandSearch({ className }: CommandSearchProps) {
   const [open, setOpen] = useState(false)
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const location = useLocation()
+  const { currentOrganization } = useAuth()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
+
+  const visibleNavigationItems = useMemo(
+    () =>
+      navigationItems.filter(
+        (item) => !personalWorkspaceSelected || !item.requiresOrganizationWorkspace
+      ),
+    [personalWorkspaceSelected]
+  )
 
   const runCommand = useCallback((command: () => unknown) => {
     setOpen(false)
@@ -84,6 +122,11 @@ export function CommandSearch({ className }: CommandSearchProps) {
   }, [])
 
   const handleNavigate = (href: string) => {
+    if (href.startsWith('/settings/')) {
+      openSettingsDrawer(href)
+      return
+    }
+
     if (location.pathname !== href) {
       navigate(href)
     }
@@ -95,7 +138,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         navigate('/projects/new')
         break
       case 'connect-integration':
-        navigate('/workspace/integrations')
+        handleNavigate('/workspace/integrations')
         break
     }
   }
@@ -113,21 +156,21 @@ export function CommandSearch({ className }: CommandSearchProps) {
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogHeader className="sr-only">
-          <DialogTitle>Search</DialogTitle>
-          <DialogDescription>Search for pages and actions.</DialogDescription>
-        </DialogHeader>
         <DialogContent
           className="gap-0 overflow-hidden p-0 pb-10 sm:max-w-lg"
           showCloseButton={false}
         >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Search</DialogTitle>
+            <DialogDescription>Search for pages and actions.</DialogDescription>
+          </DialogHeader>
           <Command>
             <CommandInput placeholder="Type to search..." />
             <CommandList className="max-h-[400px]">
               <CommandEmpty>No results found.</CommandEmpty>
 
               <CommandGroup heading="Navigation">
-                {navigationItems.map((item) => {
+                {visibleNavigationItems.map((item) => {
                   const Icon = item.icon
                   const isActive = location.pathname === item.href
                   return (

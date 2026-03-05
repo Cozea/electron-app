@@ -1,11 +1,11 @@
-import { useCallback, useRef } from "react"
-import { Link } from "react-router-dom"
+import { useCallback } from "react"
 import {
-  BadgeCheck,
   ChevronsUpDown,
   LogOut,
-  Palette,
-  HardDrive,
+  Moon,
+  Sun,
+  Settings,
+  Monitor,
 } from "lucide-react"
 
 import {
@@ -28,6 +28,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
+import { useTheme } from "@/contexts/ThemeContext"
+import { cn } from "@/lib/utils"
 
 // Raw user type from auth context
 interface RawUser {
@@ -42,12 +45,6 @@ interface FormattedUser {
   name: string
   email: string
   avatar: string
-}
-
-const settingsRoutePreloaders: Record<string, () => Promise<unknown>> = {
-  "/settings/account": () => import("@/pages/settings/Account"),
-  "/settings/appearance": () => import("@/pages/settings/Appearance"),
-  "/settings/storage": () => import("@/pages/settings/Storage"),
 }
 
 // Helper to format user data
@@ -82,18 +79,12 @@ export function NavUser({
   onLogout?: () => void
 }) {
   const { isMobile } = useSidebar()
+  const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
-  const preloadedRoutesRef = useRef<Set<string>>(new Set())
-  const preloadSettingsRoute = useCallback((route: string) => {
-    const preloader = settingsRoutePreloaders[route]
-    if (!preloader) return
-    if (preloadedRoutesRef.current.has(route)) return
-
-    preloadedRoutesRef.current.add(route)
-    void preloader().catch(() => {
-      preloadedRoutesRef.current.delete(route)
-    })
-  }, [])
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const handleOpenSettings = useCallback((route: string) => {
+    openSettingsDrawer(route)
+  }, [openSettingsDrawer])
 
   return (
     <SidebarMenu>
@@ -139,39 +130,59 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings/account"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/account")}
-                  onFocus={() => preloadSettingsRoute("/settings/account")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/account")}
-                >
-                  <BadgeCheck className="mr-2 h-4 w-4" />
-                  Account
-                </Link>
+              <DropdownMenuItem onSelect={() => handleOpenSettings('/settings/account')}>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings/appearance"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/appearance")}
-                  onFocus={() => preloadSettingsRoute("/settings/appearance")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/appearance")}
-                >
-                  <Palette className="mr-2 h-4 w-4" />
-                  Appearance
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/settings/storage"
-                  onMouseEnter={() => preloadSettingsRoute("/settings/storage")}
-                  onFocus={() => preloadSettingsRoute("/settings/storage")}
-                  onPointerDown={() => preloadSettingsRoute("/settings/storage")}
-                >
-                  <HardDrive className="mr-2 h-4 w-4" />
-                  Storage
-                </Link>
-              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="px-2 py-1 text-xs text-muted-foreground">
+                Theme
+              </DropdownMenuLabel>
+              <div className="px-1 pb-1">
+                <div className="grid grid-cols-3 gap-1 rounded-xl bg-foreground/6 p-1">
+                  <button
+                    type="button"
+                    aria-label="Light theme"
+                    onClick={() => setTheme('light')}
+                    className={cn(
+                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      theme === 'light'
+                        ? "bg-foreground/14 text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/10"
+                    )}
+                  >
+                    <Sun className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Dark theme"
+                    onClick={() => setTheme('dark')}
+                    className={cn(
+                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      theme === 'dark'
+                        ? "bg-foreground/14 text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/10"
+                    )}
+                  >
+                    <Moon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="System theme"
+                    onClick={() => setTheme('system')}
+                    className={cn(
+                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      theme === 'system'
+                        ? "bg-foreground/14 text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/10"
+                    )}
+                  >
+                    <Monitor className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onLogout}>

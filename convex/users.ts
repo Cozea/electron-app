@@ -1,8 +1,24 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { ensureEncrypted, safeDecrypt, validateKeyFormat, isEncrypted } from "./lib/encryption"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function pickCanonicalUser<T extends { updatedAt?: number; createdAt: number; _id: unknown }>(
+  users: T[]
+): T | null {
+  if (users.length === 0) return null
+  return [...users].sort((a, b) => {
+    const updateDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+    if (updateDelta !== 0) return updateDelta
+    const createdDelta = b.createdAt - a.createdAt
+    if (createdDelta !== 0) return createdDelta
+    return String(a._id).localeCompare(String(b._id))
+  })[0]
+}
 
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
@@ -24,19 +40,31 @@ export const syncFromWorkOS = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const normalizedEmail = normalizeEmail(args.email)
 
-    // Check if user already exists by WorkOS ID
-    let existingUser = await ctx.db
+    // Check if user already exists by WorkOS ID.
+    const existingByWorkosId = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    let existingUser = pickCanonicalUser(existingByWorkosId)
 
-    // If not found by WorkOS ID, check by email (handles WorkOS user recreation)
+    // If not found by WorkOS ID, check by normalized email (handles WorkOS user recreation).
     if (!existingUser) {
-      existingUser = await ctx.db
+      const existingByNormalizedEmail = await ctx.db
+        .query("users")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+        .collect()
+      existingUser = pickCanonicalUser(existingByNormalizedEmail)
+    }
+
+    // Safety fallback for pre-normalized rows.
+    if (!existingUser) {
+      const existingByEmail = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", args.email))
-        .first()
+        .collect()
+      existingUser = pickCanonicalUser(existingByEmail)
     }
 
     if (existingUser) {
@@ -44,6 +72,7 @@ export const syncFromWorkOS = mutation({
       await ctx.db.patch(existingUser._id, {
         workosId: args.workosId,
         email: args.email,
+        normalizedEmail,
         firstName: args.firstName,
         lastName: args.lastName,
         profileImageUrl: args.profileImageUrl,
@@ -57,6 +86,7 @@ export const syncFromWorkOS = mutation({
     const userId = await ctx.db.insert("users", {
       workosId: args.workosId,
       email: args.email,
+      normalizedEmail,
       firstName: args.firstName,
       lastName: args.lastName,
       profileImageUrl: args.profileImageUrl,
@@ -73,16 +103,14 @@ export const syncFromWorkOS = mutation({
 export const getByWorkosId = query({
   args: { workosId: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
+    const users = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    const user = pickCanonicalUser(users)
 
     if (!user) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    return user
   },
 })
 
@@ -95,26 +123,14 @@ export const getByWorkosIdForServer = query({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
-    const user = await ctx.db
+    const users = await ctx.db
       .query("users")
       .withIndex("by_workos_id", (q) => q.eq("workosId", args.workosId))
-      .first()
+      .collect()
+    const user = pickCanonicalUser(users)
 
     if (!user) return null
-
-    const decryptOrPass = async (value?: string) => {
-      if (!value) return undefined
-      const decrypted = await safeDecrypt(value)
-      if (decrypted !== null) return decrypted
-      return isEncrypted(value) ? undefined : value
-    }
-
-    return {
-      ...user,
-      byokAnthropicKey: await decryptOrPass(user.byokAnthropicKey),
-      byokOpenaiKey: await decryptOrPass(user.byokOpenaiKey),
-      byokGoogleKey: await decryptOrPass(user.byokGoogleKey),
-    }
+    return user
   },
 })
 
@@ -122,16 +138,23 @@ export const getByWorkosIdForServer = query({
 export const getByEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
+    const normalizedEmail = normalizeEmail(args.email)
+    const byNormalizedEmail = await ctx.db
+      .query("users")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+      .collect()
+    const user = pickCanonicalUser(byNormalizedEmail)
+
+    if (user) return user
+
+    const byEmail = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first()
+      .collect()
+    const fallback = pickCanonicalUser(byEmail)
 
-    if (!user) return null
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    if (!fallback) return null
+    return fallback
   },
 })
 
@@ -141,11 +164,7 @@ export const getById = query({
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId)
     if (!user) return null
-
-    // Strip sensitive BYOK keys
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
-    return safeUser
+    return user
   },
 })
 
@@ -198,44 +217,6 @@ export const updatePreferences = mutation({
   },
 })
 
-// Update BYOK keys
-export const updateByokKeys = mutation({
-  args: {
-    userId: v.id("users"),
-    byokAnthropicKey: v.optional(v.string()),
-    byokOpenaiKey: v.optional(v.string()),
-    byokGoogleKey: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { userId, ...keys } = args
-    const updates: Record<string, string | undefined> = {}
-
-    if (keys.byokAnthropicKey !== undefined) {
-      if (keys.byokAnthropicKey && !validateKeyFormat("anthropic", keys.byokAnthropicKey)) {
-        throw new Error("Invalid Anthropic API key format")
-      }
-      updates.byokAnthropicKey = keys.byokAnthropicKey ? await ensureEncrypted(keys.byokAnthropicKey) : undefined
-    }
-    if (keys.byokOpenaiKey !== undefined) {
-      if (keys.byokOpenaiKey && !validateKeyFormat("openai", keys.byokOpenaiKey)) {
-        throw new Error("Invalid OpenAI API key format")
-      }
-      updates.byokOpenaiKey = keys.byokOpenaiKey ? await ensureEncrypted(keys.byokOpenaiKey) : undefined
-    }
-    if (keys.byokGoogleKey !== undefined) {
-      if (keys.byokGoogleKey && !validateKeyFormat("google", keys.byokGoogleKey)) {
-        throw new Error("Invalid Google API key format")
-      }
-      updates.byokGoogleKey = keys.byokGoogleKey ? await ensureEncrypted(keys.byokGoogleKey) : undefined
-    }
-
-    await ctx.db.patch(userId, {
-      ...updates,
-      updatedAt: Date.now(),
-    })
-  },
-})
-
 // Get user with their organizations
 export const getWithOrganizations = query({
   args: { userId: v.id("users") },
@@ -255,18 +236,18 @@ export const getWithOrganizations = query({
       })
     )
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { byokAnthropicKey, byokOpenaiKey, byokGoogleKey, ...safeUser } = user
+    const dedupedByOrg = new Map<string, NonNullable<(typeof organizations)[number]>>()
+    for (const org of organizations) {
+      if (!org) continue
+      const existing = dedupedByOrg.get(String(org._id))
+      if (!existing || (org.updatedAt || 0) >= (existing.updatedAt || 0)) {
+        dedupedByOrg.set(String(org._id), org)
+      }
+    }
 
     return {
-      ...safeUser,
-      organizations: organizations
-        .filter((org): org is NonNullable<typeof org> => org !== null)
-        .map((org) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { aiCredentials, ...safeOrg } = org
-          return safeOrg
-        }),
+      ...user,
+      organizations: [...dedupedByOrg.values()],
     }
   },
 })

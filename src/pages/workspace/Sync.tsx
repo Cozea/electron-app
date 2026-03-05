@@ -1,12 +1,11 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
-import { Progress } from '../../components/ui/progress'
 import {
   Table,
   TableBody,
@@ -35,9 +34,11 @@ import {
   Sparkles,
   Archive,
   Image,
+  Lock,
   Loader2,
 } from 'lucide-react'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 
 interface StorageCategory {
   id: string
@@ -57,7 +58,7 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     id: 'source',
     categoryKey: 'sourceAndConfig',
     name: 'Source & Config',
-    description: 'Project source code, configurations, and dependencies',
+    description: 'Canonical Git replica bundles, LFS objects, and source snapshots',
     icon: FileCode,
     color: 'bg-blue-500',
     canClear: false,
@@ -106,7 +107,7 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     id: 'git',
     categoryKey: 'gitHistory',
     name: 'Git History',
-    description: 'Version control data and file history',
+    description: 'Legacy pre-replica file version history',
     icon: GitBranch,
     color: 'bg-rose-500',
     canClear: false,
@@ -144,9 +145,32 @@ const formatSize = (gb: number): string => {
 
 const bytesToGB = (bytes: number): number => bytes / (1024 * 1024 * 1024)
 
+const getLegendLabel = (category: StorageCategory): string => {
+  switch (category.categoryKey) {
+    case 'sourceAndConfig':
+      return 'Source'
+    case 'collaborationData':
+      return 'Collab'
+    case 'aiHistory':
+      return 'AI'
+    case 'buildCache':
+      return 'Build'
+    case 'snapshots':
+      return 'Snapshots'
+    case 'gitHistory':
+      return 'Git'
+    case 'databaseBackups':
+      return 'Backups'
+    case 'assets':
+      return 'Assets'
+    default:
+      return category.name
+  }
+}
+
 export function Sync() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
-  const navigate = useNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
   const [isClearing, setIsClearing] = useState(false)
 
@@ -220,13 +244,16 @@ export function Sync() {
   const getUpgradeMessage = (plan: string) => {
     switch (plan) {
       case 'free':
-        return 'Upgrade to Pro for 10 GB storage.'
+        return 'Upgrade to Pro for more storage and shared sync.'
       case 'pro':
-        return 'Upgrade to Max for 20 GB storage.'
+        return 'Upgrade to Max for more storage and larger project limits.'
       case 'max':
-        return 'Upgrade to Team for 30 GB storage.'
+        return 'Need centralized seat billing? Upgrade to Startup.'
+      case 'startup':
       case 'team':
-        return 'Contact sales for Enterprise with unlimited storage.'
+        return 'Startup plan active. Contact sales for enterprise customization.'
+      case 'enterprise':
+        return 'Enterprise plan active.'
       default:
         return ''
     }
@@ -252,7 +279,7 @@ export function Sync() {
                       / {isUnlimited ? '∞' : totalLimit} GB
                     </span>
                     <Badge variant="secondary" className="mb-1.5">
-                      {usageLimits?.planDisplayName ?? 'Free'}
+                      {getWorkspacePlanLabel(usageLimits?.plan)}
                     </Badge>
                   </div>
                   <span className="text-sm text-muted-foreground">
@@ -283,7 +310,7 @@ export function Sync() {
                   {storageCategories.map((cat) => (
                     <div key={cat.id} className="flex items-center gap-1.5 text-xs">
                       <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                      <span className="text-muted-foreground">{cat.name}</span>
+                      <span className="text-muted-foreground">{getLegendLabel(cat)}</span>
                     </div>
                   ))}
                 </div>
@@ -292,18 +319,21 @@ export function Sync() {
 
             {/* Quick Actions */}
             <div className="md:border-l md:border-border md:pl-4">
-              <div className="pb-2">
-                <h2 className="text-base font-semibold">Free Up Space</h2>
-              </div>
-              <div className="space-y-3">
+              <h2 className="text-base font-semibold">Free Up Space</h2>
+              <div className="mt-0.5 space-y-2">
                 <div className="text-sm">
                   <span className="font-medium">{formatSize(clearableSize)}</span>
                   <span className="text-muted-foreground"> can be cleared</span>
                 </div>
-                <Progress
-                  value={totalUsed > 0 ? (clearableSize / totalUsed) * 100 : 0}
-                  className="h-2"
-                />
+                <div className="h-4 rounded-full overflow-hidden bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{
+                      width: `${totalUsed > 0 ? Math.min((clearableSize / totalUsed) * 100, 100) : 0}%`,
+                    }}
+                    aria-label="Clearable storage"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -339,8 +369,12 @@ export function Sync() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{category.name}</span>
                           {!category.canClear && (
-                          <Badge className="text-xs bg-secondary/60 text-muted-foreground border-0">
-                            Protected
+                          <Badge
+                            className="h-5 w-5 bg-secondary/60 text-muted-foreground border-0 p-0"
+                            aria-label="Protected"
+                            title="Protected"
+                          >
+                            <Lock className="h-3 w-3" />
                           </Badge>
                           )}
                         </div>
@@ -389,7 +423,7 @@ export function Sync() {
                 <p className="text-sm text-muted-foreground">
                   {getUpgradeMessage(usageLimits?.plan ?? 'free')}
                 </p>
-                <Button size="sm" onClick={() => navigate('/workspace/billing')}>Upgrade Plan</Button>
+                <Button size="sm" onClick={() => openSettingsDrawer('/settings/billing')}>Upgrade Plan</Button>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from 'convex/react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -28,23 +28,16 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Input } from '@/components/ui/input'
-import {
     TableCell,
     TableRow,
 } from '@/components/ui/table'
 
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
+import { useInViewportOnce } from '@/hooks/useInViewportOnce'
+import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -71,6 +64,7 @@ interface ProjectListRowProps {
     userId?: Id<'users'>
     creatorName?: string
     creatorImage?: string
+    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -87,26 +81,29 @@ function formatRelativeTime(timestamp: number): string {
     return 'now'
 }
 
-export function ProjectListRow({ project, userId, creatorName, creatorImage }: ProjectListRowProps) {
-    const navigate = useNavigate()
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-    const [deleteConfirmName, setDeleteConfirmName] = useState('')
+export function ProjectListRow({
+  project,
+  userId,
+  creatorName,
+  creatorImage,
+  onRequireSyncReview,
+}: ProjectListRowProps) {
+  const navigate = useViewTransitionNavigate()
+  const rowRef = useRef<HTMLTableRowElement | null>(null)
+  const isInViewport = useInViewportOnce(rowRef)
     const [isDeleting, setIsDeleting] = useState(false)
-    const [deleteError, setDeleteError] = useState<string | null>(null)
-    const [syncState, setSyncState] = useState<SyncState>('idle')
-    const [syncMessage, setSyncMessage] = useState('')
+  const [syncState, setSyncState] = useState<SyncState>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
     const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-    const [showMenu, setShowMenu] = useState(false)
-    const [localPath, setLocalPath] = useState<string | null>(null)
+  const [showMenu, setShowMenu] = useState(false)
+  const [localPath, setLocalPath] = useState<string | null>(null)
+  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
+  useEffect(() => {
+        if (!shouldHydrateSyncStatus) return
 
-    useEffect(() => {
         let cancelled = false
 
         const loadLocalPath = async () => {
@@ -123,9 +120,10 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
         return () => {
             cancelled = true
         }
-    }, [project.slug, project.status])
+    }, [project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
+        setSyncHydrationRequested(true)
         if (project.status === 'draft') {
             void preloadNewProjectPage()
             return
@@ -134,22 +132,40 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
     }, [project.status])
 
     const handleDelete = async () => {
-        if (!userId || deleteConfirmName !== project.name) return
+        if (!userId) return
+
+        const result = await window.electronAPI.dialog.showMessageBox({
+            type: 'warning',
+            buttons: ['Cancel', 'Delete Project'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Delete Project',
+            message: `Delete ${project.name}?`,
+            detail: `This action cannot be undone. This will permanently delete the project and all associated data.`,
+        })
+
+        if (result.response !== 1) {
+            return
+        }
+
         setIsDeleting(true)
-        setDeleteError(null)
         try {
             await deleteProject({
                 projectId: project._id,
                 userId,
-                confirmName: deleteConfirmName,
+                confirmName: project.name,
             })
-            setShowDeleteDialog(false)
-            setDeleteConfirmName('')
         } catch (error) {
             console.error('Failed to delete project:', error)
             const message = error instanceof Error ? error.message : 'Failed to delete project'
             const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
-            setDeleteError(cleanMessage)
+            
+            await window.electronAPI.dialog.showMessageBox({
+                type: 'error',
+                title: 'Delete Failed',
+                message: 'Failed to delete project',
+                detail: cleanMessage
+            })
         } finally {
             setIsDeleting(false)
         }
@@ -198,33 +214,57 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
+            let gateSyncScreen = false
+            let openCheck: ProjectOpenReplicaCheckResult | null = null
+
+            // Full ReplicaGit check before opening, same as card view.
+            if (effectiveLocalPath) {
+                setSyncMessage('Checking sync status...')
+                const check = await runProjectOpenReplicaCheck({
+                    projectId: String(project._id),
                     projectPath: effectiveLocalPath,
-                    debugSource: `project-list-row:${project._id}`,
                 })
+                openCheck = check
+                gateSyncScreen = check.gateSyncScreen
 
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
+                if (check.totalChanges > 0) {
                     setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
+                    if (check.hasConflicts) {
+                        setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
+                    } else if (check.likelyLocalWipe) {
+                        setSyncMessage('Local files missing. Opening recovery...')
+                    } else {
+                        setSyncMessage('Sync changes detected')
+                    }
                 }
             }
 
             // Navigate to project
             setSyncState('ready')
-            setSyncMessage('Opening project...')
+            setSyncMessage(gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
             // Small delay to show the ready state
             setTimeout(() => {
+                if (gateSyncScreen && effectiveLocalPath && onRequireSyncReview && openCheck) {
+                    void onRequireSyncReview({
+                        projectId: project._id,
+                        projectSlug: project.slug,
+                        projectName: project.name,
+                        projectTemplate: project.template ?? undefined,
+                        projectPath: effectiveLocalPath,
+                        check: openCheck,
+                    })
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    return
+                }
+
                 navigate(`/projects/${project.slug}`, {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        gateSyncScreen,
                     },
                 })
             }, 200)
@@ -240,13 +280,13 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
+    }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 
     return (
-        <>
             <TableRow
+                ref={rowRef}
                 className={cn(
                     "group cursor-pointer",
                     syncState !== 'idle' && "pointer-events-none"
@@ -307,7 +347,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                 </TableCell>
 
                 <TableCell className="hidden text-center lg:table-cell">
-                    {project.status !== 'draft' && localPath ? (
+                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath ? (
                         <div onClick={(e) => e.stopPropagation()}>
                             <ProjectSyncStats
                                 projectId={project._id}
@@ -339,14 +379,7 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
-                                preloadProjectDetailPage()
-                                navigate(`/projects/${project.slug}`, {
-                                    state: {
-                                        projectSlug: project.slug,
-                                        projectName: project.name,
-                                        projectTemplate: project.template ?? undefined,
-                                    },
-                                })
+                                void handleRowClick()
                             }}>
                                 Open Project
                             </DropdownMenuItem>
@@ -360,9 +393,10 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                             <DropdownMenuItem
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    setShowDeleteDialog(true)
+                                    void handleDelete()
                                 }}
-                                className="text-destructive focus:text-destructive"
+                                className="text-destructive focus:text-destructive cursor-pointer"
+                                disabled={isDeleting}
                             >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
@@ -371,44 +405,5 @@ export function ProjectListRow({ project, userId, creatorName, creatorImage }: P
                     </DropdownMenu>
                 </TableCell>
             </TableRow>
-
-            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Project</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the project
-                            <span className="font-semibold"> {project.name}</span> and all associated data.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <div className="py-4">
-                        <p className="text-sm text-muted-foreground mb-2">
-                            Type <span className="font-mono font-semibold">{project.name}</span> to confirm:
-                        </p>
-                        <Input
-                            value={deleteConfirmName}
-                            onChange={(e) => setDeleteConfirmName(e.target.value)}
-                            placeholder="Project name"
-                            className="w-full"
-                        />
-                        {deleteError && (
-                            <p className="text-sm text-destructive mt-2">
-                                {deleteError}
-                            </p>
-                        )}
-                    </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleDelete}
-                            disabled={deleteConfirmName !== project.name || isDeleting}
-                            className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete Project'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </>
     )
 }

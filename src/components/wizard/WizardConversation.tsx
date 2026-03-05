@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useChat } from '@ai-sdk/react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useCozeaChat } from '@/hooks/useCozeaChat'
 import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
+  type UIMessage,
 } from 'ai'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,24 +27,39 @@ import {
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
 import { cn } from '@/lib/utils'
+import {
+  loadGlobalModelSettings,
+  loadModelSettings,
+  saveModelSettings,
+  type StoredModelSettings,
+  updateGlobalModelSettings,
+  writeStoredModelSettings,
+} from '@/lib/modelSettingsStorage'
 import { AI_MODEL_SELECTOR_CONFIG } from '@/lib/ai/modelConfig'
 import {
+  VARIANT_DEFINITIONS,
+  getSupportedVariantsForModel,
+  normalizeVariantForModel,
+  type RuntimeModelCapabilities,
+  type RuntimeProvider,
+} from '@/lib/ai/runtimeProfiles'
+import {
   IconArrowUp,
-  IconBolt,
-  IconBrain,
   IconChevronDown,
-  IconCircle,
-  IconCircleDashed,
   IconPlus,
   IconPaperclip,
-  IconProgress,
-  IconRobot,
   IconSquare,
-  IconUser,
   IconCheck,
   IconX,
 } from '@tabler/icons-react'
+import { Brain } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import {
+  getProviderDisplayName,
+  isConnectedProvider,
+  useConnectedProviders,
+  type ConnectedProvider,
+} from '@/hooks/useConnectedProviders'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -56,6 +70,25 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from '@/components/ai-elements/message'
+import {
+  Tool,
+  ToolStatic,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from '@/components/ai-elements/tool'
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from '@/components/ai-elements/reasoning'
+import { Sources, SourcesTrigger, SourcesContent, Source } from '@/components/ai-elements/sources'
 import { Loader } from '@/components/ai-elements/loader'
 import {
   Context,
@@ -64,32 +97,44 @@ import {
   ContextContentHeader,
   ContextContentFooter,
 } from '@/components/ai-elements/context'
+import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
+import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { PlanSelector, type PlanOption } from './PlanSelector'
-import { WizardMessageBubble } from './WizardMessageBubble'
-import { usePlanOptionsExtraction } from './usePlanOptionsExtraction'
-import { BillingError, parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { BillingError } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { usePersistedModelPreferences } from '@/lib/ai/usePersistedModelPreferences'
-import { useAiGatewayCatalog } from '@/lib/ai/useAiGatewayCatalog'
-import { useAiChatTransport } from '@/lib/ai/useAiChatTransport'
-import { useAccumulatedUsage } from '@/lib/ai/useAccumulatedUsage'
-import type { ToolCallPayload, ToolMetaShape } from '@/lib/ai/toolTypes'
+import type { ModelOption } from '@/lib/ai/modelOptions'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import {
+  getModelCatalog,
+  type ModelApiModel,
+  type ModelApiResponse,
+} from '@/lib/ai/modelCatalogClient'
+import { getRetryHintMessage } from '@/lib/ai/retryHints'
+import {
+  buildEncodedProviderAuthHeader,
+  inferProviderFromModelId,
+  isManagedProvider,
+} from '@/lib/ai/providerAuth'
+import { validateWebOnlyPlanConfig } from '@/lib/plan'
+import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
+import { fetchWithAbort } from '@/lib/abort'
 
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
   initialPrompt: string
   promptSettings: {
     model: string
-    agentType: 'agent' | 'assistant'
-    reasoningDepth: 'low' | 'medium' | 'high'
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
+    surface: 'wizard' | 'builder' | 'assistant_panel' | 'assistant_project'
+    variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   }
   onPlanSelected: (plan: PlanOption) => void
   className?: string
 }
 
 type ToolMeta = ToolMetaShape
+
+type ToolResponse = ToolsApiResponse<ToolMeta>
 
 interface ToolPart {
   type: string
@@ -104,18 +149,88 @@ interface ToolPart {
   errorText?: string
 }
 
-type ChatHookResult = ReturnType<typeof useChat>
+interface ReasoningPart {
+  duration?: number
+  text?: string
+}
+
+interface UsageData {
+  model?: string
+  provider?: string
+  trackedUnits?: number
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
+  cachedInputTokens?: number
+  runtime?: 'local' | 'remote'
+  durationMs?: number
+  finishReason?: string
+  rawFinishReason?: string
+}
+
+interface AgentLedgerData {
+  kind?: 'run_started' | 'step' | 'budget_exceeded' | 'run_completed'
+  runId?: string
+  costUsd?: number
+  billedUsd?: number
+}
+
+interface SourcePart {
+  url?: string
+  uri?: string
+  title?: string
+  favicon?: string
+  source?: { url?: string; title?: string }
+}
+
+type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-// Tools allowed during planning phase (read-only + display_plan)
-const PLANNING_TOOLS = new Set([
-  'read_file', 'list_dir', 'file_search', 'grep_search', 'present_plans'
-])
+type ToolState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'approval-requested'
+  | 'approval-responded'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied'
 
-// Model catalog (same as AIConversation)
-const defaultModels: ModelOption[] = DEFAULT_MODELS
+const TOOL_STATES: ToolState[] = [
+  'input-streaming',
+  'input-available',
+  'approval-requested',
+  'approval-responded',
+  'output-available',
+  'output-error',
+  'output-denied',
+]
+
+function getToolName(part: ToolPart): string | null {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' && part.toolName.length > 0 ? part.toolName : null
+  }
+  if (part.type.startsWith('tool-')) {
+    const derived = part.type.replace(/^tool-/, '')
+    return derived.length > 0 ? derived : null
+  }
+  return null
+}
+
+function getToolState(state: string | undefined): ToolState {
+  if (state && TOOL_STATES.includes(state as ToolState)) {
+    return state as ToolState
+  }
+  return 'input-streaming'
+}
+
+// Local tools allowed during planning.
+// Web search is executed server/provider-side and does not run through local runtime.
+const PLANNING_TOOLS = new Set([
+  'plan_write'
+])
 
 export function WizardConversation({
   projectId,
@@ -124,56 +239,35 @@ export function WizardConversation({
   onPlanSelected,
   className,
 }: WizardConversationProps) {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const { accessToken, currentOrganization } = useAuth()
-  const organizationId = currentOrganization?.organizationId
+  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
+  const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
 
   // State
   const [input, setInput] = useState('')
-  const [model, setModel] = useState(promptSettings.model)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
+  const [model, setModel] = useState(
+    initialGlobalModelSettings.model || promptSettings.model || ''
+  )
+  const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
+  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
+  const [providerAuthLoading, setProviderAuthLoading] = useState(false)
+  const [providerAuthError, setProviderAuthError] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const {
-    selectedAgent,
-    setSelectedAgent,
-    selectedPerformance,
-    setSelectedPerformance,
-    thinkingEffort,
-    setThinkingEffort,
-  } = usePersistedModelPreferences({
-    model,
-    resolveDefaults: useCallback((candidateModel: string) => {
-      if (candidateModel === promptSettings.model) {
-        return {
-          selectedAgent: promptSettings.agentType === 'agent' ? 'Agent' : 'Assistant',
-          selectedPerformance: (promptSettings.reasoningDepth.charAt(0).toUpperCase() + promptSettings.reasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low',
-          thinkingEffort: promptSettings.thinkingEffort ?? 'medium',
-        }
-      }
-
-      return {
-        selectedAgent: 'Agent',
-        selectedPerformance: 'High',
-        thinkingEffort: 'medium',
-      }
-    }, [promptSettings.agentType, promptSettings.model, promptSettings.reasoningDepth, promptSettings.thinkingEffort]),
-  })
-  const {
-    availableModels,
-    availableTools,
-    toolPolicy,
-    modelCapabilities,
-    modelsError,
-    toolsError,
-  } = useAiGatewayCatalog<ToolMeta>({
-    accessToken,
-    organizationId,
-    selectedModelId: model,
-    initialModels: defaultModels,
-    onModelFallback: setModel,
-  })
-  const [conversationId] = useState(() => crypto.randomUUID())
+  const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId ?? promptSettings?.variantId)
+  const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
+    () => loadModelSettings()
+  )
+  const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [toolsError, setToolsError] = useState<string | null>(null)
+  const initialConversationIdRef = useRef<string>(
+    projectId ? `wizard:${projectId}` : crypto.randomUUID()
+  )
+  const conversationId = initialConversationIdRef.current
+  const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
-  const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const hasSentInitialMessageRef = useRef(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -181,46 +275,156 @@ export function WizardConversation({
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
 
-  const selectedModelData = availableModels.find((m) => m.id === model)
+  const providerScopedModels = useMemo(() => {
+    const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
+    if (!providerAuthAvailable || !providerStatusLoaded) return supportedModels
+    if (connectedProviders.length === 0) return []
+    const connectedSet = new Set(connectedProviders)
+    return supportedModels.filter((m) => connectedSet.has(m.chefSlug as ConnectedProvider))
+  }, [availableModels, connectedProviders, providerAuthAvailable, providerStatusLoaded])
+
+  const selectedModelData = providerScopedModels.find((m) => m.id === model)
   const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
   const activeProvider = selectedModelData?.chefSlug
-  const visibleChefs =
-    allowCrossProviderSwitching || !selectedModelData
-      ? ['Anthropic', 'OpenAI', 'Google']
-      : [selectedModelData.chef]
   const visibleModels =
     allowCrossProviderSwitching || !activeProvider
-      ? availableModels
-      : availableModels.filter((m) => m.chefSlug === activeProvider)
-  const visibleModelsByChef = useMemo(() => {
-    const grouped = new Map<string, ModelOption[]>()
-    for (const candidate of visibleModels) {
-      const bucket = grouped.get(candidate.chef)
-      if (bucket) {
-        bucket.push(candidate)
-      } else {
-        grouped.set(candidate.chef, [candidate])
-      }
-    }
-    return grouped
-  }, [visibleModels])
+      ? providerScopedModels
+      : providerScopedModels.filter((m) => m.chefSlug === activeProvider)
+  const visibleChefs = useMemo(
+    () => Array.from(new Set(visibleModels.map((m) => m.chef))),
+    [visibleModels]
+  )
+  const hasSelectableModel = Boolean(selectedModelData)
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
-
-  // Determine which controls to show based on model capabilities
-  const showPerformanceControl = useMemo(() => {
-    if (!selectedModelCapabilities) return true // Default to showing
-    // Show for effort-based models (OpenAI) OR models with supportsEffortParameter (Opus 4.5)
-    return selectedModelCapabilities.reasoningType === 'effort' ||
-      selectedModelCapabilities.supportsEffortParameter === true
-  }, [selectedModelCapabilities])
-
-  const showThinkingControl = useMemo(() => {
-    if (!selectedModelCapabilities) return false // Don't show by default
-    return selectedModelCapabilities.supportsExtendedThinking === true
-  }, [selectedModelCapabilities])
+  const supportsAttachments =
+    !selectedModelCapabilities ||
+    selectedModelCapabilities.supportsImageInput ||
+    selectedModelCapabilities.supportsPdfInput
+  const supportedVariants = useMemo(
+    () =>
+      getSupportedVariantsForModel({
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelCapabilities, selectedModelData?.chefSlug]
+  )
+  const normalizedVariantId = useMemo(
+    () =>
+      normalizeVariantForModel(variantId, {
+        modelId: model,
+        provider: selectedModelData?.chefSlug as RuntimeProvider | undefined,
+        capabilities: selectedModelCapabilities,
+      }),
+    [model, selectedModelCapabilities, selectedModelData?.chefSlug, variantId]
+  )
+  const selectedProviderForAuth = useMemo(() => {
+    const selectedProvider = selectedModelData?.chefSlug
+    if (selectedProvider && isConnectedProvider(selectedProvider)) {
+      return selectedProvider
+    }
+    return inferProviderFromModelId(model)
+  }, [model, selectedModelData?.chefSlug])
+  const providerRequiresLocalAuth = Boolean(
+    selectedProviderForAuth && !isManagedProvider(selectedProviderForAuth)
+  )
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
-  const isAgentMode = selectedAgent.toLowerCase() === 'agent'
+  const isAgentMode = false
+
+  const modelSettingsRef = useRef(modelSettings)
+  useEffect(() => {
+    modelSettingsRef.current = modelSettings
+  }, [modelSettings])
+
+  useEffect(() => {
+    const nextSettings: StoredModelSettings = {
+      agentId: 'plan',
+      surface: 'wizard',
+    }
+    setModelSettings((prev) => {
+      const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
+      saveModelSettings(updated)
+      return updated
+    })
+  }, [model])
+
+  useEffect(() => {
+    if (!model) return
+    updateGlobalModelSettings({
+      model,
+      variantId: variantId ?? normalizedVariantId,
+    })
+  }, [model, variantId, normalizedVariantId])
+
+  useEffect(() => {
+    if (providerScopedModels.length === 0) return
+    if (!providerScopedModels.some((item) => item.id === model)) {
+      setModel(providerScopedModels[0].id)
+    }
+  }, [providerScopedModels, model])
+
+  const headers = useMemo((): Record<string, string> => {
+    if (!accessToken) return {}
+    return { Authorization: `Bearer ${accessToken}` }
+  }, [accessToken])
+
+  useEffect(() => {
+    if (accessToken && currentOrganization?.organizationId) return
+    setModelsError(null)
+    setToolsError(null)
+  }, [accessToken, currentOrganization?.organizationId])
+
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
+    if (!organizationId) {
+      setProviderAuthLoading(false)
+      setProviderAuthError(null)
+      setProviderAuthHeader(null)
+      return
+    }
+
+    const provider = selectedProviderForAuth
+    if (!provider) {
+      setProviderAuthLoading(false)
+      setProviderAuthError(null)
+      setProviderAuthHeader(null)
+      return
+    }
+    if (isManagedProvider(provider)) {
+      setProviderAuthLoading(false)
+      setProviderAuthError(null)
+      setProviderAuthHeader(null)
+      return
+    }
+
+    setProviderAuthLoading(true)
+    setProviderAuthError(null)
+    setProviderAuthHeader(null)
+
+    void (async () => {
+      const result = await buildEncodedProviderAuthHeader({
+        provider,
+        modelId: model,
+        organizationId,
+      })
+      if (cancelled) return
+      setProviderAuthLoading(false)
+      if (result.header) {
+        setProviderAuthHeader(result.header)
+        setProviderAuthError(null)
+        return
+      }
+
+      setProviderAuthHeader(null)
+      setProviderAuthError(result.error || 'Provider authentication is not ready on this device.')
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentOrganization?.organizationId, model, selectedProviderForAuth])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -230,43 +434,101 @@ export function WizardConversation({
     return map
   }, [availableTools])
 
-  const maxReasoningDepth = toolPolicy?.maxReasoningDepth ?? 'medium'
-
-  const performanceToDisplay: Record<string, string> = {
-    'High': 'x3',
-    'Medium': 'x2',
-    'Low': 'x1',
-  }
-
-  // Clamp performance to max allowed
-  useEffect(() => {
-    const order = { low: 0, medium: 1, high: 2 }
-    const current = selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high'
-    if (order[current] > order[maxReasoningDepth]) {
-      const capped = (maxReasoningDepth.charAt(0).toUpperCase() + maxReasoningDepth.slice(1)) as 'High' | 'Medium' | 'Low'
-      setSelectedPerformance(capped)
-    }
-  }, [maxReasoningDepth, selectedPerformance, setSelectedPerformance])
-
   // Sync tools
   useEffect(() => {
     toolsByNameRef.current = Object.fromEntries(
       availableTools.map((tool) => [tool.name, tool])
     )
   }, [availableTools])
-  const chatTransport = useAiChatTransport({
+
+  // Fetch models
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
+    let cancelled = false
+
+    getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
+    })
+      .then((data: ModelApiResponse) => {
+        if (cancelled) return
+        if (!data?.models) return
+        const mapped = data.models
+          .filter((m): m is ModelApiModel & { provider: ConnectedProvider } => isConnectedProvider(m.provider))
+          .map((m) => ({
+            id: m.id,
+            name: m.displayName,
+            chef: getProviderDisplayName(m.provider),
+            chefSlug: m.provider,
+            tier: m.tier,
+            providers: [m.provider],
+          }))
+        const caps: Record<string, RuntimeModelCapabilities> = {}
+        for (const m of data.models) {
+          if (m.capabilities) caps[m.id] = m.capabilities
+        }
+        setModelCapabilities(caps)
+        setModelsError(null)
+        setAvailableModels(mapped)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
+        setModelsError(message)
+        console.warn('Failed to fetch models:', err)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
     accessToken,
-    organizationId,
-    model,
-    conversationId,
-    feature: 'project-wizard',
-    actionType: selectedAgent.toLowerCase(),
-    reasoningDepth: selectedPerformance.toLowerCase() as 'low' | 'medium' | 'high',
-    thinkingEffort,
-    enableTools: true,
-    enableWebSearch: true,
-    extraBody: projectId ? { projectId } : undefined,
-  })
+    connectedProviders,
+    currentOrganization?.organizationId,
+    providerAuthAvailable,
+    providerStatusLoaded,
+  ])
+
+  // Fetch tools
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId) return
+    const controller = new AbortController()
+    const query = new URLSearchParams({
+      organizationId: currentOrganization.organizationId,
+      model,
+      agentId: 'plan',
+      surface: 'wizard',
+      hasProjectContext: '0',
+    })
+
+    fetchWithAbort(`${AI_BASE_URL}/tools?${query.toString()}`, {
+      headers,
+      signal: controller.signal,
+    }, { signal: controller.signal, timeoutMs: 15000 })
+      .then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Unauthorized. Please sign in again.')
+          }
+          throw new Error('Failed to load tools')
+        }
+        return res.json()
+      })
+      .then((data: ToolResponse) => {
+        if (!data?.tools) return
+        setAvailableTools(data.tools)
+        setToolsError(null)
+      })
+      .catch((err) => {
+        if ((err as { name?: string }).name === 'AbortError') return
+        const message = err instanceof Error && err.message ? err.message : 'Failed to load tools'
+        setToolsError(message)
+        console.warn('Failed to fetch tools:', err)
+      })
+
+    return () => controller.abort()
+  }, [accessToken, currentOrganization?.organizationId, headers, model])
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -287,13 +549,13 @@ export function WizardConversation({
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
 
-    // Planning-phase gating: only allow read-only tools and present_plans
+    // Planning-phase gating: local runtime only allows plan_write.
     if (!PLANNING_TOOLS.has(toolCall.toolName)) {
       void addToolOutput({
         state: 'output-error',
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
-        errorText: 'This tool is not available during planning. Only search and read tools are available.',
+        errorText: 'This tool is not available during planning.',
       })
       return
     }
@@ -355,19 +617,34 @@ export function WizardConversation({
     sendMessage,
     stop,
     addToolOutput,
-  } = useChat({
-    transport: chatTransport,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onToolCall: handleToolCall,
-    onError: (err: unknown) => {
-      console.error('Chat error:', err)
-      const billingErr = parseBillingError(err)
-      if (billingErr) {
-        setBillingError(billingErr)
-      }
+    dedupedMessages,
+    retryHint,
+    billingError,
+    setBillingError,
+  } = useCozeaChat({
+    transportArgs: {
+      accessToken,
+      organizationId: currentOrganization?.organizationId,
+      model,
+      conversationId,
+      agentId: 'plan',
+      surface: 'wizard',
+      variantId,
+      enableTools: true,
+      enableWebSearch: true,
+      extraBody: {
+        projectContext: {
+          name: projectId || 'wizard-project',
+          slug: (projectId || 'wizard-project').toLowerCase(),
+          runtime: 'local',
+        },
+      },
+      providerAuthHeader,
     },
+    chatOptions: {
+      onToolCall: handleToolCall,
+    },
+    onBillingError: (err) => setBillingError(err as any),
   })
 
   addToolOutputRef.current = addToolOutput
@@ -378,7 +655,7 @@ export function WizardConversation({
 
     const pendingToolCalls = new Map<string, { toolName: string; toolCallId: string }>()
 
-    for (const message of messages) {
+    for (const message of dedupedMessages) {
       if (message.role !== 'assistant') continue
       if (!Array.isArray(message.parts)) continue
 
@@ -414,17 +691,22 @@ export function WizardConversation({
         errorText: 'Cancelled by the current user.',
       })
     }
-  }, [messages])
+  }, [dedupedMessages])
 
   const genericErrorMessage = useMemo(() => {
-    if (!error) return null
+    if (!error || billingError) return null
+    const retryHintMessage = getRetryHintMessage(retryHint)
+    if (retryHintMessage) return retryHintMessage
     const message = (error as { message?: string }).message
     if (typeof message === 'string' && message.trim()) return message
     if (typeof error === 'string' && (error as string).trim()) return error as string
     return 'Something went wrong'
-  }, [error])
+  }, [error, billingError, retryHint])
 
-  const serviceErrorMessage = modelsError || toolsError
+  const serviceErrorMessage =
+    modelsError ||
+    toolsError ||
+    (providerRequiresLocalAuth ? providerAuthError : null)
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
 
   const genericErrorRef = useRef<string | null>(null)
@@ -444,20 +726,183 @@ export function WizardConversation({
     surfaceErrorMessage && dismissedError !== surfaceErrorMessage
   )
 
+  const canSendMessage = Boolean(
+    accessToken &&
+    currentOrganization?.organizationId &&
+    hasSelectableModel &&
+    (!providerRequiresLocalAuth || (providerAuthHeader && !providerAuthLoading))
+  )
+
   // Send initial message on mount (use ref to prevent duplicate sends)
   useEffect(() => {
-    if (!hasSentInitialMessageRef.current && initialPrompt && accessToken) {
+    if (!hasSentInitialMessageRef.current && initialPrompt && canSendMessage) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
-  }, [initialPrompt, accessToken, sendMessage])
-  const planOptions = usePlanOptionsExtraction(messages)
-  const accumulatedUsage = useAccumulatedUsage(messages)
+  }, [initialPrompt, canSendMessage, sendMessage])
+
+  // Validate and filter plan options
+  const validatePlans = (plans: unknown[]): PlanOption[] => {
+    return plans
+      .filter((plan): plan is PlanOption => {
+        if (!plan || typeof plan !== 'object') return false
+        const p = plan as Record<string, unknown>
+        return (
+          typeof p.tier === 'string' &&
+          typeof p.name === 'string' &&
+          typeof p.description === 'string' &&
+          Array.isArray(p.features)
+        )
+      })
+      .map((plan) => ({
+        ...plan,
+        tier: (plan.tier?.toLowerCase?.() || 'prototype') as 'prototype' | 'beta' | 'mvp',
+        features: plan.features || [],
+        config: plan.config || {},
+      }))
+      .filter((plan) => validateWebOnlyPlanConfig(plan.config).valid)
+  }
+
+  // Track how many plans we've extracted (need exactly 3 for complete extraction)
+  const extractedPlanCountRef = useRef(0)
+
+  // Check for plan options in messages (from plan_write tool call)
+  useEffect(() => {
+    // Skip if we already have all 3 plans
+    if (extractedPlanCountRef.current >= 3) return
+
+    for (const message of messages) {
+      if (message.role !== 'assistant') continue
+
+      for (const part of message.parts) {
+        // Check for plan_write tool with output - handle various formats from different providers
+        const partType = part.type as string
+        const toolPart = part as ToolPart
+        const isPresntPlans = partType === 'tool-plan_write' ||
+          partType.includes('plan_write') ||
+          toolPart.toolName === 'plan_write' ||
+          (partType === 'tool-invocation' && toolPart.toolName === 'plan_write') ||
+          (partType === 'tool-result' && toolPart.toolName === 'plan_write')
+
+        if (isPresntPlans) {
+          // Get output from various possible fields (different providers use different formats)
+          const rawOutput = toolPart.output ?? toolPart.result
+          const rawInput = toolPart.input ?? toolPart.args
+
+          // Check if we have output (complete tool result)
+          if ((toolPart.state === 'output-available' || toolPart.state === 'result') && rawOutput) {
+            try {
+              const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
+              if (isRecord(output) && Array.isArray(output.plans)) {
+                const validPlans = validatePlans(output.plans)
+                if (validPlans.length > extractedPlanCountRef.current) {
+                  extractedPlanCountRef.current = validPlans.length
+                  setPlanOptions(validPlans)
+                  if (validPlans.length >= 3) return
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to parse plan output:', e)
+            }
+          }
+          // Also check input/args if output not yet available (streaming or Gemini format)
+          else if (isRecord(rawInput) && Array.isArray(rawInput.plans)) {
+            const validPlans = validatePlans(rawInput.plans)
+            if (validPlans.length > extractedPlanCountRef.current) {
+              extractedPlanCountRef.current = validPlans.length
+              setPlanOptions(validPlans)
+              if (validPlans.length >= 3) return
+            }
+          }
+          // Direct plans field check (some providers put it at top level)
+          else if (Array.isArray(toolPart.plans)) {
+            const validPlans = validatePlans(toolPart.plans)
+            if (validPlans.length > extractedPlanCountRef.current) {
+              extractedPlanCountRef.current = validPlans.length
+              setPlanOptions(validPlans)
+              if (validPlans.length >= 3) return
+            }
+          }
+        }
+        // Legacy support for data-plan-options
+        if (part.type === 'data-plan-options') {
+          const data = (part as { data?: unknown }).data
+          if (Array.isArray(data)) {
+            const validPlans = validatePlans(data)
+            if (validPlans.length > extractedPlanCountRef.current) {
+              extractedPlanCountRef.current = validPlans.length
+              setPlanOptions(validPlans)
+              if (validPlans.length >= 3) return
+            }
+          }
+        }
+      }
+    }
+  }, [dedupedMessages])
+
+  // Compute token usage
+  const accumulatedUsage = useMemo(() => {
+    let inputTokens = 0
+    let outputTokens = 0
+    let reasoningTokens = 0
+    let cachedInputTokens = 0
+    const runCosts = new Map<string, number>()
+
+    for (const message of messages) {
+      for (const part of message.parts) {
+        if (part.type === 'data-usage') {
+          const data = (part as { data?: UsageData }).data
+          if (data) {
+            inputTokens += data.promptTokens ?? 0
+            outputTokens += data.completionTokens ?? 0
+            reasoningTokens += data.reasoningTokens ?? 0
+            cachedInputTokens += data.cachedInputTokens ?? 0
+          }
+        }
+        if (part.type === 'data-agent-ledger') {
+          const data = (part as { data?: AgentLedgerData }).data
+          const runId = typeof data?.runId === 'string' ? data.runId : undefined
+          if (!runId) continue
+          if (data?.kind === 'step' && typeof data.costUsd === 'number' && Number.isFinite(data.costUsd)) {
+            runCosts.set(runId, (runCosts.get(runId) ?? 0) + Math.max(0, data.costUsd))
+          }
+          if (data?.kind === 'run_completed' && typeof data.billedUsd === 'number' && Number.isFinite(data.billedUsd)) {
+            runCosts.set(runId, Math.max(0, data.billedUsd))
+          }
+        }
+      }
+    }
+
+    const totalTokens = inputTokens + outputTokens
+    const totalCostUsd = Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
+
+    return {
+      usedTokens: totalTokens,
+      totalCostUsd,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        reasoningTokens: reasoningTokens || undefined,
+        cachedInputTokens: cachedInputTokens || undefined,
+        inputTokenDetails: {
+          noCacheTokens: inputTokens - cachedInputTokens,
+          cacheReadTokens: cachedInputTokens || undefined,
+          cacheWriteTokens: undefined,
+        },
+        outputTokenDetails: {
+          textTokens: outputTokens - reasoningTokens,
+          reasoningTokens: reasoningTokens || undefined,
+        },
+      },
+    }
+  }, [messages])
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (!canSendMessage) return
     if (!input.trim()) return
 
     const messageText = input
@@ -493,7 +938,7 @@ export function WizardConversation({
         <Conversation className="h-full">
           <ConversationContent className="w-full max-w-none px-10 md:px-16 lg:px-24 xl:px-32 pt-8 pb-8">
             {messages.map((message) => (
-              <WizardMessageBubble
+              <MessageBubble
                 key={message.id}
                 message={message}
                 toolsByName={toolsByName}
@@ -503,7 +948,7 @@ export function WizardConversation({
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Thinking...</span>
+                <span className="text-sm">Generating...</span>
               </div>
             )}
             {/* Plan selector when AI generates plans */}
@@ -523,7 +968,7 @@ export function WizardConversation({
         <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
-              error={billingError}
+              error={billingError as any}
               onAction={(href) => navigate(href)}
               className="border-0 border-b rounded-none p-3"
             />
@@ -576,6 +1021,7 @@ export function WizardConversation({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                    disabled={!supportsAttachments}
                   >
                     <IconPlus className="size-3" />
                   </Button>
@@ -584,71 +1030,75 @@ export function WizardConversation({
                   <DropdownMenuGroup className="space-y-1">
                     <DropdownMenuItem
                       className="rounded-[calc(1rem-6px)] text-xs"
+                      disabled={!supportsAttachments}
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <IconPaperclip size={16} className="opacity-60" />
-                      Attach Files
+                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
-                <ModelSelectorTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                  >
-                    {selectedModelData?.chefSlug && (
-                      <ModelSelectorLogo provider={selectedModelData.chefSlug} />
-                    )}
-                    {selectedModelData?.name && (
-                      <ModelSelectorName className="ml-1">{selectedModelData.name}</ModelSelectorName>
-                    )}
-                    <IconChevronDown className="size-3 ml-1" />
-                  </Button>
-                </ModelSelectorTrigger>
-                <ModelSelectorContent>
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    {visibleChefs.map((chef) => (
-                      <ModelSelectorGroup heading={chef} key={chef}>
-                        {(visibleModelsByChef.get(chef) ?? [])
-                          .map((m) => (
-                            <ModelSelectorItem
-                              key={m.id}
-                              onSelect={() => {
-                                setModel(m.id)
-                                setModelSelectorOpen(false)
-                              }}
-                              value={m.id}
-                            >
-                              <ModelSelectorLogo provider={m.chefSlug} />
-                              <ModelSelectorName>{m.name}</ModelSelectorName>
-                              <ModelSelectorLogoGroup>
-                                {m.providers.map((provider) => (
-                                  <ModelSelectorLogo key={provider} provider={provider} />
-                                ))}
-                              </ModelSelectorLogoGroup>
-                              {model === m.id ? (
-                                <IconCheck className="ml-auto size-4" />
-                              ) : (
-                                <div className="ml-auto size-4" />
-                              )}
-                            </ModelSelectorItem>
-                          ))}
-                      </ModelSelectorGroup>
-                    ))}
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
+              {hasSelectableModel && (
+                <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
+                  <ModelSelectorTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                    >
+                      {selectedModelData?.chefSlug && (
+                        <ModelSelectorLogo provider={selectedModelData.chefSlug} />
+                      )}
+                      {selectedModelData?.name && (
+                        <ModelSelectorName className="ml-1">{selectedModelData.name}</ModelSelectorName>
+                      )}
+                      <IconChevronDown className="size-3 ml-1" />
+                    </Button>
+                  </ModelSelectorTrigger>
+                  <ModelSelectorContent>
+                    <ModelSelectorInput placeholder="Search models..." />
+                    <ModelSelectorList>
+                      <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                      {visibleChefs.map((chef) => (
+                        <ModelSelectorGroup heading={chef} key={chef}>
+                          {visibleModels
+                            .filter((m) => m.chef === chef)
+                            .map((m) => (
+                              <ModelSelectorItem
+                                key={m.id}
+                                onSelect={() => {
+                                  setModel(m.id)
+                                  setModelSelectorOpen(false)
+                                }}
+                                value={m.id}
+                              >
+                                <ModelSelectorLogo provider={m.chefSlug} />
+                                <ModelSelectorName>{m.name}</ModelSelectorName>
+                                <ModelSelectorLogoGroup>
+                                  {m.providers.map((provider) => (
+                                    <ModelSelectorLogo key={provider} provider={provider} />
+                                  ))}
+                                </ModelSelectorLogoGroup>
+                                {model === m.id ? (
+                                  <IconCheck className="ml-auto size-4" />
+                                ) : (
+                                  <div className="ml-auto size-4" />
+                                )}
+                              </ModelSelectorItem>
+                            ))}
+                        </ModelSelectorGroup>
+                      ))}
+                    </ModelSelectorList>
+                  </ModelSelectorContent>
+                </ModelSelector>
+              )}
             </div>
 
             <Button
               type="submit"
-              disabled={!input.trim() && !isLoading}
+              disabled={(!canSendMessage || !input.trim()) && !isLoading}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
             >
@@ -660,150 +1110,302 @@ export function WizardConversation({
             </Button>
           </div>
         </div>
+        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
+          <p className="pt-2 text-xs text-amber-600">
+            Connect an AI provider in Workspace AI settings to continue planning.
+          </p>
+        )}
+        {hasSelectableModel && providerRequiresLocalAuth && providerAuthLoading && (
+          <p className="pt-2 text-xs text-muted-foreground">
+            Preparing provider authentication...
+          </p>
+        )}
 
         {/* Options row */}
         <div className="flex items-center gap-0 pt-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+          {hasSelectableModel && (
+            <>
+              <div
+                className={cn(
+                  "grid overflow-hidden transition-all duration-200 ease-out",
+                  supportedVariants.length > 1
+                    ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                    : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                )}
               >
-                <IconUser className="size-3" />
-                <span>{selectedAgent}</span>
-                <IconChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-              <DropdownMenuGroup className="space-y-1">
-                <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedAgent('Agent')}>
-                  <IconUser size={16} className="opacity-60" />
-                  Agent
-                </DropdownMenuItem>
-                <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedAgent('Assistant')}>
-                  <IconRobot size={16} className="opacity-60" />
-                  Assistant
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <div className="min-w-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+                      >
+                        <Brain className="size-3" />
+                        <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                        <IconChevronDown className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
+                      <DropdownMenuGroup className="space-y-1">
+                        {supportedVariants.map((variant) => (
+                          <DropdownMenuItem
+                            key={variant}
+                            className="rounded-[calc(1rem-6px)] text-xs"
+                            onClick={() => setVariantId(variant)}
+                          >
+                            <Brain size={16} className="opacity-60" />
+                            {VARIANT_DEFINITIONS[variant]?.label ?? variant}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "grid overflow-hidden transition-all duration-200 ease-out",
+                  supportedVariants.length <= 1
+                    ? "grid-cols-[1fr] opacity-100 translate-y-0"
+                    : "grid-cols-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                )}
+              >
+                <div className="min-w-0 h-6 px-2 flex items-center rounded-full border border-transparent text-muted-foreground text-xs">
+                  <Brain className="size-3 mr-1" />
+                  <span>{VARIANT_DEFINITIONS[normalizedVariantId]?.label ?? normalizedVariantId}</span>
+                </div>
+              </div>
 
-          {/* Performance Control - Show for OpenAI and Opus 4.5 */}
-          {showPerformanceControl && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
+              <div className="flex items-center gap-2">
+                {accumulatedUsage.totalCostUsd > 0 && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    ${accumulatedUsage.totalCostUsd.toFixed(4)}
+                  </span>
+                )}
+                <Context
+                  maxTokens={getContextWindowSize(model)}
+                  usedTokens={accumulatedUsage.usedTokens}
+                  usage={accumulatedUsage.usage}
+                  modelId={model}
                 >
-                  <IconBolt className="size-3" />
-                  <span>{performanceToDisplay[selectedPerformance]}</span>
-                  <IconChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-                <DropdownMenuGroup className="space-y-1">
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setSelectedPerformance('High')}
-                    disabled={maxReasoningDepth !== 'high'}
-                  >
-                    <IconCircle size={16} className="opacity-60" />
-                    High
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="rounded-[calc(1rem-6px)] text-xs"
-                    onClick={() => setSelectedPerformance('Medium')}
-                    disabled={maxReasoningDepth === 'low'}
-                  >
-                    <IconProgress size={16} className="opacity-60" />
-                    Medium
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-[calc(1rem-6px)] text-xs" onClick={() => setSelectedPerformance('Low')}>
-                    <IconCircleDashed size={16} className="opacity-60" />
-                    Low
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <ContextTrigger />
+                  <ContextContent>
+                    <ContextContentHeader />
+                    <ContextContentFooter />
+                  </ContextContent>
+                </Context>
+              </div>
+            </>
           )}
-
-          {/* Thinking Effort - shows for models with extended thinking */}
-          {showThinkingControl && (() => {
-            // Get supported levels from model capabilities
-            const reasoningRange = selectedModelCapabilities?.reasoningRange
-            const supportedLevels: string[] = Array.isArray(reasoningRange)
-              ? reasoningRange.filter((level): level is string => typeof level === 'string')
-              : ['low', 'medium', 'high'] // Default for effort-based models
-            const normalizedSupportedLevels = supportedLevels.length > 0
-              ? supportedLevels
-              : ['low', 'medium', 'high']
-
-            // Ensure current selection is valid, otherwise use highest available
-            const effectiveLevel = normalizedSupportedLevels.includes(thinkingEffort)
-              ? thinkingEffort
-              : normalizedSupportedLevels[normalizedSupportedLevels.length - 1] || 'high'
-
-            const levelLabels: Record<string, { label: string; icon: typeof IconCircle }> = {
-              minimal: { label: 'Minimal (fastest)', icon: IconCircleDashed },
-              low: { label: 'Low (faster)', icon: IconCircleDashed },
-              medium: { label: 'Medium (balanced)', icon: IconProgress },
-              high: { label: 'High (deeper reasoning)', icon: IconCircle },
-            }
-
-            return (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs"
-                  >
-                    <IconBrain className="size-3" />
-                    <span>{effectiveLevel.charAt(0).toUpperCase() + effectiveLevel.slice(1)}</span>
-                    <IconChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
-                  <DropdownMenuGroup className="space-y-1">
-                    {/* Show levels in reverse order (high first) */}
-                    {[...normalizedSupportedLevels].reverse().map((level) => {
-                      const { label, icon: Icon } = levelLabels[level] || { label: level, icon: IconCircle }
-                      return (
-                        <DropdownMenuItem
-                          key={level}
-                          className="rounded-[calc(1rem-6px)] text-xs"
-                          onClick={() => setThinkingEffort(level as 'low' | 'medium' | 'high')}
-                        >
-                          <Icon size={16} className="opacity-60" />
-                          {label}
-                        </DropdownMenuItem>
-                      )
-                    })}
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )
-          })()}
-
-          <Context
-            maxTokens={getContextWindowSize(model)}
-            usedTokens={accumulatedUsage.usedTokens}
-            usage={accumulatedUsage.usage}
-            modelId={model}
-          >
-            <ContextTrigger />
-            <ContextContent>
-              <ContextContentHeader />
-              <ContextContentFooter />
-            </ContextContent>
-          </Context>
 
           <div className="flex-1" />
         </div>
       </div>
     </div>
   )
+}
+
+// Message bubble component (matching AIConversation)
+interface MessageBubbleProps {
+  message: UIMessage
+  toolsByName: Map<string, ToolMeta>
+  status: 'ready' | 'submitted' | 'streaming' | 'error'
+}
+
+function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
+  const isStreaming = status === 'streaming'
+  const sourceItems = extractSourcesFromParts(message.parts)
+
+  return (
+    <Message from={message.role}>
+      <MessageContent>
+        {message.parts.map((part, index) => {
+          if (part.type === 'step-start') {
+            return (
+              <div key={`${message.id}-step-${index}`} className="py-2">
+                <div className="h-px bg-border" />
+              </div>
+            )
+          }
+
+          if (part.type === 'text') {
+            return (
+              <MessageResponse key={`${message.id}-text-${index}`}>
+                {part.text}
+              </MessageResponse>
+            )
+          }
+
+          if (part.type === 'reasoning') {
+            const reasoningPart = part as ReasoningPart
+            return (
+              <Reasoning
+                key={`${message.id}-reasoning-${index}`}
+                isStreaming={isStreaming}
+                duration={reasoningPart.duration}
+              >
+                <ReasoningTrigger />
+                <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
+              </Reasoning>
+            )
+          }
+
+          if (part.type === 'data-usage') return null
+
+          // Tool calls
+          if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+            const toolPart = part as ToolPart
+            const toolName = getToolName(toolPart)
+            if (!toolName) return null
+            const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
+
+            // Skip plan_write tool - it's rendered as PlanSelector below messages
+            if (toolName === 'plan_write') {
+              return null
+            }
+
+            const toolMeta = toolsByName.get(toolName)
+            const toolState = getToolState(toolPart.state)
+            const isEditTool = isFileEditTool(toolName)
+            // Special handling for web search tools (show only sources)
+            const isWebSearchTool = toolName.toLowerCase().includes('search') ||
+              toolName.toLowerCase().includes('web') ||
+              toolName === 'tavily_search' ||
+              toolName === 'brave_search' ||
+              toolName === 'bing_search'
+
+            // Non-expandable tools (output is not useful to display)
+            const isStaticTool = toolName === 'read'
+
+            // Render static (non-expandable) tools
+            if (isStaticTool) {
+              return (
+                <ToolStatic
+                  key={`${message.id}-tool-${index}`}
+                  toolName={toolName}
+                  input={toolInput}
+                  type={toolMeta?.toolType || 'function'}
+                  state={toolState}
+                />
+              )
+            }
+
+            return (
+              <Tool key={`${message.id}-tool-${index}`}>
+                <ToolHeader
+                  toolName={toolName}
+                  input={toolInput}
+                  type={toolMeta?.toolType || 'function'}
+                  state={toolState}
+                />
+                <ToolContent>
+                  {/* For file edit tools, show Monaco diff viewer */}
+                  {isEditTool && toolInput && (
+                    <ToolDiffOutput
+                      toolName={toolName}
+                      input={toolInput}
+                      maxHeight={300}
+                    />
+                  )}
+                  {/* For non-edit/non-list/non-web_search tools, show raw input */}
+                  {!isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
+                    <ToolInput input={formatToolPayload(toolInput)} />
+                  )}
+                  {toolPart.state === 'output-available' && (
+                    toolName === 'todowrite'
+                      ? (() => {
+                        const tasks = extractTasksFromToolOutput(toolPart.output)
+                        if (tasks.length === 0) {
+                          return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
+                        }
+                        return <TaskProgress tasks={tasks} showSummary />
+                      })()
+                      : isEditTool
+                        ? null // Diff viewer already shows the edit
+                        : isWebSearchTool
+                          ? null // Web search shows only sources, no raw output
+                          : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
+                  )}
+                  {toolPart.state === 'output-error' && (
+                    <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
+                  )}
+                </ToolContent>
+              </Tool>
+            )
+          }
+
+          return null
+        })}
+        {sourceItems.length > 0 && (
+          <div className="px-2 pb-2">
+            <Sources>
+              <SourcesTrigger count={sourceItems.length} />
+              <SourcesContent>
+                {sourceItems.map((source, idx) => (
+                  <Source
+                    key={`${source.url}-${idx}`}
+                    href={source.url}
+                    title={source.title}
+                    favicon={source.favicon}
+                  />
+                ))}
+              </SourcesContent>
+            </Sources>
+          </div>
+        )}
+      </MessageContent>
+    </Message>
+  )
+}
+
+function formatToolPayload(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function extractTasksFromToolOutput(output: unknown): TaskData[] {
+  let payload: unknown = output
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload)
+    } catch {
+      return []
+    }
+  }
+
+  if (!isRecord(payload)) return []
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : []
+  return tasks
+    .filter((task): task is Record<string, unknown> => isRecord(task))
+    .map((task) => {
+      const status = typeof task.status === 'string' ? task.status : 'pending'
+      return {
+        id: String(task.id ?? crypto.randomUUID()),
+        title: String(task.title ?? 'Untitled task'),
+        status: status as TaskData['status'],
+        files: Array.isArray(task.files) ? task.files.map((file) => String(file)) : undefined,
+        details: task.details ? String(task.details) : undefined,
+      }
+    })
+}
+
+function extractSourcesFromParts(parts: UIMessage['parts']) {
+  const sources: Array<{ url: string; title: string; favicon?: string }> = []
+  for (const part of parts) {
+    if (part.type !== 'source-url') continue
+    const sourcePart = part as SourcePart
+    const url = sourcePart.url || sourcePart.uri || sourcePart.source?.url
+    if (!url) continue
+    sources.push({
+      url,
+      title: sourcePart.title || sourcePart.source?.title || url,
+      favicon: sourcePart.favicon,
+    })
+  }
+  return sources
 }

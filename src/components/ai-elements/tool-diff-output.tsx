@@ -46,7 +46,7 @@ function extractDiffData(
   input: Record<string, unknown>
 ): ToolDiffData | ToolDiffData[] | null {
   switch (toolName) {
-    case 'replace_string_in_file': {
+    case 'edit': {
       const filePath = String(input.filePath || input.file_path || '')
       const oldString = String(input.oldString || input.old_string || '')
       const newString = String(input.newString || input.new_string || '')
@@ -60,8 +60,8 @@ function extractDiffData(
       }
     }
 
-    case 'multi_replace_string_in_file': {
-      const replacements = input.replacements as Array<{
+    case 'multiedit': {
+      const edits = (Array.isArray(input.edits) ? input.edits : input.replacements) as Array<{
         filePath?: string
         file_path?: string
         oldString?: string
@@ -69,17 +69,23 @@ function extractDiffData(
         newString?: string
         new_string?: string
       }> | undefined
+      const defaultFilePath =
+        typeof input.filePath === 'string'
+          ? input.filePath
+          : typeof input.file_path === 'string'
+            ? input.file_path
+            : ''
 
-      if (!Array.isArray(replacements) || replacements.length === 0) return null
+      if (!Array.isArray(edits) || edits.length === 0) return null
 
-      return replacements.map((r) => ({
-        filePath: String(r.filePath || r.file_path || ''),
+      return edits.map((r) => ({
+        filePath: String(r.filePath || r.file_path || defaultFilePath),
         original: String(r.oldString || r.old_string || ''),
         modified: String(r.newString || r.new_string || ''),
       })).filter((d) => d.filePath && d.original)
     }
 
-    case 'create_file': {
+    case 'write': {
       const filePath = String(input.filePath || input.file_path || '')
       const content = String(input.content || '')
 
@@ -234,9 +240,9 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
  */
 export function isFileEditTool(toolName: string): boolean {
   return [
-    'replace_string_in_file',
-    'multi_replace_string_in_file',
-    'create_file',
+    'edit',
+    'multiedit',
+    'write',
   ].includes(toolName)
 }
 

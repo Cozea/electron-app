@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -23,19 +23,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Input } from '@/components/ui/input'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { cn } from '@/lib/utils'
+import { useInViewportOnce } from '@/hooks/useInViewportOnce'
+import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
+import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary {
@@ -65,6 +58,7 @@ interface ProjectSummary {
 interface ProjectCardProps {
     project: ProjectSummary
     userId?: Id<'users'>
+    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -115,36 +109,33 @@ type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
-export function ProjectCard({ project, userId }: ProjectCardProps) {
-    const navigate = useNavigate()
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-    const [deleteConfirmName, setDeleteConfirmName] = useState('')
+export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCardProps) {
+  const navigate = useViewTransitionNavigate()
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const isInViewport = useInViewportOnce(cardRef)
     const [isDeleting, setIsDeleting] = useState(false)
-    const [deleteError, setDeleteError] = useState<string | null>(null)
-    const [syncState, setSyncState] = useState<SyncState>('idle')
-    const [syncMessage, setSyncMessage] = useState('')
-    const deleteProject = useMutation(api.projects.deleteProject)
+  const [syncState, setSyncState] = useState<SyncState>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
+  const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [localPath, setLocalPath] = useState<string | null>(null)
-
-    // Get cloud manifest for sync check
-    const cloudManifest = useQuery(
-        api.projectFiles.getManifestForProject,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
-    )
 
     // Get preview image URL
     const previewImageUrl = useQuery(
         api.projects.getPreviewImageUrl,
         project.status !== 'draft' ? { projectId: project._id } : 'skip'
     )
-    const [imageLoaded, setImageLoaded] = useState(false)
-    const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
-    useEffect(() => {
-        let cancelled = false
+  useEffect(() => {
+    if (!shouldHydrateSyncStatus) return
 
-        const loadLocalPath = async () => {
+    let cancelled = false
+
+    const loadLocalPath = async () => {
             if (project.status === 'draft') {
                 if (!cancelled) setLocalPath(null)
                 return
@@ -154,16 +145,17 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
             if (!cancelled) setLocalPath(path)
         }
 
-        void loadLocalPath()
-        return () => {
-            cancelled = true
-        }
-    }, [project.slug, project.status])
+    void loadLocalPath()
+    return () => {
+      cancelled = true
+    }
+  }, [project.slug, project.status, shouldHydrateSyncStatus])
 
-    const preloadProjectDestination = useCallback(() => {
-        if (project.status === 'draft') {
-            void preloadNewProjectPage()
-            return
+  const preloadProjectDestination = useCallback(() => {
+    setSyncHydrationRequested(true)
+    if (project.status === 'draft') {
+      void preloadNewProjectPage()
+      return
         }
         void preloadProjectDetailPage()
     }, [project.status])
@@ -211,34 +203,57 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 })
             }
 
-            // Quick check if sync is needed
-            if (effectiveLocalPath && cloudManifest) {
-                setSyncMessage('Checking files...')
-                const localResult = await window.electronAPI.sync.getLocalManifest({
+            let gateSyncScreen = false
+            let openCheck: ProjectOpenReplicaCheckResult | null = null
+
+            // Pre-open sync plan check so we can gate project UI when conflicts
+            // or local-wipe recovery is needed.
+            if (effectiveLocalPath) {
+                setSyncMessage('Checking sync status...')
+                const check = await runProjectOpenReplicaCheck({
+                    projectId: String(project._id),
                     projectPath: effectiveLocalPath,
-                    debugSource: `project-card:${project._id}`,
                 })
+                openCheck = check
+                gateSyncScreen = check.gateSyncScreen
 
-                const hasChanges = localResult.totalFiles !== cloudManifest.length
-
-                if (hasChanges) {
+                if (check.totalChanges > 0) {
                     setSyncState('syncing')
-                    setSyncMessage('Syncing files...')
-                    // Let the actual sync happen after navigation
+                    if (check.hasConflicts) {
+                        setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
+                    } else if (check.likelyLocalWipe) {
+                        setSyncMessage('Local files missing. Opening recovery...')
+                    } else {
+                        setSyncMessage('Sync changes detected')
+                    }
                 }
             }
 
-            // Navigate to project
             setSyncState('ready')
-            setSyncMessage('Opening project...')
+            setSyncMessage(gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
             // Small delay to show the ready state
             setTimeout(() => {
+                if (gateSyncScreen && effectiveLocalPath && onRequireSyncReview && openCheck) {
+                    void onRequireSyncReview({
+                        projectId: project._id,
+                        projectSlug: project.slug,
+                        projectName: project.name,
+                        projectTemplate: project.template ?? undefined,
+                        projectPath: effectiveLocalPath,
+                        check: openCheck,
+                    })
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    return
+                }
+
                 navigate(`/projects/${project.slug}`, {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
+                        gateSyncScreen,
                     },
                 })
             }, 200)
@@ -254,26 +269,45 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, cloudManifest, navigate, updateMemberLocalPath, preloadProjectDestination])
+    }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const handleDelete = async () => {
-        if (!userId || deleteConfirmName !== project.name) return
+        if (!userId) return
+
+        const result = await window.electronAPI.dialog.showMessageBox({
+            type: 'warning',
+            buttons: ['Cancel', 'Delete Project'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Delete Project',
+            message: `Delete ${project.name}?`,
+            detail: `This action cannot be undone. This will permanently delete the project and all associated data.`,
+        })
+
+        if (result.response !== 1) {
+            return
+        }
+
         setIsDeleting(true)
-        setDeleteError(null)
         try {
             await deleteProject({
                 projectId: project._id,
                 userId,
-                confirmName: deleteConfirmName,
+                confirmName: project.name, // Since we bypass typing, pass the exact name
             })
-            setShowDeleteDialog(false)
-            setDeleteConfirmName('')
         } catch (error) {
             console.error('Failed to delete project:', error)
             const message = error instanceof Error ? error.message : 'Failed to delete project'
             // Extract the actual error message from Convex error format
             const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
-            setDeleteError(cleanMessage)
+            
+            // Show error in another native dialog since we don't have the UI anymore
+            await window.electronAPI.dialog.showMessageBox({
+                type: 'error',
+                title: 'Delete Failed',
+                message: 'Failed to delete project',
+                detail: cleanMessage
+            })
         } finally {
             setIsDeleting(false)
         }
@@ -300,6 +334,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
     return (
         <div className="h-full">
                 <Card
+                    ref={cardRef}
                     className={cn(
                     "group relative flex flex-col h-full shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
                     syncState !== 'idle' && "pointer-events-none"
@@ -369,7 +404,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                     )}
 
                     {/* Sync Badge positioned over preview */}
-                    {project.status !== 'draft' && localPath && syncState === 'idle' && (
+                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath && syncState === 'idle' && (
                         <div onClick={(e) => e.stopPropagation()} className="absolute top-2 right-2 z-10">
                             <ProjectDiffBadge
                                 projectId={project._id}
@@ -417,14 +452,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                 <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={(e) => {
                                     e.stopPropagation()
-                                    preloadProjectDetailPage()
-                                    navigate(`/projects/${project.slug}`, {
-                                        state: {
-                                            projectSlug: project.slug,
-                                            projectName: project.name,
-                                            projectTemplate: project.template ?? undefined,
-                                        },
-                                    })
+                                    void handleCardClick()
                                 }}>
                                     Open Project
                                 </DropdownMenuItem>
@@ -444,16 +472,17 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                         </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setShowDeleteDialog(true)
-                                        }}
-                                        className="text-destructive focus:text-destructive"
-                                    >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                    </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    void handleDelete()
+                                }}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                                disabled={isDeleting}
+                            >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                            </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
@@ -494,53 +523,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                     </CardContent>
                 </div>
             </Card>
-
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
-                setShowDeleteDialog(open)
-                if (!open) {
-                    setDeleteConfirmName('')
-                    setDeleteError(null)
-                }
-            }}>
-                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Project</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the project
-                            <span className="font-semibold"> {project.name}</span> and all associated data.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <div className="py-4">
-                        <p className="text-sm text-muted-foreground mb-2">
-                            Type <span className="font-mono font-semibold">{project.name}</span> to confirm:
-                        </p>
-                        <Input
-                            value={deleteConfirmName}
-                            onChange={(e) => setDeleteConfirmName(e.target.value)}
-                            placeholder="Project name"
-                            className="w-full"
-                        />
-                        {deleteError && (
-                            <p className="text-sm text-destructive mt-2">
-                                {deleteError}
-                            </p>
-                        )}
-                    </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>
-                            Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleDelete}
-                            disabled={deleteConfirmName !== project.name || isDeleting}
-                            className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
-                        >
-                            {isDeleting ? 'Deleting...' : 'Delete Project'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     )
 }

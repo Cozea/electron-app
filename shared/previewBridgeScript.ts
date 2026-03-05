@@ -27,6 +27,16 @@ const STYLE_PROPERTIES = [
   'flexDirection', 'justifyContent', 'alignItems', 'gap', 'flexWrap', 'flexGrow', 'flexShrink',
 ] as const
 
+const OFFSCREEN_SCREENSHOT_ENCODING_ENABLED = (() => {
+  const raw =
+    (typeof process !== 'undefined' ? process.env.VITE_FF_OFFSCREEN_SCREENSHOT : undefined) ??
+    (globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string | undefined }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__
+  const normalized = raw?.trim().toLowerCase()
+  if (!normalized) return true
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false
+  return true
+})()
+
 /**
  * Bridge script to inject into preview iframes (as string)
  * Self-contained - no external dependencies except html2canvas loaded dynamically.
@@ -65,6 +75,7 @@ export const BRIDGE_SCRIPT = `
     'bridge:navigation': true,
     'bridge:runtime-error': true,
   };
+  const OFFSCREEN_SCREENSHOT_ENCODING_ENABLED = ${JSON.stringify(OFFSCREEN_SCREENSHOT_ENCODING_ENABLED)};
 
   function bridgeLog(message, details) {
     try {
@@ -609,6 +620,65 @@ export const BRIDGE_SCRIPT = `
   }
 
   // Capture screenshot using html2canvas
+  async function encodeCanvasInWorker(canvas) {
+    if (!OFFSCREEN_SCREENSHOT_ENCODING_ENABLED) return null;
+    if (typeof OffscreenCanvas === 'undefined') return null;
+    if (typeof window.createImageBitmap !== 'function') return null;
+
+    const workerSource = \`
+      self.onmessage = async (event) => {
+        const { bitmap, width, height } = event.data || {};
+        try {
+          const offscreen = new OffscreenCanvas(width, height);
+          const context = offscreen.getContext('2d');
+          if (!context) throw new Error('Offscreen canvas context unavailable');
+          context.drawImage(bitmap, 0, 0, width, height);
+          if (bitmap && typeof bitmap.close === 'function') {
+            bitmap.close();
+          }
+          const blob = await offscreen.convertToBlob({ type: 'image/png', quality: 0.92 });
+          const reader = new FileReaderSync();
+          const dataUrl = reader.readAsDataURL(blob);
+          self.postMessage({ success: true, dataUrl });
+        } catch (error) {
+          self.postMessage({
+            success: false,
+            error: error && error.message ? error.message : String(error),
+          });
+        }
+      };
+    \`;
+
+    let workerUrl = null;
+    let worker = null;
+
+    try {
+      const bitmap = await window.createImageBitmap(canvas);
+      workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+      worker = new Worker(workerUrl);
+
+      const dataUrl = await new Promise((resolve, reject) => {
+        worker.onmessage = (event) => {
+          const payload = event.data || {};
+          if (payload.success && typeof payload.dataUrl === 'string') {
+            resolve(payload.dataUrl);
+            return;
+          }
+          reject(new Error(payload.error || 'Worker screenshot encoding failed'));
+        };
+        worker.onerror = () => reject(new Error('Worker screenshot encoding crashed'));
+        worker.postMessage({ bitmap, width: canvas.width, height: canvas.height }, [bitmap]);
+      });
+
+      return dataUrl;
+    } catch (_error) {
+      return null;
+    } finally {
+      if (worker) worker.terminate();
+      if (workerUrl) URL.revokeObjectURL(workerUrl);
+    }
+  }
+
   async function captureScreenshot() {
     try {
       bridgeLog('Starting screenshot capture');
@@ -637,7 +707,8 @@ export const BRIDGE_SCRIPT = `
         height: window.innerHeight,
       });
 
-      const dataUrl = canvas.toDataURL('image/png');
+      const offThreadDataUrl = await encodeCanvasInWorker(canvas);
+      const dataUrl = offThreadDataUrl || canvas.toDataURL('image/png');
       bridgeLog('Screenshot capture completed', { dataUrlLength: dataUrl.length });
       postToParent({
         type: 'bridge:screenshot-ready',

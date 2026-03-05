@@ -1,22 +1,34 @@
 /**
  * FileTree - VS Code-style file explorer
  *
- * Uses the new file explorer architecture with:
- * - Lazy loading (directories load on expand)
- * - Optional filtering via FileService (currently shows all files)
- * - Proper state management via useFileExplorer hook
+ * Uses a virtual renderer by default (react-virtuoso) and can fall back
+ * to the legacy recursive tree through localStorage:
+ * `cozea.fileTree.renderer = "legacy" | "virtual"`.
  */
 
-import { useCallback, useEffect, useImperativeHandle, forwardRef, useMemo, useRef, useState, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react'
+import { Virtuoso } from 'react-virtuoso'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
+import { buildVisibleTreeRows, type VisibleTreeRow } from '@/lib/fileExplorer/visibleRows'
 import { FileTreeNode } from './FileTreeNode'
+import { FileTreeRow } from './FileTreeRow'
 import { Loader2, FolderOpen } from 'lucide-react'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import { Input } from '@/components/ui/input'
 import { getFileIcon, getFolderIcon } from '@/lib/fileExplorer/fileIcons'
+import { useFileTreeExternalSync } from '../hooks/useFileTreeExternalSync'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -27,6 +39,8 @@ import {
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
 
+const FILE_TREE_RENDERER_KEY = 'cozea.fileTree.renderer'
+
 export interface FileTreeHandle {
   refresh: () => void
   isLoading: boolean
@@ -34,7 +48,19 @@ export interface FileTreeHandle {
   startCreateFolder: () => void
 }
 
-export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
+interface FileTreeProps {
+  isVisible?: boolean
+  scrollParent?: HTMLElement | null
+}
+
+function parseRendererMode(value: string | null): 'legacy' | 'virtual' {
+  return value === 'legacy' ? 'legacy' : 'virtual'
+}
+
+export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
+  { isVisible = true, scrollParent = null },
+  ref
+) {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const syncContext = useOptionalProjectSyncContext()
@@ -52,22 +78,56 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   const [isRenaming, setIsRenaming] = useState(false)
   const renameInputRef = useRef<HTMLInputElement>(null)
   const [dragItem, setDragItem] = useState<ExplorerItem | null>(null)
+  const [nodeLoadingPaths, setNodeLoadingPaths] = useState<Set<string>>(new Set())
+  const [rendererMode, setRendererMode] = useState<'legacy' | 'virtual'>(() => {
+    if (typeof window === 'undefined') return 'virtual'
+    return parseRendererMode(window.localStorage.getItem(FILE_TREE_RENDERER_KEY))
+  })
 
   // Use file explorer hook
   const {
     root,
     isLoading,
     error,
+    treeVersion,
     expandNode,
     collapseNode,
     refresh,
     refreshNode,
     expandedPaths,
+    findNodeByResource,
+    upsertResource,
+    removeResource,
   } = useFileExplorer({
     rootPath: syncContext?.projectPath ?? null,
   })
 
   const rootPath = syncContext?.projectPath ?? null
+  const inlineCreateTarget = createTarget?.resource ?? null
+  const isVirtualRenderer = rendererMode === 'virtual'
+
+  useFileTreeExternalSync({
+    rootPath,
+    isVisible,
+    expandedPaths,
+    findNodeByResource,
+    upsertResource,
+    removeResource,
+    refreshNode,
+  })
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== FILE_TREE_RENDERER_KEY) return
+      setRendererMode(parseRendererMode(event.newValue))
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
+  useEffect(() => {
+    setNodeLoadingPaths(new Set())
+  }, [rootPath])
 
   const getCreateTarget = useCallback((): ExplorerItem | null => {
     if (!syncContext?.projectPath) return null
@@ -118,6 +178,40 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
       setSearchParams({ path: item.resource })
     }
   }, [setSearchParams])
+
+  const setDirectoryLoading = useCallback((resource: string, isLoadingState: boolean) => {
+    setNodeLoadingPaths((prev) => {
+      const next = new Set(prev)
+      if (isLoadingState) {
+        next.add(resource)
+      } else {
+        next.delete(resource)
+      }
+      return next
+    })
+  }, [])
+
+  const handleToggleDirectory = useCallback(async (item: ExplorerItem, open: boolean) => {
+    if (!item.isDirectory) return
+
+    if (!open) {
+      collapseNode(item)
+      setDirectoryLoading(item.resource, false)
+      return
+    }
+
+    if (!item.isDirectoryResolved) {
+      setDirectoryLoading(item.resource, true)
+      try {
+        await expandNode(item)
+      } finally {
+        setDirectoryLoading(item.resource, false)
+      }
+      return
+    }
+
+    await expandNode(item)
+  }, [collapseNode, expandNode, setDirectoryLoading])
 
   useEffect(() => {
     if (createTarget) {
@@ -548,7 +642,6 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
       if (relativePath) {
         void navigator.clipboard.writeText(relativePath)
       }
-      return
     }
   }, [getCreateTargetForItem, handleDelete, handleDuplicate, startRename, toRelativePath])
 
@@ -572,7 +665,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   const handleDrop = useCallback(async (item: ExplorerItem, event: React.DragEvent) => {
     event.preventDefault()
     const dragPath = event.dataTransfer.getData('text/plain')
-    const source = dragItem ?? (dragPath && root ? root.find(dragPath) ?? null : null)
+    const source = dragItem ?? (dragPath ? findNodeByResource(dragPath) : null)
     if (!source) return
     const shouldCopy = event.altKey || event.ctrlKey
     if (shouldCopy) {
@@ -581,7 +674,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
       await handleMove(source, item)
     }
     setDragItem(null)
-  }, [dragItem, handleCopyToTarget, handleMove, root])
+  }, [dragItem, findNodeByResource, handleCopyToTarget, handleMove])
 
   const cancelCreate = useCallback(() => {
     if (isCreating) return
@@ -681,6 +774,76 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
     void expandToFile()
   }, [selectedPath, rootPath, root, expandNode])
 
+  const visibleRows = useMemo(() => {
+    if (!root) return [] as VisibleTreeRow[]
+    void treeVersion
+    return buildVisibleTreeRows({
+      root,
+      expandedPaths,
+      inlineCreateTarget,
+      loadingPaths: nodeLoadingPaths,
+    })
+  }, [expandedPaths, inlineCreateTarget, nodeLoadingPaths, root, treeVersion])
+
+  const renderVirtualRow = useCallback((row: VisibleTreeRow) => {
+    return (
+      <FileTreeRow
+        row={row}
+        selectedPath={selectedPathForHighlight}
+        selectedResource={selectedResource}
+        createKind={createKind}
+        createName={createName}
+        createError={createError}
+        isCreating={isCreating}
+        createInputRef={createInputRef}
+        renameTarget={renameTarget}
+        renameValue={renameValue}
+        renameError={renameError}
+        renameInputRef={renameInputRef}
+        onCreateNameChange={(value) => {
+          setCreateName(value)
+          if (createError) setCreateError(null)
+        }}
+        onCreateCommit={() => void handleCreate()}
+        onCreateCancel={cancelCreate}
+        onRenameChange={handleRenameChange}
+        onRenameCommit={() => void handleRename()}
+        onRenameCancel={cancelRename}
+        onToggleDirectory={(item, open) => {
+          void handleToggleDirectory(item, open)
+        }}
+        onSelect={handleSelectFile}
+        onContextMenu={handleContextMenu}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      />
+    )
+  }, [
+    cancelCreate,
+    cancelRename,
+    createError,
+    createKind,
+    createName,
+    handleCreate,
+    handleDragEnd,
+    handleDragOver,
+    handleDragStart,
+    handleDrop,
+    handleRename,
+    handleRenameChange,
+    handleSelectFile,
+    handleContextMenu,
+    handleToggleDirectory,
+    isCreating,
+    renameError,
+    renameTarget,
+    renameValue,
+    selectedPathForHighlight,
+    selectedResource,
+  ])
+
   // No local path configured
   if (!syncContext?.projectPath) {
     return (
@@ -695,9 +858,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
   }
 
   return (
-    <SidebarGroup className="py-0">
-      <SidebarGroupContent>
-        <SidebarMenu>
+    <SidebarGroup className="py-0 h-full">
+      <SidebarGroupContent className="h-full">
+        <SidebarMenu className="h-full">
           {/* Loading state */}
           {isLoading && !root && (
             <div className="flex h-10 items-center justify-center">
@@ -726,8 +889,20 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_, ref) {
           )}
 
           {/* File tree */}
-          {root && createTarget && createTarget.resource === root.resource && inlineCreateRow(0)}
-          {root && root.sortedChildren.map(child => (
+          {root && isVirtualRenderer && (
+            <Virtuoso
+              data={visibleRows}
+              customScrollParent={scrollParent ?? undefined}
+              defaultItemHeight={28}
+              increaseViewportBy={{ top: 280, bottom: 420 }}
+              computeItemKey={(_index, row) => row.id}
+              style={scrollParent ? undefined : { height: '100%' }}
+              itemContent={(_index, row) => renderVirtualRow(row)}
+            />
+          )}
+
+          {root && !isVirtualRenderer && createTarget && createTarget.resource === root.resource && inlineCreateRow(0)}
+          {root && !isVirtualRenderer && root.sortedChildren.map(child => (
             <FileTreeNode
               key={child.resource}
               item={child}

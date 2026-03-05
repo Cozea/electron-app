@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { OrganizationMembership } from '../types/electron'
+import { fetchWithAbort } from '@/lib/abort'
 
-const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://crosscode-auth-gateway-production.up.railway.app'
+const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://api.cozea.app'
 const STORAGE_KEY_TOKEN = 'auth_token'
 
 interface Organization {
@@ -73,13 +74,18 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
   )
   const [isLoading, setIsLoading] = useState(false)
 
-  // Update organizations when initialOrganizations changes
+  // Keep local organization state in sync with AuthContext without creating
+  // a self-triggering effect cycle on currentOrganization updates.
   useEffect(() => {
     setOrganizations(initialOrganizations)
-    if (initialOrganizations.length > 0 && !currentOrganization) {
-      setCurrentOrganization(initialOrganizations[0])
+
+    if (initialOrganizations.length === 0) {
+      setCurrentOrganization(null)
+      return
     }
-  }, [initialOrganizations, currentOrganization])
+
+    setCurrentOrganization((prev) => prev ?? initialOrganizations[0])
+  }, [initialOrganizations])
 
   // Make authenticated requests and retry once after token refresh on 401.
   const fetchWithRefresh = useCallback(async (
@@ -91,9 +97,12 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       if (token) {
         headers.set('Authorization', `Bearer ${token}`)
       }
-      return fetch(url, {
+      return fetchWithAbort(url, {
         ...options,
         headers,
+      }, {
+        signal: options.signal ?? undefined,
+        timeoutMs: 20000,
       })
     }
 

@@ -59,12 +59,17 @@ export const TIER_RATES: Record<ModelTier, TierRates> = {
 export const MODEL_CREDITS_PER_1K: Record<string, ModelCreditsPerK> = {
   "claude-haiku-4-5": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
   "gemini-3-flash": { inputCreditsPerK: 0.005, outputCreditsPerK: 0.005 },
-  "gpt-5.1": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
-  "gpt-5.1-mini": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.1-codex-mini": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
   "claude-sonnet-4-5": { inputCreditsPerK: 0.01, outputCreditsPerK: 0.01 },
+  "gpt-5.1-codex-max": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gpt-5.2": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gpt-5.2-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gpt-5.3-codex": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "claude-opus-4-5": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "claude-opus-4-6": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
   "gemini-3-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gemini-3.1-pro": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
+  "gemini-3.1-pro-customtools": { inputCreditsPerK: 0.0625, outputCreditsPerK: 0.0625 },
 }
 
 // Model catalog - maps our model IDs to provider model IDs and tiers
@@ -94,20 +99,12 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
   // STANDARD TIER (5 input / 10 output per 1K)
   // Available: Pro and above (or BYOK)
   // ============================================
-  "gpt-5.1": {
-    id: "gpt-5.1",
-    displayName: "GPT-5.1",
+  "gpt-5.1-codex-mini": {
+    id: "gpt-5.1-codex-mini",
+    displayName: "GPT-5.1-Codex-Mini",
     provider: "openai",
     tier: "standard",
-    providerModelId: "gpt-5.1",
-    isAvailable: true,
-  },
-  "gpt-5.1-mini": {
-    id: "gpt-5.1-mini",
-    displayName: "GPT-5.1 Mini",
-    provider: "openai",
-    tier: "standard",
-    providerModelId: "gpt-5-mini",
+    providerModelId: "gpt-5.1-codex-mini",
     isAvailable: true,
   },
   "claude-sonnet-4-5": {
@@ -123,6 +120,30 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
   // POWERFUL TIER (25 input / 50 output per 1K)
   // Available: Max and above (or BYOK if allowed)
   // ============================================
+  "gpt-5.3-codex": {
+    id: "gpt-5.3-codex",
+    displayName: "GPT-5.3-Codex",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.3-codex",
+    isAvailable: true,
+  },
+  "gpt-5.2-codex": {
+    id: "gpt-5.2-codex",
+    displayName: "GPT-5.2-Codex",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.2-codex",
+    isAvailable: true,
+  },
+  "gpt-5.1-codex-max": {
+    id: "gpt-5.1-codex-max",
+    displayName: "GPT-5.1-Codex-Max",
+    provider: "openai",
+    tier: "powerful",
+    providerModelId: "gpt-5.1-codex-max",
+    isAvailable: true,
+  },
   "gpt-5.2": {
     id: "gpt-5.2",
     displayName: "GPT-5.2",
@@ -139,6 +160,14 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
     providerModelId: "claude-opus-4-5-20251101",
     isAvailable: true,
   },
+  "claude-opus-4-6": {
+    id: "claude-opus-4-6",
+    displayName: "Claude Opus 4.6",
+    provider: "anthropic",
+    tier: "powerful",
+    providerModelId: "claude-opus-4-6",
+    isAvailable: true,
+  },
   "gemini-3-pro": {
     id: "gemini-3-pro",
     displayName: "Gemini 3 Pro",
@@ -147,13 +176,32 @@ export const MODEL_CATALOG: Record<string, ModelInfo> = {
     providerModelId: "gemini-3-pro-preview",
     isAvailable: true,
   },
+  "gemini-3.1-pro": {
+    id: "gemini-3.1-pro",
+    displayName: "Gemini 3.1 Pro",
+    provider: "google",
+    tier: "powerful",
+    providerModelId: "gemini-3.1-pro-preview",
+    isAvailable: true,
+  },
+  "gemini-3.1-pro-customtools": {
+    id: "gemini-3.1-pro-customtools",
+    displayName: "Gemini 3.1 Pro (Custom Tools)",
+    provider: "google",
+    tier: "powerful",
+    providerModelId: "gemini-3.1-pro-preview-customtools",
+    isAvailable: true,
+  },
 }
 
 // Plan-based tier access
 export const PLAN_TIER_ACCESS: Record<string, ModelTier[]> = {
-  free: [], // BYOK only - no managed tiers
-  pro: ["fast", "standard"],
+  // AI costs are handled by user-connected provider subscriptions.
+  // Plan tiers here no longer restrict model access.
+  free: ["fast", "standard", "powerful"],
+  pro: ["fast", "standard", "powerful"],
   max: ["fast", "standard", "powerful"],
+  startup: ["fast", "standard", "powerful"],
   team: ["fast", "standard", "powerful"],
   enterprise: ["fast", "standard", "powerful"],
 }
@@ -161,19 +209,21 @@ export const PLAN_TIER_ACCESS: Record<string, ModelTier[]> = {
 // Plan credits per month
 export const PLAN_CREDITS: Record<string, number> = {
   free: 0,
-  pro: 5000,
-  max: 15000,
-  team: 10000, // Per seat
+  pro: 0,
+  max: 0,
+  startup: 0,
+  team: 0,
   enterprise: 0, // Custom
 }
 
 // Overage rates (cents per credit)
 export const OVERAGE_RATES: Record<string, number> = {
   free: 0, // No overage allowed
-  pro: 1.0, // $0.01/credit
-  max: 0.8, // $0.008/credit
-  team: 0.6, // $0.006/credit
-  enterprise: 0, // Custom
+  pro: 0,
+  max: 0,
+  startup: 0,
+  team: 0,
+  enterprise: 0,
 }
 
 // Credit pack definitions
@@ -198,11 +248,21 @@ export function getModelTier(modelId: string): ModelTier {
   // Fallback: try to infer from model name patterns
   const lowerModelId = modelId.toLowerCase()
 
+  if (lowerModelId.includes("codex-mini")) {
+    return "standard"
+  }
+
   if (lowerModelId.includes("haiku") || lowerModelId.includes("flash") || lowerModelId.includes("mini")) {
     return "fast"
   }
 
-  if (lowerModelId.includes("opus") || lowerModelId.includes("pro") || lowerModelId.includes("5.2")) {
+  if (
+    lowerModelId.includes("opus") ||
+    lowerModelId.includes("pro") ||
+    lowerModelId.includes("5.2") ||
+    lowerModelId.includes("5.3") ||
+    lowerModelId.includes("codex-max")
+  ) {
     return "powerful"
   }
 
@@ -271,6 +331,32 @@ export function calculateCredits(
 }
 
 /**
+ * Convert tracked credit units to currency spend in minor units (cents).
+ *
+ * Current policy maps 1 tracked credit unit to $0.01 (1 cent) for wallet
+ * accounting while preserving the existing model-rate weighting behavior.
+ */
+export function calculateSpendCents(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number = 0
+): number {
+  const trackedCreditUnits = calculateCredits(
+    modelId,
+    inputTokens,
+    outputTokens,
+    cachedInputTokens
+  )
+
+  if (!Number.isFinite(trackedCreditUnits) || trackedCreditUnits <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.ceil(trackedCreditUnits * 100))
+}
+
+/**
  * Calculate credits with detailed breakdown
  */
 export function calculateCreditsDetailed(
@@ -316,7 +402,8 @@ export function getOverageRate(plan: string): number {
  * Check if a plan allows overage
  */
 export function planAllowsOverage(plan: string): boolean {
-  return plan !== "free" && OVERAGE_RATES[plan] > 0
+  void plan
+  return false
 }
 
 /**
@@ -371,7 +458,7 @@ export function getModelsByTier(): Record<ModelTier, ModelInfo[]> {
 export function getPlanCredits(plan: string, seatCount?: number): number {
   const baseCredits = PLAN_CREDITS[plan] ?? 0
 
-  if (plan === "team" && seatCount) {
+  if ((plan === "team" || plan === "startup") && seatCount) {
     return baseCredits * seatCount
   }
 

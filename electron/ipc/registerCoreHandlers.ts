@@ -1,7 +1,5 @@
 import type { IpcMain } from 'electron'
 
-import type { PerfBatch } from '../services/PerformanceService'
-
 interface ToolRunRequest {
   name: string
   input: Record<string, unknown>
@@ -13,7 +11,6 @@ interface ToolRunRequest {
 interface RegisterCoreHandlersDeps {
   runTool: (request: ToolRunRequest) => Promise<{ success: boolean; output?: unknown; error?: string }>
   cancelToolRuns: (runId: string) => Promise<{ success: boolean; canceled?: number; error?: string }>
-  reportPerformance: (payload: PerfBatch) => Promise<{ success: boolean }> | { success: boolean }
   getUpdateState: () => unknown
   isAutoUpdateEnabled: () => boolean
   checkForUpdates: () => Promise<void>
@@ -22,15 +19,12 @@ interface RegisterCoreHandlersDeps {
   setUpdateError: (message: string) => void
   openExternal: (url: string) => Promise<void>
   isWindowFullScreen: () => boolean
+  openSettingsWindow: (route?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandlersDeps): void {
   ipcMain.handle('tools:run', async (_event, request: ToolRunRequest) => {
     return deps.runTool(request)
-  })
-
-  ipcMain.handle('performance:report', async (_event, payload: PerfBatch) => {
-    return deps.reportPerformance(payload)
   })
 
   ipcMain.handle('tools:cancel', async (_event, request: { runId: string }) => {
@@ -74,5 +68,9 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
 
   ipcMain.handle('window:isFullScreen', () => {
     return deps.isWindowFullScreen()
+  })
+
+  ipcMain.handle('window:openSettings', async (_event, payload?: { route?: string }) => {
+    return deps.openSettingsWindow(payload?.route)
   })
 }

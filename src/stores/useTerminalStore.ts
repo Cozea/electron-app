@@ -16,6 +16,9 @@ export interface TerminalInstance {
   profileId: string
   profileName: string
   title: string
+  runId?: string
+  phase?: 'starting' | 'active' | 'stopping' | 'exited'
+  lastHeartbeatAt?: number
   projectPath?: string
   label?: string
   kind?: TerminalKind
@@ -62,7 +65,7 @@ interface TerminalState {
     updateTerminalTitle: (terminalId: string, title: string) => void
     updateTerminalDisplay: (
       terminalId: string,
-      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind' | 'projectPath'>>
+      display: Partial<Pick<TerminalInstance, 'title' | 'label' | 'port' | 'nameSource' | 'command' | 'kind' | 'projectPath' | 'runId' | 'phase' | 'lastHeartbeatAt'>>
     ) => void
     setTerminalHasOutput: (terminalId: string, hasOutput: boolean) => void
     appendTerminalOutput: (terminalId: string, chunk: string) => void

@@ -14,7 +14,6 @@ import {
   Zap,
   FolderKanban,
   Users,
-  Loader2,
 } from 'lucide-react'
 
 // Contribution graph component (GitHub-style)
@@ -274,38 +273,11 @@ export function MemberDetails() {
     })
   }
 
-  if (isLoading) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Teams' }, { label: 'Members', href: '/teams' }, { label: 'Loading...' }]}
-      >
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  if (!member) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Teams' }, { label: 'Members', href: '/teams' }, { label: 'Not Found' }]}
-      >
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <h2 className="text-xl font-semibold mb-2">Member not found</h2>
-          <p className="text-muted-foreground">This member may have been removed from the organization.</p>
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  const memberName = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim()
-    || member.user?.email?.split('@')[0]
-    || 'Unknown'
+  const memberName = member
+    ? `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim()
+      || member.user?.email?.split('@')[0]
+      || 'Unknown'
+    : 'Member'
 
   return (
     <DashboardLayout
@@ -314,10 +286,20 @@ export function MemberDetails() {
       breadcrumbs={[
         { label: 'Teams' },
         { label: 'Members', href: '/teams' },
-        { label: memberName },
+        { label: isLoading ? 'Loading...' : member ? memberName : 'Not Found' },
       ]}
     >
-      <div className="space-y-4">
+      {isLoading ? (
+        <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
+          Loading member details...
+        </div>
+      ) : !member ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <h2 className="text-xl font-semibold mb-2">Member not found</h2>
+          <p className="text-muted-foreground">This member may have been removed from the organization.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
         {/* Profile header */}
         <div className="rounded-2xl bg-secondary/80 p-5 dark:bg-secondary/40">
           <div className="flex flex-col gap-6 sm:flex-row">
@@ -436,7 +418,8 @@ export function MemberDetails() {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

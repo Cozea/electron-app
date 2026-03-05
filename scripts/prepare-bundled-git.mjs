@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const bundledGitRoot = path.join(rootDir, 'build', 'git')
+const DEFAULT_GIT_RELEASE_REPOSITORY = 'Cozea/cozea-prod'
 
 const gitForWindowsLatestReleaseApi =
   'https://api.github.com/repos/git-for-windows/git/releases/latest'
@@ -24,6 +25,7 @@ const targets = [
 const checkOnly = process.argv.includes('--check')
 const requireAll = process.argv.includes('--all') || process.env.COZEA_GIT_BUNDLE_REQUIRE === 'all'
 const requestedTargetIds = new Set()
+let cachedReleaseAssets = null
 
 function log(message) {
   console.log(`[bundled-git] ${message}`)
@@ -73,6 +75,101 @@ function envKeyForTarget(target) {
   return `COZEA_GIT_BUNDLE_URL_${target.id.toUpperCase().replace(/-/g, '_')}`
 }
 
+function githubHeaders() {
+  const headers = {
+    Accept: 'application/vnd.github+json,application/octet-stream',
+    'User-Agent': 'cozea-bundled-git-bootstrap',
+  }
+  const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
+  if (githubToken) {
+    headers.Authorization = `Bearer ${githubToken}`
+  }
+  return headers
+}
+
+function parseRepositoryParts(repository) {
+  const [owner, repo] = repository.split('/')
+  if (!owner || !repo) {
+    throw new Error(`Invalid git bundle release repository "${repository}". Use owner/repo format.`)
+  }
+  return { owner, repo }
+}
+
+function resolveGitReleaseRepository() {
+  return process.env.COZEA_GIT_BUNDLE_RELEASE_REPO?.trim() || DEFAULT_GIT_RELEASE_REPOSITORY
+}
+
+function resolveGitReleaseTag() {
+  const explicitTag = process.env.COZEA_GIT_BUNDLE_RELEASE_TAG?.trim()
+  if (explicitTag) return explicitTag
+  try {
+    const packageJsonPath = path.join(rootDir, 'package.json')
+    const packageRaw = fs.readFileSync(packageJsonPath, 'utf-8')
+    const packageJson = JSON.parse(packageRaw)
+    const version = String(packageJson?.version || '').trim()
+    if (version) return `v${version}`
+  } catch {
+    // Ignore missing package metadata and fall back to latest release lookup.
+  }
+  return null
+}
+
+async function fetchGitReleaseAssets() {
+  if (cachedReleaseAssets) {
+    return cachedReleaseAssets
+  }
+
+  const repository = resolveGitReleaseRepository()
+  const { owner, repo } = parseRepositoryParts(repository)
+  const tag = resolveGitReleaseTag()
+  const endpoints = tag
+    ? [
+        `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
+        `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+      ]
+    : [`https://api.github.com/repos/${owner}/${repo}/releases/latest`]
+
+  for (const endpoint of endpoints) {
+    const response = await fetch(endpoint, { headers: githubHeaders() })
+    if (!response.ok) continue
+    const payload = await response.json()
+    const assets = new Map()
+    for (const asset of payload.assets ?? []) {
+      const name = asset?.name?.trim()
+      const url = asset?.browser_download_url?.trim()
+      if (!name || !url) continue
+      assets.set(name, url)
+    }
+    cachedReleaseAssets = assets
+    return assets
+  }
+
+  cachedReleaseAssets = new Map()
+  return cachedReleaseAssets
+}
+
+async function resolveReleaseArchiveUrlForTarget(target) {
+  if (process.env.COZEA_GIT_BUNDLE_DISABLE_RELEASE_LOOKUP === '1') {
+    return null
+  }
+
+  const releaseAssets = await fetchGitReleaseAssets()
+  const preferredNames = [
+    `git-bundle-${target.id}.tar.gz`,
+    `git-bundle-${target.id}.zip`,
+    `bundled-git-${target.id}.tar.gz`,
+    `bundled-git-${target.id}.zip`,
+  ]
+
+  for (const candidateName of preferredNames) {
+    const url = releaseAssets.get(candidateName)
+    if (url) {
+      return { name: candidateName, url }
+    }
+  }
+  return null
+}
+
 function getTargetDir(target) {
   return path.join(bundledGitRoot, target.id)
 }
@@ -116,16 +213,7 @@ function hasGitOption(helpText, optionName) {
 }
 
 async function downloadFile(url, destinationPath) {
-  const headers = {
-    Accept: 'application/vnd.github+json,application/octet-stream',
-    'User-Agent': 'cozea-bundled-git-bootstrap',
-  }
-  const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
-  if (githubToken) {
-    headers.Authorization = `Bearer ${githubToken}`
-  }
-
-  const response = await fetch(url, { headers })
+  const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok || !response.body) {
     throw new Error(`Download failed (${response.status}) for ${url}`)
   }
@@ -289,16 +377,7 @@ function getRequiredTargets() {
 }
 
 async function fetchLatestGitForWindowsRelease() {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'cozea-bundled-git-bootstrap',
-  }
-  const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
-  if (githubToken) {
-    headers.Authorization = `Bearer ${githubToken}`
-  }
-
-  const response = await fetch(gitForWindowsLatestReleaseApi, { headers })
+  const response = await fetch(gitForWindowsLatestReleaseApi, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to query Git for Windows release feed (${response.status})`)
   }
@@ -307,16 +386,7 @@ async function fetchLatestGitForWindowsRelease() {
 }
 
 async function fetchLatestGitCoreTag() {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'cozea-bundled-git-bootstrap',
-  }
-  const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
-  if (githubToken) {
-    headers.Authorization = `Bearer ${githubToken}`
-  }
-
-  const response = await fetch(gitCoreTagsApi, { headers })
+  const response = await fetch(gitCoreTagsApi, { headers: githubHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to query git/git tags feed (${response.status})`)
   }
@@ -386,6 +456,10 @@ async function hydrateDarwinTargetFromSource(target) {
     'xcode-select is missing. Install Xcode Command Line Tools with: xcode-select --install'
   )
   requireTool('make', 'make is missing. Install Xcode Command Line Tools with: xcode-select --install')
+  requireTool(
+    'autoconf',
+    'autoconf is missing. Install it with Homebrew (`brew install autoconf`) before running prepare:bundled-git.'
+  )
   requireTool('tar', 'tar is missing from this machine.')
 
   const tag = await fetchLatestGitCoreTag()
@@ -488,6 +562,15 @@ async function hydrateTarget(target) {
   const configuredArchive = process.env[envKeyForTarget(target)]?.trim()
   if (configuredArchive) {
     await hydrateFromArchiveInput(target, configuredArchive, `configured archive (${envKeyForTarget(target)})`)
+    return
+  }
+
+  const releaseArchive = await resolveReleaseArchiveUrlForTarget(target).catch((error) => {
+    warn(`Release bundle lookup failed for ${target.id}: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  })
+  if (releaseArchive) {
+    await hydrateFromArchiveInput(target, releaseArchive.url, `release asset (${releaseArchive.name})`)
     return
   }
 

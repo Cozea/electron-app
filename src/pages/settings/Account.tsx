@@ -19,15 +19,11 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
-  Shield,
-  Key,
-  Smartphone,
   Monitor,
   Mail,
   Bell,
   AlertTriangle,
   Trash2,
-  Loader2,
   Upload,
 } from 'lucide-react'
 
@@ -36,7 +32,11 @@ interface NotificationPrefs {
   pushNotifications: boolean
 }
 
-export function Account() {
+interface AccountProps {
+  surface?: 'page' | 'drawer'
+}
+
+export function Account({ surface = 'page' }: AccountProps) {
   const { user, convexUserId, logout } = useAuth()
 
   // Fetch extended profile from Convex
@@ -88,35 +88,25 @@ export function Account() {
     }
   }
 
-  // Loading state
-  if (profile === undefined) {
-    return (
-      <DashboardLayout
-        user={user}
-        onLogout={logout}
-        breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const isProfileLoading = profile === undefined
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
+  const content = (
+    <div
+      className={
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-4xl space-y-8 px-6 py-6'
+          : 'max-w-2xl space-y-8 px-6 pt-6'
+      }
     >
-      <div className="max-w-2xl space-y-8 px-6 pt-6">
+        {isProfileLoading && (
+          <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+            Loading account profile...
+          </div>
+        )}
+
         {/* Profile Summary */}
         <div>
-          <h3 className="text-base font-medium mb-1">Profile</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Manage your profile on the web dashboard
-          </p>
-          <div className="flex items-center gap-4 p-4 border rounded-lg">
+          <div className="flex items-center gap-4 p-4 rounded-lg">
             <div className="group relative h-16 w-16 cursor-pointer shrink-0">
               <Avatar className="h-16 w-16">
                 <AvatarImage src={profile?.profileImageUrl || ''} />
@@ -138,40 +128,6 @@ export function Account() {
           </div>
         </div>
 
-        {/* Security */}
-        <div>
-          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            Security
-          </h3>
-          <div className="space-y-4 mt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Key className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Password</p>
-                  <p className="text-sm text-muted-foreground">
-                    Managed via your identity provider
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" disabled>Change Password</Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Smartphone className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Two-Factor Authentication</p>
-                  <p className="text-sm text-muted-foreground">
-                    Add an extra layer of security
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" disabled>Enable</Button>
-            </div>
-          </div>
-        </div>
-
         {/* Active Sessions - Placeholder */}
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -184,7 +140,7 @@ export function Account() {
             Devices currently signed in to your account
           </p>
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 border rounded-lg">
+            <div className="flex items-center justify-between p-3 rounded-lg">
               <div className="flex items-center gap-3">
                 <Monitor className="h-5 w-5 text-muted-foreground" />
                 <div>
@@ -223,6 +179,7 @@ export function Account() {
               <Switch
                 checked={notificationPrefs.emailNotifications}
                 onCheckedChange={(checked) => handleNotificationToggle('emailNotifications', checked)}
+                disabled={isProfileLoading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -238,6 +195,7 @@ export function Account() {
               <Switch
                 checked={notificationPrefs.pushNotifications}
                 onCheckedChange={(checked) => handleNotificationToggle('pushNotifications', checked)}
+                disabled={isProfileLoading}
               />
             </div>
           </div>
@@ -287,6 +245,19 @@ export function Account() {
           </div>
         </div>
       </div>
+  )
+
+  if (surface === 'drawer') {
+    return content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={[{ label: 'Settings' }, { label: 'Account' }]}
+    >
+      {content}
     </DashboardLayout>
   )
 }

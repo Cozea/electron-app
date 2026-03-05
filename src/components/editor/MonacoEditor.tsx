@@ -5,9 +5,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useYjsProject } from '@/contexts/YjsProjectContext'
 import { CollaborativeMonacoEditor } from './CollaborativeMonacoEditor'
 import { useMonacoTheme } from '@/hooks/useMonacoTheme'
-import { useDiagnosticsFileSync } from '@/hooks/useDiagnosticsFileSync'
-import { useMonacoDiagnostics } from '@/hooks/useMonacoDiagnostics'
-import { ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
+import { configureMonacoTypeScriptValidation, ensureMonacoEnvironment } from '@/lib/editor/monacoEnvironment'
 
 ensureMonacoEnvironment()
 
@@ -25,17 +23,6 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
     const actions = useEditorStore((state) => state.actions)
     const { yjsDoc } = useYjsProject()
     const theme = useMonacoTheme('sidebar')
-
-    useDiagnosticsFileSync({
-        projectPath: model?.projectPath,
-        filePath: path,
-        content: model?.currentContent ?? '',
-    })
-
-    useMonacoDiagnostics({
-        projectPath: model?.projectPath,
-        filePath: path,
-    })
 
     useEffect(() => {
         pathRef.current = path
@@ -65,6 +52,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
     // Handle editor mount - register save command
     const handleEditorMount: OnMount = useCallback(
         (editor, monacoInstance) => {
+            configureMonacoTypeScriptValidation(monacoInstance)
             editorRef.current = editor
             const updateBottomFade = () => {
                 const scrollTop = editor.getScrollTop()
@@ -77,10 +65,52 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
             editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
                 actions.saveFile(pathRef.current)
             })
+            editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Period, () => {
+                editor.trigger('keyboard', 'editor.action.quickFix', {})
+            })
+            editor.addCommand(
+                monacoInstance.KeyMod.Shift | monacoInstance.KeyMod.Alt | monacoInstance.KeyCode.KeyO,
+                () => {
+                    editor.trigger('keyboard', 'editor.action.organizeImports', {})
+                }
+            )
+
+            const quickFixAction = editor.addAction({
+                id: 'cozea.editor.quickFix',
+                label: 'Quick Fix',
+                contextMenuGroupId: 'navigation',
+                contextMenuOrder: 0.5,
+                run: () => {
+                    editor.trigger('contextmenu', 'editor.action.quickFix', {})
+                },
+            })
+            const organizeImportsAction = editor.addAction({
+                id: 'cozea.editor.organizeImports',
+                label: 'Organize Imports',
+                contextMenuGroupId: 'navigation',
+                contextMenuOrder: 0.6,
+                run: () => {
+                    editor.trigger('contextmenu', 'editor.action.organizeImports', {})
+                },
+            })
+            const renameAction = editor.addAction({
+                id: 'cozea.editor.renameSymbol',
+                label: 'Rename Symbol',
+                contextMenuGroupId: 'navigation',
+                contextMenuOrder: 0.7,
+                run: () => {
+                    editor.trigger('contextmenu', 'editor.action.rename', {})
+                },
+            })
 
             updateBottomFade()
             editor.onDidScrollChange(updateBottomFade)
             editor.onDidContentSizeChange(updateBottomFade)
+            editor.onDidDispose(() => {
+                quickFixAction.dispose()
+                organizeImportsAction.dispose()
+                renameAction.dispose()
+            })
 
             // Notify parent that editor is ready
             onEditorReady?.(editor)

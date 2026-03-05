@@ -5,6 +5,8 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
+import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+
 export type Framework =
   | 'nextjs'
   | 'remix'
@@ -33,6 +35,44 @@ export interface FrameworkInfo {
   devPort: number
   buildCommand: string
   startCommand: string
+}
+
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+
+function rewriteNpmCommandForPackageManager(command: string, pm: PackageManager): string {
+  if (pm === 'npm') return command
+  const trimmed = command.trim()
+
+  const runMatch = trimmed.match(/^npm\s+run\s+([^\s]+)([\s\S]*)$/i)
+  if (runMatch) {
+    return `${pm} run ${runMatch[1]}${runMatch[2] ?? ''}`.trim()
+  }
+
+  const simpleScriptMatch = trimmed.match(/^npm\s+(start|test)([\s\S]*)$/i)
+  if (simpleScriptMatch) {
+    return `${pm} ${simpleScriptMatch[1]}${simpleScriptMatch[2] ?? ''}`.trim()
+  }
+
+  const installMatch = trimmed.match(/^npm\s+install([\s\S]*)$/i)
+  if (installMatch) {
+    return `${pm} install${installMatch[1] ?? ''}`.trim()
+  }
+
+  return command
+}
+
+async function detectPackageManagerFromRoot(projectPath: string): Promise<PackageManager> {
+  try {
+    const entries = await window.electronAPI.fs.readDir(projectPath)
+    const names = new Set(entries.map((entry) => entry.name))
+    if (names.has('bun.lockb')) return 'bun'
+    if (names.has('pnpm-lock.yaml')) return 'pnpm'
+    if (names.has('yarn.lock')) return 'yarn'
+    if (names.has('package-lock.json')) return 'npm'
+  } catch {
+    // Fall through to npm.
+  }
+  return 'npm'
 }
 
 function inferDevServerLabelFromCommand(command: string): string {
@@ -281,11 +321,14 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
       }
     }
 
+    const packageManager = await detectPackageManagerFromRoot(projectPath)
     return {
       framework,
       ...config,
-      devCommand,
+      devCommand: rewriteNpmCommandForPackageManager(devCommand, packageManager),
       devPort,
+      buildCommand: rewriteNpmCommandForPackageManager(config.buildCommand, packageManager),
+      startCommand: rewriteNpmCommandForPackageManager(config.startCommand, packageManager),
     }
   } catch (error) {
     console.error('Failed to detect framework:', error)
@@ -305,11 +348,14 @@ export async function getFrameworkInfo(
   // If we have stored metadata, use it
   if (storedFramework && storedFramework !== 'unknown') {
     const config = FRAMEWORK_CONFIGS[storedFramework]
+    const packageManager = await detectPackageManagerFromRoot(projectPath)
     return {
       framework: storedFramework,
       ...config,
-      devCommand: storedDevCommand || config.devCommand,
+      devCommand: storedDevCommand || rewriteNpmCommandForPackageManager(config.devCommand, packageManager),
       devPort: storedDevPort || config.devPort,
+      buildCommand: rewriteNpmCommandForPackageManager(config.buildCommand, packageManager),
+      startCommand: rewriteNpmCommandForPackageManager(config.startCommand, packageManager),
     }
   }
 
@@ -324,55 +370,100 @@ export async function getDevServerConfig(
   projectPath: string,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
-): Promise<{ command: string; port: number; label: string }> {
+): Promise<{
+  command: string
+  port: number
+  label: string
+  suggestions: DevCommandSuggestion[]
+  requiresUserSelection: boolean
+}> {
+  let suggestions: DevCommandSuggestion[] = []
+  let requiresUserSelection = false
+
+  try {
+    const profile = await window.electronAPI.runtime.getProjectCapabilities({ projectPath })
+    suggestions = profile?.devServer?.suggestions ?? []
+    requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
+  } catch {
+    suggestions = []
+    requiresUserSelection = false
+  }
+
+  const inferPortFromCommand = (command: string, fallbackPort: number): number => {
+    const match = command.match(/--port[=\s]+(\d+)|-p[=\s]+(\d+)|localhost:(\d+)/i)
+    const parsed = Number.parseInt(match?.[1] || match?.[2] || match?.[3] || '', 10)
+    return Number.isFinite(parsed) ? parsed : fallbackPort
+  }
+
   if (storedDevCommand && storedDevPort) {
     return {
       command: storedDevCommand,
       port: storedDevPort,
       label: inferDevServerLabelFromCommand(storedDevCommand),
+      suggestions,
+      requiresUserSelection: false,
+    }
+  }
+
+  const selectedSuggestion = suggestions.find((suggestion) => suggestion.confidence >= 0.8)
+  if (selectedSuggestion) {
+    const fallbackPort = 3000
+    return {
+      command: selectedSuggestion.command,
+      port: inferPortFromCommand(selectedSuggestion.command, fallbackPort),
+      label: inferDevServerLabelFromCommand(selectedSuggestion.command),
+      suggestions,
+      requiresUserSelection: false,
     }
   }
 
   const info = await detectFramework(projectPath)
+  const fallbackCommand = suggestions[0]?.command ?? info.devCommand
+  const fallbackPort = inferPortFromCommand(fallbackCommand, info.devPort)
+
   return {
-    command: info.devCommand,
-    port: info.devPort,
+    command: fallbackCommand,
+    port: fallbackPort,
     label: info.displayName === 'Unknown' ? 'Dev Server' : `${info.displayName} Dev`,
+    suggestions,
+    requiresUserSelection,
   }
 }
-
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
 /**
  * Detect which package manager is used in the project
  */
 export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
-  const lockFiles: { file: string; manager: PackageManager }[] = [
-    { file: 'bun.lockb', manager: 'bun' },
-    { file: 'pnpm-lock.yaml', manager: 'pnpm' },
-    { file: 'yarn.lock', manager: 'yarn' },
-    { file: 'package-lock.json', manager: 'npm' },
-  ]
+  return detectPackageManagerFromRoot(projectPath)
+}
 
-  for (const { file, manager } of lockFiles) {
-    try {
-      const result = await window.electronAPI.project.readFile({ projectPath, filePath: file })
-      if (result.success) return manager
-    } catch { /* continue */ }
+function isWindowsClient(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
   }
-  return 'npm'
+  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+  return /win/i.test(platformHint)
 }
 
 /**
  * Get the install command for a package manager
  */
 export function getInstallCommand(pm: PackageManager): string {
-  const commands: Record<PackageManager, string> = {
-    bun: 'bun install',
-    pnpm: 'pnpm install',
-    yarn: 'yarn install',
-    npm: 'npm install',
-  }
+  const windows = isWindowsClient()
+  const commands: Record<PackageManager, string> = windows
+    ? {
+      bun: 'bun install',
+      pnpm: 'pnpm.cmd install',
+      yarn: 'yarn.cmd install',
+      npm: 'npm.cmd install',
+    }
+    : {
+      bun: 'bun install',
+      pnpm: 'pnpm install',
+      yarn: 'yarn install',
+      npm: 'npm install',
+    }
   return commands[pm]
 }
 

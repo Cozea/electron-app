@@ -39,6 +39,70 @@ export interface NormalizedGeneratedPlan {
   entities: NormalizedPlanEntity[]
 }
 
+// For this release, only web projects are executable.
+// Reserved for future use (not yet enabled): 'desktop' | 'mobile'.
+export type TargetPlatform = 'web'
+
+export interface BuildContract {
+  previewMode: 'web'
+  frameworkClass: 'web-framework'
+  toolchain?: Record<string, unknown>
+  commands?: Record<string, unknown>
+  constraints?: Record<string, unknown>
+  fallbackPolicy?: Record<string, unknown>
+  successCriteria?: Record<string, unknown>
+  telemetryHints?: Record<string, unknown>
+}
+
+export interface WebOnlyPlanConfigContract {
+  targetPlatform?: string
+  buildContract?: BuildContract | Record<string, unknown>
+}
+
+interface ValidationResult {
+  valid: boolean
+  error?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function getDefaultWebBuildContract(): BuildContract {
+  return {
+    previewMode: 'web',
+    frameworkClass: 'web-framework',
+  }
+}
+
+export function validateWebOnlyBuildContract(buildContract: unknown): ValidationResult {
+  if (!isRecord(buildContract)) {
+    return { valid: false, error: 'Missing build contract.' }
+  }
+
+  if (buildContract.previewMode !== 'web') {
+    return { valid: false, error: 'Build contract previewMode must be "web".' }
+  }
+
+  if (buildContract.frameworkClass !== 'web-framework') {
+    return { valid: false, error: 'Build contract frameworkClass must be "web-framework".' }
+  }
+
+  return { valid: true }
+}
+
+export function validateWebOnlyPlanConfig(config: WebOnlyPlanConfigContract | null | undefined): ValidationResult {
+  if (!config || typeof config !== 'object') {
+    return { valid: false, error: 'Missing plan configuration.' }
+  }
+
+  if (config.targetPlatform !== 'web') {
+    return { valid: false, error: 'Plan targetPlatform must be "web".' }
+  }
+
+  return validateWebOnlyBuildContract(config.buildContract)
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()

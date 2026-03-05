@@ -7,15 +7,11 @@ export default defineSchema({
     // WorkOS identifiers
     workosId: v.string(),
     email: v.string(),
+    normalizedEmail: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
-
-    // BYOK (Bring Your Own Keys) - encrypted in production
-    byokAnthropicKey: v.optional(v.string()),
-    byokOpenaiKey: v.optional(v.string()),
-    byokGoogleKey: v.optional(v.string()),
 
     // User preferences
     preferences: v.optional(
@@ -33,7 +29,8 @@ export default defineSchema({
     lastLoginAt: v.optional(v.number()),
   })
     .index("by_workos_id", ["workosId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_normalized_email", ["normalizedEmail"]),
 
   // Organizations - synced from WorkOS
   organizations: defineTable({
@@ -42,23 +39,6 @@ export default defineSchema({
     slug: v.string(),
     description: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
-
-    // Org-level AI credentials (encrypted with AES-256-GCM)
-    aiCredentials: v.optional(
-      v.object({
-        anthropicKey: v.optional(v.string()),
-        openaiKey: v.optional(v.string()),
-        googleKey: v.optional(v.string()),
-        xaiKey: v.optional(v.string()),
-      })
-    ),
-
-    // Legacy settings (kept for backward compatibility)
-    settings: v.object({
-      allowByok: v.boolean(), // Allow members to use their own keys
-      defaultModel: v.optional(v.string()),
-      monthlyCreditsLimit: v.optional(v.number()),
-    }),
 
     // AI-specific settings (new - per pricing spec)
     aiSettings: v.optional(
@@ -69,17 +49,12 @@ export default defineSchema({
             v.literal("anthropic"),
             v.literal("openai"),
             v.literal("google"),
-            v.literal("xai")
+            v.literal("xai"),
+            v.literal("moonshotai")
           )
         ),
         // Optional model allowlist (if set, only these model IDs are allowed)
         allowedModels: v.optional(v.array(v.string())),
-        // BYOK policy: required (free), optional (pro/max), disabled (enterprise)
-        byokPolicy: v.union(
-          v.literal("required"),
-          v.literal("optional"),
-          v.literal("disabled")
-        ),
         // Provider tools policy
         allowProviderTools: v.optional(v.boolean()),
         allowWebSearch: v.optional(v.boolean()),
@@ -92,19 +67,18 @@ export default defineSchema({
         defaultModelTier: v.optional(
           v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))
         ),
-        // Whether overage is enabled (paid plans only)
-        overageEnabled: v.optional(v.boolean()),
       })
     ),
 
-    // Subscription & billing (expanded for pricing spec)
+    // Subscription & billing (workspace infrastructure tiers)
     subscription: v.object({
       plan: v.union(
-        v.literal("free"),       // $0, BYOK only, 0 credits
-        v.literal("pro"),        // $20/mo, 5,000 credits
-        v.literal("max"),        // $50/mo, 15,000 credits
-        v.literal("team"),       // $40/seat/mo, 10,000/seat pooled
-        v.literal("enterprise")  // Custom pricing
+        v.literal("free"),       // Free
+        v.literal("pro"),        // Pro
+        v.literal("max"),        // Max
+        v.literal("startup"),    // Startup
+        v.literal("team"),       // Startup (legacy alias)
+        v.literal("enterprise")  // Enterprise
       ),
       status: v.union(
         v.literal("active"),
@@ -120,23 +94,6 @@ export default defineSchema({
       seatCount: v.optional(v.number()),
       // Billing catalog version (for migrations)
       catalogVersion: v.optional(v.string()),
-    }),
-
-    // Credits system (expanded per pricing spec)
-    credits: v.object({
-      // Subscription credits (expire at billing period end)
-      subscriptionCreditsRemaining: v.optional(v.number()),
-      subscriptionCreditsTotal: v.optional(v.number()),
-      // Overage tracking
-      overageCreditsUsed: v.optional(v.number()),
-      overageAmountCents: v.optional(v.number()),
-      // Billing period bounds
-      currentPeriodStart: v.optional(v.number()),
-      currentPeriodEnd: v.optional(v.number()),
-      // Legacy fields (for backward compat during migration)
-      balance: v.optional(v.number()),
-      monthlyAllocation: v.optional(v.number()),
-      lastResetAt: v.optional(v.number()),
     }),
 
     // Storage usage tracking
@@ -173,13 +130,6 @@ export default defineSchema({
       v.literal("admin"),
       v.literal("member"),
       v.literal("viewer")
-    ),
-
-    // Member-specific settings
-    settings: v.optional(
-      v.object({
-        useByok: v.boolean(), // Use personal keys instead of org keys
-      })
     ),
 
     // Timestamps
@@ -337,14 +287,9 @@ export default defineSchema({
     requestId: v.optional(v.string()),
 
     // Request details
-    model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.1"
+    model: v.string(), // e.g., "claude-sonnet-4-5", "gpt-5.3-codex"
     modelTier: v.optional(v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))),
-    provider: v.union(
-      v.literal("anthropic"),
-      v.literal("openai"),
-      v.literal("google"),
-      v.literal("xai")
-    ),
+    provider: v.string(),
 
     // Token counts from AI SDK response.usage
     promptTokens: v.number(),
@@ -360,16 +305,8 @@ export default defineSchema({
       })
     ),
 
-    // Cost tracking
-    creditsUsed: v.number(), // Normalized cost in credits
-    // Credit source breakdown (how credits were deducted)
-    creditSourceBreakdown: v.optional(
-      v.object({
-        fromSubscription: v.number(),
-        fromPurchased: v.number(),
-        fromOverage: v.number(),
-      })
-    ),
+    // Cost tracking (visibility only)
+    trackedUnits: v.number(),
 
     // Context
     feature: v.optional(v.string()), // e.g., "code-generation", "chat", "review"
@@ -392,7 +329,7 @@ export default defineSchema({
     rawFinishReason: v.optional(v.string()), // Provider-specific finish reason
 
     // Key source
-    keySource: v.union(v.literal("organization"), v.literal("byok")),
+    keySource: v.union(v.literal("organization"), v.literal("provider_auth")),
 
     timestamp: v.number(),
   })
@@ -412,7 +349,7 @@ export default defineSchema({
     totalPromptTokens: v.number(),
     totalCompletionTokens: v.number(),
     totalTokens: v.number(),
-    totalCreditsUsed: v.number(),
+    totalTrackedUnits: v.number(),
     requestCount: v.number(),
 
     // Breakdown by model (stored as JSON)
@@ -423,6 +360,110 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_organization_and_period", ["organizationId", "period", "periodStart"]),
+
+  // Agent run metadata for durable status tracking and replay.
+  aiAgentRuns: defineTable({
+    runId: v.string(),
+    organizationWorkosId: v.string(),
+    conversationId: v.optional(v.string()),
+    model: v.string(),
+    provider: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("budget_exceeded")
+    ),
+    maxCostUsd: v.optional(v.number()),
+    cumulativeCostUsd: v.number(),
+    promptTokens: v.number(),
+    completionTokens: v.number(),
+    totalTokens: v.number(),
+    billedUsd: v.optional(v.number()),
+    walletHoldId: v.optional(v.string()),
+    stepsCount: v.number(),
+    error: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run_id", ["runId"])
+    .index("by_organization_and_started", ["organizationWorkosId", "startedAt"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
+
+  // Per-step usage/cost rows for each agent run.
+  aiAgentRunSteps: defineTable({
+    runId: v.string(),
+    organizationWorkosId: v.string(),
+    step: v.number(),
+    promptTokens: v.number(),
+    completionTokens: v.number(),
+    totalTokens: v.number(),
+    costUsd: v.number(),
+    cumulativeCostUsd: v.number(),
+    timestamp: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_step", ["runId", "step"])
+    .index("by_organization_and_created", ["organizationWorkosId", "createdAt"]),
+
+  // Versioned model catalog snapshots after models.dev normalization.
+  aiModelSnapshots: defineTable({
+    snapshotId: v.string(),
+    source: v.string(),
+    updatedAt: v.number(),
+    modelCount: v.number(),
+    models: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_snapshot_id", ["snapshotId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Versioned pricing snapshots derived from model catalog snapshots.
+  aiPricingSnapshots: defineTable({
+    snapshotId: v.string(),
+    source: v.string(),
+    updatedAt: v.number(),
+    modelCount: v.number(),
+    pricing: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_snapshot_id", ["snapshotId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Organization-scoped router rules for capability-based model routing.
+  aiRouterRules: defineTable({
+    organizationWorkosId: v.string(),
+    rules: v.any(),
+    version: v.string(),
+    source: v.optional(v.string()),
+    updatedByWorkosUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationWorkosId"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
+
+  // Workspace/repo runtime session metadata for local execution and tool policy context.
+  aiRepoSessions: defineTable({
+    sessionId: v.string(),
+    organizationWorkosId: v.string(),
+    projectId: v.optional(v.string()),
+    workspaceRoot: v.string(),
+    runtime: v.union(v.literal("local"), v.literal("cloud")),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    metadata: v.optional(v.any()),
+    lastSeenAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session_id", ["sessionId"])
+    .index("by_organization_and_status", ["organizationWorkosId", "status"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
 
   // Audit logs for compliance
   auditLogs: defineTable({
@@ -440,105 +481,18 @@ export default defineSchema({
     .index("by_organization_and_timestamp", ["organizationId", "timestamp"])
     .index("by_user", ["userId"]),
 
-  // ============================================
-  // BILLING TABLES (per pricing spec v3)
-  // ============================================
-
-  // Purchased credit packs (12-month expiration)
-  creditLots: defineTable({
-    organizationId: v.id("organizations"),
-
-    // Pack type determines credits and price
-    packType: v.union(
-      v.literal("starter"),  // 1,000 credits, $12
-      v.literal("plus"),     // 5,000 credits, $50
-      v.literal("pro"),      // 15,000 credits, $120
-      v.literal("max")       // 50,000 credits, $350
-    ),
-
-    // Credit amounts
-    originalCredits: v.number(),
-    remainingCredits: v.number(),
-
-    // Stripe tracking
-    stripePaymentIntentId: v.optional(v.string()),
-    stripeCheckoutSessionId: v.optional(v.string()),
-    amountPaidCents: v.number(),
-
-    // Lifecycle
-    purchasedAt: v.number(),
-    expiresAt: v.number(), // 12 months from purchase
-    status: v.union(
-      v.literal("active"),
-      v.literal("exhausted"),
-      v.literal("expired"),
-      v.literal("refunded")
-    ),
-
-    // Metadata
-    purchasedBy: v.optional(v.id("users")),
-    notes: v.optional(v.string()),
+  // Identity repair and duplication reconciliation audit.
+  identityRepairRuns: defineTable({
+    scope: v.union(v.literal("scan"), v.literal("repair")),
+    dryRun: v.boolean(),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
+    summary: v.optional(v.any()),
+    error: v.optional(v.string()),
   })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_expiration", ["expiresAt"])
-    .index("by_stripe_payment", ["stripePaymentIntentId"]),
-
-  // Invoices for overage billing
-  invoices: defineTable({
-    organizationId: v.id("organizations"),
-
-    // Billing period
-    periodStart: v.number(),
-    periodEnd: v.number(),
-
-    // Amounts breakdown (all in cents)
-    subscriptionAmountCents: v.number(),
-    overageAmountCents: v.number(),
-    creditPackAmountCents: v.number(),
-    taxAmountCents: v.optional(v.number()),
-    totalAmountCents: v.number(),
-
-    // Overage details
-    overageCreditsUsed: v.optional(v.number()),
-    overageRateCentsPerCredit: v.optional(v.number()),
-
-    // Stripe tracking
-    stripeInvoiceId: v.optional(v.string()),
-    stripePaymentIntentId: v.optional(v.string()),
-    stripeHostedInvoiceUrl: v.optional(v.string()),
-    stripePdfUrl: v.optional(v.string()),
-
-    // Status
-    status: v.union(
-      v.literal("draft"),
-      v.literal("open"),
-      v.literal("paid"),
-      v.literal("void"),
-      v.literal("uncollectible")
-    ),
-
-    // Line items (for detailed breakdown)
-    lineItems: v.optional(
-      v.array(
-        v.object({
-          description: v.string(),
-          quantity: v.number(),
-          unitAmountCents: v.number(),
-          totalCents: v.number(),
-        })
-      )
-    ),
-
-    // Timestamps
-    createdAt: v.number(),
-    paidAt: v.optional(v.number()),
-    dueAt: v.optional(v.number()),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_stripe_invoice", ["stripeInvoiceId"])
-    .index("by_period", ["periodStart", "periodEnd"]),
+    .index("by_started_at", ["startedAt"])
+    .index("by_status", ["status"]),
 
   // Tool registry for agent capabilities
   tools: defineTable({
@@ -562,7 +516,8 @@ export default defineSchema({
         v.literal("anthropic"),
         v.literal("openai"),
         v.literal("google"),
-        v.literal("xai")
+        v.literal("xai"),
+        v.literal("moonshotai")
       )
     ),
 
@@ -651,21 +606,197 @@ export default defineSchema({
     catalogVersion: v.string(),
     mode: v.union(v.literal("test"), v.literal("live")),
     subscriptionPrices: v.object({
-      pro: v.object({ productId: v.string(), priceId: v.string() }),
-      max: v.object({ productId: v.string(), priceId: v.string() }),
-      team: v.object({ productId: v.string(), priceId: v.string() }),
-    }),
-    creditPackPrices: v.object({
-      starter: v.object({ productId: v.string(), priceId: v.string() }),
-      plus: v.object({ productId: v.string(), priceId: v.string() }),
-      pro: v.object({ productId: v.string(), priceId: v.string() }),
-      max: v.object({ productId: v.string(), priceId: v.string() }),
+      startupMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      startupYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      proMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      proYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      maxMonthly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      maxYearly: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      // Legacy aliases kept for compatibility with older catalog payloads.
+      pro: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      max: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
+      team: v.optional(v.object({ productId: v.string(), priceId: v.string() })),
     }),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_version", ["catalogVersion"])
     .index("by_updated_at", ["updatedAt"]),
+
+  // Account-scoped billing subscription source of truth.
+  accountSubscriptions: defineTable({
+    accountUserId: v.id("users"),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("startup"),
+      v.literal("enterprise")
+    ),
+    status: v.union(
+      v.literal("active"),
+      v.literal("canceled"),
+      v.literal("past_due"),
+      v.literal("trialing")
+    ),
+    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
+    seatQuantity: v.optional(v.number()),
+    trialStart: v.optional(v.number()),
+    trialEnd: v.optional(v.number()),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    stripePriceId: v.optional(v.string()),
+    stripeProductId: v.optional(v.string()),
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    cancelAt: v.optional(v.number()),
+    canceledAt: v.optional(v.number()),
+    legacyOrganizationId: v.optional(v.id("organizations")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_user", ["accountUserId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Maps an organization to the account that owns its paid seat pool.
+  organizationBillingAccounts: defineTable({
+    organizationId: v.id("organizations"),
+    billingUserId: v.id("users"),
+    mode: v.union(v.literal("account")),
+    migratedFromLegacyWorkspaceBilling: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_billing_user", ["billingUserId"])
+    .index("by_organization_and_billing_user", ["organizationId", "billingUserId"]),
+
+  // Explicit paid-seat assignments for a workspace under a billing account.
+  accountSeatAssignments: defineTable({
+    organizationId: v.id("organizations"),
+    billingUserId: v.id("users"),
+    assignedUserId: v.id("users"),
+    assignedByUserId: v.optional(v.id("users")),
+    source: v.optional(v.union(v.literal("owner_auto"), v.literal("manual"), v.literal("migration"))),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    assignedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_billing_user_and_organization", ["billingUserId", "organizationId"])
+    .index("by_billing_org_assigned", ["billingUserId", "organizationId", "assignedUserId"])
+    .index("by_organization_assigned", ["organizationId", "assignedUserId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // AI wallet balances for Cozea-managed provider billing.
+  aiWallets: defineTable({
+    scopeType: v.union(v.literal("organization"), v.literal("user")),
+    scopeKey: v.string(),
+    organizationId: v.optional(v.id("organizations")),
+    ownerUserId: v.optional(v.id("users")),
+    currency: v.string(),
+    balanceCents: v.number(),
+    heldCents: v.number(),
+    totalDebitedCents: v.number(),
+    totalCreditedCents: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_scope_key", ["scopeKey"])
+    .index("by_organization", ["organizationId"])
+    .index("by_owner_user", ["ownerUserId"])
+    .index("by_owner_and_organization", ["ownerUserId", "organizationId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Temporary holds while AI requests are in flight.
+  aiWalletHolds: defineTable({
+    walletId: v.id("aiWallets"),
+    requestId: v.string(),
+    organizationId: v.id("organizations"),
+    actorUserId: v.id("users"),
+    payerUserId: v.id("users"),
+    amountCents: v.number(),
+    capturedCents: v.number(),
+    releasedCents: v.number(),
+    status: v.union(v.literal("held"), v.literal("captured"), v.literal("released")),
+    feature: v.optional(v.string()),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    capturedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_wallet", ["walletId"])
+    .index("by_wallet_and_request", ["walletId", "requestId"])
+    .index("by_request", ["requestId"])
+    .index("by_status", ["status"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  // Immutable wallet ledger entries.
+  aiWalletLedger: defineTable({
+    walletId: v.id("aiWallets"),
+    organizationId: v.id("organizations"),
+    actorUserId: v.optional(v.id("users")),
+    payerUserId: v.id("users"),
+    holdId: v.optional(v.id("aiWalletHolds")),
+    requestId: v.optional(v.string()),
+    kind: v.union(
+      v.literal("credit"),
+      v.literal("debit"),
+      v.literal("hold"),
+      v.literal("release"),
+      v.literal("adjustment")
+    ),
+    amountCents: v.number(),
+    balanceAfterCents: v.number(),
+    availableAfterCents: v.number(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_wallet", ["walletId"])
+    .index("by_wallet_and_created", ["walletId", "createdAt"])
+    .index("by_request", ["requestId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_payer_user", ["payerUserId"])
+    .index("by_created_at", ["createdAt"]),
+
+  // Idempotent cycle/assignment wallet reset records.
+  aiWalletPeriodGrants: defineTable({
+    grantKey: v.string(),
+    walletId: v.id("aiWallets"),
+    organizationId: v.id("organizations"),
+    targetUserId: v.id("users"),
+    billingUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("users")),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("startup"),
+      v.literal("enterprise")
+    ),
+    cycle: v.optional(v.union(v.literal("monthly"), v.literal("yearly"))),
+    source: v.union(
+      v.literal("subscription_cycle"),
+      v.literal("seat_assignment"),
+      v.literal("manual")
+    ),
+    includedCents: v.number(),
+    appliedDeltaCents: v.number(),
+    periodStart: v.optional(v.number()),
+    periodEnd: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_grant_key", ["grantKey"])
+    .index("by_wallet_and_created", ["walletId", "createdAt"])
+    .index("by_organization_and_created", ["organizationId", "createdAt"])
+    .index("by_target_user", ["targetUserId"]),
 
   // ============================================
   // PROJECT SYSTEM TABLES
@@ -689,11 +820,26 @@ export default defineSchema({
 
     // Template & Stack
     template: v.optional(v.string()),
+    // Current release supports web only.
+    // Reserved for future use (not yet enabled): desktop, mobile.
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()), // supabase, convex, firebase, postgres
         hosting: v.optional(v.string()), // vercel, netlify, railway, aws
-        aiProvider: v.optional(v.string()), // openai, anthropic, byok, none
+        aiProvider: v.optional(v.string()), // openai, anthropic, google, none
       })
     ),
 
@@ -773,11 +919,33 @@ export default defineSchema({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()), // Provider-specific tool options
       })
     ),
@@ -995,6 +1163,19 @@ export default defineSchema({
             name: v.optional(v.string()),
             description: v.optional(v.string()),
             audience: v.optional(v.string()),
+            targetPlatform: v.optional(v.union(v.literal("web"))),
+            buildContract: v.optional(
+              v.object({
+                previewMode: v.union(v.literal("web")),
+                frameworkClass: v.union(v.literal("web-framework")),
+                toolchain: v.optional(v.any()),
+                commands: v.optional(v.any()),
+                constraints: v.optional(v.any()),
+                fallbackPolicy: v.optional(v.any()),
+                successCriteria: v.optional(v.any()),
+                telemetryHints: v.optional(v.any()),
+              })
+            ),
             template: v.optional(v.string()),
             stack: v.optional(
               v.object({
@@ -1069,7 +1250,7 @@ export default defineSchema({
     conversationId: v.optional(v.string()),
     localPath: v.optional(v.string()),
 
-    // Latest task state (from build_tasks tool)
+    // Latest task state (from todowrite tool)
     tasks: v.optional(
       v.array(
         v.object({
@@ -1165,6 +1346,71 @@ export default defineSchema({
     .index("by_project_and_status", ["projectId", "status"])
     .index("by_storage_id", ["storageId"]),
 
+  // Canonical Git replica metadata (secondary sync truth).
+  projectReplicaGit: defineTable({
+    projectId: v.id("projects"),
+    canonicalRef: v.string(),
+    headCommit: v.optional(v.string()),
+    bundleStorageId: v.optional(v.id("_storage")),
+    bundleChecksum: v.optional(v.string()),
+    bundleSizeBytes: v.optional(v.number()),
+    version: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Git replica session lifecycle and diagnostics.
+  projectReplicaGitSessions: defineTable({
+    projectId: v.id("projects"),
+    sessionId: v.string(),
+    userId: v.id("users"),
+    deviceId: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
+    localCommit: v.optional(v.string()),
+    remoteCommit: v.optional(v.string()),
+    resultCommit: v.optional(v.string()),
+    status: v.union(
+      v.literal("planned"),
+      v.literal("applied"),
+      v.literal("conflict"),
+      v.literal("failed"),
+      v.literal("queued")
+    ),
+    diagnostics: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_session", ["projectId", "sessionId"])
+    .index("by_status", ["status"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Optional lock observability for server-side distributed lock operations.
+  projectReplicaGitLocks: defineTable({
+    projectId: v.id("projects"),
+    lockKey: v.string(),
+    owner: v.string(),
+    expiresAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  // Binary/LFS-like payload objects for Git replica.
+  projectReplicaLfsObjects: defineTable({
+    projectId: v.id("projects"),
+    oid: v.string(),
+    size: v.number(),
+    storageId: v.id("_storage"),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_oid", ["projectId", "oid"])
+    .index("by_storage_id", ["storageId"]),
+
   // ============================================
   // YJS COLLABORATIVE EDITING TABLES
   // ============================================
@@ -1172,18 +1418,27 @@ export default defineSchema({
   // Yjs incremental updates for real-time collaboration
   yjsUpdates: defineTable({
     projectId: v.id("projects"),
+    // Backward-compatible: older rows may not have roomId/seq yet.
+    roomId: v.optional(v.string()),
+    seq: v.optional(v.number()),
     update: v.bytes(), // Binary Yjs update
     clientId: v.string(), // Y.Doc clientID as string
     origin: v.optional(v.string()), // "user", "agent", "init", etc.
+    idempotencyKey: v.optional(v.string()),
     timestamp: v.number(),
   })
-    .index("by_project_and_time", ["projectId", "timestamp"]),
+    .index("by_project_and_time", ["projectId", "timestamp"])
+    .index("by_project_and_seq", ["projectId", "seq"])
+    .index("by_project_and_idempotency", ["projectId", "idempotencyKey"]),
 
   // Yjs document snapshots for recovery/initialization
   yjsDocuments: defineTable({
     projectId: v.id("projects"),
     snapshot: v.bytes(), // Full Y.Doc state as binary
     version: v.number(),
+    snapshotBaseSeq: v.optional(v.number()),
+    byteSize: v.optional(v.number()),
+    createdByClientId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])
@@ -1195,6 +1450,7 @@ export default defineSchema({
     clientId: v.string(), // Y.Doc clientID as string
     update: v.bytes(), // Awareness update bytes
     updatedAt: v.number(),
+    expiresAt: v.optional(v.number()),
   })
     .index("by_project_and_client", ["projectId", "clientId"])
     .index("by_project_and_updated", ["projectId", "updatedAt"])
@@ -1312,6 +1568,26 @@ export default defineSchema({
     .index("by_user_and_status", ["userId", "status"])
     .index("by_project_user_status", ["projectId", "userId", "status"]),
 
+  // Conversation continuation linkage for Responses-style providers.
+  // Stores provider response linkage state so continuation survives server restarts.
+  aiContinuationState: defineTable({
+    organizationId: v.string(), // WorkOS org id from AI runtime request
+    conversationId: v.string(),
+    provider: v.string(),
+    model: v.string(),
+    previousResponseId: v.string(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_org_conversation_provider_model", [
+      "organizationId",
+      "conversationId",
+      "provider",
+      "model",
+    ])
+    .index("by_org_conversation", ["organizationId", "conversationId"])
+    .index("by_expires_at", ["expiresAt"]),
+
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),
@@ -1387,5 +1663,35 @@ export default defineSchema({
     .searchIndex("search_assets", {
       searchField: "name",
       filterFields: ["projectId"],
-    }),
+  }),
+
+  // ============================================
+  // DEPLOYMENT JOBS
+  // ============================================
+  deploymentJobs: defineTable({
+    projectId: v.id("projects"),
+    requestedBy: v.id("users"),
+    target: v.union(v.literal("preview"), v.literal("production")),
+    provider: v.union(v.literal("railway")),
+    commitSha: v.optional(v.string()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("canceled")
+    ),
+    providerDeploymentId: v.optional(v.string()),
+    statusUrl: v.optional(v.string()),
+    error: v.optional(v.string()),
+    logs: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_status", ["projectId", "status"])
+    .index("by_requested_by", ["requestedBy"])
+    .index("by_updated_at", ["updatedAt"]),
 })

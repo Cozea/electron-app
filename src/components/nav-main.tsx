@@ -1,4 +1,4 @@
-import { memo, type ComponentType, useCallback, useRef } from "react"
+import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, useCallback, useRef } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 import {
@@ -9,6 +9,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
+import { useSettingsDrawerStore } from "@/stores/useSettingsDrawerStore"
 
 export interface NavMainItem {
   title: string
@@ -16,6 +17,7 @@ export interface NavMainItem {
   icon?: ComponentType<{ className?: string }>
   alpha?: boolean
   preload?: () => Promise<unknown>
+  openInSettingsDrawer?: boolean
 }
 
 interface NavMainProps {
@@ -30,6 +32,7 @@ export const NavMain = memo(function NavMain({
   const location = useLocation()
   const currentPath = location.pathname
   const preloadedUrlsRef = useRef<Set<string>>(new Set())
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
 
   const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/"
   const normalizedCurrentPath = normalizePath(currentPath)
@@ -65,6 +68,12 @@ export const NavMain = memo(function NavMain({
     })
   }, [])
 
+  const handleItemClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>, item: NavMainItem) => {
+    if (!item.openInSettingsDrawer) return
+    event.preventDefault()
+    openSettingsDrawer(item.url)
+  }, [openSettingsDrawer])
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
@@ -78,6 +87,7 @@ export const NavMain = memo(function NavMain({
             >
               <Link
                 to={item.url}
+                onClick={(event) => handleItemClick(event, item)}
                 onMouseEnter={() => preloadItem(item)}
                 onFocus={() => preloadItem(item)}
                 onPointerDown={() => preloadItem(item)}

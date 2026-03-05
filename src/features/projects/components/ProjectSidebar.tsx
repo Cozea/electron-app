@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useNavigate, useParams, useLocation } from "react-router-dom"
+import { useParams, useLocation } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -83,6 +84,22 @@ const routeMap: Record<string, string> = {
     "Settings": "settings",
 }
 
+function getActiveTabFromPathname(pathname: string, slug?: string): string | null {
+    if (!slug) return null
+
+    const base = `/projects/${slug}`
+    if (pathname === base || pathname === `${base}/`) return "Files"
+    if (pathname === `${base}/pages` || pathname.startsWith(`${base}/pages/`)) return "Pages"
+    if (pathname === `${base}/tasks` || pathname.startsWith(`${base}/tasks/`)) return "Tasks"
+    if (pathname === `${base}/changes` || pathname.startsWith(`${base}/changes/`)) return "Sync Feed"
+    if (pathname === `${base}/dependencies` || pathname.startsWith(`${base}/dependencies/`)) return "Dependencies"
+    if (pathname === `${base}/database` || pathname.startsWith(`${base}/database/`)) return "Database"
+    if (pathname === `${base}/backend` || pathname.startsWith(`${base}/backend/`)) return "Backend Studio"
+    if (pathname.startsWith(`${base}/settings`)) return "Settings"
+
+    return null
+}
+
 const projectRoutePreloaders: Record<string, () => Promise<unknown>> = {
     "Tasks": () => import("@/features/projects/pages/TasksPage"),
     "Pages": () => import("@/features/projects/pages/ProjectPagesPage"),
@@ -130,6 +147,13 @@ const NAV_GROUPS = [
     }
 ] as const
 
+function isMacClient(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+    return /mac/i.test(platformHint)
+}
+
 export function ProjectSidebar({
     user,
     onLogout,
@@ -145,7 +169,8 @@ export function ProjectSidebar({
     className,
     ...props
 }: ProjectSidebarProps) {
-    const navigate = useNavigate()
+    const applyWindowControlsInset = isMacClient()
+    const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
     const location = useLocation()
     const { currentOrganization, convexUserId } = useAuth()
@@ -153,9 +178,12 @@ export function ProjectSidebar({
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
     const preloadedTabsRef = React.useRef<Set<string>>(new Set())
 
-    const isFilesRoute = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
-    const isPagesRoute = Boolean(slug && location.pathname === `/projects/${slug}/pages`)
-    const isSettingsRoute = Boolean(slug && location.pathname.startsWith(`/projects/${slug}/settings`))
+    const routeActiveTab = React.useMemo(
+        () => getActiveTabFromPathname(location.pathname, slug),
+        [location.pathname, slug]
+    )
+    const isFilesRoute = routeActiveTab === "Files"
+    const isPagesRoute = routeActiveTab === "Pages"
 
     const preloadProjectTab = React.useCallback((tabTitle: string) => {
         const preloader = projectRoutePreloaders[tabTitle]
@@ -169,20 +197,12 @@ export function ProjectSidebar({
     }, [])
 
     // Top-level active selection (e.g. "Files", "Tasks")
-    const [activeTab, setActiveTab] = React.useState<string | null>(() => {
-        if (isFilesRoute) return "Files"
-        if (isPagesRoute) return "Pages"
-        if (isSettingsRoute) return "Settings"
-        return null
-    })
+    const [activeTab, setActiveTab] = React.useState<string | null>(routeActiveTab)
 
-    // Keep rail selection in sync with route (e.g. when navigating to /pages)
+    // Keep rail selection in sync with route.
     React.useEffect(() => {
-        if (isPagesRoute) setActiveTab("Pages")
-        else if (isSettingsRoute) setActiveTab("Settings")
-        else if (isFilesRoute) setActiveTab("Files")
-        else setActiveTab(null)
-    }, [isFilesRoute, isPagesRoute, isSettingsRoute])
+        setActiveTab(routeActiveTab)
+    }, [routeActiveTab])
 
     // Track last seen timestamp for sync feed (triggers re-render when updated)
     const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
@@ -240,6 +260,7 @@ export function ProjectSidebar({
     const fileScrollRef = React.useRef<HTMLDivElement | null>(null)
     const [showFileTopFade, setShowFileTopFade] = React.useState(false)
     const [showFileBottomFade, setShowFileBottomFade] = React.useState(false)
+    const [fileScrollElement, setFileScrollElement] = React.useState<HTMLDivElement | null>(null)
 
     React.useEffect(() => {
         secondaryWidthRef.current = secondaryWidth
@@ -346,8 +367,11 @@ export function ProjectSidebar({
         }
     }, [])
 
+    const isFilesPanelActive = activeTab === 'Files' && isFilesRoute
+    const isPagesPanelActive = isPagesRoute && pagesListOpen
+
     React.useEffect(() => {
-        if (activeTab !== 'Files') {
+        if (!isFilesPanelActive) {
             setShowFileTopFade(false)
             setShowFileBottomFade(false)
             return
@@ -368,11 +392,26 @@ export function ProjectSidebar({
             el.removeEventListener('scroll', onScroll)
             resizeObserver.disconnect()
         }
-    }, [activeTab, updateFileScrollFades])
+    }, [isFilesPanelActive, updateFileScrollFades])
 
     const isSecondarySidebarVisible =
         (activeTab === "Files" && isFilesRoute) ||
         (isPagesRoute && pagesListOpen)
+
+    React.useEffect(() => {
+        setFileScrollElement(fileScrollRef.current)
+    }, [isFilesPanelActive, isPagesPanelActive, isSecondarySidebarVisible])
+
+    const fileTreeElement = React.useMemo(() => {
+        if (!React.isValidElement(fileTree)) return fileTree
+        return React.cloneElement(
+            fileTree as React.ReactElement<{ isVisible?: boolean; scrollParent?: HTMLElement | null }>,
+            {
+                isVisible: isFilesPanelActive && isSecondarySidebarVisible,
+                scrollParent: fileScrollElement,
+            }
+        )
+    }, [fileTree, fileScrollElement, isFilesPanelActive, isSecondarySidebarVisible])
 
     React.useEffect(() => {
         onSecondaryVisibilityChange?.(isSecondarySidebarVisible)
@@ -387,13 +426,18 @@ export function ProjectSidebar({
                     className="w-56 shrink-0 z-20 h-screen sidebar-glass"
                     {...props}
                 >
-                    <SidebarHeader className="mt-9 titlebar-drag-region">
+                    <SidebarHeader className={cn("titlebar-drag-region", applyWindowControlsInset && "mt-9")}>
                         <div className="titlebar-no-drag">
                             <ContextSwitcher />
                         </div>
                     </SidebarHeader>
 
-                    <SidebarContent className="titlebar-no-drag group-data-[collapsible=icon]:mt-9">
+                    <SidebarContent
+                        className={cn(
+                            "titlebar-no-drag",
+                            applyWindowControlsInset && "group-data-[collapsible=icon]:mt-9"
+                        )}
+                    >
                         {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -435,7 +479,7 @@ export function ProjectSidebar({
                                                             } else if (hasSecondaryPanel) {
                                                                 setActiveTab(isActive ? null : item.title)
                                                             } else {
-                                                                setActiveTab(null)
+                                                                setActiveTab(item.title)
                                                             }
                                                         }}
                                                     >
@@ -498,101 +542,109 @@ export function ProjectSidebar({
                 } as React.CSSProperties}
                 className="h-full hidden md:flex relative shrink-0"
             >
-                {isSecondarySidebarVisible && (
-                    <>
-                        <Sidebar
-                            side="left"
-                            variant="sidebar"
-                            collapsible="none"
-                            className="shrink-0 h-full bg-sidebar flex-1 min-w-0 relative sidebar-fade-border sidebar-fade-border-right"
-                        >
-                            <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
-                                <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
-                                    {activeTab === 'Files' && onCreateFile && (
-                                        <button
-                                            onClick={onCreateFile}
-                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
-                                            title="New File"
-                                        >
-                                            <FilePlus className="h-3.5 w-3.5" />
-                                        </button>
-                                    )}
-                                    {activeTab === 'Files' && onCreateFolder && (
-                                        <button
-                                            onClick={onCreateFolder}
-                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
-                                            title="New Folder"
-                                        >
-                                            <FolderPlus className="h-3.5 w-3.5" />
-                                        </button>
-                                    )}
-                                    {activeTab === 'Files' && onRefreshFiles && (
-                                        <button
-                                            onClick={onRefreshFiles}
-                                            disabled={isRefreshing}
-                                            className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
-                                            title="Refresh"
-                                        >
-                                            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
-                                        </button>
-                                    )}
+                <>
+                    <Sidebar
+                        side="left"
+                        variant="sidebar"
+                        collapsible="none"
+                        className="shrink-0 h-full bg-sidebar flex-1 min-w-0 relative sidebar-fade-border sidebar-fade-border-right"
+                    >
+                        <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
+                            <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
+                                {activeTab === 'Files' && onCreateFile && (
                                     <button
-                                        onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
+                                        onClick={onCreateFile}
                                         className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
-                                        aria-label="Close secondary sidebar"
+                                        title="New File"
                                     >
-                                        <Plus className="h-4 w-4 rotate-45" />
+                                        <FilePlus className="h-3.5 w-3.5" />
                                     </button>
-                                </div>
-                            </SidebarHeader>
-                            <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-2">
-                                {activeTab === 'Files' ? (
-                                    <div className="relative h-full">
-                                        <div
-                                            ref={fileScrollRef}
-                                            className="app-scrollbar h-full overflow-y-auto overflow-x-hidden"
-                                        >
-                                            {fileTree ? fileTree : <div className="p-4 text-sm text-destructive">Initializing files...</div>}
-                                        </div>
-                                        <div
-                                            className={cn(
-                                                "pointer-events-none absolute left-0 right-0 top-0 h-5 bg-gradient-to-b from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
-                                                showFileTopFade ? "opacity-100" : "opacity-0"
-                                            )}
-                                        />
-                                        <div
-                                            className={cn(
-                                                "pointer-events-none absolute left-0 right-0 bottom-0 h-5 bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
-                                                showFileBottomFade ? "opacity-100" : "opacity-0"
-                                            )}
-                                        />
-                                    </div>
-                                ) : (
-                                    <>
-                                        {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
-                                    </>
                                 )}
-                            </SidebarContent>
-                        </Sidebar>
-                        {/* Resize Handle with border */}
-                        <div
-                            onMouseDown={handleResizeStart}
-                            className={cn(
-                                "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group",
-                                "hover:bg-primary/20 active:bg-primary/30",
-                                isResizing && "bg-primary/30"
-                            )}
-                        >
-                            <div className={cn(
-                                "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
-                                "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
-                                isResizing && "opacity-100"
-                            )}>
-                                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                {activeTab === 'Files' && onCreateFolder && (
+                                    <button
+                                        onClick={onCreateFolder}
+                                        className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
+                                        title="New Folder"
+                                    >
+                                        <FolderPlus className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                                {activeTab === 'Files' && onRefreshFiles && (
+                                    <button
+                                        onClick={onRefreshFiles}
+                                        disabled={isRefreshing}
+                                        className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
+                                        title="Refresh"
+                                    >
+                                        <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
+                                    className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
+                                    aria-label="Close secondary sidebar"
+                                >
+                                    <Plus className="h-4 w-4 rotate-45" />
+                                </button>
                             </div>
+                        </SidebarHeader>
+                        <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-2">
+                            <div className="relative h-full">
+                                <div
+                                    className={cn(
+                                        "absolute inset-0 transition-opacity duration-150",
+                                        isFilesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                                    )}
+                                >
+                                    <div
+                                        ref={fileScrollRef}
+                                        className="app-scrollbar h-full overflow-y-auto overflow-x-hidden"
+                                    >
+                                        {fileTreeElement ? fileTreeElement : <div className="p-4 text-sm text-destructive">Initializing files...</div>}
+                                    </div>
+                                    <div
+                                        className={cn(
+                                            "pointer-events-none absolute left-0 right-0 top-0 h-5 bg-gradient-to-b from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                            isFilesPanelActive && showFileTopFade ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    <div
+                                        className={cn(
+                                            "pointer-events-none absolute left-0 right-0 bottom-0 h-5 bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                            isFilesPanelActive && showFileBottomFade ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                </div>
+
+                                <div
+                                    className={cn(
+                                        "absolute inset-0 transition-opacity duration-150",
+                                        isPagesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                                    )}
+                                >
+                                    {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
+                                </div>
+                            </div>
+                        </SidebarContent>
+                    </Sidebar>
+                    {/* Resize Handle with border */}
+                    <div
+                        onMouseDown={handleResizeStart}
+                        className={cn(
+                            "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 group",
+                            "hover:bg-primary/20 active:bg-primary/30",
+                            isResizing && "bg-primary/30"
+                        )}
+                    >
+                        <div className={cn(
+                            "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
+                            "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
+                            isResizing && "opacity-100"
+                        )}>
+                            <GripVertical className="h-3 w-3 text-muted-foreground" />
                         </div>
-                    </>
-                )}
+                    </div>
+                </>
             </div>
         </div>
     )

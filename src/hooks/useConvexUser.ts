@@ -11,8 +11,6 @@ interface ConvexUser {
   firstName?: string
   lastName?: string
   profileImageUrl?: string
-  byokAnthropicKey?: string
-  byokOpenaiKey?: string
   preferences?: {
     theme?: "light" | "dark" | "system"
     defaultModel?: string

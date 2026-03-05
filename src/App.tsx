@@ -1,44 +1,22 @@
-import { Suspense, lazy, useEffect, type ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Suspense, lazy, useEffect, useEffectEvent, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
+
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { UpdateMenu } from './components/updates/UpdateMenu'
-// Eager load core pages for instant startup (VS Code style)
-import { Projects } from './pages/Projects'
-import { Members } from './pages/teams/Members'
-import { ProjectLayout } from './features/projects/layouts/ProjectLayout'
-
-// Lazy load other non-critical pages
-const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })))
-const NewProject = lazy(() => import('./pages/NewProject').then(m => ({ default: m.NewProject })))
-const ProjectBuild = lazy(() => import('./pages/ProjectBuild').then(m => ({ default: m.ProjectBuild })))
-const ProjectDetailPage = lazy(() => import('./features/projects/pages/ProjectDetailPage').then(m => ({ default: m.ProjectDetailPage })))
-const ProjectPagesPage = lazy(() => import('./features/projects/pages/ProjectPagesPage').then(m => ({ default: m.ProjectPagesPage })))
-const ProjectDatabasePage = lazy(() => import('./features/projects/pages/ProjectDatabasePage').then(m => ({ default: m.ProjectDatabasePage })))
-const ProjectDependenciesPage = lazy(() => import('./features/projects/pages/ProjectDependenciesPage').then(m => ({ default: m.ProjectDependenciesPage })))
-const ProjectBackendStudioPage = lazy(() => import('./features/projects/pages/ProjectBackendStudioPage').then(m => ({ default: m.ProjectBackendStudioPage })))
-const ChangesPage = lazy(() => import('./features/projects/pages/ChangesPage').then(m => ({ default: m.ChangesPage })))
-const TasksPage = lazy(() => import('./features/projects/pages/TasksPage').then(m => ({ default: m.TasksPage })))
-const ProjectSettingsPage = lazy(() => import('./features/projects/pages/ProjectSettingsPage').then(m => ({ default: m.ProjectSettingsPage })))
-
-// Other pages
-const MemberDetails = lazy(() => import('./pages/teams/MemberDetails').then(m => ({ default: m.MemberDetails })))
-const Roles = lazy(() => import('./pages/teams/Roles').then(m => ({ default: m.Roles })))
-const General = lazy(() => import('./pages/workspace/General').then(m => ({ default: m.General })))
-const Billing = lazy(() => import('./pages/workspace/Billing').then(m => ({ default: m.Billing })))
-const AI = lazy(() => import('./pages/workspace/AI').then(m => ({ default: m.AI })))
-const Integrations = lazy(() => import('./pages/workspace/Integrations').then(m => ({ default: m.Integrations })))
-const Sync = lazy(() => import('./pages/workspace/Sync').then(m => ({ default: m.Sync })))
-const Account = lazy(() => import('./pages/settings/Account').then(m => ({ default: m.Account })))
-const Appearance = lazy(() => import('./pages/settings/Appearance').then(m => ({ default: m.Appearance })))
-const Storage = lazy(() => import('./pages/settings/Storage').then(m => ({ default: m.Storage })))
-const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })))
-const Onboarding = lazy(() => import('./components/Onboarding').then(m => ({ default: m.Onboarding })))
 import { TooltipProvider } from './components/ui/tooltip'
+import { useViewTransitionNavigate } from './lib/navigation'
+import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
+import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
+import { clearModelCatalogCache, getModelCatalog } from './lib/ai/modelCatalogClient'
 
-
+const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })))
+const Onboarding = lazy(() =>
+  import('./components/Onboarding').then((module) => ({ default: module.Onboarding }))
+)
 
 function FullscreenLoading() {
   return (
@@ -51,22 +29,6 @@ function FullscreenLoading() {
   )
 }
 
-function RouteLoading() {
-  return (
-    <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
-      <Loader2 className="h-5 w-5 animate-spin" />
-    </div>
-  )
-}
-
-function RouteSuspense({ children }: { children: ReactNode }) {
-  return (
-    <Suspense fallback={<RouteLoading />}>
-      {children}
-    </Suspense>
-  )
-}
-
 function AppWithOrganization() {
   const { accessToken, organizations, refreshToken } = useAuth()
 
@@ -76,104 +38,150 @@ function AppWithOrganization() {
       initialOrganizations={organizations}
       onTokenExpired={refreshToken}
     >
-      <AppContent />
+      <Suspense fallback={<FullscreenLoading />}>
+        <AppContent />
+      </Suspense>
     </OrganizationProvider>
   )
 }
 
 function ElectronNavigationBridge() {
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
+  const handleElectronNavigation = useEffectEvent((path: string) => {
+    if (typeof path === 'string' && path.startsWith('/')) {
+      navigate(path)
+    }
+  })
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.app?.onNavigate?.((path) => {
-      if (typeof path === 'string' && path.startsWith('/')) {
-        navigate(path)
-      }
+      handleElectronNavigation(path)
     })
 
     return () => {
       unsubscribe?.()
     }
-  }, [navigate])
+  }, [])
+
+  return null
+}
+
+function ElectronSettingsBridge() {
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const handleElectronSettingsOpen = useEffectEvent((route: string) => {
+    openSettingsDrawer(route)
+  })
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.app?.onOpenSettings?.((route) => {
+      handleElectronSettingsOpen(route)
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  return null
+}
+
+function SettingsDrawerUrlBridge() {
+  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
+  const route = useSettingsDrawerStore((state) => state.route)
+  const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
+  const close = useSettingsDrawerStore((state) => state.close)
+
+  const syncFromLocation = useEffectEvent(() => {
+    const routeFromLocation = getSettingsRouteFromLocation(window.location)
+    if (routeFromLocation) {
+      openFromRoute(routeFromLocation)
+      return
+    }
+
+    close()
+  })
+
+  useEffect(() => {
+    syncFromLocation()
+
+    const handleLocationChange = () => {
+      syncFromLocation()
+    }
+
+    window.addEventListener('hashchange', handleLocationChange)
+    window.addEventListener('popstate', handleLocationChange)
+
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange)
+      window.removeEventListener('popstate', handleLocationChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    writeSettingsRouteToUrl(isOpen ? route : null)
+  }, [isOpen, route])
 
   return null
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading, needsOnboarding } = useAuth()
+  const {
+    accessToken,
+    currentOrganization,
+    isAuthenticated,
+    isLoading,
+    needsOnboarding,
+    workspaceSelectionRequired,
+  } = useAuth()
+  const location = useLocation()
+  const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
+  const refreshedModelCatalogOrgRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) {
+      refreshedModelCatalogOrgRef.current = null
+      return
+    }
+    if (!accessToken || !currentOrganization?.organizationId) return
+    if (refreshedModelCatalogOrgRef.current === currentOrganization.organizationId) return
+
+    refreshedModelCatalogOrgRef.current = currentOrganization.organizationId
+    clearModelCatalogCache(currentOrganization.organizationId)
+    void getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+      forceRefresh: true,
+    }).catch((error) => {
+      console.warn('Failed to refresh model catalog on app start:', error)
+    })
+  }, [accessToken, currentOrganization?.organizationId, isAuthenticated, isLoading, needsOnboarding])
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
 
-    const idleWindow = window as Window & {
-      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
-      cancelIdleCallback?: (handle: number) => void
-    }
+    const shouldWarmProjectEditor =
+      location.pathname.startsWith('/projects/') &&
+      !location.pathname.startsWith('/projects/new')
 
-    const warmupLoaders: Array<() => Promise<unknown>> = [
-      () => import('./pages/NewProject'),
-      () => import('./pages/ProjectBuild'),
-      () => import('./pages/teams/Roles'),
-      () => import('./pages/teams/MemberDetails'),
-      () => import('./features/projects/pages/ProjectPagesPage'),
-      () => import('./features/projects/pages/ProjectDependenciesPage'),
-      () => import('./features/projects/pages/ProjectBackendStudioPage'),
-      () => import('./features/projects/pages/ChangesPage'),
-      () => import('./pages/workspace/Billing'),
-      () => import('./pages/workspace/AI'),
-      () => import('./pages/workspace/Integrations'),
-    ]
+    const warmupTimer = window.setTimeout(() => {
+      void import('./pages/NewProject')
+      void import('./pages/ProjectBuild')
+      void import('./pages/workspace/Billing')
 
-    let nextIndex = 0
-    let warmupTimer: number | null = null
-    let warmupIdleHandle: number | null = null
-    let warmupFallbackTimer: number | null = null
-
-    const scheduleNextWarmup = () => {
-      if (nextIndex >= warmupLoaders.length) return
-
-      const runNextWarmup = () => {
-        if (nextIndex >= warmupLoaders.length) return
-        void warmupLoaders[nextIndex++]()
-        scheduleNextWarmup()
+      if (shouldWarmProjectEditor) {
+        void import('./features/projects/pages/ProjectPagesPage')
+        void import('./features/projects/pages/ProjectBackendStudioPage')
+        void import('./features/projects/pages/ChangesPage')
       }
-
-      if (typeof idleWindow.requestIdleCallback === 'function') {
-        warmupIdleHandle = idleWindow.requestIdleCallback(
-          () => runNextWarmup(),
-          { timeout: 1200 }
-        )
-      } else {
-        warmupFallbackTimer = window.setTimeout(runNextWarmup, 120)
-      }
-    }
-
-    warmupTimer = window.setTimeout(() => {
-      scheduleNextWarmup()
-    }, 900)
+    }, 1200)
 
     return () => {
-      if (warmupTimer !== null) {
-        window.clearTimeout(warmupTimer)
-      }
-      if (warmupFallbackTimer !== null) {
-        window.clearTimeout(warmupFallbackTimer)
-      }
-      if (
-        warmupIdleHandle !== null &&
-        typeof idleWindow.cancelIdleCallback === 'function'
-      ) {
-        idleWindow.cancelIdleCallback(warmupIdleHandle)
-      }
+      window.clearTimeout(warmupTimer)
     }
-  }, [isAuthenticated, isLoading, needsOnboarding])
+  }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
   if (!isAuthenticated) {
-    return (
-      <Suspense fallback={<FullscreenLoading />}>
-        <Login />
-      </Suspense>
-    )
+    return <Login />
   }
 
   if (isLoading) {
@@ -181,242 +189,38 @@ function AppContent() {
   }
 
   if (needsOnboarding) {
-    return (
-      <Suspense fallback={<FullscreenLoading />}>
-        <Onboarding />
-      </Suspense>
-    )
+    return <Onboarding />
+  }
+
+  const isWorkspaceSelectRoute = location.pathname === '/workspaces/select'
+  const isWorkspaceCreateRoute = location.pathname === '/workspaces/new'
+  const isInviteRoute = location.pathname.startsWith('/invite/')
+  if (workspaceSelectionRequired && !isWorkspaceSelectRoute && !isWorkspaceCreateRoute && !isInviteRoute) {
+    return <Navigate to="/workspaces/select" replace />
   }
 
   return (
     <>
       <ElectronNavigationBridge />
-      <UpdateMenu />
-      <Routes>
-        {/* Projects (default landing page) */}
-        <Route path="/" element={<Navigate to="/projects" replace />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route
-          path="/projects/new"
-          element={
-            <RouteSuspense>
-              <NewProject />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/projects/:projectId/build"
-          element={
-            <RouteSuspense>
-              <ProjectBuild />
-            </RouteSuspense>
-          }
-        />
-
-        {/* Project Editor - Nested Routes with ProjectLayout */}
-        <Route path="/projects/:slug" element={<ProjectLayout />}>
-          <Route
-            index
-            element={
-              <RouteSuspense>
-                <ProjectDetailPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="pages"
-            element={
-              <RouteSuspense>
-                <ProjectPagesPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="database"
-            element={
-              <RouteSuspense>
-                <ProjectDatabasePage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="dependencies"
-            element={
-              <RouteSuspense>
-                <ProjectDependenciesPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="backend"
-            element={
-              <RouteSuspense>
-                <ProjectBackendStudioPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="changes"
-            element={
-              <RouteSuspense>
-                <ChangesPage />
-              </RouteSuspense>
-            }
-          />
-          {/* Redirects for old routes */}
-          <Route path="feed" element={<Navigate to="../changes" replace />} />
-          <Route path="merge-queue" element={<Navigate to="../changes" replace />} />
-          <Route path="version-control" element={<Navigate to="../changes" replace />} />
-          <Route
-            path="tasks"
-            element={
-              <RouteSuspense>
-                <TasksPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="settings"
-            element={
-              <RouteSuspense>
-                <ProjectSettingsPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="settings/:section"
-            element={
-              <RouteSuspense>
-                <ProjectSettingsPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <RouteSuspense>
-                <ProjectDetailPage />
-              </RouteSuspense>
-            }
-          />
-        </Route>
-
-        {/* Teams */}
-        <Route path="/teams" element={<Members />} />
-        <Route
-          path="/teams/members/:memberId"
-          element={
-            <RouteSuspense>
-              <MemberDetails />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/teams/roles"
-          element={
-            <RouteSuspense>
-              <Roles />
-            </RouteSuspense>
-          }
-        />
-
-        {/* Workspace Settings */}
-        <Route
-          path="/workspace/general"
-          element={
-            <RouteSuspense>
-              <General />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/workspace/billing"
-          element={
-            <RouteSuspense>
-              <Billing />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/workspace/ai"
-          element={
-            <RouteSuspense>
-              <AI />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/workspace/integrations"
-          element={
-            <RouteSuspense>
-              <Integrations />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/workspace/sync"
-          element={
-            <RouteSuspense>
-              <Sync />
-            </RouteSuspense>
-          }
-        />
-
-        {/* Personal Settings */}
-        <Route
-          path="/settings/account"
-          element={
-            <RouteSuspense>
-              <Account />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/settings/appearance"
-          element={
-            <RouteSuspense>
-              <Appearance />
-            </RouteSuspense>
-          }
-        />
-        <Route
-          path="/settings/storage"
-          element={
-            <RouteSuspense>
-              <Storage />
-            </RouteSuspense>
-          }
-        />
-
-        {/* Invitation */}
-        <Route
-          path="/invite/:token"
-          element={
-            <RouteSuspense>
-              <AcceptInvitation />
-            </RouteSuspense>
-          }
-        />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <ElectronSettingsBridge />
+      {!isSettingsWindow && <UpdateMenu />}
+      <Outlet />
+      {!isSettingsWindow && <SettingsDrawerUrlBridge />}
+      {!isSettingsWindow && <SettingsDrawer />}
     </>
   )
 }
 
-function App() {
+export function AppRoot() {
   return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <TooltipProvider>
-          <AuthProvider>
-            <AppWithOrganization />
-          </AuthProvider>
-        </TooltipProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <TooltipProvider>
+        <AuthProvider>
+          <AppWithOrganization />
+        </AuthProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   )
 }
 
-export default App
+export { FullscreenLoading }

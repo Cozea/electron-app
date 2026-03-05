@@ -2,7 +2,34 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
-import { checkProjectLimit } from "./lib/workspaceLimits"
+
+type OrganizationRole = "admin" | "member" | "viewer"
+
+function organizationRolePriority(role: OrganizationRole): number {
+  switch (role) {
+    case "admin":
+      return 3
+    case "member":
+      return 2
+    default:
+      return 1
+  }
+}
+
+function pickCanonicalOrganizationMembership<
+  T extends { role: OrganizationRole; updatedAt?: number; joinedAt?: number; _id: unknown },
+>(memberships: T[]): T | null {
+  if (memberships.length === 0) return null
+  return [...memberships].sort((a, b) => {
+    const roleDelta = organizationRolePriority(b.role) - organizationRolePriority(a.role)
+    if (roleDelta !== 0) return roleDelta
+    const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+    if (updatedDelta !== 0) return updatedDelta
+    const joinedDelta = (b.joinedAt || 0) - (a.joinedAt || 0)
+    if (joinedDelta !== 0) return joinedDelta
+    return String(a._id).localeCompare(String(b._id))
+  })[0]
+}
 
 // Helper to generate URL-safe slug from project name
 function generateSlug(name: string): string {
@@ -59,6 +86,20 @@ export const create = mutation({
 
     // Template
     template: v.optional(v.string()),
+    // Current release supports web only.
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
 
     // Stack - all fields optional to match schema
     stack: v.optional(
@@ -98,11 +139,33 @@ export const create = mutation({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()),
       })
     ),
@@ -118,16 +181,6 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Check project limit before creating
-    const limitStatus = await checkProjectLimit(ctx, args.organizationId)
-
-    if (!limitStatus.allowed) {
-      throw new Error(
-        limitStatus.message ||
-          "Project limit reached. Upgrade your plan to create more projects."
-      )
-    }
-
     const now = Date.now()
 
     // Generate unique slug
@@ -147,6 +200,11 @@ export const create = mutation({
       audience: args.audience,
       targetLaunchDate: args.targetLaunchDate,
       template: args.template,
+      targetPlatform: args.targetPlatform ?? "web",
+      buildContract: args.buildContract ?? {
+        previewMode: "web",
+        frameworkClass: "web-framework",
+      },
       stack: args.stack,
       sourceControl: args.sourceControl,
       visuals: args.visuals,
@@ -306,6 +364,19 @@ export const update = mutation({
     audience: v.optional(v.string()),
     targetLaunchDate: v.optional(v.number()),
     template: v.optional(v.string()),
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()),
@@ -337,11 +408,33 @@ export const update = mutation({
     promptSettings: v.optional(
       v.object({
         model: v.string(),
-        agentType: v.union(v.literal("agent"), v.literal("assistant")),
-        reasoningDepth: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        agentId: v.union(
+          v.literal("plan"),
+          v.literal("build"),
+          v.literal("assistant_general"),
+          v.literal("assistant_project"),
+          v.literal("explore"),
+          v.literal("review")
+        ),
+        surface: v.union(
+          v.literal("wizard"),
+          v.literal("builder"),
+          v.literal("assistant_panel"),
+          v.literal("assistant_project")
+        ),
+        variantId: v.optional(
+          v.union(
+            v.literal("none"),
+            v.literal("minimal"),
+            v.literal("low"),
+            v.literal("medium"),
+            v.literal("high"),
+            v.literal("xhigh"),
+            v.literal("max")
+          )
+        ),
         toolsEnabled: v.boolean(),
         webSearchEnabled: v.boolean(),
-        thinkingEffort: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"))),
         providerOptions: v.optional(v.any()),
       })
     ),
@@ -383,6 +476,8 @@ export const update = mutation({
     if (args.audience !== undefined) updates.audience = args.audience
     if (args.targetLaunchDate !== undefined) updates.targetLaunchDate = args.targetLaunchDate
     if (args.template !== undefined) updates.template = args.template
+    if (args.targetPlatform !== undefined) updates.targetPlatform = args.targetPlatform
+    if (args.buildContract !== undefined) updates.buildContract = args.buildContract
     if (args.stack !== undefined) updates.stack = { ...project.stack, ...args.stack }
     if (args.sourceControl !== undefined) updates.sourceControl = { ...project.sourceControl, ...args.sourceControl }
     if (args.visuals !== undefined) updates.visuals = { ...project.visuals, ...args.visuals }
@@ -528,12 +623,13 @@ export const deleteProject = mutation({
     const isProjectManager = membership?.role === "project_manager"
 
     // Check org membership (admin can also delete)
-    const orgMembership = await ctx.db
+    const orgMemberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", project.organizationId).eq("userId", args.userId)
       )
-      .first()
+      .collect()
+    const orgMembership = pickCanonicalOrganizationMembership(orgMemberships)
     const isOrgAdmin = orgMembership?.role === "admin"
 
     if (!isCreator && !isProjectManager && !isOrgAdmin) {
@@ -598,6 +694,19 @@ export const saveGeneratedPlan = mutation({
     selectedPlanTier: v.optional(
       v.union(v.literal("prototype"), v.literal("beta"), v.literal("mvp"))
     ),
+    targetPlatform: v.optional(v.union(v.literal("web"))),
+    buildContract: v.optional(
+      v.object({
+        previewMode: v.union(v.literal("web")),
+        frameworkClass: v.union(v.literal("web-framework")),
+        toolchain: v.optional(v.any()),
+        commands: v.optional(v.any()),
+        constraints: v.optional(v.any()),
+        fallbackPolicy: v.optional(v.any()),
+        successCriteria: v.optional(v.any()),
+        telemetryHints: v.optional(v.any()),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
@@ -611,6 +720,12 @@ export const saveGeneratedPlan = mutation({
 
     if (args.selectedPlanTier !== undefined) {
       updates.selectedPlanTier = args.selectedPlanTier
+    }
+    if (args.targetPlatform !== undefined) {
+      updates.targetPlatform = args.targetPlatform
+    }
+    if (args.buildContract !== undefined) {
+      updates.buildContract = args.buildContract
     }
 
     await ctx.db.patch(args.projectId, updates)

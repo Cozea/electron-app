@@ -9,6 +9,7 @@ import {
     selectProjectProblems,
     selectUnreadCount,
 } from "@/stores/useProblemsStore"
+import { requestEditorDiagnosticsRefresh } from "@/hooks/useDiagnosticsBridge"
 import { TerminalTabBar } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
@@ -79,9 +80,8 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     )
 
     const handleRefreshProblems = useCallback(() => {
-        if (!projectPath || !window.electronAPI?.diagnostics) return
-        void window.electronAPI.diagnostics.refresh({ projectPath })
-    }, [projectPath])
+        requestEditorDiagnosticsRefresh()
+    }, [])
 
     const handleClearProblems = useCallback(() => {
         if (!projectPath) return

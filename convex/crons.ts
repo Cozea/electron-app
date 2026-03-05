@@ -10,29 +10,12 @@ crons.interval(
   internal.invitations.cleanupExpired
 )
 
-// ============================================
-// BILLING CRON JOBS
-// ============================================
-
-// Check overage thresholds and create invoices (daily at 2:00 AM UTC)
-crons.cron(
-  "check overage thresholds",
-  "0 2 * * *",
-  internal.billing.checkOverageThresholds
-)
-
-// Expire credit lots that have passed their expiration date (daily at 3:00 AM UTC)
-crons.cron(
-  "expire credit lots",
-  "0 3 * * *",
-  internal.billing.expireCreditLots
-)
-
-// Check and reset billing periods (daily at 4:00 AM UTC)
-crons.cron(
-  "check billing period resets",
-  "0 4 * * *",
-  internal.billing.checkBillingPeriodResets
+// Clean up expired AI continuation linkage every hour
+crons.interval(
+  "cleanup expired ai continuation state",
+  { hours: 1 },
+  internal.aiConversations.cleanupExpiredContinuationState,
+  {}
 )
 
 // ============================================
@@ -44,6 +27,37 @@ crons.cron(
   "cleanup expired tombstones",
   "0 5 * * *",
   internal.fileTombstones.cleanupAllExpiredTombstones
+)
+
+// Cleanup stale Git replica session/lock metadata (daily at 5:30 AM UTC)
+crons.cron(
+  "cleanup replica metadata",
+  "30 5 * * *",
+  internal.projectReplicaGit.cleanupReplicaMetadata,
+  {}
+)
+
+// Cleanup stale LFS metadata records with missing backing blobs (daily at 6:00 AM UTC)
+crons.cron(
+  "cleanup replica lfs metadata",
+  "0 6 * * *",
+  internal.projectReplicaLfs.cleanupStaleLfsMetadata,
+  {}
+)
+
+// Identity invariant scan (daily at 6:15 AM UTC)
+crons.cron(
+  "identity invariant scan",
+  "15 6 * * *",
+  internal.identityRepair.runInvariantCheckDaily
+)
+
+// Cleanup stale Yjs awareness records (every 15 minutes)
+crons.interval(
+  "cleanup yjs awareness",
+  { minutes: 15 },
+  internal.yjsAwareness.cleanupExpiredAwarenessInternal,
+  {}
 )
 
 // ============================================

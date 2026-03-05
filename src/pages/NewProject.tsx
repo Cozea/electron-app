@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
@@ -18,19 +18,16 @@ import {
   TeamStep,
   ReviewStep,
   PromptInput,
+  WizardConversation,
   RepoSourceStep,
   type PromptSettings,
   type PlanOption,
   type OrgMember,
 } from '../components/wizard'
-import {
-  useWizardState,
-  type CreationPath,
-  type WizardRepoSource,
-} from '../hooks/useWizardState'
+import { useWizardState, type CreationPath } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { normalizeGeneratedPlan } from '../lib/plan'
+import { getDefaultWebBuildContract, normalizeGeneratedPlan, validateWebOnlyPlanConfig } from '../lib/plan'
 import {
   detectFramework,
   detectPackageManager,
@@ -38,72 +35,22 @@ import {
   checkDependenciesInstalled,
   hasPackageJson,
 } from '../utils/projectDetector'
-import { saveLocalSyncHistory } from '../lib/sync/syncHistory'
 import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
 import { cn } from '@/lib/utils'
+import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
 const INSTALL_TIMEOUT_MS = 12 * 60 * 1000
-const UPLOAD_CONCURRENCY = 4
-const SAVE_BATCH_SIZE = 100
-const loadWizardConversation = () =>
-  import('../components/wizard/WizardConversation').then((module) => ({
-    default: module.WizardConversation,
-  }))
-const LazyWizardConversation = lazy(loadWizardConversation)
-const BINARY_EXTENSIONS = new Set([
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'tif', 'tiff',
-  'pdf', 'zip', 'gz', 'tar', 'rar', '7z',
-  'mp3', 'wav', 'ogg', 'mp4', 'mov', 'avi', 'webm',
-  'ttf', 'otf', 'woff', 'woff2', 'eot', 'wasm',
-])
 
-const MIME_TYPES: Record<string, string> = {
-  ts: 'text/typescript',
-  tsx: 'text/typescript',
-  js: 'application/javascript',
-  jsx: 'application/javascript',
-  json: 'application/json',
-  css: 'text/css',
-  scss: 'text/scss',
-  html: 'text/html',
-  htm: 'text/html',
-  md: 'text/markdown',
-  txt: 'text/plain',
-  yaml: 'text/yaml',
-  yml: 'text/yaml',
-  xml: 'text/xml',
-  svg: 'image/svg+xml',
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  ico: 'image/x-icon',
-  bmp: 'image/bmp',
-  tiff: 'image/tiff',
-  tif: 'image/tiff',
-  pdf: 'application/pdf',
-  zip: 'application/zip',
-  gz: 'application/gzip',
-  tar: 'application/x-tar',
-  rar: 'application/vnd.rar',
-  '7z': 'application/x-7z-compressed',
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-  ogg: 'audio/ogg',
-  mp4: 'video/mp4',
-  mov: 'video/quicktime',
-  avi: 'video/x-msvideo',
-  webm: 'video/webm',
-  ttf: 'font/ttf',
-  otf: 'font/otf',
-  woff: 'font/woff',
-  woff2: 'font/woff2',
-  eot: 'application/vnd.ms-fontobject',
-  wasm: 'application/wasm',
+function isWindowsClient(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
+  return /win/i.test(platformHint)
 }
 
 function getRepoDisplayName(repoUrl: string): string {
@@ -180,7 +127,7 @@ function buildImportPreflightIssueMessage(
 
 export function NewProject() {
   const { user, logout, convexUserId, currentOrganization } = useAuth()
-  const navigate = useNavigate()
+  const navigate = useViewTransitionNavigate()
   const convex = useConvex()
 
   // Get Convex org ID from currentOrganization (populated after Convex sync)
@@ -218,8 +165,6 @@ export function NewProject() {
   const saveGeneratedPlan = useMutation(api.projects.saveGeneratedPlan)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const deleteProject = useMutation(api.projects.deleteProject)
-  const generateUploadUrl = useMutation(api.projectFiles.generateUploadUrl)
-  const saveFiles = useMutation(api.projectFiles.saveFiles)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
 
   // Fetch organization members for the team step
@@ -280,31 +225,11 @@ export function NewProject() {
     }
   }
 
-  const isBinaryPath = useCallback((filePath: string): boolean => {
-    const fileName = filePath.split('/').pop() ?? filePath
-    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
-    return !!ext && BINARY_EXTENSIONS.has(ext)
-  }, [])
-
-  const getMimeType = useCallback((filePath: string): string => {
-    const ext = filePath.split('.').pop()?.toLowerCase() || ''
-    if (MIME_TYPES[ext]) return MIME_TYPES[ext]
-    return isBinaryPath(filePath) ? 'application/octet-stream' : 'text/plain'
-  }, [isBinaryPath])
-
-  const base64ToUint8Array = useCallback((base64: string): Uint8Array => {
-    const binary = atob(base64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i)
-    }
-    return bytes
-  }, [])
-
   const runTerminalCommand = useCallback(
     async (projectPath: string, command: string): Promise<{ success: boolean; error?: string }> => {
       const createResult = await window.electronAPI.terminal.create({
         projectPath,
+        profileId: isWindowsClient() ? 'cmd' : undefined,
         cwd: projectPath,
         cols: 100,
         rows: 30,
@@ -370,7 +295,7 @@ export function NewProject() {
         commandDispatchTimer = window.setTimeout(() => {
           window.electronAPI.terminal.input({
             terminalId,
-            data: `${command}; exit\r`,
+            data: `${command}\r\nexit\r\n`,
           }).catch((error) => {
             if (settled) return
             updateTerminalStatus(terminalId, 'error')
@@ -406,137 +331,54 @@ export function NewProject() {
 
   const uploadLocalSnapshotToCloud = useCallback(async (
     projectId: Id<'projects'>,
-    userId: Id<'users'>,
     projectPath: string,
   ) => {
-    setImportSyncMessage('Indexing local files...')
-    const importTraceId = `import-${projectId}-${Date.now().toString(36)}`
-    console.log('[Import] Requesting local manifest', { importTraceId, projectPath })
-    const localManifestResult = await window.electronAPI.sync.getLocalManifest({
+    setImportSyncMessage('Bootstrapping project replica...')
+    const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+      projectId: String(projectId),
       projectPath,
-      debugSource: `new-project-import:${importTraceId}`,
-      strict: true,
     })
-    console.log('[Import] Local manifest ready', {
-      importTraceId,
-      totalFiles: localManifestResult.totalFiles,
-    })
-    const entries = localManifestResult.manifest
-
-    if (entries.length === 0) {
-      await saveLocalSyncHistory(projectId, {
-        lastSyncAt: Date.now(),
-        cloudPathsAtLastSync: [],
-      })
-      return
+    if (!bootstrap.success) {
+      throw new Error(bootstrap.error || 'Replica bootstrap failed')
     }
 
-    setImportSyncMessage(`Uploading files to cloud (0/${entries.length})...`)
-
-    const uploadTasks = entries.map((entry) => async () => {
-      const uploadUrl = await generateUploadUrl({ projectId })
-      const mimeType = getMimeType(entry.path)
-      const binary = isBinaryPath(entry.path)
-      let blob: Blob
-
-      if (binary) {
-        const readResult = await window.electronAPI.project.readFileBase64({
-          projectPath,
-          filePath: entry.path,
-        })
-        if (!readResult.success || !readResult.base64) {
-          throw new Error(`Failed to read binary file: ${entry.path}`)
-        }
-        const bytes = base64ToUint8Array(readResult.base64)
-        blob = new Blob([bytes.buffer as ArrayBuffer], { type: mimeType })
-      } else {
-        const readResult = await window.electronAPI.project.readFile({
-          projectPath,
-          filePath: entry.path,
-        })
-        if (!readResult.success || readResult.content === undefined) {
-          throw new Error(`Failed to read file: ${entry.path}`)
-        }
-        blob = new Blob([readResult.content], { type: mimeType })
-      }
-
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': mimeType },
-        body: blob,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed for ${entry.path}: ${uploadResponse.status}`)
-      }
-
-      const uploadPayload = await uploadResponse.json() as { storageId?: Id<'_storage'> }
-      if (!uploadPayload.storageId) {
-        throw new Error(`Missing storageId for ${entry.path}`)
-      }
-
-      return {
-        storageId: uploadPayload.storageId,
-        fileName: entry.path.split('/').pop() || entry.path,
-        filePath: entry.path,
-        fileType: mimeType,
-        sizeBytes: blob.size,
-        checksum: entry.hash,
-      }
+    setImportSyncMessage('Planning replica sync...')
+    const replicaPlan = await window.electronAPI.sync.gitReplicaPlan({
+      projectId: String(projectId),
+      projectPath,
     })
-
-    const uploadedFiles: Array<{
-      storageId: Id<'_storage'>
-      fileName: string
-      filePath: string
-      fileType: string
-      sizeBytes: number
-      checksum: string
-    }> = []
-    const failures: string[] = []
-    let completed = 0
-    let index = 0
-
-    const workers = new Array(Math.min(UPLOAD_CONCURRENCY, uploadTasks.length)).fill(0).map(async () => {
-      while (true) {
-        const current = index++
-        if (current >= uploadTasks.length) break
-        try {
-          const uploaded = await uploadTasks[current]()
-          uploadedFiles.push(uploaded)
-        } catch (error) {
-          failures.push(error instanceof Error ? error.message : `Upload failed for ${entries[current].path}`)
-        } finally {
-          completed += 1
-          if (completed % 20 === 0 || completed === entries.length) {
-            setImportSyncMessage(`Uploading files to cloud (${completed}/${entries.length})...`)
-          }
-        }
-      }
-    })
-
-    await Promise.all(workers)
-
-    if (failures.length > 0) {
-      throw new Error(`Failed to upload ${failures.length} file(s): ${failures.slice(0, 3).join(' | ')}`)
+    if (!replicaPlan.success) {
+      throw new Error(replicaPlan.error || 'Replica planning failed')
     }
 
-    for (let i = 0; i < uploadedFiles.length; i += SAVE_BATCH_SIZE) {
-      const batch = uploadedFiles.slice(i, i + SAVE_BATCH_SIZE)
-      await saveFiles({ projectId, userId, files: batch })
+    const conflictDecisions = Object.fromEntries(
+      replicaPlan.conflicts.map((conflict) => [conflict.path, 'local' as const])
+    )
+
+    setImportSyncMessage('Applying replica sync...')
+    const replicaExecute = await window.electronAPI.sync.gitReplicaExecute({
+      projectId: String(projectId),
+      projectPath,
+      sessionId: replicaPlan.sessionId,
+      conflictDecisions,
+    })
+    if (!replicaExecute.success) {
+      throw new Error(replicaExecute.error || 'Replica apply failed')
+    }
+    if (replicaExecute.requiresConflictResolution) {
+      throw new Error('Replica import requires conflict resolution')
+    }
+    if (!replicaExecute.applied) {
+      throw new Error('Replica apply did not persist imported files')
     }
 
-    await saveLocalSyncHistory(projectId, {
-      lastSyncAt: Date.now(),
-      cloudPathsAtLastSync: entries.map((entry) => entry.path),
+    await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
+      projectId: String(projectId),
+      projectPath,
+      source: 'user',
+      reason: 'new-project-import',
     })
-  }, [
-    base64ToUint8Array,
-    generateUploadUrl,
-    getMimeType,
-    isBinaryPath,
-    saveFiles,
-  ])
+  }, [])
 
   const handleNext = async () => {
     // On the review step for fresh path, create project and go to build
@@ -683,7 +525,6 @@ export function NewProject() {
     console.log('[NewProject] handlePromptSubmit received settings:', settings)
     // Don't create project yet - just start conversation mode
     // Project will be created when user selects a plan
-    void loadWizardConversation()
     setOriginalPrompt(promptText)
     setPendingPromptText(promptText)
     setConversationPromptSettings(settings)
@@ -694,6 +535,12 @@ export function NewProject() {
     if (!organizationId || !convexUserId) {
       console.error('Missing organizationId or convexUserId', { organizationId, convexUserId, currentOrganization })
       alert('Unable to create project. Please try again or refresh the page.')
+      return
+    }
+
+    const webOnlyValidation = validateWebOnlyPlanConfig(plan.config)
+    if (!webOnlyValidation.valid) {
+      alert(`Current builder supports web projects only. ${webOnlyValidation.error ?? ''}`.trim())
       return
     }
 
@@ -709,17 +556,19 @@ export function NewProject() {
         description: plan.config.description,
         audience: plan.config.audience,
         template: plan.config.template,
+        targetPlatform: plan.config.targetPlatform,
+        buildContract: plan.config.buildContract ?? getDefaultWebBuildContract(),
         stack: plan.config.stack,
         sourceControl: plan.config.sourceControl,
         visuals: plan.config.visuals,
         originalPrompt: pendingPromptText,
         promptSettings: conversationPromptSettings ? {
           model: conversationPromptSettings.model,
-          agentType: conversationPromptSettings.agentType,
-          reasoningDepth: conversationPromptSettings.reasoningDepth,
+          agentId: conversationPromptSettings.agentId,
+          surface: conversationPromptSettings.surface,
+          variantId: conversationPromptSettings.variantId,
           toolsEnabled: true,
           webSearchEnabled: true,
-          thinkingEffort: conversationPromptSettings.thinkingEffort,
         } : undefined,
       })
 
@@ -730,6 +579,8 @@ export function NewProject() {
         projectId: result.projectId,
         plan: generatedPlan,
         selectedPlanTier: plan.tier,
+        targetPlatform: plan.config.targetPlatform,
+        buildContract: plan.config.buildContract ?? getDefaultWebBuildContract(),
       })
 
       // Navigate to build page with the new project
@@ -963,6 +814,24 @@ export function NewProject() {
       if (result.slug) {
         setImportSyncState('syncing')
 
+        const runtimePreflight = await ensureProjectRuntimeToolchains(importPath, (progress) => {
+          setImportSyncMessage(progress.message)
+        })
+        if (!runtimePreflight.success) {
+          const failedLabel = runtimePreflight.failedRuntime
+            ? runtimeLabel(runtimePreflight.failedRuntime)
+            : 'Required'
+          const message = runtimePreflight.error || `${failedLabel} runtime is unavailable.`
+          setImportError(message)
+          setImportSyncState('error')
+          setImportSyncMessage(message)
+          return
+        }
+
+        if (runtimePreflight.installed.length > 0) {
+          setImportSyncMessage(`Installed runtimes: ${runtimePreflight.installed.map(runtimeLabel).join(', ')}`)
+        }
+
         try {
           await updateSyncStatus({
             projectId: result.projectId,
@@ -975,7 +844,7 @@ export function NewProject() {
 
         try {
           await preinstallDependencies(importPath)
-          await uploadLocalSnapshotToCloud(result.projectId, convexUserId, importPath)
+          await uploadLocalSnapshotToCloud(result.projectId, importPath)
           await updateSyncStatus({
             projectId: result.projectId,
             userId: convexUserId,
@@ -1028,20 +897,12 @@ export function NewProject() {
     // Conversation mode for prompt path (project not created yet)
     if (isConversationMode && conversationPromptSettings) {
       return (
-        <Suspense
-          fallback={(
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          )}
-        >
-          <LazyWizardConversation
-            initialPrompt={pendingPromptText}
-            promptSettings={conversationPromptSettings}
-            onPlanSelected={handlePlanSelected}
-            className="flex-1 h-full"
-          />
-        </Suspense>
+        <WizardConversation
+          initialPrompt={pendingPromptText}
+          promptSettings={conversationPromptSettings}
+          onPlanSelected={handlePlanSelected}
+          className="flex-1 h-full"
+        />
       )
     }
 
@@ -1119,9 +980,9 @@ export function NewProject() {
               </div>
 
               {showImportTerminalPanel && importTerminalId && (
-                <div className="min-w-0 lg:sticky lg:top-14 lg:self-stretch">
-                  <div className="rounded-2xl border border-border overflow-hidden bg-sidebar flex flex-col h-[44vh] min-h-[260px] lg:h-full">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <div className="min-w-0 lg:self-stretch">
+                  <div className="rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden flex flex-col h-[44vh] min-h-[260px] lg:h-full lg:min-h-0">
+                    <div className="flex items-center justify-between border-b border-border px-6 py-4">
                       <p className="text-sm font-medium">Import Terminal</p>
                       <p className="text-xs text-muted-foreground">
                         Live output from dependency installation
@@ -1130,7 +991,7 @@ export function NewProject() {
                     <div className="flex-1 min-h-0">
                       <TerminalInstance
                         terminalId={importTerminalId}
-                        className="h-full w-full"
+                        className="h-full w-full [--terminal-panel-bg:var(--secondary)]"
                         shouldAutoFocus={isImporting}
                       />
                     </div>
@@ -1256,25 +1117,16 @@ export function NewProject() {
     )
   }, [isConversationMode, state.step, stepProgressValue])
 
-  useEffect(() => {
-    if (state.path === 'prompt') {
-      void loadWizardConversation()
+  const updateRepoSourcePartial = (partial: Partial<NonNullable<typeof state.repoSource>>) => {
+    const baseRepoSource = state.repoSource ?? {
+      provider: 'local',
+      repoUrl: '',
+      branch: 'main',
     }
-  }, [state.path])
+    setRepoSource({ ...baseRepoSource, ...partial })
+  }
 
-  const updateRepoSourcePartial = useCallback(
-    (partial: Partial<WizardRepoSource>) => {
-      const baseRepoSource = state.repoSource ?? {
-        provider: 'local',
-        repoUrl: '',
-        branch: 'main',
-      }
-      setRepoSource({ ...baseRepoSource, ...partial })
-    },
-    [setRepoSource, state.repoSource]
-  )
-
-  const browseLocalRepoFolder = useCallback(async () => {
+  const browseLocalRepoFolder = async () => {
     try {
       const result = await window.electronAPI.dialog.selectDirectory()
       if (result && result.path) {
@@ -1283,7 +1135,7 @@ export function NewProject() {
     } catch (error) {
       console.error('[Import] Failed to select directory:', error)
     }
-  }, [updateRepoSourcePartial])
+  }
 
   const isRepoSourceStep = state.path === 'repo' && currentStepDef?.id === 'repo-source'
 

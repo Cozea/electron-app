@@ -1,7 +1,8 @@
 "use client"
 
 import { type ReactNode, memo, useRef, useState, useCallback, useEffect, useMemo } from "react"
-import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom"
+import { Outlet, useLocation, useParams } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { useCachedQuery } from "@/stores/useQueryCache"
@@ -27,6 +28,8 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext"
 import { useProjectPresence } from "@/hooks/useProjectPresence"
 import { useDiagnosticsBridge } from "@/hooks/useDiagnosticsBridge"
 import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
+import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices"
+import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
 import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
@@ -98,6 +101,7 @@ interface ProjectLayoutHeaderProps {
     header?: ReactNode
     breadcrumbAddon?: ReactNode
     rightAddon?: ReactNode
+    className?: string
     isSecondarySidebarVisible: boolean
     insetLeft?: number
     insetRight?: number
@@ -109,6 +113,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     header,
     breadcrumbAddon,
     rightAddon,
+    className,
     isSecondarySidebarVisible,
     insetLeft = 0,
     insetRight = 0,
@@ -123,6 +128,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             header={header}
             breadcrumbAddon={breadcrumbAddon}
             rightAddon={rightAddon}
+            className={className}
             leftWindowControlsInset={areAllSidebarsCollapsed}
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
@@ -137,13 +143,53 @@ interface ProjectLayoutProps {
     breadcrumbs?: { label: string; href?: string }[]
 }
 
+interface ProjectLayoutLocationState {
+    gateSyncScreen?: boolean
+    skipInitialSyncCheck?: boolean
+}
+
+const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
+
+interface SidebarFullscreenSyncProps {
+    assistantPanelMode: 'closed' | 'panel' | 'fullscreen'
+}
+
+function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProps) {
+    const { isMobile, open, setOpen, setOpenMobile } = useSidebar()
+
+    useEffect(() => {
+        if (assistantPanelMode !== 'fullscreen') return
+
+        if (isMobile) {
+            setOpenMobile(false)
+            return
+        }
+
+        if (!open) return
+
+        const collapseTimer = window.setTimeout(() => {
+            setOpen(false)
+        }, FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS)
+
+        return () => {
+            window.clearTimeout(collapseTimer)
+        }
+    }, [assistantPanelMode, isMobile, open, setOpen, setOpenMobile])
+
+    return null
+}
+
 export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
+    const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
     const { user, logout, currentOrganization } = useAuth()
     const location = useLocation()
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
+    const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
+    const shouldGateSyncScreen = locationState?.gateSyncScreen === true
+    const shouldSkipInitialSyncCheck = locationState?.skipInitialSyncCheck === true
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -398,6 +444,16 @@ export function ProjectLayout({
     useDiagnosticsBridge(effectiveLocalPath)
     useDependenciesMonitor(effectiveLocalPath)
 
+    useEffect(() => {
+        setVscodeWorkspaceProjectPath(effectiveLocalPath)
+        if (effectiveLocalPath) {
+            void ensureVscodeServicesInitialized()
+        }
+        return () => {
+            setVscodeWorkspaceProjectPath(null)
+        }
+    }, [effectiveLocalPath])
+
     // Ensure project-scoped runtime processes don't leak across navigation.
     // - Stops any dev server PTY (devServer API)
     // - Kills any terminals started for this projectPath (terminal API)
@@ -517,6 +573,7 @@ export function ProjectLayout({
     // Determine if we can enable sync (need project + user data + resolved path decision)
     const hasSyncIdentities = Boolean(project?._id && convexUser?._id && slug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
+    const shouldHoldWorkspaceForSyncGate = shouldGateSyncScreen && !canSync
     const {
         header: headerContent,
         breadcrumbAddon,
@@ -595,8 +652,20 @@ export function ProjectLayout({
         )
     }
 
+    if (shouldHoldWorkspaceForSyncGate) {
+        return (
+            <div className="h-screen w-screen bg-background flex items-center justify-center">
+                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Preparing sync review...
+                </div>
+            </div>
+        )
+    }
+
     const layoutContent = (
         <SidebarProvider>
+            <SidebarFullscreenSync assistantPanelMode={assistantPanelMode} />
             <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
                 {/* Main content */}
                 <div className="flex-1 flex min-h-0 overflow-hidden relative">
@@ -612,7 +681,10 @@ export function ProjectLayout({
                         onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
                     />
-                    <SidebarInset color="currentColor" className="flex flex-row flex-1 min-w-0 overflow-hidden">
+                    <SidebarInset
+                        color="currentColor"
+                        className="flex flex-row flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
+                    >
                         <div
                             className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
                             style={{
@@ -625,6 +697,13 @@ export function ProjectLayout({
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
                                 rightAddon={rightHeaderAddon ?? undefined}
+                                className={
+                                    isPagesView
+                                        ? isWindowsClient
+                                            ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
+                                            : "bg-transparent backdrop-blur-xl"
+                                        : undefined
+                                }
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}
@@ -634,10 +713,11 @@ export function ProjectLayout({
                                 className={cn(
                                     // `min-w-0` prevents the main content from overflowing under the right panels
                                     // when it contains wide children (iframes, editors, etc.).
-                                    "app-scrollbar flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}
+                                style={undefined}
                             >
                                 {children || <Outlet />}
                             </div>
@@ -677,6 +757,8 @@ export function ProjectLayout({
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
                 onFilesChanged={handleRefreshFiles}
+                initialGateSyncScreen={shouldGateSyncScreen}
+                skipInitialSyncCheck={shouldSkipInitialSyncCheck}
             >
                 {layoutContent}
             </ProjectSyncProvider>

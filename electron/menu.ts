@@ -1,7 +1,18 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 
-export function createApplicationMenu() {
+interface CreateApplicationMenuOptions {
+    onOpenSettings?: () => void
+}
+
+export function createApplicationMenu(options?: CreateApplicationMenuOptions) {
     const isMac = process.platform === 'darwin'
+    const isReleaseBuild = app.isPackaged
+
+    // Keep macOS menu intact, but hide the native menu bar on non-mac platforms.
+    if (!isMac) {
+        Menu.setApplicationMenu(null)
+        return
+    }
 
     const template: MenuItemConstructorOptions[] = [
         // { role: 'appMenu' }
@@ -17,6 +28,12 @@ export function createApplicationMenu() {
                         { role: 'hide' },
                         { role: 'hideOthers' },
                         { role: 'unhide' },
+                        { type: 'separator' },
+                        {
+                            label: 'Settings...',
+                            accelerator: 'CmdOrCtrl+,',
+                            click: () => options?.onOpenSettings?.(),
+                        },
                         { type: 'separator' },
                         { role: 'quit' },
                     ],
@@ -47,10 +64,14 @@ export function createApplicationMenu() {
         {
             label: 'View',
             submenu: [
-                { role: 'reload' },
-                { role: 'forceReload' },
-                { role: 'toggleDevTools' },
-                { type: 'separator' },
+                ...(!isReleaseBuild
+                    ? [
+                        { role: 'reload' as const },
+                        { role: 'forceReload' as const },
+                        { role: 'toggleDevTools' as const },
+                        { type: 'separator' as const },
+                    ]
+                    : []),
                 { role: 'resetZoom' },
                 { role: 'zoomIn' },
                 { role: 'zoomOut' },

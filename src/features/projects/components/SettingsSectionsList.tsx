@@ -1,6 +1,7 @@
 "use client"
 
-import { useNavigate, useParams, useLocation } from "react-router-dom"
+import { useParams, useLocation } from 'react-router-dom'
+import { useViewTransitionNavigate } from '@/lib/navigation'
 import {
     Settings,
     AlertTriangle,
@@ -14,7 +15,7 @@ const settingsSections = [
 ]
 
 export function SettingsSectionsList() {
-    const navigate = useNavigate()
+    const navigate = useViewTransitionNavigate()
     const { slug } = useParams<{ slug: string }>()
     const location = useLocation()
 

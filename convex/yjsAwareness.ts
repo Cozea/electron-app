@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server"
+import { internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
 // Keep awareness reasonably fresh to avoid "ghost cursors".
@@ -14,6 +14,7 @@ export const upsertAwareness = mutation({
     projectId: v.id("projects"),
     clientId: v.string(),
     update: v.bytes(),
+    ttlMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -24,11 +25,16 @@ export const upsertAwareness = mutation({
       .first()
 
     const now = Date.now()
+    const ttlMs = typeof args.ttlMs === "number" && Number.isFinite(args.ttlMs)
+      ? Math.max(1_000, Math.min(60_000, Math.floor(args.ttlMs)))
+      : AWARENESS_TIMEOUT_MS
+    const expiresAt = now + ttlMs
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         update: args.update,
         updatedAt: now,
+        expiresAt,
       })
       return { id: existing._id, updated: true }
     }
@@ -38,6 +44,7 @@ export const upsertAwareness = mutation({
       clientId: args.clientId,
       update: args.update,
       updatedAt: now,
+      expiresAt,
     })
 
     return { id, updated: false }
@@ -53,7 +60,8 @@ export const getActiveAwareness = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const cutoff = Date.now() - AWARENESS_TIMEOUT_MS
+    const now = Date.now()
+    const cutoff = now - AWARENESS_TIMEOUT_MS
 
     const entries = await ctx.db
       .query("yjsAwareness")
@@ -62,11 +70,62 @@ export const getActiveAwareness = query({
       )
       .collect()
 
-    return entries.map((e) => ({
+    return entries
+      .filter((entry) => {
+        if (typeof entry.expiresAt === "number") {
+          return entry.expiresAt > now
+        }
+        return entry.updatedAt > cutoff
+      })
+      .map((e) => ({
       clientId: e.clientId,
       update: e.update,
       updatedAt: e.updatedAt,
+      expiresAt: e.expiresAt ?? e.updatedAt + AWARENESS_TIMEOUT_MS,
     }))
   },
 })
 
+export const cleanupExpiredAwareness = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const stale = await ctx.db
+      .query("yjsAwareness")
+      .withIndex("by_updated_at", (q) => q.lt("updatedAt", now - 2 * AWARENESS_TIMEOUT_MS))
+      .collect()
+
+    let deleted = 0
+    for (const entry of stale) {
+      const expiresAt = entry.expiresAt ?? entry.updatedAt + AWARENESS_TIMEOUT_MS
+      if (expiresAt <= now) {
+        await ctx.db.delete(entry._id)
+        deleted += 1
+      }
+    }
+
+    return { deleted }
+  },
+})
+
+export const cleanupExpiredAwarenessInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const stale = await ctx.db
+      .query("yjsAwareness")
+      .withIndex("by_updated_at", (q) => q.lt("updatedAt", now - 2 * AWARENESS_TIMEOUT_MS))
+      .collect()
+
+    let deleted = 0
+    for (const entry of stale) {
+      const expiresAt = entry.expiresAt ?? entry.updatedAt + AWARENESS_TIMEOUT_MS
+      if (expiresAt <= now) {
+        await ctx.db.delete(entry._id)
+        deleted += 1
+      }
+    }
+
+    return { deleted }
+  },
+})

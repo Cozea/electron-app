@@ -76,7 +76,7 @@ export function ReviewStep({
   return (
     <div className={cn("max-w-2xl mx-auto", className)}>
       {/* Blueprint Card */}
-      <div className="rounded-xl bg-card overflow-hidden">
+      <div className="rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
         {/* Header */}
         <div className="p-6 pb-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
@@ -273,7 +273,10 @@ export function ReviewStep({
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">Branch</span>
                 </div>
-                <Badge variant="outline" className="text-xs font-mono">
+                <Badge
+                  variant="outline"
+                  className="text-xs font-mono border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                >
                   {state.repoSource.branch}
                 </Badge>
               </div>
@@ -314,7 +317,10 @@ export function ReviewStep({
                         <span className="ml-2 text-xs text-muted-foreground">(you)</span>
                       )}
                     </span>
-                    <Badge variant="secondary" className="text-xs capitalize">
+                    <Badge
+                      variant="secondary"
+                      className="text-xs capitalize border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                    >
                       {member.role.replace('_', ' ')}
                     </Badge>
                   </div>
