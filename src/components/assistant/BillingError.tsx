@@ -18,6 +18,7 @@ const errorIcons: Record<string, typeof AlertCircle> = {
   MODEL_RESTRICTED: Ban,
   PROVIDER_RESTRICTED: Ban,
   PROVIDER_AUTH_REQUIRED: AlertCircle,
+  MODEL_CONFIGURATION_REQUIRED: AlertCircle,
   ENTITLEMENT_REQUIRED: CreditCard,
   WALLET_INSUFFICIENT_FUNDS: CreditCard,
 }
@@ -29,6 +30,7 @@ const errorColors: Record<string, string> = {
   MODEL_RESTRICTED: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
   PROVIDER_RESTRICTED: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
   PROVIDER_AUTH_REQUIRED: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+  MODEL_CONFIGURATION_REQUIRED: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
   ENTITLEMENT_REQUIRED: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
   WALLET_INSUFFICIENT_FUNDS: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
 }

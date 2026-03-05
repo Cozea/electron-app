@@ -1,5 +1,14 @@
 import type { ProviderAuthProvider } from '@shared/electronApiTypes'
 
+const COZEA_MANAGED_PROVIDER_IDS = new Set<ProviderAuthProvider>([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'moonshotai',
+  'moonshot',
+])
+
 function parseScopedProviderFromModelId(modelId: string): ProviderAuthProvider | null {
   const trimmed = modelId.trim()
   const separatorIndex = trimmed.indexOf('/')
@@ -19,17 +28,27 @@ export function inferProviderFromModelId(modelId: string): ProviderAuthProvider 
   if (normalized.includes('copilot')) return 'github-copilot'
   if (normalized.includes('gitlab')) return 'gitlab'
   if (normalized.includes('grok')) return 'xai'
+  if (normalized.includes('kimi') || normalized.includes('moonshot')) return 'moonshotai'
   if (normalized.includes('gpt')) return 'openai'
   if (normalized.includes('claude')) return 'anthropic'
   if (normalized.includes('gemini')) return 'google'
   return null
 }
 
+export function isManagedProvider(provider: ProviderAuthProvider | null | undefined): boolean {
+  if (!provider) return false
+  return COZEA_MANAGED_PROVIDER_IDS.has(provider)
+}
+
 export async function buildEncodedProviderAuthHeader(args: {
   provider: ProviderAuthProvider
   modelId: string
   organizationId: string
-}): Promise<{ header?: string; error?: string }> {
+}): Promise<{ header?: string; error?: string; managed?: boolean }> {
+  if (isManagedProvider(args.provider)) {
+    return { managed: true }
+  }
+
   if (!window.electronAPI?.providerAuth) {
     return { error: 'Local provider auth is unavailable in this environment.' }
   }

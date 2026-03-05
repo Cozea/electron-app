@@ -31,288 +31,34 @@ function assertGatewaySecret(secret: string | undefined) {
   }
 }
 
+const TODO_ITEM_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  required: ["content", "status"],
+  properties: {
+    content: {
+      type: "string",
+      minLength: 1,
+    },
+    activeForm: {
+      type: "string",
+      minLength: 1,
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "in_progress", "completed"],
+    },
+    files: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+}
+
 const BUILTIN_TOOLS: BuiltinTool[] = [
-  {
-    name: "read",
-    displayName: "Read File",
-    description: "Read the contents of a file. Line numbers are 1-indexed. This tool will truncate its output at 2000 lines and may be called repeatedly with offset and limit parameters to read larger files in chunks.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filePath: {
-          description: "The absolute path of the file to read.",
-          type: "string",
-        },
-        offset: {
-          description: "Optional: the 1-based line number to start reading from. Only use this if the file is too large to read at once. If not specified, the file will be read from the beginning.",
-          type: "number",
-        },
-        limit: {
-          description: "Optional: the maximum number of lines to read. Only use this together with `offset` if the file is too large to read at once.",
-          type: "number",
-        },
-      },
-      required: ["filePath"],
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "list",
-    displayName: "List Directory",
-    description: "List the contents of a directory. Result will have the name of the child. If the name ends in /, it's a folder, otherwise a file",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: {
-          description: "The absolute path to the directory to list. If omitted, the current workspace directory is used.",
-          type: "string",
-        },
-        ignore: {
-          description: "Optional glob patterns to ignore.",
-          type: "array",
-          items: { type: "string" },
-        },
-      },
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "glob",
-    displayName: "Find Files",
-    description: "Find files using a glob pattern.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["pattern"],
-      properties: {
-        pattern: {
-          description: "The glob pattern to match files against.",
-          type: "string",
-        },
-        path: {
-          description: "Optional directory to search in. Defaults to the current workspace directory.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "grep",
-    displayName: "Find Text in Files",
-    description: "Search file contents using a regular expression.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["pattern"],
-      properties: {
-        pattern: {
-          description: "The regex pattern to search for in file contents.",
-          type: "string",
-        },
-        path: {
-          description: "Optional directory to search in. Defaults to the current workspace directory.",
-          type: "string",
-        },
-        include: {
-          description: "Optional file include glob (for example, \"*.ts\" or \"*.{ts,tsx}\").",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: false,
-    allowedRoles: ["admin", "member", "viewer"],
-    riskLevel: "safe",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "write",
-    displayName: "Create File",
-    description: "This is a tool for creating a new file in the workspace. The file will be created with the specified content. The directory will be created if it does not already exist. Never use this tool to edit a file that already exists.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["filePath", "content"],
-      properties: {
-        filePath: {
-          description: "The absolute path of the file to create.",
-          type: "string",
-        },
-        content: {
-          description: "The file contents.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "dangerous",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "edit",
-    displayName: "Replace String",
-    description: "This is a tool for making edits in an existing file in the workspace. For moving or renaming files, use run in terminal tool with the 'mv' command instead. For larger edits, split them into smaller edits and call the edit tool multiple times to ensure accuracy. Before editing, always ensure you have the context to understand the file's contents and context. To edit a file, provide: 1) filePath (absolute path), 2) oldString (MUST be the exact literal text to replace including all whitespace, indentation, newlines, and surrounding code etc), and 3) newString (MUST be the exact literal text to replace `oldString` with (also including all whitespace, indentation, newlines, and surrounding code etc.). Ensure the resulting code is correct and idiomatic.). Each use of this tool replaces exactly ONE occurrence of oldString.\n\nCRITICAL for `oldString`: Must uniquely identify the single instance to change. Include at least 3 lines of context BEFORE and AFTER the target text, matching whitespace and indentation precisely. If this string matches multiple locations, or does not match exactly, the tool will fail. Never use 'Lines 123-456 omitted' from summarized documents or ...existing code... comments in the oldString or newString.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["filePath", "oldString", "newString"],
-      properties: {
-        filePath: {
-          description: "An absolute path to the file to edit.",
-          type: "string",
-        },
-        oldString: {
-          description: "The exact literal text to replace, preferably unescaped. For single replacements (default), include at least 3 lines of context BEFORE and AFTER the target text, matching whitespace and indentation precisely. For multiple replacements, specify expected_replacements parameter. If this string is not the exact literal text (i.e. you escaped it) or does not match exactly, the tool will fail.",
-          type: "string",
-        },
-        newString: {
-          description: "The exact literal text to replace `oldString` with, preferably unescaped. Provide the EXACT text. Ensure the resulting code is correct and idiomatic.",
-          type: "string",
-        },
-        replaceAll: {
-          description: "Replace all occurrences of oldString. Defaults to false.",
-          type: "boolean",
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "dangerous",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "multiedit",
-    displayName: "Multi Replace String",
-    description: "Apply multiple edit operations sequentially to a file.",
-    category: "filesystem",
-    inputSchema: {
-      type: "object",
-      required: ["filePath", "edits"],
-      properties: {
-        filePath: {
-          description: "The absolute path to the file to modify.",
-          type: "string",
-        },
-        edits: {
-          description: "Array of edit operations to perform sequentially.",
-          type: "array",
-          minItems: 1,
-          items: {
-            type: "object",
-            required: ["filePath", "oldString", "newString"],
-            properties: {
-              filePath: {
-                description: "An absolute path to the file to edit.",
-                type: "string",
-              },
-              oldString: {
-                description: "The exact literal text to replace, preferably unescaped. Include at least 3 lines of context BEFORE and AFTER the target text, matching whitespace and indentation precisely. If this string is not the exact literal text or does not match exactly, this replacement will fail.",
-                type: "string",
-              },
-              newString: {
-                description: "The exact literal text to replace `oldString` with, preferably unescaped. Provide the EXACT text. Ensure the resulting code is correct and idiomatic.",
-                type: "string",
-              },
-              replaceAll: {
-                description: "Replace all occurrences of oldString. Defaults to false.",
-                type: "boolean",
-              },
-            },
-          },
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "dangerous",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "bash",
-    displayName: "Run in Terminal",
-    description: "Run a shell command in the workspace. Prefer non-interactive commands that exit on their own.",
-    category: "code",
-    inputSchema: {
-      type: "object",
-      required: ["command", "description"],
-      properties: {
-        command: {
-          description: "The command to run in the terminal. Prefer non-interactive usage (for example --yes/-y) and avoid long-running watch/dev commands unless explicitly requested.",
-          type: "string",
-        },
-        timeout: {
-          description: "Optional timeout in milliseconds.",
-          type: "number",
-        },
-        workdir: {
-          description: "Optional working directory. Defaults to the current workspace directory.",
-          type: "string",
-        },
-        description: {
-          description: "Clear, concise description of what this command does in 5-10 words.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "dangerous",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: true,
-  },
-  {
-    name: "apply_patch",
-    displayName: "Apply Patch",
-    description: "Apply a patch to files using the apply_patch patch format.",
-    category: "code",
-    inputSchema: {
-      type: "object",
-      required: ["patchText"],
-      properties: {
-        patchText: {
-          description: "The full patch text that describes all changes to be made.",
-          type: "string",
-        },
-      },
-    },
-    requiresApproval: true,
-    allowedRoles: ["admin", "member"],
-    riskLevel: "dangerous",
-    executionEnvironment: "local",
-    isBuiltin: true,
-    isEnabled: false,
-  },
   {
     name: "web_search",
     displayName: "Web Search",
-    description: "Search the web for up-to-date information.",
+    description: "Search the web using provider-native web search when available.",
     category: "web",
     provider: "openai",
     toolType: "provider",
@@ -320,25 +66,25 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     providerToolArgs: {},
     inputSchema: {
       type: "object",
+      required: ["query"],
       properties: {
         query: {
           type: "string",
           description: "Search query.",
         },
       },
-      required: ["query"],
     },
     requiresApproval: false,
     allowedRoles: ["admin", "member", "viewer"],
     riskLevel: "safe",
     executionEnvironment: "provider",
     isBuiltin: true,
-    isEnabled: false,
+    isEnabled: true,
   },
   {
     name: "plan_write",
     displayName: "Present Project Plans",
-    description: "Present 3 web project plan options (prototype, beta, mvp).",
+    description: "Present exactly 3 plan options (prototype, beta, mvp).",
     category: "data",
     inputSchema: {
       type: "object",
@@ -348,7 +94,40 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
           type: "array",
           minItems: 3,
           maxItems: 3,
-          items: { type: "object" },
+          items: {
+            type: "object",
+            required: ["tier", "name", "description", "features", "config"],
+            properties: {
+              tier: {
+                type: "string",
+                enum: ["prototype", "beta", "mvp"],
+              },
+              name: { type: "string" },
+              description: { type: "string" },
+              features: {
+                type: "array",
+                minItems: 3,
+                items: { type: "string" },
+              },
+              config: {
+                type: "object",
+                required: ["targetPlatform"],
+                properties: {
+                  targetPlatform: {
+                    type: "string",
+                    enum: ["web"],
+                  },
+                  buildContract: {
+                    type: "object",
+                    properties: {
+                      previewMode: { type: "string", enum: ["web"] },
+                      frameworkClass: { type: "string", enum: ["web-framework"] },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -362,56 +141,37 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
   {
     name: "todowrite",
     displayName: "Build Tasks",
-    description: "Manage and update task lists for progress tracking.",
+    description: "Track project-generation task progress.",
     category: "data",
     inputSchema: {
       type: "object",
       properties: {
         tasks: {
           type: "array",
-          items: {
-            type: "object",
-            required: ["content", "status"],
-            properties: {
-              content: { type: "string" },
-              activeForm: { type: "string" },
-              status: { type: "string", enum: ["pending", "in_progress", "completed"] },
-              files: { type: "array", items: { type: "string" } },
-            },
-          },
+          items: TODO_ITEM_SCHEMA,
         },
         todos: {
           type: "array",
-          items: {
-            type: "object",
-            required: ["content", "status"],
-            properties: {
-              content: { type: "string" },
-              activeForm: { type: "string" },
-              status: { type: "string", enum: ["pending", "in_progress", "completed"] },
-              files: { type: "array", items: { type: "string" } },
-            },
-          },
+          items: TODO_ITEM_SCHEMA,
         },
-        tasks_json: { type: "string" },
+        tasks_json: {
+          type: "string",
+          description: "Compatibility JSON payload for providers that require a string input.",
+        },
       },
-      anyOf: [
-        { required: ["tasks"] },
-        { required: ["todos"] },
-        { required: ["tasks_json"] },
-      ],
+      anyOf: [{ required: ["tasks"] }, { required: ["todos"] }, { required: ["tasks_json"] }],
     },
     requiresApproval: false,
     allowedRoles: ["admin", "member", "viewer"],
     riskLevel: "safe",
-    executionEnvironment: "local",
+    executionEnvironment: "server",
     isBuiltin: true,
     isEnabled: true,
   },
   {
     name: "build_complete",
     displayName: "Mark Build Complete",
-    description: "Signal that project generation is complete.",
+    description: "Signal that project generation has completed.",
     category: "data",
     inputSchema: {
       type: "object",
@@ -422,7 +182,7 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
     requiresApproval: false,
     allowedRoles: ["admin", "member", "viewer"],
     riskLevel: "safe",
-    executionEnvironment: "local",
+    executionEnvironment: "server",
     isBuiltin: true,
     isEnabled: true,
   },
@@ -430,6 +190,15 @@ const BUILTIN_TOOLS: BuiltinTool[] = [
 
 const CANONICAL_TOOL_NAMES = new Set(BUILTIN_TOOLS.map((tool) => tool.name))
 const LEGACY_TOOL_NAMES = [
+  "read",
+  "list",
+  "glob",
+  "grep",
+  "write",
+  "edit",
+  "multiedit",
+  "bash",
+  "apply_patch",
   "read_file",
   "list_dir",
   "file_search",
@@ -461,7 +230,6 @@ export const syncBuiltinTools = mutation({
         .withIndex("by_name", (q) => q.eq("name", tool.name))
         .first()
 
-      // Convert to proper types for db insertion
       const toolData = {
         name: tool.name,
         displayName: tool.displayName,

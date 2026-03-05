@@ -51,6 +51,7 @@ export function LayoutToggles() {
     const { slug } = useParams<{ slug: string }>()
     const isProjectContext = Boolean(slug)
     const canToggleTerminal = isProjectContext || hasTerminalSessions
+    const canToggleAssistant = isProjectContext
 
     return (
         <div className="flex items-center gap-0.5">
@@ -80,14 +81,22 @@ export function LayoutToggles() {
                 </Button>
             </div>
 
-            <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
-                onClick={toggleAssistant}
+            {/* Assistant button: project context only; collapse animates spacing */}
+            <div
+                className={cn(
+                    'overflow-hidden transition-[width,opacity] duration-200 ease-out',
+                    canToggleAssistant ? 'w-7 opacity-100' : 'w-0 min-w-0 opacity-0'
+                )}
             >
-                <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
-            </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
+                    onClick={toggleAssistant}
+                >
+                    <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
+                </Button>
+            </div>
         </div>
     )
 }

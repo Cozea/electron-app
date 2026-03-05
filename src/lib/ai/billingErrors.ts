@@ -26,6 +26,9 @@ const BILLING_CODE_BY_ERROR: Record<string, string> = {
   model_restricted: 'MODEL_RESTRICTED',
   provider_restricted: 'PROVIDER_RESTRICTED',
   provider_auth_required: 'PROVIDER_AUTH_REQUIRED',
+  invalid_model_id: 'MODEL_CONFIGURATION_REQUIRED',
+  provider_model_mismatch: 'MODEL_CONFIGURATION_REQUIRED',
+  provider_auth_provider_mismatch: 'MODEL_CONFIGURATION_REQUIRED',
   entitlement_required: 'ENTITLEMENT_REQUIRED',
   wallet_insufficient_funds: 'WALLET_INSUFFICIENT_FUNDS',
 }
@@ -237,6 +240,20 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
         },
         { label: 'Open AI Settings', href: '/settings/ai' }
       )
+    case 'MODEL_CONFIGURATION_REQUIRED':
+      return withFallbackAction(
+        {
+          ...normalized,
+          title: normalized.title || 'Choose a valid model',
+          message:
+            normalized.message ||
+            'The selected model configuration is invalid for this request.',
+          hint:
+            normalized.hint ||
+            'Pick a provider-specific model in Settings > AI, then retry.',
+        },
+        { label: 'Open AI Settings', href: '/settings/ai' }
+      )
     case 'WALLET_INSUFFICIENT_FUNDS':
       return withFallbackAction(
         {
@@ -244,10 +261,10 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
           title: normalized.title || 'AI wallet funds needed',
           message:
             normalized.message ||
-            'Your workspace AI wallet is out of funds for managed providers.',
+            'Your available AI wallet is out of funds for managed providers.',
           hint:
             normalized.hint ||
-            'Open Settings > Billing to add funds and continue.',
+            'Open Settings > Billing to review included funds, or connect your own provider in Settings > AI.',
         },
         { label: 'Open Billing', href: '/settings/billing' }
       )
@@ -296,6 +313,18 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
       return normalizeBillingError({
         error: 'provider_auth_required',
         code: 'PROVIDER_AUTH_REQUIRED',
+        message: rawMessage,
+      })
+    }
+    if (
+      message.includes('invalid_model_id') ||
+      message.includes('provider_model_mismatch') ||
+      message.includes('provider_auth_provider_mismatch') ||
+      message.includes('scoped_model_required')
+    ) {
+      return normalizeBillingError({
+        error: 'invalid_model_id',
+        code: 'MODEL_CONFIGURATION_REQUIRED',
         message: rawMessage,
       })
     }

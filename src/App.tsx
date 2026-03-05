@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
+import { Suspense, lazy, useEffect, useEffectEvent, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
@@ -11,6 +11,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
+import { clearModelCatalogCache, getModelCatalog } from './lib/ai/modelCatalogClient'
 
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })))
 const Onboarding = lazy(() =>
@@ -124,9 +125,36 @@ function SettingsDrawerUrlBridge() {
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading, needsOnboarding, workspaceSelectionRequired } = useAuth()
+  const {
+    accessToken,
+    currentOrganization,
+    isAuthenticated,
+    isLoading,
+    needsOnboarding,
+    workspaceSelectionRequired,
+  } = useAuth()
   const location = useLocation()
   const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
+  const refreshedModelCatalogOrgRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) {
+      refreshedModelCatalogOrgRef.current = null
+      return
+    }
+    if (!accessToken || !currentOrganization?.organizationId) return
+    if (refreshedModelCatalogOrgRef.current === currentOrganization.organizationId) return
+
+    refreshedModelCatalogOrgRef.current = currentOrganization.organizationId
+    clearModelCatalogCache(currentOrganization.organizationId)
+    void getModelCatalog({
+      organizationId: currentOrganization.organizationId,
+      accessToken,
+      forceRefresh: true,
+    }).catch((error) => {
+      console.warn('Failed to refresh model catalog on app start:', error)
+    })
+  }, [accessToken, currentOrganization?.organizationId, isAuthenticated, isLoading, needsOnboarding])
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return

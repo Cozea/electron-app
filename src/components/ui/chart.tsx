@@ -44,15 +44,16 @@ const ChartContainer = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     config: ChartConfig
-    children: React.ComponentProps<
-      typeof RechartsPrimitive.ResponsiveContainer
-    >["children"]
+    children: React.ReactElement<{ width?: number; height?: number }>
   }
 >(({ id, className, children, config, ...props }, ref) => {
   const uniqueId = React.useId()
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`
   const containerRef = React.useRef<HTMLDivElement | null>(null)
-  const [hasMeasuredSize, setHasMeasuredSize] = React.useState(false)
+  const [measuredSize, setMeasuredSize] = React.useState<{
+    width: number
+    height: number
+  } | null>(null)
 
   const setRefs = React.useCallback(
     (node: HTMLDivElement | null) => {
@@ -72,7 +73,17 @@ const ChartContainer = React.forwardRef<
 
     const updateSizeState = () => {
       const rect = node.getBoundingClientRect()
-      setHasMeasuredSize(rect.width > 0 && rect.height > 0)
+      const width = Math.floor(rect.width)
+      const height = Math.floor(rect.height)
+      if (width > 0 && height > 0) {
+        setMeasuredSize((prev) =>
+          prev && prev.width === width && prev.height === height
+            ? prev
+            : { width, height }
+        )
+        return
+      }
+      setMeasuredSize(null)
     }
 
     updateSizeState()
@@ -101,10 +112,11 @@ const ChartContainer = React.forwardRef<
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        {hasMeasuredSize ? (
-          <RechartsPrimitive.ResponsiveContainer width="100%" height="100%">
-            {children}
-          </RechartsPrimitive.ResponsiveContainer>
+        {measuredSize ? (
+          React.cloneElement(children, {
+            width: measuredSize.width,
+            height: measuredSize.height,
+          })
         ) : null}
       </div>
     </ChartContext.Provider>

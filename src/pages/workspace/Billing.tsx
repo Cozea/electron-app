@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { api } from '../../../convex/_generated/api'
@@ -22,27 +21,12 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '../../components/ui/chart'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
-import {
   ExternalLink,
   Check,
   CheckCircle2,
   XCircle,
   Loader2,
 } from 'lucide-react'
-import { scheduleTask } from '@/lib/scheduler'
 import { fetchWithAbort } from '@/lib/abort'
 import { featureFlags } from '@/lib/featureFlags'
 
@@ -52,10 +36,10 @@ const AUTH_SERVER_URL =
 
 const STARTUP_MIN_SEATS = 2
 
-type UsageRange = '7d' | '30d' | '90d'
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
 type SelfServePlan = CheckoutPlan
+type PlanSubtype = 'individual' | 'workspace'
 
 interface BillingProps {
   surface?: 'page' | 'drawer'
@@ -119,7 +103,7 @@ const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
       { text: 'Collaboration and sync are gated', included: false },
     ],
     conclusion: 'Great for solo exploration before upgrading.',
-    footerText: 'Downgrades are managed in Stripe billing portal.',
+    footerText: '',
   },
   {
     id: 'pro',
@@ -204,12 +188,6 @@ interface StripeInvoice {
   description: string
   hostedInvoiceUrl: string | null
   invoicePdf: string | null
-}
-
-interface UsagePoint {
-  date: string
-  tokens: number
-  requests: number
 }
 
 interface SeatWalletView {
@@ -466,11 +444,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
-  const usageLimits = useQuery(
-    api.organizations.getUsageLimits,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-
   const seatManagement = useQuery(
     api.billing.getSeatManagement,
     convexOrg?._id && convexUserId
@@ -494,100 +467,14 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const setSeatAssignment = useMutation(api.billing.setSeatAssignment)
 
-  const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
-  const usageDateRange = useMemo(() => {
-    const now = Date.now()
-    const daysToSubtract =
-      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
-    const startDate = now - daysToSubtract * 24 * 60 * 60 * 1000
-    return { startDate, endDate: now }
-  }, [usageTimeRange])
-
-  const usageAggregates = useQuery(
-    api.aiUsage.getAggregates,
-    convexOrg?._id
-      ? {
-          organizationId: convexOrg._id,
-          period: 'daily' as const,
-          startDate: usageDateRange.startDate,
-          endDate: usageDateRange.endDate,
-        }
-      : 'skip'
-  )
-
-  const [chartData, setChartData] = useState<UsagePoint[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    void scheduleTask(() => {
-      if (!usageAggregates) {
-        if (!cancelled) setChartData([])
-        return
-      }
-
-      const daysToShow =
-        usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
-      const dates: UsagePoint[] = []
-      const now = new Date()
-
-      for (let i = daysToShow - 1; i >= 0; i -= 1) {
-        const date = new Date(now)
-        date.setDate(date.getDate() - i)
-        date.setHours(0, 0, 0, 0)
-        dates.push({
-          date: date.toISOString().split('T')[0],
-          tokens: 0,
-          requests: 0,
-        })
-      }
-
-      const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
-      for (const aggregate of usageAggregates) {
-        const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
-        const index = indexByDate.get(dateStr)
-        if (index === undefined) continue
-        dates[index] = {
-          ...dates[index],
-          tokens: aggregate.totalTokens,
-          requests: aggregate.requestCount,
-        }
-      }
-
-      if (!cancelled) {
-        setChartData(dates)
-      }
-    }, 'user-visible')
-
-    return () => {
-      cancelled = true
-    }
-  }, [usageAggregates, usageTimeRange])
-
-  const chartTotals = useMemo(() => {
-    return chartData.reduce(
-      (acc, point) => {
-        acc.tokens += point.tokens
-        acc.requests += point.requests
-        return acc
-      },
-      { tokens: 0, requests: 0 }
-    )
-  }, [chartData])
-
-  const chartConfig: ChartConfig = {
-    tokens: {
-      label: 'Tokens',
-      color: 'var(--chart-1)',
-    },
-  }
-
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [pricingCatalog, setPricingCatalog] = useState<StripeCatalogResponse | null>(null)
-  const [isCatalogLoading, setIsCatalogLoading] = useState(false)
+  const [, setIsCatalogLoading] = useState(false)
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
+  const [selectedPlanSubtype, setSelectedPlanSubtype] = useState<PlanSubtype>('individual')
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
 
@@ -714,21 +601,14 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const paidSeatProgress =
     paidSeatTotal > 0 ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100) : 0
 
-  const projectCurrent = usageLimits?.projects.current ?? 0
-  const projectLimit = usageLimits?.projects.limit ?? -1
-  const storageCurrent = usageLimits?.storage.currentFormatted ?? '0 B'
-  const storageLimit = usageLimits?.storage.limitFormatted ?? '0 B'
-  const storagePercent = usageLimits?.storage.usagePercent ?? 0
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
-  const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
-  const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
-  const walletBalanceCents = walletSummary?.wallet?.balanceCents ?? 0
-  const walletHeldCents = walletSummary?.wallet?.heldCents ?? 0
-  const walletUsagePercent =
-    walletIncludedCents > 0
-      ? Math.max(0, Math.min(100, (walletAvailableCents / walletIncludedCents) * 100))
-      : 0
   const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
+  const activeWalletContextLabel =
+    walletSummary?.walletContexts?.active === 'workspace_seat'
+      ? 'Workspace seat wallet'
+      : walletSummary?.walletContexts?.active === 'personal'
+        ? 'Personal wallet'
+        : 'No active wallet context'
 
   const activeAssignmentsByUserId = useMemo(() => {
     const map = new Set<string>()
@@ -747,6 +627,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     source: entitlement?.source,
     plan: entitlement?.plan,
   })
+  const showPaidSeatSummary = seatManagedEntitlement || paidSeatTotal > 0
+  const hasBillingOverviewContent =
+    showPaidSeatSummary || (seatManagedEntitlement && Boolean(seatManagement?.billingUser))
   const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
   const individualPlanCards = useMemo(() => {
     return INDIVIDUAL_PLAN_CARDS.map((card) => {
@@ -928,6 +811,32 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const urlParams = new URLSearchParams(search)
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
+  const renderCycleToggle = () => (
+    <div className="inline-flex items-center rounded-full border border-border/60 bg-background/70 p-0.5">
+      <Button
+        type="button"
+        size="sm"
+        className="h-6 rounded-full px-2.5 text-[11px] leading-none"
+        variant={checkoutCycle === 'monthly' ? 'default' : 'ghost'}
+        onClick={() => setCheckoutCycle('monthly')}
+        aria-label="Monthly billing"
+        title="Monthly billing"
+      >
+        M
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        className="h-6 rounded-full px-2.5 text-[11px] leading-none"
+        variant={checkoutCycle === 'yearly' ? 'default' : 'ghost'}
+        onClick={() => setCheckoutCycle('yearly')}
+        aria-label="Yearly billing"
+        title="Yearly billing"
+      >
+        Y
+      </Button>
+    </div>
+  )
 
   const content = (
     <>
@@ -975,311 +884,143 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           .trim()}
       >
         <Card className="border-none shadow-none bg-transparent">
-          <CardHeader className="pt-0 px-0">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-              <div className="min-w-0 flex items-center gap-2">
-                <CardTitle className="truncate text-3xl font-semibold tracking-tight">{currentPlanName} plan</CardTitle>
-                <Badge variant="secondary">{entitlementStatusLabel}</Badge>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2 justify-self-end">
-                <Button
-                  variant="secondary"
-                  onClick={handleManageBilling}
-                  disabled={!canOpenCheckout || isPortalPending}
-                >
-                  {isPortalPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Manage Billing
-                </Button>
-                <Button variant="outline" onClick={() => setShowUpgradeOptions((current) => !current)}>
-                  {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
-                </Button>
-              </div>
+          <CardHeader className={hasBillingOverviewContent ? 'pt-0 px-0' : 'pt-0 px-0 pb-2'}>
+            <div className="min-w-0 flex items-center gap-2">
+              <CardTitle className="truncate text-3xl font-semibold tracking-tight">{currentPlanName} plan</CardTitle>
+              <Badge variant="secondary">{entitlementStatusLabel}</Badge>
             </div>
             <CardDescription>
               Billing is account-scoped. Pro and Max are individual subscriptions. Startup and Enterprise use
               centralized seat billing. Workspace limits are informational only.
             </CardDescription>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={handleManageBilling}
+                disabled={!canOpenCheckout || isPortalPending}
+              >
+                {isPortalPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Manage Billing
+              </Button>
+              <Button variant="outline" onClick={() => setShowUpgradeOptions((current) => !current)}>
+                {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
+              </Button>
+              {showUpgradeOptions ? (
+                <div className="inline-flex h-10 w-fit items-center rounded-full bg-muted p-1">
+                  <Button
+                    type="button"
+                    variant={selectedPlanSubtype === 'individual' ? 'default' : 'ghost'}
+                    className="rounded-full px-4"
+                    onClick={() => setSelectedPlanSubtype('individual')}
+                  >
+                    Individual
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={selectedPlanSubtype === 'workspace' ? 'default' : 'ghost'}
+                    className="rounded-full px-4"
+                    onClick={() => setSelectedPlanSubtype('workspace')}
+                  >
+                    Enterprise
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </CardHeader>
 
-          <CardContent className="space-y-5 px-0">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Paid seats</span>
-                  <span>{seatManagedEntitlement ? `${paidSeatAssigned} / ${paidSeatTotal || '-'}` : 'Not required'}</span>
-                </div>
-                {seatManagedEntitlement && paidSeatTotal > 0 ? (
-                  <Progress value={paidSeatProgress} className="h-2" />
-                ) : (
-                  <div className="text-xs text-muted-foreground">
-                    {seatManagedEntitlement
-                      ? 'No paid seat pool active'
-                      : 'Seat assignment is only used for Startup and Enterprise'}
+          {hasBillingOverviewContent ? (
+            <CardContent className="space-y-5 px-0">
+              {showPaidSeatSummary && (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Paid seats</span>
+                      <span>{`${paidSeatAssigned} / ${paidSeatTotal || '-'}`}</span>
+                    </div>
+                    {seatManagedEntitlement && paidSeatTotal > 0 ? (
+                      <Progress value={paidSeatProgress} className="h-2" />
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        {seatManagedEntitlement
+                          ? 'No paid seat pool active'
+                          : 'Seat assignment is only used for Startup and Enterprise'}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {seatManagedEntitlement
+                        ? paidSeatTotal > 0
+                          ? `${paidSeatAvailable} seats available`
+                          : 'Assign seats after starting Startup'
+                      : 'Pro and Max do not use seat assignments'}
+                    </div>
                   </div>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  {seatManagedEntitlement
-                    ? paidSeatTotal > 0
-                      ? `${paidSeatAvailable} seats available`
-                      : 'Assign seats after starting Startup'
-                    : 'Pro and Max do not use seat assignments'}
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Projects</span>
-                  <span>{projectLimit < 0 ? `${projectCurrent} / Unlimited` : `${projectCurrent} / ${projectLimit}`}</span>
+              {seatManagedEntitlement && seatManagement?.billingUser ? (
+                <div className="flex w-fit items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={seatManagement.billingUser.profileImageUrl || undefined} />
+                    <AvatarFallback>
+                      {(seatManagement.billingUser.email || '?').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Billing owner</p>
+                    <p className="text-sm font-medium">{seatManagement.billingUser.email}</p>
+                  </div>
                 </div>
-                {projectLimit > 0 && (
-                  <Progress value={Math.min(100, (projectCurrent / Math.max(projectLimit, 1)) * 100)} className="h-2" />
-                )}
-              </div>
-
-              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Cloud storage</span>
-                  <span>
-                    {storageCurrent} / {storageLimit}
-                  </span>
-                </div>
-                {!usageLimits?.storage.isUnlimited && <Progress value={Math.min(100, storagePercent)} className="h-2" />}
-              </div>
-
-              <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>AI wallet</span>
-                  <span>{formatCurrencyFromCents(walletAvailableCents, walletCurrency)} available</span>
-                </div>
-                {walletIncludedCents > 0 ? (
-                  <Progress value={walletUsagePercent} className="h-2" />
-                ) : (
-                  <div className="text-xs text-muted-foreground">No included wallet on current entitlement</div>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  {walletIncludedCents > 0
-                    ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
-                    : 'Included wallet is not active for this plan'}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Balance {formatCurrencyFromCents(walletBalanceCents, walletCurrency)}
-                  {' · '}
-                  Held {formatCurrencyFromCents(walletHeldCents, walletCurrency)}
-                </div>
-              </div>
-            </div>
-
-            {seatManagedEntitlement && seatManagement?.billingUser ? (
-              <div className="flex w-fit items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={seatManagement.billingUser.profileImageUrl || undefined} />
-                  <AvatarFallback>
-                    {(seatManagement.billingUser.email || '?').slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-xs text-muted-foreground">Billing owner</p>
-                  <p className="text-sm font-medium">{seatManagement.billingUser.email}</p>
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
+              ) : null}
+            </CardContent>
+          ) : null}
         </Card>
 
-        <div
-          className={`grid transition-all duration-300 ease-in-out ${
-            showUpgradeOptions ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-          }`}
-        >
-          <div className="overflow-hidden">
-            <Card className="border-none bg-transparent shadow-none">
-              <CardHeader className="px-0 pt-0 pb-4">
-                <CardTitle>Available Plans</CardTitle>
-                <CardDescription>
-                  Restore the plan-style comparison view while keeping the same checkout and entitlement logic.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-0 pt-0">
-                <div className="mb-6 flex flex-wrap items-center gap-3">
-                  <div className="inline-flex items-center rounded-lg border border-border/60 bg-background/70 p-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={checkoutCycle === 'monthly' ? 'default' : 'ghost'}
-                      onClick={() => setCheckoutCycle('monthly')}
-                    >
-                      Monthly
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={checkoutCycle === 'yearly' ? 'default' : 'ghost'}
-                      onClick={() => setCheckoutCycle('yearly')}
-                    >
-                      Yearly
-                    </Button>
-                  </div>
-                  {isCatalogLoading ? (
-                    <p className="text-xs text-muted-foreground">Syncing Stripe catalog pricing...</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Pricing source: {pricingCatalog?.source === 'convex'
-                        ? 'Convex Stripe catalog'
-                        : pricingCatalog?.source === 'mixed'
-                          ? 'Convex + env fallback'
-                          : 'Env fallback'}
-                    </p>
-                  )}
-                </div>
-                <Tabs defaultValue="individual" className="w-full">
-                  <TabsList className="mb-6 h-10 w-fit rounded-lg bg-muted p-1">
-                    <TabsTrigger value="individual" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                      Individual
-                    </TabsTrigger>
-                    <TabsTrigger value="workspace" className="rounded-md px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                      Enterprise
-                    </TabsTrigger>
-                  </TabsList>
+            {showUpgradeOptions && (
+          <Card className="-mt-4 border-none bg-transparent shadow-none">
+            <CardContent className="px-0 pt-0">
+              {selectedPlanSubtype === 'individual' ? (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {individualPlanCards.map((planCard, index) => {
+                    const isCurrentPlan = currentPlanIdForCards === planCard.id
+                    const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
+                    const showCardHeaderRow = planCard.id !== 'free'
 
-                  <TabsContent value="individual" className="mt-0">
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                      {individualPlanCards.map((planCard, index) => {
-                        const isCurrentPlan = currentPlanIdForCards === planCard.id
-                        const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
-
-                        return (
-                          <div
-                            key={planCard.id}
-                            className={`relative flex h-full flex-col rounded-2xl border border-transparent bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40 ${
-                              isCurrentPlan ? 'border-primary/30' : ''
-                            }`}
-                            style={{ transitionDelay: `${index * 50}ms` }}
-                          >
-                            {badge ? (
-                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                                {badge}
-                              </div>
-                            ) : null}
-
-                            <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{planCard.description}</p>
-                            <div className="mt-4 flex items-baseline gap-1">
-                              <span className="text-3xl font-bold text-foreground">{planCard.price}</span>
-                              {planCard.period ? <span className="text-muted-foreground">{planCard.period}</span> : null}
-                            </div>
-                            {planCard.yearlySavingsLabel ? (
-                              <p className="mt-1 text-xs text-muted-foreground">{planCard.yearlySavingsLabel}</p>
-                            ) : null}
-                            {planCard.trial ? (
-                              <p className="mt-1 text-sm text-green-600 dark:text-green-400">{planCard.trial}</p>
-                            ) : null}
-
-                            <ul className="mt-5 flex-1 space-y-2.5">
-                              {planCard.features.map((feature, featureIndex) => (
-                                <li key={`${planCard.id}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  {feature.included ? (
-                                    <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
-                                  ) : (
-                                    <XCircle className="h-4 w-4 shrink-0 text-destructive" />
-                                  )}
-                                  <span>{feature.text}</span>
-                                </li>
-                              ))}
-                            </ul>
-
-                            <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
-
-                            {planCard.id === 'free' ? (
-                              <Button
-                                className="mt-5 w-full rounded-lg"
-                                variant="outline"
-                                onClick={handleManageBilling}
-                                disabled={!canOpenCheckout || isPortalPending}
-                              >
-                                {isCurrentPlan ? 'Current Plan' : 'Downgrade in Billing Portal'}
-                              </Button>
-                            ) : (
-                              <Button
-                                className="mt-5 w-full rounded-lg"
-                                variant={isCurrentPlan ? 'secondary' : 'default'}
-                                onClick={() => handlePlanCardCheckout(planCard.id)}
-                                disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending}
-                              >
-                                {isCheckoutPending ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : null}
-                                {isCurrentPlan ? 'Current Plan' : `Start ${planCard.name} Subscription`}
-                              </Button>
-                            )}
-
-                            <p className="mt-2 text-center text-xs text-muted-foreground">{planCard.footerText}</p>
+                    return (
+                      <div
+                        key={planCard.id}
+                        className={`relative flex h-full flex-col rounded-2xl border border-transparent bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40 ${
+                          isCurrentPlan ? 'border-primary/30' : ''
+                        }`}
+                        style={{ transitionDelay: `${index * 50}ms` }}
+                      >
+                        {badge ? (
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                            {badge}
                           </div>
-                        )
-                      })}
-                    </div>
-                  </TabsContent>
+                        ) : null}
 
-                  <TabsContent value="workspace" className="mt-0">
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                      <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
-                        <h3 className="text-lg font-semibold text-foreground">{startupPlanCard.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{startupPlanCard.description}</p>
+                        {showCardHeaderRow ? (
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
+                            </div>
+                            {renderCycleToggle()}
+                          </div>
+                        ) : null}
                         <div className="mt-4 flex items-baseline gap-1">
-                          <span className="text-3xl font-bold text-foreground">{startupPlanCard.price}</span>
-                          <span className="text-muted-foreground">{startupPlanCard.period}</span>
+                          <span className="text-3xl font-bold text-foreground">{planCard.price}</span>
+                          {planCard.period ? <span className="text-muted-foreground">{planCard.period}</span> : null}
                         </div>
-                        {startupPlanCard.yearlySavingsLabel ? (
-                          <p className="mt-1 text-xs text-muted-foreground">{startupPlanCard.yearlySavingsLabel}</p>
+                        {planCard.yearlySavingsLabel ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{planCard.yearlySavingsLabel}</p>
                         ) : null}
-                        {startupPlanCard.trial ? (
-                          <p className="mt-1 text-sm text-green-600 dark:text-green-400">
-                            {startupPlanCard.trial}
-                          </p>
+                        {planCard.trial ? (
+                          <p className="mt-1 text-sm text-green-600 dark:text-green-400">{planCard.trial}</p>
                         ) : null}
-                        <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm text-muted-foreground">Seats</span>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setCheckoutSeatQuantity((current) =>
-                                    normalizeSeatQuantity(current - 1)
-                                  )
-                                }
-                                disabled={normalizedCheckoutSeatQuantity <= STARTUP_MIN_SEATS}
-                              >
-                                -
-                              </Button>
-                              <span className="w-8 text-center text-sm font-medium">
-                                {normalizedCheckoutSeatQuantity}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setCheckoutSeatQuantity((current) =>
-                                    normalizeSeatQuantity(current + 1)
-                                  )
-                                }
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            Minimum {STARTUP_MIN_SEATS} seats · Estimated total {startupEstimatedTotalLabel}
-                            {' / '}
-                            {checkoutCycle === 'yearly' ? 'year' : 'month'}
-                          </p>
-                        </div>
+
                         <ul className="mt-5 flex-1 space-y-2.5">
-                          {startupPlanCard.features.map((feature, featureIndex) => (
-                            <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {planCard.features.map((feature, featureIndex) => (
+                            <li key={`${planCard.id}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
                               {feature.included ? (
                                 <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                               ) : (
@@ -1289,48 +1030,156 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                             </li>
                           ))}
                         </ul>
-                        <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
-                        <Button
-                          className="mt-5 w-full rounded-lg"
-                          variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
-                          onClick={() => handlePlanCardCheckout('startup')}
-                          disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending}
-                        >
-                          {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          {currentPlanIdForCards === 'startup' ? 'Current Plan' : 'Start Startup Subscription'}
-                        </Button>
-                        <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
-                      </div>
 
-                      <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
-                        <h3 className="text-lg font-semibold text-foreground">{ENTERPRISE_PLAN_CARD.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{ENTERPRISE_PLAN_CARD.description}</p>
-                        <p className="mt-4 text-3xl font-bold text-foreground">{ENTERPRISE_PLAN_CARD.priceLabel}</p>
-                        <ul className="mt-5 flex-1 space-y-2.5">
-                          {ENTERPRISE_PLAN_CARD.features.map((feature) => (
-                            <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
-                              <span>{feature}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        <Button
-                          className="mt-6 w-full rounded-lg"
-                          onClick={() =>
-                            window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Enterprise%20Plan')
-                          }
-                        >
-                          Contact Enterprise Sales
-                        </Button>
-                        <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
+                        <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
+
+                        {planCard.id === 'free' ? (
+                          <Button
+                            className="mt-5 w-full rounded-lg"
+                            variant="outline"
+                            onClick={handleManageBilling}
+                            disabled={!canOpenCheckout || isPortalPending}
+                          >
+                            {isCurrentPlan ? 'Current Plan' : 'Downgrade in Billing Portal'}
+                          </Button>
+                        ) : (
+                          <Button
+                            className="mt-5 w-full rounded-full"
+                            variant={isCurrentPlan ? 'secondary' : 'default'}
+                            onClick={() => handlePlanCardCheckout(planCard.id)}
+                            disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending}
+                          >
+                            {isCheckoutPending ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : null}
+                            {isCurrentPlan ? 'Current Plan' : `Start ${planCard.name} Subscription`}
+                          </Button>
+                        )}
+
+                        {planCard.footerText ? (
+                          <p className="mt-2 text-center text-xs text-muted-foreground">{planCard.footerText}</p>
+                        ) : null}
                       </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-semibold text-foreground">{startupPlanCard.name}</h3>
+                      </div>
+                      {renderCycleToggle()}
                     </div>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                    <div className="mt-4 flex items-baseline gap-1">
+                      <span className="text-3xl font-bold text-foreground">{startupPlanCard.price}</span>
+                      <span className="text-muted-foreground">{startupPlanCard.period}</span>
+                    </div>
+                    {startupPlanCard.yearlySavingsLabel ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{startupPlanCard.yearlySavingsLabel}</p>
+                    ) : null}
+                    {startupPlanCard.trial ? (
+                      <p className="mt-1 text-sm text-green-600 dark:text-green-400">
+                        {startupPlanCard.trial}
+                      </p>
+                    ) : null}
+                    <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-muted-foreground">Seats</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setCheckoutSeatQuantity((current) =>
+                                normalizeSeatQuantity(current - 1)
+                              )
+                            }
+                            disabled={normalizedCheckoutSeatQuantity <= STARTUP_MIN_SEATS}
+                          >
+                            -
+                          </Button>
+                          <span className="w-8 text-center text-sm font-medium">
+                            {normalizedCheckoutSeatQuantity}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setCheckoutSeatQuantity((current) =>
+                                normalizeSeatQuantity(current + 1)
+                              )
+                            }
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Minimum {STARTUP_MIN_SEATS} seats · Estimated total {startupEstimatedTotalLabel}
+                        {' / '}
+                        {checkoutCycle === 'yearly' ? 'year' : 'month'}
+                      </p>
+                    </div>
+                    <ul className="mt-5 flex-1 space-y-2.5">
+                      {startupPlanCard.features.map((feature, featureIndex) => (
+                        <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {feature.included ? (
+                            <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                          )}
+                          <span>{feature.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
+                    <Button
+                      className="mt-5 w-full rounded-lg"
+                      variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
+                      onClick={() => handlePlanCardCheckout('startup')}
+                      disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending}
+                    >
+                      {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {currentPlanIdForCards === 'startup' ? 'Current Plan' : 'Start Startup Subscription'}
+                    </Button>
+                    <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
+                  </div>
+
+                  <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-semibold text-foreground">{ENTERPRISE_PLAN_CARD.name}</h3>
+                      </div>
+                      {renderCycleToggle()}
+                    </div>
+                    <p className="mt-4 text-3xl font-bold text-foreground">{ENTERPRISE_PLAN_CARD.priceLabel}</p>
+                    <ul className="mt-5 flex-1 space-y-2.5">
+                      {ENTERPRISE_PLAN_CARD.features.map((feature) => (
+                        <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className="mt-6 w-full rounded-lg"
+                      onClick={() =>
+                        window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Enterprise%20Plan')
+                      }
+                    >
+                      Contact Enterprise Sales
+                    </Button>
+                    <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {seatManagedEntitlement && (
           <Card className="border-none shadow-none bg-transparent">
@@ -1518,8 +1367,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>AI Wallet Activity</CardTitle>
             <CardDescription>
-              Recent wallet events for the active wallet context.
+              Recent wallet events for the currently selected wallet context.
             </CardDescription>
+            <p className="text-xs text-muted-foreground">{activeWalletContextLabel}</p>
           </CardHeader>
           <CardContent className="pt-0 px-0">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
@@ -1565,96 +1415,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   )}
                 </TableBody>
               </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-none bg-transparent">
-          <CardContent className="pt-0 px-0">
-            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="font-medium">AI Token Usage</p>
-                  <p className="text-sm text-muted-foreground">
-                    Daily token consumption across this workspace
-                  </p>
-                </div>
-                <Select
-                  value={usageTimeRange}
-                  onValueChange={(value) =>
-                    setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
-                  }
-                >
-                  <SelectTrigger className="w-[140px]" aria-label="Select time range">
-                    <SelectValue placeholder="Last 30 days" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
-                    <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                    <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="fillTokens" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-tokens)" stopOpacity={0.8} />
-                      <stop offset="95%" stopColor="var(--color-tokens)" stopOpacity={0.1} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    minTickGap={32}
-                    tickFormatter={(value) => {
-                      const date = new Date(value)
-                      return date.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    }}
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={
-                      <ChartTooltipContent
-                        labelFormatter={(value) => {
-                          return new Date(value).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })
-                        }}
-                        indicator="dot"
-                      />
-                    }
-                  />
-                  <Area
-                    dataKey="tokens"
-                    type="natural"
-                    fill="url(#fillTokens)"
-                    stroke="var(--color-tokens)"
-                  />
-                </AreaChart>
-              </ChartContainer>
-            </div>
-
-            <div className="mt-6 pt-6 border-t grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="font-medium">Tokens in Selected Range</p>
-                <p className="text-sm text-muted-foreground">Operational usage tracking (wallet debits are shown above)</p>
-                <p className="text-3xl font-bold mt-1">{chartTotals.tokens.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="font-medium">Requests in Selected Range</p>
-                <p className="text-sm text-muted-foreground">All workspace AI requests</p>
-                <p className="text-3xl font-bold mt-1">{chartTotals.requests.toLocaleString()}</p>
-              </div>
             </div>
           </CardContent>
         </Card>

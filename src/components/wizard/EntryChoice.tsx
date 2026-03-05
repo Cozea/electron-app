@@ -62,7 +62,7 @@ import {
   ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
-import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
+import type { ModelOption } from '@/lib/ai/modelOptions'
 import {
   getModelCatalog,
   type ModelApiModel,
@@ -92,8 +92,6 @@ const GUIDED_OPTIONS = [
   },
 ]
 
-const defaultModels = DEFAULT_MODELS
-
 export function EntryChoice({
   onSelect,
   promptValue = '',
@@ -112,8 +110,8 @@ export function EntryChoice({
   const canSubmitPrompt = trimmedLength > 0
 
   // AI input state
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
-  const [model, setModel] = useState(initialGlobalModelSettings.model ?? defaultModels[0]?.id ?? '')
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
+  const [model, setModel] = useState(initialGlobalModelSettings.model ?? '')
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId)

@@ -10,6 +10,7 @@
 
 import type * as activity from "../activity.js";
 import type * as aiConversations from "../aiConversations.js";
+import type * as aiRuntime from "../aiRuntime.js";
 import type * as aiUsage from "../aiUsage.js";
 import type * as aiWallets from "../aiWallets.js";
 import type * as billing from "../billing.js";
@@ -56,6 +57,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   aiConversations: typeof aiConversations;
+  aiRuntime: typeof aiRuntime;
   aiUsage: typeof aiUsage;
   aiWallets: typeof aiWallets;
   billing: typeof billing;

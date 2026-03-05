@@ -132,8 +132,24 @@ const GITLAB_TOKEN_URL = process.env.COZEA_GITLAB_OAUTH_TOKEN_URL || 'https://gi
 const GITLAB_SCOPE = process.env.COZEA_GITLAB_OAUTH_SCOPE || 'read_user api'
 const GITLAB_API_BASE_URL = process.env.COZEA_GITLAB_API_BASE_URL || 'https://gitlab.com'
 
-const ENABLED_PROVIDER_AUTH_PROVIDERS = ['openai', 'anthropic', 'google', 'xai', 'github-copilot', 'gitlab'] as const
-const ENABLED_PROVIDER_AUTH_PROVIDER_SET = new Set<ProviderAuthProvider>(ENABLED_PROVIDER_AUTH_PROVIDERS)
+const ENABLED_PROVIDER_AUTH_PROVIDERS = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'moonshotai',
+  'moonshot',
+  'github-copilot',
+  'gitlab',
+] as const
+const COZEA_MANAGED_PROVIDER_SET = new Set<ProviderAuthProvider>([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'moonshotai',
+  'moonshot',
+])
 const CLOUD_CREDENTIAL_PROVIDER_SET = new Set<ProviderAuthProvider>([
   'amazon-bedrock',
   'google-vertex',
@@ -152,7 +168,7 @@ const CLOUD_PROVIDER_DEFAULT_KIND: Record<string, string> = {
   'sap-ai-core': 'sap',
 }
 
-function isProviderEnabled(provider: ProviderAuthProvider): boolean {
+function isProviderEnabled(_provider: ProviderAuthProvider): boolean {
   return true
 }
 
@@ -2578,10 +2594,6 @@ export class ProviderAuthService {
 
   async listProviders(): Promise<Array<{ provider: ProviderAuthProvider; methods: ProviderAuthMethod[] }>> {
     return [
-      { provider: 'openai', methods: ['oauth', 'device', 'api_key'] },
-      { provider: 'anthropic', methods: ['oauth', 'api_key'] },
-      { provider: 'google', methods: ['vertex', 'gemini', 'gemini_api_key'] },
-      { provider: 'xai', methods: ['api_key'] },
       { provider: 'github-copilot', methods: ['oauth'] },
       { provider: 'gitlab', methods: ['oauth'] },
       { provider: 'amazon-bedrock', methods: ['cloud_credentials'] },
@@ -2611,6 +2623,13 @@ export class ProviderAuthService {
     apiKey?: string
     cloudCredentials?: ProviderCloudCredentials
   }): Promise<ProviderAuthConnectResult> {
+    if (COZEA_MANAGED_PROVIDER_SET.has(params.provider)) {
+      return {
+        success: false,
+        error: 'This provider is managed by Cozea and does not require local connection.',
+      }
+    }
+
     if (params.provider === 'openai') {
       if (params.method === 'api_key') {
         return this.connectOpenAiApiKey(params.apiKey)
@@ -2678,6 +2697,10 @@ export class ProviderAuthService {
   }
 
   async disconnect(provider: ProviderAuthProvider): Promise<ProviderAuthDisconnectResult> {
+    if (COZEA_MANAGED_PROVIDER_SET.has(provider)) {
+      return { success: true }
+    }
+
     if (!isProviderEnabled(provider)) {
       this.removeProviderCredential(provider)
       return { success: true }
@@ -2694,6 +2717,14 @@ export class ProviderAuthService {
     modelId: string
     organizationId: string
   }): Promise<ProviderAuthRequestAuthResult> {
+    if (COZEA_MANAGED_PROVIDER_SET.has(params.provider)) {
+      return {
+        success: false,
+        code: 'invalid',
+        error: 'Managed provider auth is handled server-side.',
+      }
+    }
+
     void params.modelId
     if (!isProviderEnabled(params.provider)) {
       return { success: false, code: 'invalid', error: 'This provider is disabled in this app build.' }

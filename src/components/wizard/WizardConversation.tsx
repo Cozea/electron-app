@@ -102,17 +102,19 @@ import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-di
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError } from '@/components/assistant/BillingError'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ModelOption } from '@/lib/ai/modelOptions'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import {
   getModelCatalog,
   type ModelApiModel,
   type ModelApiResponse,
 } from '@/lib/ai/modelCatalogClient'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
-import { reportLocalUsage } from '@/lib/ai/localUsage'
-import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
-import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
+import {
+  buildEncodedProviderAuthHeader,
+  inferProviderFromModelId,
+  isManagedProvider,
+} from '@/lib/ai/providerAuth'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
@@ -165,6 +167,13 @@ interface UsageData {
   durationMs?: number
   finishReason?: string
   rawFinishReason?: string
+}
+
+interface AgentLedgerData {
+  kind?: 'run_started' | 'step' | 'budget_exceeded' | 'run_completed'
+  runId?: string
+  costUsd?: number
+  billedUsd?: number
 }
 
 interface SourcePart {
@@ -223,9 +232,6 @@ const PLANNING_TOOLS = new Set([
   'plan_write'
 ])
 
-// Model catalog (same as AIConversation)
-const defaultModels: ModelOption[] = DEFAULT_MODELS
-
 export function WizardConversation({
   projectId,
   initialPrompt,
@@ -240,9 +246,9 @@ export function WizardConversation({
 
   // State
   const [input, setInput] = useState('')
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState(
-    initialGlobalModelSettings.model || promptSettings.model || defaultModels[0]?.id || ''
+    initialGlobalModelSettings.model || promptSettings.model || ''
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
@@ -312,6 +318,16 @@ export function WizardConversation({
       }),
     [model, selectedModelCapabilities, selectedModelData?.chefSlug, variantId]
   )
+  const selectedProviderForAuth = useMemo(() => {
+    const selectedProvider = selectedModelData?.chefSlug
+    if (selectedProvider && isConnectedProvider(selectedProvider)) {
+      return selectedProvider
+    }
+    return inferProviderFromModelId(model)
+  }, [model, selectedModelData?.chefSlug])
+  const providerRequiresLocalAuth = Boolean(
+    selectedProviderForAuth && !isManagedProvider(selectedProviderForAuth)
+  )
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = false
@@ -369,13 +385,16 @@ export function WizardConversation({
       return
     }
 
-    const selectedProvider = selectedModelData?.chefSlug
-    const provider = (selectedProvider && isConnectedProvider(selectedProvider))
-      ? selectedProvider
-      : inferProviderFromModelId(model)
+    const provider = selectedProviderForAuth
     if (!provider) {
       setProviderAuthLoading(false)
-      setProviderAuthError('Unable to determine provider auth for the selected model.')
+      setProviderAuthError(null)
+      setProviderAuthHeader(null)
+      return
+    }
+    if (isManagedProvider(provider)) {
+      setProviderAuthLoading(false)
+      setProviderAuthError(null)
       setProviderAuthHeader(null)
       return
     }
@@ -405,7 +424,7 @@ export function WizardConversation({
     return () => {
       cancelled = true
     }
-  }, [model, selectedModelData?.chefSlug, currentOrganization?.organizationId])
+  }, [currentOrganization?.organizationId, model, selectedProviderForAuth])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -510,13 +529,6 @@ export function WizardConversation({
 
     return () => controller.abort()
   }, [accessToken, currentOrganization?.organizationId, headers, model])
-
-  const localRuntimeStatus = useLocalAiRuntimeStatus(true)
-  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
-  const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
-  const canUseLocalRuntimeEndpoint =
-    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
-  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -628,7 +640,6 @@ export function WizardConversation({
         },
       },
       providerAuthHeader,
-      api: chatApi,
     },
     chatOptions: {
       onToolCall: handleToolCall,
@@ -692,7 +703,10 @@ export function WizardConversation({
     return 'Something went wrong'
   }, [error, billingError, retryHint])
 
-  const serviceErrorMessage = modelsError || toolsError || providerAuthError
+  const serviceErrorMessage =
+    modelsError ||
+    toolsError ||
+    (providerRequiresLocalAuth ? providerAuthError : null)
   const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
 
   const genericErrorRef = useRef<string | null>(null)
@@ -716,8 +730,7 @@ export function WizardConversation({
     accessToken &&
     currentOrganization?.organizationId &&
     hasSelectableModel &&
-    providerAuthHeader &&
-    !providerAuthLoading
+    (!providerRequiresLocalAuth || (providerAuthHeader && !providerAuthLoading))
   )
 
   // Send initial message on mount (use ref to prevent duplicate sends)
@@ -833,6 +846,7 @@ export function WizardConversation({
     let outputTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    const runCosts = new Map<string, number>()
 
     for (const message of messages) {
       for (const part of message.parts) {
@@ -845,13 +859,26 @@ export function WizardConversation({
             cachedInputTokens += data.cachedInputTokens ?? 0
           }
         }
+        if (part.type === 'data-agent-ledger') {
+          const data = (part as { data?: AgentLedgerData }).data
+          const runId = typeof data?.runId === 'string' ? data.runId : undefined
+          if (!runId) continue
+          if (data?.kind === 'step' && typeof data.costUsd === 'number' && Number.isFinite(data.costUsd)) {
+            runCosts.set(runId, (runCosts.get(runId) ?? 0) + Math.max(0, data.costUsd))
+          }
+          if (data?.kind === 'run_completed' && typeof data.billedUsd === 'number' && Number.isFinite(data.billedUsd)) {
+            runCosts.set(runId, Math.max(0, data.billedUsd))
+          }
+        }
       }
     }
 
     const totalTokens = inputTokens + outputTokens
+    const totalCostUsd = Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
 
     return {
       usedTokens: totalTokens,
+      totalCostUsd,
       usage: {
         inputTokens,
         outputTokens,
@@ -869,43 +896,7 @@ export function WizardConversation({
         },
       },
     }
-  }, [dedupedMessages])
-
-  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-
-    for (const message of messages) {
-      for (let index = 0; index < message.parts.length; index += 1) {
-        const part = message.parts[index]
-        if (part.type !== 'data-usage') continue
-
-        const data = (part as { data?: UsageData }).data
-        if (!data || data.runtime !== 'local') continue
-
-        const key = `${message.id}:${index}`
-        if (reportedLocalUsageRef.current.has(key)) continue
-        reportedLocalUsageRef.current.add(key)
-
-        void reportLocalUsage(accessToken, {
-          organizationId: currentOrganization.organizationId,
-          model: data.model || model,
-          conversationId,
-          feature: 'project-wizard',
-          actionType: 'plan',
-          promptTokens: data.promptTokens ?? 0,
-          completionTokens: data.completionTokens ?? 0,
-          totalTokens: data.totalTokens,
-          reasoningTokens: data.reasoningTokens,
-          cachedInputTokens: data.cachedInputTokens,
-          durationMs: data.durationMs,
-          finishReason: data.finishReason,
-          rawFinishReason: data.rawFinishReason,
-        })
-      }
-    }
-  }, [accessToken, conversationId, currentOrganization?.organizationId, messages, model])
+  }, [messages])
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -1124,7 +1115,7 @@ export function WizardConversation({
             Connect an AI provider in Workspace AI settings to continue planning.
           </p>
         )}
-        {hasSelectableModel && providerAuthLoading && (
+        {hasSelectableModel && providerRequiresLocalAuth && providerAuthLoading && (
           <p className="pt-2 text-xs text-muted-foreground">
             Preparing provider authentication...
           </p>
@@ -1186,18 +1177,25 @@ export function WizardConversation({
                 </div>
               </div>
 
-              <Context
-                maxTokens={getContextWindowSize(model)}
-                usedTokens={accumulatedUsage.usedTokens}
-                usage={accumulatedUsage.usage}
-                modelId={model}
-              >
-                <ContextTrigger />
-                <ContextContent>
-                  <ContextContentHeader />
-                  <ContextContentFooter />
-                </ContextContent>
-              </Context>
+              <div className="flex items-center gap-2">
+                {accumulatedUsage.totalCostUsd > 0 && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    ${accumulatedUsage.totalCostUsd.toFixed(4)}
+                  </span>
+                )}
+                <Context
+                  maxTokens={getContextWindowSize(model)}
+                  usedTokens={accumulatedUsage.usedTokens}
+                  usage={accumulatedUsage.usage}
+                  modelId={model}
+                >
+                  <ContextTrigger />
+                  <ContextContent>
+                    <ContextContentHeader />
+                    <ContextContentFooter />
+                  </ContextContent>
+                </Context>
+              </div>
             </>
           )}
 

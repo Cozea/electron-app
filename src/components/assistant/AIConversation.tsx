@@ -82,19 +82,20 @@ import {
 import { getMutatingToolFilePaths, isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import { MessageBubble, type MessageToolMeta } from '@/components/assistant/MessageBubble'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
-import { DEFAULT_MODELS, type ModelOption } from '@/lib/ai/defaultModels'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { ModelOption } from '@/lib/ai/modelOptions'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
-import { reportLocalUsage } from '@/lib/ai/localUsage'
-import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
-import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
+import {
+  inferProviderFromModelId,
+} from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { useProviderAuthResolution } from '@/hooks/useProviderAuthResolution'
 
 // AI Elements components
 import {
@@ -150,6 +151,13 @@ interface UsageData {
   durationMs?: number
   finishReason?: string
   rawFinishReason?: string
+}
+
+interface AgentLedgerData {
+  kind?: 'run_started' | 'step' | 'budget_exceeded' | 'run_completed'
+  runId?: string
+  costUsd?: number
+  billedUsd?: number
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -243,9 +251,6 @@ function getMessageCreatedAt(message: UIMessage): number {
 
 type ChatHookResult = ReturnType<typeof useCozeaChat>
 
-// Model catalog comes from shared defaults and server model metadata.
-const defaultModels: ModelOption[] = DEFAULT_MODELS
-
 export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -292,12 +297,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Input State
   const [input, setInput] = useState("")
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>(defaultModels)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState<string>(
-    initialGlobalModelSettings.model ?? defaultModels[0]?.id ?? ''
+    initialGlobalModelSettings.model ?? ''
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId>(
     DEFAULT_AGENT_BY_SURFACE.assistant_panel
@@ -341,6 +345,17 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   }, [availableModels, connectedProviders, providerAuthAvailable, providerStatusLoaded])
 
   const selectedModelData = providerScopedModels.find((m) => m.id === model)
+  const selectedProviderForAuth = selectedModelData?.chefSlug
+  const {
+    header: providerAuthHeader,
+    resolved: providerAuthResolved,
+  } = useProviderAuthResolution({
+    organizationId: currentOrganization?.organizationId,
+    modelId: model,
+    preferredProvider: selectedProviderForAuth && isConnectedProvider(selectedProviderForAuth)
+      ? selectedProviderForAuth
+      : null,
+  })
   const allowCrossProviderSwitching = AI_MODEL_SELECTOR_CONFIG.allowCrossProviderSwitching
   const activeProvider = selectedModelData?.chefSlug
   const visibleModels =
@@ -464,38 +479,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     setModelsError(null)
     setToolsError(null)
   }, [accessToken, currentOrganization?.organizationId])
-
-  useEffect(() => {
-    let cancelled = false
-    const organizationId = currentOrganization?.organizationId
-    if (!organizationId) {
-      setProviderAuthHeader(null)
-      return
-    }
-
-    const selectedProvider = selectedModelData?.chefSlug
-    const provider = (selectedProvider && isConnectedProvider(selectedProvider))
-      ? selectedProvider
-      : inferProviderFromModelId(model)
-    if (!provider) {
-      setProviderAuthHeader(null)
-      return
-    }
-
-    void (async () => {
-      const result = await buildEncodedProviderAuthHeader({
-        provider,
-        modelId: model,
-        organizationId,
-      })
-      if (cancelled) return
-      setProviderAuthHeader(result.header || null)
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [model, selectedModelData?.chefSlug, currentOrganization?.organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -635,13 +618,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       inspectedElement: inspectedElement ?? undefined,
     }
   }, [projectPath, projectName, projectSlug, normalizedProjectSlug, currentPage, inspectedElement])
-
-  const localRuntimeStatus = useLocalAiRuntimeStatus(Boolean(projectPath))
-  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
-  const localRuntimeProvider = selectedModelData?.chefSlug ?? inferProviderFromModelId(model)
-  const canUseLocalRuntimeEndpoint =
-    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
-  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -928,6 +904,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       accessToken,
       organizationId: currentOrganization?.organizationId,
       model,
+      selectedProvider:
+        selectedModelData?.chefSlug ??
+        inferProviderFromModelId(model) ??
+        undefined,
       conversationId: transportConversationId,
       agentId: normalizedAgentId,
       surface,
@@ -938,7 +918,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
         projectContext: projectContextPayload,
       },
       providerAuthHeader,
-      api: chatApi,
     },
     chatOptions: {
       onToolCall: handleToolCall,
@@ -1162,7 +1141,11 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     !hasSelectableModel && providerStatusLoaded && providerAuthAvailable
       ? 'Connect an AI provider'
       : null
-  const surfaceBannerMessage = surfaceErrorMessage || providerConnectionMessage
+  const providerAuthMessage =
+    hasSelectableModel && !providerAuthResolved
+      ? 'Preparing provider authentication...'
+      : null
+  const surfaceBannerMessage = surfaceErrorMessage || providerConnectionMessage || providerAuthMessage
 
   const genericErrorRef = useRef<string | null>(null)
   useEffect(() => {
@@ -1189,6 +1172,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     let outputTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    const runCosts = new Map<string, number>()
 
     for (const message of uniqueMessages) {
       for (const part of message.parts) {
@@ -1201,13 +1185,27 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             cachedInputTokens += data.cachedInputTokens ?? 0
           }
         }
+        if (part.type === 'data-agent-ledger') {
+          const data = (part as { data?: AgentLedgerData }).data
+          const runId = typeof data?.runId === 'string' ? data.runId : undefined
+          if (!runId) continue
+
+          if (data?.kind === 'step' && typeof data.costUsd === 'number' && Number.isFinite(data.costUsd)) {
+            runCosts.set(runId, (runCosts.get(runId) ?? 0) + Math.max(0, data.costUsd))
+          }
+          if (data?.kind === 'run_completed' && typeof data.billedUsd === 'number' && Number.isFinite(data.billedUsd)) {
+            runCosts.set(runId, Math.max(0, data.billedUsd))
+          }
+        }
       }
     }
 
     const totalTokens = inputTokens + outputTokens
+    const totalCostUsd = Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
 
     return {
       usedTokens: totalTokens,
+      totalCostUsd,
       // LanguageModelUsage format for the Context component
       usage: {
         inputTokens,
@@ -1227,49 +1225,6 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       },
     }
   }, [uniqueMessages])
-
-  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-
-    for (const message of uniqueMessages) {
-      for (let index = 0; index < message.parts.length; index += 1) {
-        const part = message.parts[index]
-        if (part.type !== 'data-usage') continue
-
-        const data = (part as { data?: UsageData }).data
-        if (!data || data.runtime !== 'local') continue
-
-        const key = `${message.id}:${index}`
-        if (reportedLocalUsageRef.current.has(key)) continue
-
-        reportedLocalUsageRef.current.add(key)
-        void reportLocalUsage(accessToken, {
-          organizationId: currentOrganization.organizationId,
-          model: data.model || model,
-          conversationId: transportConversationId,
-          feature: normalizedAgentId,
-          actionType: normalizedAgentId,
-          promptTokens: data.promptTokens ?? 0,
-          completionTokens: data.completionTokens ?? 0,
-          totalTokens: data.totalTokens,
-          reasoningTokens: data.reasoningTokens,
-          cachedInputTokens: data.cachedInputTokens,
-          durationMs: data.durationMs,
-          finishReason: data.finishReason,
-          rawFinishReason: data.rawFinishReason,
-        })
-      }
-    }
-  }, [
-    accessToken,
-    transportConversationId,
-    currentOrganization?.organizationId,
-    model,
-    normalizedAgentId,
-    uniqueMessages,
-  ])
 
   const replyPermissionRequest = useCallback(async (
     requestId: string,
@@ -1514,6 +1469,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!hasSelectableModel) return;
+    if (!providerAuthResolved) return;
     if (!input.trim() && pendingAttachments.length === 0) return;
 
     // Clear any previous billing error when trying again
@@ -1616,6 +1572,9 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       handleSubmit();
     }
   };
+
+  const hasDraftInput = input.trim().length > 0 || pendingAttachments.length > 0
+  const submitDisabled = !isLoading && (!hasSelectableModel || !providerAuthResolved || !hasDraftInput)
 
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', className)}>
@@ -1853,7 +1812,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
             <div>
               <Button
                 type="submit"
-                disabled={(!hasSelectableModel || (!input.trim() && pendingAttachments.length === 0)) && !isLoading}
+                disabled={submitDisabled}
                 className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
               >
@@ -1976,18 +1935,25 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
           {/* Context window usage display - right aligned */}
           {hasSelectableModel && (
-            <Context
-              maxTokens={getContextWindowSize(model)}
-              usedTokens={accumulatedUsage.usedTokens}
-              usage={accumulatedUsage.usage}
-              modelId={model}
-            >
-              <ContextTrigger />
-              <ContextContent>
-                <ContextContentHeader />
-                <ContextContentFooter />
-              </ContextContent>
-            </Context>
+            <div className="flex items-center gap-2">
+              {accumulatedUsage.totalCostUsd > 0 && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  ${accumulatedUsage.totalCostUsd.toFixed(4)}
+                </span>
+              )}
+              <Context
+                maxTokens={getContextWindowSize(model)}
+                usedTokens={accumulatedUsage.usedTokens}
+                usage={accumulatedUsage.usage}
+                modelId={model}
+              >
+                <ContextTrigger />
+                <ContextContent>
+                  <ContextContentHeader />
+                  <ContextContentFooter />
+                </ContextContent>
+              </Context>
+            </div>
           )}
         </div>
       </div>

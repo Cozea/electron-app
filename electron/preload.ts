@@ -80,6 +80,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('providerAuth:statusChanged', handler)
     },
   },
+  localAiRuntime: {
+    getStatus: () => ipcRenderer.invoke('localAiRuntime:getStatus'),
+  },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),
@@ -255,9 +258,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('runtime:ensureRuntime', options),
     getRuntimeStatus: (options?: { projectPath?: string }) =>
       ipcRenderer.invoke('runtime:getRuntimeStatus', options ?? {}),
-  },
-  localAiRuntime: {
-    getStatus: () => ipcRenderer.invoke('localAiRuntime:getStatus'),
   },
   fs: {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),

@@ -190,8 +190,10 @@ async function updateSubscriptionHandler(
       ...org.aiSettings,
       allowedProviders: org.aiSettings?.allowedProviders ?? [
         "openai",
+        "anthropic",
         "google",
         "xai",
+        "moonshotai",
       ],
     },
     updatedAt: now,

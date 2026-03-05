@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import {
   createUIMessageStream,
   pipeUIMessageStreamToResponse,
@@ -16,17 +16,49 @@ interface LocalAiRuntimeStatus {
   endpoint?: string
 }
 
-type LocalAiRuntimeProvider = 'openai' | 'google'
+const LOCAL_RUNTIME_ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'x-cozea-provider-auth',
+  'x-cozea-selected-provider',
+  'x-cozea-ai-base-url',
+  'x-cozea-timezone',
+  'x-cozea-tz-offset-minutes',
+].join(', ')
+
+type LocalAiRuntimeProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'xai'
+  | 'moonshotai'
+  | 'moonshot'
+  | 'github-copilot'
+  | 'gitlab'
+  | (string & {})
 
 interface ProviderAuthEnvelope {
-  provider: LocalAiRuntimeProvider
+  provider: LocalAiRuntimeProvider | 'anthropic' | 'xai' | 'moonshotai' | 'moonshot' | 'github-copilot' | 'gitlab' | (string & {})
   accessToken: string
+  authType?: 'oauth' | 'local_token' | 'api_key' | 'cloud_credentials'
+  organizationId?: string
+  expiresAt?: number
+  accountId?: string
+  google?: {
+    mode: 'vertex' | 'gemini'
+    projectId?: string
+    location?: string
+  }
+  headers?: Record<string, string>
+  baseUrl?: string
+  cloud?: Record<string, unknown>
 }
 
 interface ChatRequestBody {
   messages: unknown[]
   model: string
   organizationId: string
+  requestId?: string
   conversationId?: string
   providerOptions?: Record<string, unknown>
   projectContext?: unknown
@@ -55,7 +87,50 @@ type ChatContractResult = ChatContractFailure | ChatContractSuccess
 interface ModelInfo {
   provider: string
   providerModelId: string
+  tier?: 'fast' | 'standard' | 'powerful' | (string & {})
+  cost?: {
+    input?: number
+    output?: number
+  }
   capabilities?: Record<string, unknown>
+}
+
+interface RemotePricing {
+  inputPer1m: number
+  outputPer1m: number
+}
+
+interface RemotePricingResponse {
+  pricing?: Array<{
+    modelId?: unknown
+    provider?: unknown
+    pricing?: {
+      inputPer1m?: unknown
+      outputPer1m?: unknown
+    }
+  }>
+}
+
+interface WalletReserveResponse {
+  ok?: boolean
+  holdId?: string
+}
+
+interface WalletCaptureResponse {
+  ok?: boolean
+  reason?: string
+}
+
+interface ManagedEnvelopeFetchResult {
+  envelope: ProviderAuthEnvelope | null
+  errorStatus?: number
+  errorCode?: string
+  errorMessage?: string
+}
+
+interface CachedPricingEntry {
+  pricing: RemotePricing
+  expiresAt: number
 }
 
 interface LocalRuntimeDeps {
@@ -101,7 +176,12 @@ function envFlagEnabled(value: string | undefined): boolean {
 }
 
 function isLocalRuntimeEnabled(): boolean {
-  return envFlagEnabled(process.env.AI_LOCAL_RUNTIME_ENABLED)
+  const raw = process.env.AI_LOCAL_RUNTIME_ENABLED
+  if (!raw || raw.trim().length === 0) {
+    // Electron desktop defaults to local AI execution unless explicitly disabled.
+    return true
+  }
+  return envFlagEnabled(raw)
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -121,22 +201,152 @@ function sendJson(res: ServerResponse, status: number, payload: Record<string, u
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-cozea-provider-auth')
+  res.setHeader('Access-Control-Allow-Headers', LOCAL_RUNTIME_ALLOWED_HEADERS)
   res.end(body)
+}
+
+function getHeaderValue(req: IncomingMessage, key: string): string | undefined {
+  const value = req.headers[key]
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === 'string' && entry.trim().length > 0)
+    if (first) return first.trim()
+  }
+  return undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const MANAGED_PROVIDER_IDS = new Set([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'moonshotai',
+  'moonshot',
+])
+
+function isManagedProvider(providerId: string): boolean {
+  return MANAGED_PROVIDER_IDS.has(providerId.trim().toLowerCase())
+}
+
+function parseScopedModelId(modelId: string): { provider: string; providerModelId: string } | null {
+  const trimmed = modelId.trim()
+  const separatorIndex = trimmed.indexOf('/')
+  if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+    return null
+  }
+
+  const provider = trimmed.slice(0, separatorIndex).trim().toLowerCase()
+  const providerModelId = trimmed.slice(separatorIndex + 1).trim()
+  if (!provider || !providerModelId) {
+    return null
+  }
+
+  return {
+    provider,
+    providerModelId,
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function stripChatSuffix(value: string): string {
+  return value.replace(/\/chat\/?$/i, '')
+}
+
+function resolveRemoteAiBaseUrl(headerValue?: string): string {
+  const candidate = typeof headerValue === 'string' ? headerValue.trim() : ''
+  if (candidate && isHttpUrl(candidate)) {
+    return stripChatSuffix(candidate).replace(/\/+$/, '')
+  }
+
+  const configured = (
+    process.env.COZEA_AI_API_URL ||
+    process.env.VITE_AI_API_URL ||
+    process.env.AI_API_URL ||
+    ''
+  ).trim()
+  if (configured && isHttpUrl(configured)) {
+    return stripChatSuffix(configured).replace(/\/+$/, '')
+  }
+
+  return app.isPackaged
+    ? 'https://api.cozea.app/ai'
+    : 'http://localhost:3001/ai'
 }
 
 function parseProviderAuthEnvelope(encodedHeader: string | undefined): ProviderAuthEnvelope | null {
   if (!encodedHeader) return null
   try {
     const decoded = Buffer.from(encodedHeader, 'base64').toString('utf8')
-    const parsed = JSON.parse(decoded) as ProviderAuthEnvelope
+    const parsed = JSON.parse(decoded) as Partial<ProviderAuthEnvelope>
     if (!parsed || typeof parsed !== 'object') return null
-    if (parsed.provider !== 'openai' && parsed.provider !== 'google') return null
-    if (typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) return null
-    return parsed
+    if (typeof parsed.provider !== 'string' || parsed.provider.trim().length === 0) return null
+    if (typeof parsed.accessToken !== 'string' || parsed.accessToken.trim().length === 0) return null
+    if (typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt) && Date.now() >= parsed.expiresAt) {
+      return null
+    }
+    return {
+      ...parsed,
+      provider: parsed.provider.trim().toLowerCase(),
+      accessToken: parsed.accessToken,
+    } as ProviderAuthEnvelope
   } catch {
     return null
   }
+}
+
+class RemoteAiHttpError extends Error {
+  readonly statusCode: number
+  readonly payload: Record<string, unknown>
+
+  constructor(statusCode: number, payload: Record<string, unknown>) {
+    super(typeof payload.message === 'string' ? payload.message : `Remote AI request failed (${statusCode}).`)
+    this.statusCode = statusCode
+    this.payload = payload
+  }
+}
+
+function normalizeRemotePayload(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) {
+    return value
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return { message: value }
+  }
+  return {}
+}
+
+function managedReserveCentsForTier(tier: string | undefined): number {
+  if (tier === 'fast') return 25
+  if (tier === 'standard') return 75
+  return 250
+}
+
+function resolveRequestId(candidate: string | undefined): string {
+  if (typeof candidate === 'string' && candidate.trim().length > 0) {
+    return candidate.trim()
+  }
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function normalizePricingNumber(value: unknown): number | null {
+  const parsed = toFiniteNumber(value)
+  if (parsed === undefined) return null
+  return Math.max(0, parsed)
 }
 
 export class LocalAiRuntimeService {
@@ -145,6 +355,7 @@ export class LocalAiRuntimeService {
   private server: ReturnType<typeof createServer> | null = null
   private endpoint: string | null = null
   private runtimeDeps: LocalRuntimeDeps | null = null
+  private readonly pricingCache = new Map<string, CachedPricingEntry>()
 
   static getInstance(): LocalAiRuntimeService {
     if (!LocalAiRuntimeService.instance) {
@@ -236,6 +447,374 @@ export class LocalAiRuntimeService {
     return null
   }
 
+  private async fetchManagedProviderEnvelope(args: {
+    authorization: string
+    organizationId: string
+    model: string
+    provider: string
+    aiBaseUrlHeader?: string
+  }): Promise<ManagedEnvelopeFetchResult> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/provider-auth/managed`
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: args.authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          organizationId: args.organizationId,
+          model: args.model,
+          provider: args.provider,
+        }),
+      })
+      if (!response.ok) {
+        let errorCode: string | undefined
+        let errorMessage: string | undefined
+        try {
+          const parsed = (await response.json()) as { error?: unknown; message?: unknown }
+          if (typeof parsed.error === 'string' && parsed.error.trim().length > 0) {
+            errorCode = parsed.error
+          }
+          if (typeof parsed.message === 'string' && parsed.message.trim().length > 0) {
+            errorMessage = parsed.message
+          }
+        } catch {
+          // best effort only
+        }
+        return {
+          envelope: null,
+          errorStatus: response.status,
+          ...(errorCode ? { errorCode } : {}),
+          ...(errorMessage ? { errorMessage } : {}),
+        }
+      }
+      const parsed = await response.json() as { envelope?: unknown }
+      if (!parsed || typeof parsed !== 'object' || !parsed.envelope) {
+        return {
+          envelope: null,
+          errorStatus: 503,
+          errorCode: 'managed_provider_unavailable',
+          errorMessage: 'Managed provider envelope was not returned by the server.',
+        }
+      }
+      const encoded = Buffer.from(JSON.stringify(parsed.envelope), 'utf8').toString('base64')
+      const envelope = parseProviderAuthEnvelope(encoded)
+      if (!envelope) {
+        return {
+          envelope: null,
+          errorStatus: 503,
+          errorCode: 'managed_provider_invalid_envelope',
+          errorMessage: 'Managed provider returned an invalid or expired auth envelope.',
+        }
+      }
+      return {
+        envelope,
+      }
+    } catch {
+      return {
+        envelope: null,
+        errorStatus: 503,
+        errorCode: 'managed_provider_unreachable',
+        errorMessage: 'Unable to reach managed provider auth endpoint.',
+      }
+    }
+  }
+
+  private async fetchModelInfoFromRemoteCatalog(args: {
+    authorization: string
+    organizationId: string
+    model: string
+    preferredProvider?: string
+    aiBaseUrlHeader?: string
+  }): Promise<ModelInfo | null> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const preferredProvider = args.preferredProvider?.trim().toLowerCase() || ''
+    const query = new URLSearchParams({
+      organizationId: args.organizationId,
+    })
+    if (preferredProvider) {
+      query.set('providers', preferredProvider)
+    }
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/models?${query.toString()}`
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          Authorization: args.authorization,
+        },
+      })
+      if (!response.ok) {
+        return null
+      }
+
+      const parsed = await response.json() as { models?: unknown }
+      if (!parsed || !Array.isArray(parsed.models)) {
+        return null
+      }
+
+      const requestedScoped = args.model.trim()
+      const requested = parseScopedModelId(requestedScoped)
+      if (!requested) {
+        return null
+      }
+
+      const normalizedRows = parsed.models
+        .map((entry) => {
+          if (!isRecord(entry)) return null
+
+          const scopedId = typeof entry.id === 'string' ? entry.id.trim() : ''
+          if (!scopedId) return null
+
+          const slashIndex = scopedId.indexOf('/')
+          const providerFromField =
+            typeof entry.provider === 'string' && entry.provider.trim().length > 0
+              ? entry.provider.trim().toLowerCase()
+              : ''
+          const provider =
+            providerFromField ||
+            (slashIndex > 0 ? scopedId.slice(0, slashIndex).trim().toLowerCase() : '')
+          const providerModelId =
+            slashIndex > 0 && slashIndex < scopedId.length - 1
+              ? scopedId.slice(slashIndex + 1).trim()
+              : scopedId
+          if (!provider || !providerModelId) return null
+
+          return {
+            scopedId,
+            provider,
+            providerModelId,
+            capabilities: isRecord(entry.capabilities) ? entry.capabilities : undefined,
+          }
+        })
+        .filter((entry): entry is {
+          scopedId: string
+          provider: string
+          providerModelId: string
+          capabilities?: Record<string, unknown>
+        } => entry !== null)
+
+      const exactMatch = normalizedRows.find((row) => {
+        if (row.scopedId !== requestedScoped) return false
+        if (row.provider !== requested.provider) return false
+        if (row.providerModelId !== requested.providerModelId) return false
+        if (preferredProvider && row.provider !== preferredProvider) return false
+        return true
+      })
+      if (exactMatch) {
+        return {
+          provider: exactMatch.provider,
+          providerModelId: exactMatch.providerModelId,
+          ...(exactMatch.capabilities ? { capabilities: exactMatch.capabilities } : {}),
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  private async fetchRemoteJson(args: {
+    authorization: string
+    endpoint: string
+    method?: 'GET' | 'POST'
+    body?: Record<string, unknown>
+  }): Promise<Record<string, unknown>> {
+    const response = await fetch(args.endpoint, {
+      method: args.method ?? 'GET',
+      headers: {
+        Authorization: args.authorization,
+        ...(args.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(args.body ? { body: JSON.stringify(args.body) } : {}),
+      signal: AbortSignal.timeout(15_000),
+    })
+
+    let payload: Record<string, unknown> = {}
+    try {
+      const parsed = await response.json()
+      payload = normalizeRemotePayload(parsed)
+    } catch {
+      payload = {}
+    }
+
+    if (!response.ok) {
+      throw new RemoteAiHttpError(response.status, payload)
+    }
+
+    return payload
+  }
+
+  private async reserveManagedWalletHold(args: {
+    authorization: string
+    organizationId: string
+    requestId: string
+    estimatedCents: number
+    feature?: string
+    model: string
+    provider: string
+    aiBaseUrlHeader?: string
+  }): Promise<WalletReserveResponse> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/wallet/reserve`
+    return (await this.fetchRemoteJson({
+      authorization: args.authorization,
+      endpoint,
+      method: 'POST',
+      body: {
+        organizationId: args.organizationId,
+        requestId: args.requestId,
+        estimatedCents: Math.max(1, Math.ceil(args.estimatedCents)),
+        ...(args.feature ? { feature: args.feature } : {}),
+        model: args.model,
+        provider: args.provider,
+      },
+    })) as WalletReserveResponse
+  }
+
+  private async captureManagedWalletHold(args: {
+    authorization: string
+    holdId: string
+    finalCents: number
+    aiBaseUrlHeader?: string
+  }): Promise<WalletCaptureResponse> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/wallet/debit`
+    return (await this.fetchRemoteJson({
+      authorization: args.authorization,
+      endpoint,
+      method: 'POST',
+      body: {
+        holdId: args.holdId,
+        finalCents: Math.max(0, Math.ceil(args.finalCents)),
+      },
+    })) as WalletCaptureResponse
+  }
+
+  private async releaseManagedWalletHold(args: {
+    authorization: string
+    holdId: string
+    reason: string
+    aiBaseUrlHeader?: string
+  }): Promise<WalletCaptureResponse> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const endpoint = `${baseUrl.replace(/\/+$/, '')}/wallet/settle`
+    return (await this.fetchRemoteJson({
+      authorization: args.authorization,
+      endpoint,
+      method: 'POST',
+      body: {
+        holdId: args.holdId,
+        action: 'release',
+        reason: args.reason,
+      },
+    })) as WalletCaptureResponse
+  }
+
+  private async lookupPricingFromRemote(args: {
+    authorization: string
+    model: string
+    preferredProvider?: string
+    aiBaseUrlHeader?: string
+  }): Promise<RemotePricing | null> {
+    const baseUrl = resolveRemoteAiBaseUrl(args.aiBaseUrlHeader)
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
+    const preferredProvider = args.preferredProvider?.trim().toLowerCase() || ''
+    const cacheKey = `${normalizedBaseUrl}|${preferredProvider || '*'}|${args.model}`
+    const cached = this.pricingCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.pricing
+    }
+
+    const query = new URLSearchParams({
+      model: args.model,
+    })
+    if (preferredProvider) {
+      query.set('provider', preferredProvider)
+    }
+    const endpoint = `${normalizedBaseUrl}/pricing?${query.toString()}`
+    const payload = (await this.fetchRemoteJson({
+      authorization: args.authorization,
+      endpoint,
+      method: 'GET',
+    })) as RemotePricingResponse
+
+    const rows = Array.isArray(payload.pricing) ? payload.pricing : []
+    const normalizedModel = args.model.trim().toLowerCase()
+
+    const exactRow = rows.find((entry) => {
+      const rowModelId = typeof entry?.modelId === 'string' ? entry.modelId.trim().toLowerCase() : ''
+      if (!rowModelId) return false
+      const rowProvider =
+        typeof entry?.provider === 'string' ? entry.provider.trim().toLowerCase() : ''
+      if (preferredProvider && rowProvider && rowProvider !== preferredProvider) return false
+      return rowModelId === normalizedModel
+    })
+    const row = exactRow
+
+    if (!row || !isRecord(row.pricing)) {
+      return null
+    }
+
+    const inputPer1m = normalizePricingNumber(row.pricing.inputPer1m)
+    const outputPer1m = normalizePricingNumber(row.pricing.outputPer1m)
+    if (inputPer1m === null || outputPer1m === null) {
+      return null
+    }
+
+    const pricing = { inputPer1m, outputPer1m }
+    this.pricingCache.set(cacheKey, {
+      pricing,
+      expiresAt: Date.now() + 60_000,
+    })
+
+    return pricing
+  }
+
+  private resolvePricingFromModelInfo(modelInfo: ModelInfo): RemotePricing | null {
+    const inputPer1m = normalizePricingNumber(modelInfo.cost?.input)
+    const outputPer1m = normalizePricingNumber(modelInfo.cost?.output)
+    if (inputPer1m === null || outputPer1m === null) {
+      return null
+    }
+    return { inputPer1m, outputPer1m }
+  }
+
+  private calculateSpendCentsFromPricing(args: {
+    promptTokens: number
+    completionTokens: number
+    cachedInputTokens: number
+    pricing: RemotePricing
+  }): number {
+    const billableInputTokens = Math.max(0, Math.floor(args.promptTokens) - Math.floor(args.cachedInputTokens))
+    const outputTokens = Math.max(0, Math.floor(args.completionTokens))
+    const inputUsd = (billableInputTokens / 1_000_000) * args.pricing.inputPer1m
+    const outputUsd = (outputTokens / 1_000_000) * args.pricing.outputPer1m
+    const totalUsd = inputUsd + outputUsd
+
+    if (!Number.isFinite(totalUsd) || totalUsd <= 0) {
+      return 0
+    }
+
+    return Math.max(0, Math.ceil(totalUsd * 100))
+  }
+
+  private async releaseManagedWalletHoldSafely(args: {
+    authorization: string
+    holdId: string
+    reason: string
+    aiBaseUrlHeader?: string
+  }): Promise<void> {
+    try {
+      await this.releaseManagedWalletHold(args)
+    } catch (error) {
+      console.warn('Failed to release managed wallet hold:', error)
+    }
+  }
+
   private async ensureServer(runtimeDeps: LocalRuntimeDeps): Promise<void> {
     if (this.server && this.endpoint) return
 
@@ -243,15 +822,28 @@ export class LocalAiRuntimeService {
       if (req.method === 'OPTIONS') {
         res.statusCode = 204
         res.setHeader('Access-Control-Allow-Origin', '*')
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-cozea-provider-auth')
+        res.setHeader('Access-Control-Allow-Headers', LOCAL_RUNTIME_ALLOWED_HEADERS)
         res.end()
         return
       }
 
-      if (req.method !== 'POST' || req.url !== '/chat') {
+      const requestPath = (() => {
+        try {
+          return new URL(req.url || '/', 'http://127.0.0.1').pathname
+        } catch {
+          return req.url || ''
+        }
+      })()
+
+      if (req.method !== 'POST' || (requestPath !== '/chat' && requestPath !== '/agent/run')) {
         sendJson(res, 404, { error: 'Not found' })
         return
       }
+
+      let walletHoldId: string | null = null
+      let walletSettled = false
+      let walletHoldAuthorization: string | null = null
+      let walletHoldBaseUrlHeader: string | undefined
 
       try {
         const rawBody = await readRequestBody(req)
@@ -275,23 +867,122 @@ export class LocalAiRuntimeService {
         const parsedBody = contract.value
         const messages = parsedBody.messages
         const model = parsedBody.model
+        const scopedModel = parseScopedModelId(model)
         const organizationId = parsedBody.organizationId
         const enableTools = parsedBody.enableTools ?? true
         const enableWebSearch = parsedBody.enableWebSearch ?? false
 
-        const modelInfo = runtimeDeps.getModelInfo(model)
-        if (!modelInfo || (modelInfo.provider !== 'openai' && modelInfo.provider !== 'google')) {
+        if (!scopedModel) {
+          sendJson(res, 400, {
+            error: 'invalid_model_id',
+            code: 'SCOPED_MODEL_REQUIRED',
+            message: 'Model must be provider-scoped (for example: "openai/gpt-5.2-codex").',
+          })
+          return
+        }
+
+        const aiBaseUrlHeader = getHeaderValue(req, 'x-cozea-ai-base-url')
+        const authorization = getHeaderValue(req, 'authorization')
+        const selectedProviderHint = getHeaderValue(req, 'x-cozea-selected-provider')?.trim().toLowerCase()
+
+        if (selectedProviderHint && selectedProviderHint !== scopedModel.provider) {
+          sendJson(res, 400, {
+            error: 'provider_model_mismatch',
+            code: 'PROVIDER_MODEL_MISMATCH',
+            message:
+              `Selected provider "${selectedProviderHint}" does not match model provider "${scopedModel.provider}".`,
+          })
+          return
+        }
+
+        let modelInfo = runtimeDeps.getModelInfo(model)
+        if (
+          authorization &&
+          parsedBody.organizationId &&
+          !modelInfo
+        ) {
+          modelInfo = await this.fetchModelInfoFromRemoteCatalog({
+            authorization,
+            organizationId: parsedBody.organizationId,
+            model,
+            preferredProvider: scopedModel.provider,
+            aiBaseUrlHeader,
+          })
+        }
+        if (!modelInfo) {
           sendJson(res, 400, { error: 'Unsupported model for local runtime' })
           return
         }
 
-        const headerValue = req.headers['x-cozea-provider-auth']
-        const encodedEnvelope = Array.isArray(headerValue) ? headerValue[0] : headerValue
-        const envelope = parseProviderAuthEnvelope(encodedEnvelope)
-        if (!envelope || envelope.provider !== modelInfo.provider) {
+        if (modelInfo.provider.trim().toLowerCase() !== scopedModel.provider) {
+          sendJson(res, 400, {
+            error: 'provider_model_mismatch',
+            code: 'PROVIDER_MODEL_MISMATCH',
+            message:
+              `Resolved model provider "${modelInfo.provider}" does not match requested provider "${scopedModel.provider}".`,
+          })
+          return
+        }
+
+        const encodedEnvelope = getHeaderValue(req, 'x-cozea-provider-auth')
+        let envelope = parseProviderAuthEnvelope(encodedEnvelope)
+        if (envelope && envelope.provider.trim().toLowerCase() !== modelInfo.provider.trim().toLowerCase()) {
+          sendJson(res, 400, {
+            error: 'provider_auth_provider_mismatch',
+            code: 'PROVIDER_AUTH_PROVIDER_MISMATCH',
+            message:
+              `Provider auth is for "${envelope.provider}" but model requires "${modelInfo.provider}".`,
+          })
+          return
+        }
+
+        let managedEnvelopeError: {
+          status: number
+          code?: string
+          message?: string
+        } | null = null
+
+        if (!envelope && isManagedProvider(modelInfo.provider)) {
+          if (authorization && parsedBody.organizationId) {
+            const managedEnvelope = await this.fetchManagedProviderEnvelope({
+              authorization,
+              organizationId: parsedBody.organizationId,
+              model,
+              provider: modelInfo.provider,
+              aiBaseUrlHeader,
+            })
+            envelope = managedEnvelope.envelope
+            if (!envelope && managedEnvelope.errorStatus) {
+              managedEnvelopeError = {
+                status: managedEnvelope.errorStatus,
+                ...(managedEnvelope.errorCode ? { code: managedEnvelope.errorCode } : {}),
+                ...(managedEnvelope.errorMessage ? { message: managedEnvelope.errorMessage } : {}),
+              }
+            }
+          } else {
+            managedEnvelopeError = {
+              status: 401,
+              code: 'unauthorized',
+              message: 'Authentication is required to use managed providers.',
+            }
+          }
+        }
+
+        if (!envelope) {
+          if (managedEnvelopeError) {
+            sendJson(res, managedEnvelopeError.status, {
+              error: managedEnvelopeError.code || 'provider_auth_required',
+              message:
+                managedEnvelopeError.message ||
+                'Managed provider auth is unavailable for the selected model.',
+            })
+            return
+          }
           sendJson(res, 402, {
             error: 'provider_auth_required',
-            message: 'Provider auth envelope is missing, invalid, or for the wrong provider.',
+            message:
+              `This model uses the BYOK provider "${modelInfo.provider}". ` +
+              'Switch to a Cozea-managed provider (recommended) or connect this provider in Settings > AI.',
           })
           return
         }
@@ -320,63 +1011,233 @@ export class LocalAiRuntimeService {
           variantId: resolvedVariantId,
         }
 
-        const aiModel = runtimeDeps.createProviderModelFromEnvelope(
-          modelInfo.provider as LocalAiRuntimeProvider,
-          modelInfo.providerModelId,
-          envelope
-        )
+        const managedProvider = isManagedProvider(modelInfo.provider)
+        const requestId = resolveRequestId(parsedBody.requestId)
+        const feature =
+          typeof resolvedPolicy.feature === 'string' && resolvedPolicy.feature.trim().length > 0
+            ? resolvedPolicy.feature
+            : 'assistant'
+
+        if (managedProvider) {
+          if (!authorization) {
+            sendJson(res, 401, { error: 'Unauthorized' })
+            return
+          }
+
+          const reserveEstimatedCents = managedReserveCentsForTier(modelInfo.tier)
+          try {
+            const reserveResult = await this.reserveManagedWalletHold({
+              authorization,
+              organizationId,
+              requestId,
+              estimatedCents: reserveEstimatedCents,
+              feature,
+              model,
+              provider: modelInfo.provider,
+              aiBaseUrlHeader,
+            })
+            if (!reserveResult.ok || !reserveResult.holdId) {
+              sendJson(res, 402, {
+                error: 'wallet_insufficient_funds',
+                message: 'Your available AI wallet balance is not enough for this request.',
+              })
+              return
+            }
+            walletHoldId = reserveResult.holdId
+            walletHoldAuthorization = authorization
+            walletHoldBaseUrlHeader = aiBaseUrlHeader
+          } catch (error) {
+            if (error instanceof RemoteAiHttpError) {
+              sendJson(res, error.statusCode, error.payload)
+              return
+            }
+            sendJson(res, 502, {
+              error: 'wallet_reserve_failed',
+              message: 'Failed to reserve AI wallet funds for this request.',
+            })
+            return
+          }
+        }
+
+        let aiModel: unknown
+        try {
+          aiModel = runtimeDeps.createProviderModelFromEnvelope(
+            modelInfo.provider as LocalAiRuntimeProvider,
+            modelInfo.providerModelId,
+            envelope
+          )
+        } catch (error) {
+          if (walletHoldId && walletHoldAuthorization) {
+            await this.releaseManagedWalletHoldSafely({
+              authorization: walletHoldAuthorization,
+              holdId: walletHoldId,
+              reason: 'model_initialization_failed',
+              aiBaseUrlHeader: walletHoldBaseUrlHeader,
+            })
+            walletSettled = true
+          }
+          throw error
+        }
 
         const startedAt = Date.now()
         const stream = createUIMessageStream<UIMessage>({
           originalMessages: messages,
           execute: async ({ writer }) => {
-            const pipeline = await runtimeDeps.executeChatPipeline({
-              aiModel,
-              messages: messages as UIMessage[],
-              model,
-              modelInfo,
-              organizationId,
-              conversationId: parsedBody.conversationId,
-              requestProviderOptions: parsedBody.providerOptions,
-              projectContext: parsedBody.projectContext,
-              resolvedPolicy,
-              enabledTools: [],
-              enableTools,
-              enableWebSearch,
-              orgAiSettings: null,
-              apiKey: envelope.accessToken,
-              exaWebSearch: undefined,
-              onFinish: async (event: any) => {
-                const usage = event.totalUsage
-                const promptTokens = usage.inputTokens ?? 0
-                const completionTokens = usage.outputTokens ?? 0
-                const totalTokens = usage.totalTokens ?? promptTokens + completionTokens
+            try {
+              const pipeline = await runtimeDeps.executeChatPipeline({
+                aiModel,
+                messages: messages as UIMessage[],
+                model,
+                modelInfo,
+                organizationId,
+                conversationId: parsedBody.conversationId,
+                requestProviderOptions: parsedBody.providerOptions,
+                projectContext: parsedBody.projectContext,
+                resolvedPolicy,
+                enabledTools: [],
+                hasLocalExecution: true,
+                enableTools,
+                enableWebSearch,
+                orgAiSettings: null,
+                apiKey: envelope.accessToken,
+                exaWebSearch: undefined,
+                onFinish: async (event: unknown) => {
+                  const eventRecord = isRecord(event) ? event : {}
+                  const usage = isRecord(eventRecord.totalUsage) ? eventRecord.totalUsage : {}
+                  const inputTokenDetails = isRecord(usage.inputTokenDetails) ? usage.inputTokenDetails : {}
+                  const outputTokenDetails = isRecord(usage.outputTokenDetails) ? usage.outputTokenDetails : {}
 
-                writer.write({
-                  type: 'data-usage',
-                  data: {
-                    model,
-                    provider: modelInfo.provider,
-                    promptTokens,
-                    completionTokens,
-                    totalTokens,
-                    keySource: 'provider_auth',
-                    runtime: 'local',
-                    durationMs: Date.now() - startedAt,
-                    finishReason: event.finishReason,
-                    rawFinishReason: event.rawFinishReason,
-                  },
+                  const promptTokens = Math.max(0, Math.floor(toFiniteNumber(usage.inputTokens) ?? 0))
+                  const completionTokens = Math.max(0, Math.floor(toFiniteNumber(usage.outputTokens) ?? 0))
+                  const totalTokens = Math.max(
+                    0,
+                    Math.floor(toFiniteNumber(usage.totalTokens) ?? promptTokens + completionTokens)
+                  )
+                  const reasoningTokens = Math.max(
+                    0,
+                    Math.floor(
+                      toFiniteNumber(outputTokenDetails.reasoningTokens)
+                      ?? toFiniteNumber(usage.reasoningTokens)
+                      ?? 0
+                    )
+                  )
+                  const cachedInputTokens = Math.max(
+                    0,
+                    Math.floor(
+                      toFiniteNumber(inputTokenDetails.cacheReadTokens)
+                      ?? toFiniteNumber(usage.cachedInputTokens)
+                      ?? 0
+                    )
+                  )
+                  const finishReason =
+                    typeof eventRecord.finishReason === 'string' ? eventRecord.finishReason : undefined
+                  const rawFinishReason =
+                    typeof eventRecord.rawFinishReason === 'string' ? eventRecord.rawFinishReason : undefined
+
+                  let spendCents: number | undefined
+                  let usageError: string | undefined
+
+                  if (managedProvider && walletHoldId && walletHoldAuthorization) {
+                    let pricing = this.resolvePricingFromModelInfo(modelInfo)
+                    if (!pricing) {
+                      try {
+                        pricing = await this.lookupPricingFromRemote({
+                          authorization: walletHoldAuthorization,
+                          model,
+                          preferredProvider: modelInfo.provider,
+                          aiBaseUrlHeader: walletHoldBaseUrlHeader,
+                        })
+                      } catch (error) {
+                        usageError = 'pricing lookup failed for wallet debit'
+                        console.warn('Managed pricing lookup failed:', error)
+                      }
+                    }
+
+                    const finalCents = pricing
+                      ? this.calculateSpendCentsFromPricing({
+                          promptTokens,
+                          completionTokens,
+                          cachedInputTokens,
+                          pricing,
+                        })
+                      : 0
+                    spendCents = finalCents
+
+                    try {
+                      const captureResult = await this.captureManagedWalletHold({
+                        authorization: walletHoldAuthorization,
+                        holdId: walletHoldId,
+                        finalCents,
+                        aiBaseUrlHeader: walletHoldBaseUrlHeader,
+                      })
+                      if (!captureResult.ok) {
+                        usageError = usageError
+                          ? `${usageError}; wallet capture failed: ${captureResult.reason || 'unknown'}`
+                          : `wallet capture failed: ${captureResult.reason || 'unknown'}`
+                        await this.releaseManagedWalletHoldSafely({
+                          authorization: walletHoldAuthorization,
+                          holdId: walletHoldId,
+                          reason: 'wallet_capture_failed',
+                          aiBaseUrlHeader: walletHoldBaseUrlHeader,
+                        })
+                      }
+                      walletSettled = true
+                    } catch (error) {
+                      usageError = usageError
+                        ? `${usageError}; wallet capture failed`
+                        : 'wallet capture failed'
+                      await this.releaseManagedWalletHoldSafely({
+                        authorization: walletHoldAuthorization,
+                        holdId: walletHoldId,
+                        reason: 'wallet_capture_failed',
+                        aiBaseUrlHeader: walletHoldBaseUrlHeader,
+                      })
+                      walletSettled = true
+                      console.warn('Managed wallet capture failed:', error)
+                    }
+                  }
+
+                  writer.write({
+                    type: 'data-usage',
+                    data: {
+                      model,
+                      provider: modelInfo.provider,
+                      promptTokens,
+                      completionTokens,
+                      totalTokens,
+                      reasoningTokens: reasoningTokens || undefined,
+                      cachedInputTokens: cachedInputTokens || undefined,
+                      ...(spendCents !== undefined ? { spendCents } : {}),
+                      keySource: managedProvider ? 'organization' : 'provider_auth',
+                      runtime: 'local',
+                      durationMs: Date.now() - startedAt,
+                      finishReason,
+                      rawFinishReason,
+                      ...(usageError ? { error: usageError } : {}),
+                    },
+                  })
+                },
+              })
+
+              runtimeDeps.mergePipelineResultToWriter({
+                result: pipeline.result,
+                requestMessages: pipeline.requestMessages,
+                continuationStateInput: pipeline.continuationStateInput,
+                writer,
+                providerHint: pipeline.providerHint,
+              })
+            } catch (error) {
+              if (walletHoldId && !walletSettled && walletHoldAuthorization) {
+                await this.releaseManagedWalletHoldSafely({
+                  authorization: walletHoldAuthorization,
+                  holdId: walletHoldId,
+                  reason: 'chat_stream_error',
+                  aiBaseUrlHeader: walletHoldBaseUrlHeader,
                 })
-              },
-            })
-
-            runtimeDeps.mergePipelineResultToWriter({
-              result: pipeline.result,
-              requestMessages: pipeline.requestMessages,
-              continuationStateInput: pipeline.continuationStateInput,
-              writer,
-              providerHint: pipeline.providerHint,
-            })
+                walletSettled = true
+              }
+              throw error
+            }
           },
         })
 
@@ -386,10 +1247,19 @@ export class LocalAiRuntimeService {
           status: 200,
           headers: {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-cozea-provider-auth',
+            'Access-Control-Allow-Headers': LOCAL_RUNTIME_ALLOWED_HEADERS,
           },
         })
       } catch (error) {
+        if (walletHoldId && !walletSettled && walletHoldAuthorization) {
+          await this.releaseManagedWalletHoldSafely({
+            authorization: walletHoldAuthorization,
+            holdId: walletHoldId,
+            reason: 'local_runtime_failed',
+            aiBaseUrlHeader: walletHoldBaseUrlHeader,
+          })
+          walletSettled = true
+        }
         sendJson(res, 500, {
           error: 'local_runtime_failed',
           message: error instanceof Error ? error.message : 'Unknown local runtime error',

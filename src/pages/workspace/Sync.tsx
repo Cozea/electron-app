@@ -6,7 +6,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
-import { Progress } from '../../components/ui/progress'
 import {
   Table,
   TableBody,
@@ -35,6 +34,7 @@ import {
   Sparkles,
   Archive,
   Image,
+  Lock,
   Loader2,
 } from 'lucide-react'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -144,6 +144,29 @@ const formatSize = (gb: number): string => {
 }
 
 const bytesToGB = (bytes: number): number => bytes / (1024 * 1024 * 1024)
+
+const getLegendLabel = (category: StorageCategory): string => {
+  switch (category.categoryKey) {
+    case 'sourceAndConfig':
+      return 'Source'
+    case 'collaborationData':
+      return 'Collab'
+    case 'aiHistory':
+      return 'AI'
+    case 'buildCache':
+      return 'Build'
+    case 'snapshots':
+      return 'Snapshots'
+    case 'gitHistory':
+      return 'Git'
+    case 'databaseBackups':
+      return 'Backups'
+    case 'assets':
+      return 'Assets'
+    default:
+      return category.name
+  }
+}
 
 export function Sync() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
@@ -287,7 +310,7 @@ export function Sync() {
                   {storageCategories.map((cat) => (
                     <div key={cat.id} className="flex items-center gap-1.5 text-xs">
                       <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                      <span className="text-muted-foreground">{cat.name}</span>
+                      <span className="text-muted-foreground">{getLegendLabel(cat)}</span>
                     </div>
                   ))}
                 </div>
@@ -296,18 +319,21 @@ export function Sync() {
 
             {/* Quick Actions */}
             <div className="md:border-l md:border-border md:pl-4">
-              <div className="pb-2">
-                <h2 className="text-base font-semibold">Free Up Space</h2>
-              </div>
-              <div className="space-y-3">
+              <h2 className="text-base font-semibold">Free Up Space</h2>
+              <div className="mt-0.5 space-y-2">
                 <div className="text-sm">
                   <span className="font-medium">{formatSize(clearableSize)}</span>
                   <span className="text-muted-foreground"> can be cleared</span>
                 </div>
-                <Progress
-                  value={totalUsed > 0 ? (clearableSize / totalUsed) * 100 : 0}
-                  className="h-2"
-                />
+                <div className="h-4 rounded-full overflow-hidden bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{
+                      width: `${totalUsed > 0 ? Math.min((clearableSize / totalUsed) * 100, 100) : 0}%`,
+                    }}
+                    aria-label="Clearable storage"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -343,8 +369,12 @@ export function Sync() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{category.name}</span>
                           {!category.canClear && (
-                          <Badge className="text-xs bg-secondary/60 text-muted-foreground border-0">
-                            Protected
+                          <Badge
+                            className="h-5 w-5 bg-secondary/60 text-muted-foreground border-0 p-0"
+                            aria-label="Protected"
+                            title="Protected"
+                          >
+                            <Lock className="h-3 w-3" />
                           </Badge>
                           )}
                         </div>

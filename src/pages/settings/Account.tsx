@@ -19,9 +19,6 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
-  Shield,
-  Key,
-  Smartphone,
   Monitor,
   Mail,
   Bell,
@@ -109,11 +106,7 @@ export function Account({ surface = 'page' }: AccountProps) {
 
         {/* Profile Summary */}
         <div>
-          <h3 className="text-base font-medium mb-1">Profile</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Manage your profile on the web dashboard
-          </p>
-          <div className="flex items-center gap-4 p-4 border rounded-lg">
+          <div className="flex items-center gap-4 p-4 rounded-lg">
             <div className="group relative h-16 w-16 cursor-pointer shrink-0">
               <Avatar className="h-16 w-16">
                 <AvatarImage src={profile?.profileImageUrl || ''} />
@@ -135,40 +128,6 @@ export function Account({ surface = 'page' }: AccountProps) {
           </div>
         </div>
 
-        {/* Security */}
-        <div>
-          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            Security
-          </h3>
-          <div className="space-y-4 mt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Key className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Password</p>
-                  <p className="text-sm text-muted-foreground">
-                    Managed via your identity provider
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" disabled>Change Password</Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Smartphone className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Two-Factor Authentication</p>
-                  <p className="text-sm text-muted-foreground">
-                    Add an extra layer of security
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" disabled>Enable</Button>
-            </div>
-          </div>
-        </div>
-
         {/* Active Sessions - Placeholder */}
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -181,7 +140,7 @@ export function Account({ surface = 'page' }: AccountProps) {
             Devices currently signed in to your account
           </p>
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 border rounded-lg">
+            <div className="flex items-center justify-between p-3 rounded-lg">
               <div className="flex items-center gap-3">
                 <Monitor className="h-5 w-5 text-muted-foreground" />
                 <div>

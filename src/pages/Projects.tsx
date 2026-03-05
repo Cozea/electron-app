@@ -13,6 +13,14 @@ import { ProjectCard } from '../features/projects/components/ProjectCard'
 import { ProjectListRow } from '../features/projects/components/ProjectListRow'
 import { SyncScreen } from '../features/projects/components/SyncScreen'
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import {
   Table,
   TableBody,
   TableCell,
@@ -24,6 +32,7 @@ import {
   Plus,
   ArrowUpDown,
   FileCode,
+  FolderOpen,
   LayoutGrid,
   List,
   ChevronLeft,
@@ -741,53 +750,51 @@ export function Projects() {
     </>
   )
 
-  const headerContent = (
+  const headerContent = showProjectControls ? (
     <div className="flex items-center gap-2">
-      {showProjectControls && <>
-        {/* Status Filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-              <FileCode className="h-3.5 w-3.5" />
-              {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Status Filter */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+            <FileCode className="h-3.5 w-3.5" />
+            {statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {/* Sort */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
-              <ArrowUpDown className="h-3.5 w-3.5" />
-              Sort
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Sort */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            Sort
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {/* View Mode Toggle */}
-        <Button
-          variant="secondary"
-          size="icon"
-          className="h-7 w-7 px-0 rounded-full focus:z-10"
-          onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
-          disabled={isMobile}
-          title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
-        >
-          {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
-        </Button>
-      </>}
+      {/* View Mode Toggle */}
+      <Button
+        variant="secondary"
+        size="icon"
+        className="h-7 w-7 px-0 rounded-full focus:z-10"
+        onClick={() => setViewMode(effectiveViewMode === 'grid' ? 'list' : 'grid')}
+        disabled={isMobile}
+        title={isMobile ? "View fixed to list on small screens" : "Toggle view"}
+      >
+        {effectiveViewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+      </Button>
 
       <TooltipProvider>
         <Tooltip>
@@ -805,7 +812,7 @@ export function Projects() {
         </Tooltip>
       </TooltipProvider>
     </div>
-  )
+  ) : null
 
   const showPagination = filteredProjects.length > ITEMS_PER_PAGE
 
@@ -818,7 +825,29 @@ export function Projects() {
       header={headerContent || undefined}
     >
       <TooltipProvider>
-        {effectiveViewMode === 'grid' ? (
+        {!isLoading && !hasProjects ? (
+          <div className="flex min-h-full flex-1 items-center justify-center">
+            <div className="w-full rounded-xl bg-card/70 p-6 md:p-10">
+              <Empty className="py-6">
+                <EmptyHeader>
+                  <EmptyMedia>
+                    <FolderOpen className="h-8 w-8" />
+                  </EmptyMedia>
+                  <EmptyTitle>Start your first project</EmptyTitle>
+                  <EmptyDescription>
+                    Create a project to generate a plan, scaffold code, and collaborate with your team.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button className="gap-2" onClick={() => navigate('/projects/new')}>
+                    <Plus className="h-4 w-4" />
+                    Create Project
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            </div>
+          </div>
+        ) : effectiveViewMode === 'grid' ? (
           <div
             className={cn(
               featureFlags.contentVisibility && 'perf-contain-auto',

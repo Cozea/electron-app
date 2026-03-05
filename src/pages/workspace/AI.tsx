@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ProviderCloudCredentials } from '@shared/electronApiTypes'
+import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
@@ -10,8 +11,13 @@ import { clearModelCatalogCache } from '../../lib/ai/modelCatalogClient'
 import { getProviderLogoUrl } from '../../lib/ai/providerLogos'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
-import { Switch } from '../../components/ui/switch'
 import { Input } from '../../components/ui/input'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '../../components/ui/chart'
 import {
   Table,
   TableBody,
@@ -47,7 +53,6 @@ import {
 } from 'lucide-react'
 
 type ConnectableProvider = string
-const DEFAULT_ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const
 
 const RECOMMENDED_PROVIDER_ORDER: ConnectableProvider[] = [
   'openai',
@@ -67,6 +72,7 @@ function isBuiltinProvider(providerId: string): providerId is (typeof BUILTIN_PR
 const RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
   RECOMMENDED_PROVIDER_ORDER.map((providerId, index) => [providerId, index])
 )
+const COZEA_MANAGED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'xai'])
 
 interface LocalProviderStatus {
   provider: string
@@ -115,6 +121,14 @@ type ProviderAuthMethod =
 
 interface AIProps {
   surface?: 'page' | 'drawer'
+}
+
+type UsageRange = '7d' | '30d' | '90d'
+
+interface UsagePoint {
+  date: string
+  tokens: number
+  requests: number
 }
 
 const FALLBACK_PROVIDER_ROWS: ProviderCatalogRow[] = [
@@ -242,6 +256,13 @@ const formatCurrencyFromCents = (cents: number, currency: string = 'USD'): strin
   }).format(normalized / 100)
 }
 
+const usageChartConfig: ChartConfig = {
+  tokens: {
+    label: 'Tokens',
+    color: 'var(--chart-1)',
+  },
+}
+
 export function AI({ surface = 'page' }: AIProps) {
   const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
 
@@ -274,8 +295,28 @@ export function AI({ surface = 'page' }: AIProps) {
       : 'skip'
   )
 
-  // Mutations
-  const updateAiSettings = useMutation(api.organizations.updateAiSettings)
+  const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
+  const usageDateRange = useMemo(() => {
+    const now = Date.now()
+    const daysToSubtract =
+      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    return {
+      startDate: now - daysToSubtract * 24 * 60 * 60 * 1000,
+      endDate: now,
+    }
+  }, [usageTimeRange])
+
+  const usageAggregates = useQuery(
+    api.aiUsage.getAggregates,
+    convexOrg?._id
+      ? {
+          organizationId: convexOrg._id,
+          period: 'daily' as const,
+          startDate: usageDateRange.startDate,
+          endDate: usageDateRange.endDate,
+        }
+      : 'skip'
+  )
 
   // Dialog state for provider connection
   const [connectDialogOpen, setConnectDialogOpen] = useState(false)
@@ -293,9 +334,6 @@ export function AI({ surface = 'page' }: AIProps) {
   const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogRow[]>([])
   const [availableProviderMethods, setAvailableProviderMethods] = useState<Record<string, ProviderAuthMethod[]>>({})
   const [providersError, setProvidersError] = useState<string | null>(null)
-
-  // Settings state
-  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false)
 
   // Usage history pagination
   const [usagePage, setUsagePage] = useState(0)
@@ -463,7 +501,48 @@ export function AI({ surface = 'page' }: AIProps) {
   const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
   const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
+  const activeWalletContext =
+    walletSummary?.walletContexts?.active === 'workspace_seat'
+      ? 'Workspace seat wallet'
+      : walletSummary?.walletContexts?.active === 'personal'
+        ? 'Personal wallet'
+        : 'No active wallet'
   const now = Date.now()
+  const chartData = useMemo<UsagePoint[]>(() => {
+    const daysToShow =
+      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const dates: UsagePoint[] = []
+    const currentDate = new Date()
+
+    for (let i = daysToShow - 1; i >= 0; i -= 1) {
+      const date = new Date(currentDate)
+      date.setDate(date.getDate() - i)
+      date.setHours(0, 0, 0, 0)
+      dates.push({
+        date: date.toISOString().split('T')[0],
+        tokens: 0,
+        requests: 0,
+      })
+    }
+
+    if (!usageAggregates) {
+      return dates
+    }
+
+    const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
+    for (const aggregate of usageAggregates) {
+      const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
+      const index = indexByDate.get(dateStr)
+      if (index === undefined) continue
+      dates[index] = {
+        ...dates[index],
+        tokens: aggregate.totalTokens,
+        requests: aggregate.requestCount,
+      }
+    }
+
+    return dates
+  }, [usageAggregates, usageTimeRange])
   const providerRows = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
 
@@ -480,7 +559,7 @@ export function AI({ surface = 'page' }: AIProps) {
       if (bIsRecommended) return 1
 
       return a.name.localeCompare(b.name)
-    })
+    }).filter((provider) => !COZEA_MANAGED_PROVIDER_IDS.has(provider.id.trim().toLowerCase()))
   }, [providerCatalog])
   const selectedProviderInfo = selectedProvider
     ? providerRows.find((provider) => provider.id === selectedProvider)
@@ -526,6 +605,12 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   useEffect(() => {
+    if (selectedProvider && COZEA_MANAGED_PROVIDER_IDS.has(selectedProvider.trim().toLowerCase())) {
+      setSelectedProvider(null)
+    }
+  }, [selectedProvider])
+
+  useEffect(() => {
     if (selectedProvider === 'openai') {
       const fallback: Array<typeof openaiMethod> = ['oauth', 'device', 'api_key']
       const supported = fallback.filter((item) => providerSupportsMethod(item))
@@ -551,12 +636,6 @@ export function AI({ surface = 'page' }: AIProps) {
     }
   }, [anthropicMethod, googleMethod, openaiMethod, selectedProvider, selectedProviderMethods])
 
-  const connectedProviders = providerRows.reduce((count, provider) => {
-    const status = providerStatuses[provider.id]
-    const effectiveConnected =
-      (status?.connected ?? false) && (status?.expiresAt == null || status.expiresAt > now)
-    return count + (effectiveConnected ? 1 : 0)
-  }, 0)
   const pagedProviderRows = providerRows.slice(
     providerPage * providerPageSize,
     (providerPage + 1) * providerPageSize
@@ -597,39 +676,108 @@ export function AI({ surface = 'page' }: AIProps) {
               </p>
             </div>
 
-            {/* Connected Providers */}
-            <div className="sm:flex-1 px-6 py-2">
-              <div className="flex items-center gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Connected Providers</p>
-                  <p className="text-2xl font-semibold">{connectedProviders}/{providerRows.length}</p>
-                </div>
-              </div>
-            </div>
-
             <div className="sm:flex-1 px-6 py-2">
               <p className="text-sm text-muted-foreground mb-1">AI Wallet (Available)</p>
               <p className="text-2xl font-semibold">
                 {formatCurrencyFromCents(walletAvailableCents, walletCurrency)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">{activeWalletContext}</p>
+              <p className="text-xs text-muted-foreground">
                 {walletIncludedCents > 0
                   ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
-                  : 'No included wallet on current entitlement'}
+                  : 'No included wallet on current context'}
               </p>
             </div>
           </div>
         </div>
+
+        <Card className="border-none shadow-none bg-transparent">
+          <CardContent className="pt-0 px-0">
+            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">AI Token Usage</p>
+                  <p className="text-sm text-muted-foreground">
+                    Daily token consumption across this workspace
+                  </p>
+                </div>
+                <Select
+                  value={usageTimeRange}
+                  onValueChange={(value) =>
+                    setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
+                  }
+                >
+                  <SelectTrigger className="w-[140px]" aria-label="Select time range">
+                    <SelectValue placeholder="Last 30 days" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
+                    <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                    <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <ChartContainer config={usageChartConfig} className="aspect-auto h-[200px] w-full">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="fillAiTokens" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-tokens)" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="var(--color-tokens)" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={32}
+                    tickFormatter={(value) => {
+                      const date = new Date(value)
+                      return date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    }}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) => {
+                          return new Date(value).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        }}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <Area
+                    dataKey="tokens"
+                    type="natural"
+                    fill="url(#fillAiTokens)"
+                    stroke="var(--color-tokens)"
+                  />
+                </AreaChart>
+              </ChartContainer>
+            </div>
+
+          </CardContent>
+        </Card>
 
         {/* Provider Credentials */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5" />
-              Local Provider Connections
+              Manual Provider Connections
             </CardTitle>
             <CardDescription>
-              Provider auth is stored only on this device. No provider secrets are saved to workspace/server storage.
+              Connect non-managed providers with your own credentials. Cozea-managed providers are handled automatically.
             </CardDescription>
             {providersError && (
               <p className="text-sm text-amber-600 dark:text-amber-400">{providersError}</p>
@@ -656,14 +804,14 @@ export function AI({ surface = 'page' }: AIProps) {
                       isConnectable &&
                       (status?.connected ?? false) &&
                       (status?.expiresAt == null || status.expiresAt > now)
-                    const isPolicyManagedProvider =
-                      provider.id === 'openai' ||
-                      provider.id === 'anthropic' ||
-                      provider.id === 'google' ||
-                      provider.id === 'xai'
+                    const isPolicyManagedProvider = COZEA_MANAGED_PROVIDER_IDS.has(provider.id)
                     const isAllowed =
                       !isPolicyManagedProvider ||
-                      (convexOrg?.aiSettings?.allowedProviders?.includes(provider.id as 'openai' | 'anthropic' | 'google' | 'xai') ?? true)
+                      (
+                        convexOrg?.aiSettings?.allowedProviders?.includes(
+                          provider.id as 'openai' | 'anthropic' | 'google' | 'xai' | 'moonshotai'
+                        ) ?? true
+                      )
 
                     return (
                       <TableRow key={provider.id} className="last:border-b-0">
@@ -716,7 +864,7 @@ export function AI({ surface = 'page' }: AIProps) {
                               >
                                 Disabled
                               </Button>
-                            ) : isConnectable ? (
+                            ) : isPolicyManagedProvider ? null : isConnectable ? (
                               isConnected ? (
                                 <Button
                                   variant="ghost"
@@ -880,111 +1028,6 @@ export function AI({ surface = 'page' }: AIProps) {
           </CardContent>
         </Card>
 
-        {/* AI Settings (Admin only) */}
-        {currentOrganization?.role === 'admin' && (
-          <div className="px-6">
-            <h2 className="text-lg font-semibold">AI Settings</h2>
-            <p className="text-sm text-muted-foreground mb-4">Configure AI features for your workspace</p>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Web Search</p>
-                  <p className="text-xs text-muted-foreground">
-                    Allow AI to search the web for information
-                  </p>
-                </div>
-                <Switch
-                  checked={convexOrg?.aiSettings?.allowWebSearch ?? false}
-                  disabled={isUpdatingSettings}
-                  onCheckedChange={async (checked) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
-                          allowWebSearch: checked,
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Provider Tools</p>
-                  <p className="text-xs text-muted-foreground">
-                    Allow AI to use provider-specific tools (code interpreter, etc.)
-                  </p>
-                </div>
-                <Switch
-                  checked={convexOrg?.aiSettings?.allowProviderTools ?? false}
-                  disabled={isUpdatingSettings}
-                  onCheckedChange={async (checked) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
-                          allowProviderTools: checked,
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Reasoning Depth</p>
-                  <p className="text-xs text-muted-foreground">
-                    Maximum reasoning depth for AI models
-                  </p>
-                </div>
-                <Select
-                  value={convexOrg?.aiSettings?.maxReasoningDepth || 'high'}
-                  disabled={isUpdatingSettings}
-                  onValueChange={async (value) => {
-                    if (!convexOrg || !convexUserId) return
-                    setIsUpdatingSettings(true)
-                    try {
-                      await updateAiSettings({
-                        orgId: convexOrg._id,
-                        userId: convexUserId,
-                        aiSettings: {
-                          ...convexOrg.aiSettings,
-                          allowedProviders: convexOrg.aiSettings?.allowedProviders || [...DEFAULT_ALLOWED_PROVIDERS],
-                          maxReasoningDepth: value as 'low' | 'medium' | 'high',
-                        },
-                      })
-                    } finally {
-                      setIsUpdatingSettings(false)
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Provider Connection Dialog */}

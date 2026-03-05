@@ -156,14 +156,14 @@ export function CommandSearch({ className }: CommandSearchProps) {
       </Button>
 
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogHeader className="sr-only">
-          <DialogTitle>Search</DialogTitle>
-          <DialogDescription>Search for pages and actions.</DialogDescription>
-        </DialogHeader>
         <DialogContent
           className="gap-0 overflow-hidden p-0 pb-10 sm:max-w-lg"
           showCloseButton={false}
         >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Search</DialogTitle>
+            <DialogDescription>Search for pages and actions.</DialogDescription>
+          </DialogHeader>
           <Command>
             <CommandInput placeholder="Type to search..." />
             <CommandList className="max-h-[400px]">

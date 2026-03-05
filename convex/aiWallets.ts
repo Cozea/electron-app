@@ -15,6 +15,7 @@ const WALLET_CURRENCY = "USD"
 
 type WalletReadCtx = Pick<QueryCtx | MutationCtx, "db">
 type WalletDoc = Doc<"aiWallets">
+type WalletScopeType = "organization" | "user"
 
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
@@ -25,11 +26,15 @@ function assertGatewaySecret(secret: string | undefined) {
   }
 }
 
-function toOrgUserScopeKey(
+function toWorkspaceSeatScopeKey(
   organizationId: Id<"organizations">,
   ownerUserId: Id<"users">
 ): string {
   return `org:${String(organizationId)}:user:${String(ownerUserId)}`
+}
+
+function toPersonalScopeKey(ownerUserId: Id<"users">): string {
+  return `user:${String(ownerUserId)}`
 }
 
 function normalizeCurrency(): string {
@@ -38,6 +43,19 @@ function normalizeCurrency(): string {
 
 function getAvailableCents(wallet: WalletDoc): number {
   return Math.max(0, wallet.balanceCents - wallet.heldCents)
+}
+
+function toWalletSummary(wallet: WalletDoc) {
+  return {
+    _id: wallet._id,
+    currency: WALLET_CURRENCY,
+    balanceCents: wallet.balanceCents,
+    heldCents: wallet.heldCents,
+    availableCents: getAvailableCents(wallet),
+    updatedAt: wallet.updatedAt,
+    totalDebitedCents: wallet.totalDebitedCents,
+    totalCreditedCents: wallet.totalCreditedCents,
+  }
 }
 
 function normalizeGrantMetadata(metadata: unknown): Record<string, unknown> | undefined {
@@ -57,35 +75,39 @@ async function getWalletByScopeKey(
     .first()
 }
 
-async function getOrCreateWalletForUserInOrganization(
+async function ensureWalletCurrency(
   ctx: MutationCtx,
-  args: {
-    organizationId: Id<"organizations">
-    ownerUserId: Id<"users">
-  }
+  wallet: WalletDoc
 ): Promise<WalletDoc> {
-  const scopeKey = toOrgUserScopeKey(args.organizationId, args.ownerUserId)
-  const existing = await getWalletByScopeKey(ctx, scopeKey)
-  if (existing) {
-    if (existing.currency !== WALLET_CURRENCY) {
-      const now = Date.now()
-      await ctx.db.patch(existing._id, {
-        currency: WALLET_CURRENCY,
-        updatedAt: now,
-      })
-      return {
-        ...existing,
-        currency: WALLET_CURRENCY,
-        updatedAt: now,
-      }
-    }
-    return existing
+  if (wallet.currency === WALLET_CURRENCY) {
+    return wallet
   }
 
   const now = Date.now()
+  await ctx.db.patch(wallet._id, {
+    currency: WALLET_CURRENCY,
+    updatedAt: now,
+  })
+  return {
+    ...wallet,
+    currency: WALLET_CURRENCY,
+    updatedAt: now,
+  }
+}
+
+async function createWallet(
+  ctx: MutationCtx,
+  args: {
+    scopeType: WalletScopeType
+    scopeKey: string
+    organizationId?: Id<"organizations">
+    ownerUserId?: Id<"users">
+  }
+): Promise<WalletDoc> {
+  const now = Date.now()
   const walletId = await ctx.db.insert("aiWallets", {
-    scopeType: "user",
-    scopeKey,
+    scopeType: args.scopeType,
+    scopeKey: args.scopeKey,
     ownerUserId: args.ownerUserId,
     organizationId: args.organizationId,
     currency: normalizeCurrency(),
@@ -104,18 +126,121 @@ async function getOrCreateWalletForUserInOrganization(
   return wallet
 }
 
-function resolveWalletOwnerUserId(args: {
-  userId: Id<"users">
+function hasWorkspaceSeatWalletAccess(
   entitlement: Awaited<ReturnType<typeof resolveAccountEntitlementForOrganization>>
-}): Id<"users"> {
-  const { entitlement, userId } = args
-  if (entitlement.source === "trial") {
-    return userId
+): boolean {
+  const seatManaged =
+    entitlement.source === "trial" || isSeatManagedWalletPlan(entitlement.plan)
+  if (!seatManaged) return false
+  return entitlement.hasPaidSeat
+}
+
+async function getWalletForWorkspaceSeatContext(
+  ctx: WalletReadCtx,
+  args: {
+    organizationId: Id<"organizations">
+    ownerUserId: Id<"users">
   }
-  if (isSeatManagedWalletPlan(entitlement.plan)) {
-    return userId
+): Promise<WalletDoc | null> {
+  return await getWalletByScopeKey(
+    ctx,
+    toWorkspaceSeatScopeKey(args.organizationId, args.ownerUserId)
+  )
+}
+
+async function getOrCreateWalletForWorkspaceSeatContext(
+  ctx: MutationCtx,
+  args: {
+    organizationId: Id<"organizations">
+    ownerUserId: Id<"users">
   }
-  return (entitlement.billingUserId as Id<"users"> | null) ?? userId
+): Promise<WalletDoc> {
+  const scopeKey = toWorkspaceSeatScopeKey(args.organizationId, args.ownerUserId)
+  const existing = await getWalletByScopeKey(ctx, scopeKey)
+  if (existing) {
+    return await ensureWalletCurrency(ctx, existing)
+  }
+
+  return await createWallet(ctx, {
+    scopeType: "organization",
+    scopeKey,
+    organizationId: args.organizationId,
+    ownerUserId: args.ownerUserId,
+  })
+}
+
+async function findLegacyIndividualWalletForUser(
+  ctx: WalletReadCtx,
+  ownerUserId: Id<"users">
+): Promise<WalletDoc | null> {
+  const grants = await ctx.db
+    .query("aiWalletPeriodGrants")
+    .withIndex("by_target_user", (q) => q.eq("targetUserId", ownerUserId))
+    .order("desc")
+    .take(100)
+
+  for (const grant of grants) {
+    if (grant.plan !== "pro" && grant.plan !== "max") continue
+    const wallet = await ctx.db.get(grant.walletId)
+    if (!wallet) continue
+    if (wallet.ownerUserId && String(wallet.ownerUserId) !== String(ownerUserId)) continue
+    return wallet
+  }
+
+  return null
+}
+
+async function getPersonalWallet(
+  ctx: WalletReadCtx,
+  args: { ownerUserId: Id<"users"> }
+): Promise<WalletDoc | null> {
+  const personalWallet = await getWalletByScopeKey(
+    ctx,
+    toPersonalScopeKey(args.ownerUserId)
+  )
+  if (personalWallet) {
+    return personalWallet
+  }
+
+  return await findLegacyIndividualWalletForUser(ctx, args.ownerUserId)
+}
+
+async function getOrCreatePersonalWallet(
+  ctx: MutationCtx,
+  args: { ownerUserId: Id<"users"> }
+): Promise<WalletDoc> {
+  const personalScopeKey = toPersonalScopeKey(args.ownerUserId)
+  const personalWallet = await getWalletByScopeKey(ctx, personalScopeKey)
+  if (personalWallet) {
+    return await ensureWalletCurrency(ctx, personalWallet)
+  }
+
+  const legacyWallet = await findLegacyIndividualWalletForUser(ctx, args.ownerUserId)
+  if (legacyWallet) {
+    const now = Date.now()
+    await ctx.db.patch(legacyWallet._id, {
+      scopeType: "user",
+      scopeKey: personalScopeKey,
+      ownerUserId: args.ownerUserId,
+      currency: WALLET_CURRENCY,
+      updatedAt: now,
+    })
+
+    return {
+      ...legacyWallet,
+      scopeType: "user",
+      scopeKey: personalScopeKey,
+      ownerUserId: args.ownerUserId,
+      currency: WALLET_CURRENCY,
+      updatedAt: now,
+    }
+  }
+
+  return await createWallet(ctx, {
+    scopeType: "user",
+    scopeKey: personalScopeKey,
+    ownerUserId: args.ownerUserId,
+  })
 }
 
 export async function grantIncludedWalletBalance(
@@ -168,10 +293,15 @@ export async function grantIncludedWalletBalance(
     }
   }
 
-  const wallet = await getOrCreateWalletForUserInOrganization(ctx, {
-    organizationId: args.organizationId,
-    ownerUserId: args.targetUserId,
-  })
+  const useWorkspaceSeatWallet = isSeatManagedWalletPlan(args.plan)
+  const wallet = useWorkspaceSeatWallet
+    ? await getOrCreateWalletForWorkspaceSeatContext(ctx, {
+        organizationId: args.organizationId,
+        ownerUserId: args.targetUserId,
+      })
+    : await getOrCreatePersonalWallet(ctx, {
+        ownerUserId: args.targetUserId,
+      })
 
   const includedCents = resolveIncludedWalletCents({
     plan: args.plan,
@@ -263,54 +393,112 @@ export const reserveForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    const ownerUserId = args.billingUserId ?? args.actorUserId
+    const personalOwnerUserId = args.billingUserId ?? args.actorUserId
     const normalizedEstimated = Math.max(0, Math.ceil(args.estimatedCents))
     if (normalizedEstimated <= 0) {
       throw new Error("estimatedCents must be greater than zero")
     }
 
     const now = Date.now()
-    const wallet = await getOrCreateWalletForUserInOrganization(ctx, {
-      organizationId: args.organizationId,
-      ownerUserId,
+    const [organization, actorUser] = await Promise.all([
+      ctx.db.get(args.organizationId),
+      ctx.db.get(args.actorUserId),
+    ])
+    if (!organization || !actorUser) {
+      throw new Error("Organization or user not found")
+    }
+
+    const entitlement = await resolveAccountEntitlementForOrganization(ctx, {
+      organization,
+      user: actorUser,
     })
 
     const existingHold = await ctx.db
       .query("aiWalletHolds")
-      .withIndex("by_wallet_and_request", (q) =>
-        q.eq("walletId", wallet._id).eq("requestId", args.requestId)
-      )
+      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
       .first()
 
     if (existingHold) {
+      const wallet = await ctx.db.get(existingHold.walletId)
+      const availableCents = wallet ? getAvailableCents(wallet) : 0
+
+      if (
+        String(existingHold.organizationId) !== String(args.organizationId) ||
+        String(existingHold.actorUserId) !== String(args.actorUserId)
+      ) {
+        return {
+          ok: false,
+          reason: "request_id_conflict",
+          walletId: wallet?._id,
+          payerUserId: existingHold.payerUserId,
+          availableCents,
+          requiredCents: normalizedEstimated,
+        }
+      }
+
       return {
         ok: existingHold.status === "held",
         holdId: existingHold._id,
-        walletId: wallet._id,
-        payerUserId: ownerUserId,
+        walletId: wallet?._id,
+        payerUserId: existingHold.payerUserId,
         reason: existingHold.status === "held" ? undefined : "hold_not_active",
-        availableCents: getAvailableCents(wallet),
+        availableCents,
       }
     }
 
-    const availableCents = wallet.balanceCents - wallet.heldCents
-    if (availableCents < normalizedEstimated) {
+    const [workspaceSeatWalletRaw, personalWalletRaw] = await Promise.all([
+      hasWorkspaceSeatWalletAccess(entitlement)
+        ? getWalletForWorkspaceSeatContext(ctx, {
+            organizationId: args.organizationId,
+            ownerUserId: args.actorUserId,
+          })
+        : Promise.resolve(null),
+      getPersonalWallet(ctx, {
+        ownerUserId: personalOwnerUserId,
+      }),
+    ])
+
+    const workspaceSeatWallet = workspaceSeatWalletRaw
+      ? await ensureWalletCurrency(ctx, workspaceSeatWalletRaw)
+      : null
+    const personalWallet = personalWalletRaw
+      ? await ensureWalletCurrency(ctx, personalWalletRaw)
+      : null
+
+    const workspaceSeatAvailable = workspaceSeatWallet
+      ? getAvailableCents(workspaceSeatWallet)
+      : 0
+    const personalAvailable = personalWallet ? getAvailableCents(personalWallet) : 0
+
+    const selectedWallet =
+      workspaceSeatWallet && workspaceSeatAvailable >= normalizedEstimated
+        ? workspaceSeatWallet
+        : personalWallet && personalAvailable >= normalizedEstimated
+          ? personalWallet
+          : null
+
+    const payerUserId =
+      selectedWallet && selectedWallet._id === workspaceSeatWallet?._id
+        ? args.actorUserId
+        : personalOwnerUserId
+
+    if (!selectedWallet) {
       return {
         ok: false,
         reason: "insufficient_funds",
-        walletId: wallet._id,
-        payerUserId: ownerUserId,
-        availableCents: Math.max(0, availableCents),
+        walletId: workspaceSeatWallet?._id ?? personalWallet?._id,
+        payerUserId,
+        availableCents: Math.max(workspaceSeatAvailable, personalAvailable, 0),
         requiredCents: normalizedEstimated,
       }
     }
 
     const holdId = await ctx.db.insert("aiWalletHolds", {
-      walletId: wallet._id,
+      walletId: selectedWallet._id,
       requestId: args.requestId,
       organizationId: args.organizationId,
       actorUserId: args.actorUserId,
-      payerUserId: ownerUserId,
+      payerUserId,
       amountCents: normalizedEstimated,
       capturedCents: 0,
       releasedCents: 0,
@@ -323,23 +511,23 @@ export const reserveForServer = mutation({
       expiresAt: now + 15 * 60 * 1000,
     })
 
-    const nextHeldCents = wallet.heldCents + normalizedEstimated
-    await ctx.db.patch(wallet._id, {
+    const nextHeldCents = selectedWallet.heldCents + normalizedEstimated
+    await ctx.db.patch(selectedWallet._id, {
       heldCents: nextHeldCents,
       updatedAt: now,
     })
 
     await ctx.db.insert("aiWalletLedger", {
-      walletId: wallet._id,
+      walletId: selectedWallet._id,
       organizationId: args.organizationId,
       actorUserId: args.actorUserId,
-      payerUserId: ownerUserId,
+      payerUserId,
       holdId,
       requestId: args.requestId,
       kind: "hold",
       amountCents: normalizedEstimated,
-      balanceAfterCents: wallet.balanceCents,
-      availableAfterCents: wallet.balanceCents - nextHeldCents,
+      balanceAfterCents: selectedWallet.balanceCents,
+      availableAfterCents: selectedWallet.balanceCents - nextHeldCents,
       metadata: {
         feature: args.feature,
         model: args.model,
@@ -351,9 +539,9 @@ export const reserveForServer = mutation({
     return {
       ok: true,
       holdId,
-      walletId: wallet._id,
-      payerUserId: ownerUserId,
-      availableCents: Math.max(0, wallet.balanceCents - nextHeldCents),
+      walletId: selectedWallet._id,
+      payerUserId,
+      availableCents: Math.max(0, selectedWallet.balanceCents - nextHeldCents),
     }
   },
 })
@@ -598,15 +786,23 @@ export const getWalletForServer = query({
     assertGatewaySecret(args.serverSecret)
 
     const wallet = args.organizationId
-      ? await getWalletByScopeKey(
-          ctx,
-          toOrgUserScopeKey(args.organizationId, args.ownerUserId)
-        )
-      : await ctx.db
+      ? (
+          await getWalletForWorkspaceSeatContext(ctx, {
+            organizationId: args.organizationId,
+            ownerUserId: args.ownerUserId,
+          })
+        ) ??
+        (await getPersonalWallet(ctx, {
+          ownerUserId: args.ownerUserId,
+        }))
+      : (await getPersonalWallet(ctx, {
+          ownerUserId: args.ownerUserId,
+        })) ??
+        (await ctx.db
           .query("aiWallets")
           .withIndex("by_owner_user", (q) => q.eq("ownerUserId", args.ownerUserId))
           .order("desc")
-          .first()
+          .first())
 
     if (!wallet) {
       return null
@@ -656,45 +852,93 @@ export const getWalletForViewer = query({
       organization,
       user,
     })
-    const ownerUserId = resolveWalletOwnerUserId({
-      userId: args.userId,
-      entitlement,
-    })
+    const personalOwnerUserId = args.userId
 
-    const scopeKey = toOrgUserScopeKey(args.organizationId, ownerUserId)
-    const wallet = await getWalletByScopeKey(ctx, scopeKey)
+    const [workspaceSeatWallet, personalWallet] = await Promise.all([
+      hasWorkspaceSeatWalletAccess(entitlement)
+        ? getWalletForWorkspaceSeatContext(ctx, {
+            organizationId: args.organizationId,
+            ownerUserId: args.userId,
+          })
+        : Promise.resolve(null),
+      getPersonalWallet(ctx, {
+        ownerUserId: personalOwnerUserId,
+      }),
+    ])
+
+    const activeWalletContext = workspaceSeatWallet
+      ? "workspace_seat"
+      : personalWallet
+        ? "personal"
+        : "none"
+
+    const activeWallet =
+      activeWalletContext === "workspace_seat"
+        ? workspaceSeatWallet
+        : activeWalletContext === "personal"
+          ? personalWallet
+          : null
+
+    const activePlan =
+      activeWalletContext === "workspace_seat"
+        ? entitlement.plan
+        : entitlement.plan === "pro" || entitlement.plan === "max"
+          ? entitlement.plan
+          : "free"
+
+    const activeCycle =
+      activeWalletContext === "workspace_seat"
+        ? entitlement.cycle
+        : entitlement.plan === "pro" || entitlement.plan === "max"
+          ? entitlement.cycle
+          : "monthly"
+
     const includedCentsPerCycle = resolveIncludedWalletCents({
-      plan: entitlement.plan,
-      cycle: entitlement.cycle,
+      plan: activePlan,
+      cycle: activeCycle,
     })
 
-    const ledger = wallet
+    const ledger = activeWallet
       ? await ctx.db
           .query("aiWalletLedger")
-          .withIndex("by_wallet_and_created", (q) => q.eq("walletId", wallet._id))
+          .withIndex("by_wallet_and_created", (q) => q.eq("walletId", activeWallet._id))
           .order("desc")
           .take(20)
       : []
 
     return {
-      ownerUserId,
+      ownerUserId:
+        activeWalletContext === "workspace_seat" ? args.userId : personalOwnerUserId,
       plan: entitlement.plan,
       source: entitlement.source,
       cycle: entitlement.cycle,
       includedCentsPerCycle,
-      wallet: wallet
-        ? {
-            _id: wallet._id,
-            currency: WALLET_CURRENCY,
-            balanceCents: wallet.balanceCents,
-            heldCents: wallet.heldCents,
-            availableCents: getAvailableCents(wallet),
-            updatedAt: wallet.updatedAt,
-            totalDebitedCents: wallet.totalDebitedCents,
-            totalCreditedCents: wallet.totalCreditedCents,
-          }
-        : null,
+      wallet: activeWallet ? toWalletSummary(activeWallet) : null,
       ledger,
+      walletContexts: {
+        active: activeWalletContext,
+        workspaceSeat: workspaceSeatWallet
+          ? {
+              ownerUserId: args.userId,
+              includedCentsPerCycle: resolveIncludedWalletCents({
+                plan: entitlement.plan,
+                cycle: entitlement.cycle,
+              }),
+              wallet: toWalletSummary(workspaceSeatWallet),
+            }
+          : null,
+        personal: {
+          ownerUserId: personalOwnerUserId,
+          includedCentsPerCycle:
+            entitlement.plan === "pro" || entitlement.plan === "max"
+              ? resolveIncludedWalletCents({
+                  plan: entitlement.plan,
+                  cycle: entitlement.cycle,
+                })
+              : 0,
+          wallet: personalWallet ? toWalletSummary(personalWallet) : null,
+        },
+      },
     }
   },
 })
@@ -783,11 +1027,12 @@ export const getSeatWalletsForViewer = query({
       seatUserIds.map(async (seatUserId) => {
         const [seatUser, wallet] = await Promise.all([
           ctx.db.get(seatUserId),
-          getWalletByScopeKey(
-            ctx,
-            toOrgUserScopeKey(args.organizationId, seatUserId)
-          ),
+          getWalletForWorkspaceSeatContext(ctx, {
+            organizationId: args.organizationId,
+            ownerUserId: seatUserId,
+          }),
         ])
+        const walletSummary = wallet ? toWalletSummary(wallet) : null
 
         return {
           userId: seatUserId,
@@ -797,9 +1042,9 @@ export const getSeatWalletsForViewer = query({
           profileImageUrl: seatUser?.profileImageUrl,
           isBillingOwner: String(seatUserId) === String(billingUserId),
           walletId: wallet?._id ?? null,
-          balanceCents: wallet?.balanceCents ?? 0,
-          heldCents: wallet?.heldCents ?? 0,
-          availableCents: wallet ? getAvailableCents(wallet) : 0,
+          balanceCents: walletSummary?.balanceCents ?? 0,
+          heldCents: walletSummary?.heldCents ?? 0,
+          availableCents: walletSummary?.availableCents ?? 0,
           updatedAt: wallet?.updatedAt ?? null,
         }
       })

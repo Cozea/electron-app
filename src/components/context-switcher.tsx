@@ -302,11 +302,7 @@ export function ContextSwitcher() {
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Recent Projects
             </DropdownMenuLabel>
-            {recentProjects.length === 0 ? (
-              <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                No projects yet
-              </div>
-            ) : (
+            {recentProjects.length > 0 ? (
               recentProjects.map((project) => (
                 <DropdownMenuItem
                   key={project._id}
@@ -322,7 +318,7 @@ export function ContextSwitcher() {
                   </div>
                 </DropdownMenuItem>
               ))
-            )}
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2" disabled={isBusy}>
               <div className="flex size-6 items-center justify-center rounded-md bg-transparent">

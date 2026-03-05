@@ -112,6 +112,9 @@ Server (Railway/Fastify):
 Electron (renderer + main):
 - `VITE_AI_API_URL` - AI Gateway chat endpoint (default `http://localhost:3001/ai/chat`).
 - `AUTH_SERVER_URL` - Auth gateway base URL for desktop auth.
+- `AI_LOCAL_RUNTIME_ENABLED` - Optional local runtime toggle for desktop. Defaults to local execution when unset; set `0`/`false` to disable.
+- `COZEA_AI_API_URL` - Optional AI gateway base URL used by local runtime to fetch short-lived managed provider envelopes (`/ai/provider-auth/managed`).
+- `COZEA_LOCAL_MCP_ENABLED` - Optional local MCP tool runtime toggle in Electron. Defaults to enabled and executes local tools through community MCP servers.
 
 Convex:
 - `CONVEX_ENCRYPTION_KEY` - 32-byte hex key for AES-256-GCM.

@@ -14,7 +14,7 @@ import {
 } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
-const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai"] as const
+const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai", "moonshotai"] as const
 const PERSONAL_WORKSPACE_PREFIX = "personal:"
 type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
 
@@ -122,13 +122,19 @@ function assertGatewaySecret(secret: string | undefined) {
 }
 
 function sanitizeAllowedProviders(
-  providers: Array<"anthropic" | "openai" | "google" | "xai"> | undefined
+  providers: Array<"anthropic" | "openai" | "google" | "xai" | "moonshotai"> | undefined
 ): SupportedAiProvider[] {
   const input = providers ?? [...DEFAULT_ALLOWED_PROVIDERS]
   const sanitized: SupportedAiProvider[] = []
   const seen = new Set<SupportedAiProvider>()
   for (const provider of input) {
-    if (provider !== "openai" && provider !== "anthropic" && provider !== "google" && provider !== "xai") {
+    if (
+      provider !== "openai" &&
+      provider !== "anthropic" &&
+      provider !== "google" &&
+      provider !== "xai" &&
+      provider !== "moonshotai"
+    ) {
       continue
     }
     if (seen.has(provider)) continue
@@ -627,7 +633,8 @@ export const updateAiSettings = mutation({
           v.literal("anthropic"),
           v.literal("openai"),
           v.literal("google"),
-          v.literal("xai")
+          v.literal("xai"),
+          v.literal("moonshotai")
         )
       ),
       allowedModels: v.optional(v.array(v.string())),

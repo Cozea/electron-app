@@ -3,7 +3,7 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { cancelToolRuns, runTool } from './tools'
+import { cancelToolRuns, disposeToolRuntime, runTool } from './tools'
 import { autoUpdater } from 'electron-updater'
 import * as pty from 'node-pty' // Still used for DevServer PTY
 import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
@@ -887,12 +887,12 @@ function createWindow() {
 // Register Services
 AuthService.getInstance().registerIpcHandlers()
 ProviderAuthService.getInstance().registerIpcHandlers()
-LocalAiRuntimeService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
+LocalAiRuntimeService.getInstance().registerIpcHandlers()
 
 registerCoreHandlers(ipcMain, {
   runTool,
@@ -967,6 +967,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  disposeToolRuntime()
   stopUpdateChecks()
 })
 

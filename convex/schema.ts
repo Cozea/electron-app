@@ -49,7 +49,8 @@ export default defineSchema({
             v.literal("anthropic"),
             v.literal("openai"),
             v.literal("google"),
-            v.literal("xai")
+            v.literal("xai"),
+            v.literal("moonshotai")
           )
         ),
         // Optional model allowlist (if set, only these model IDs are allowed)
@@ -360,6 +361,110 @@ export default defineSchema({
   })
     .index("by_organization_and_period", ["organizationId", "period", "periodStart"]),
 
+  // Agent run metadata for durable status tracking and replay.
+  aiAgentRuns: defineTable({
+    runId: v.string(),
+    organizationWorkosId: v.string(),
+    conversationId: v.optional(v.string()),
+    model: v.string(),
+    provider: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("budget_exceeded")
+    ),
+    maxCostUsd: v.optional(v.number()),
+    cumulativeCostUsd: v.number(),
+    promptTokens: v.number(),
+    completionTokens: v.number(),
+    totalTokens: v.number(),
+    billedUsd: v.optional(v.number()),
+    walletHoldId: v.optional(v.string()),
+    stepsCount: v.number(),
+    error: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run_id", ["runId"])
+    .index("by_organization_and_started", ["organizationWorkosId", "startedAt"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
+
+  // Per-step usage/cost rows for each agent run.
+  aiAgentRunSteps: defineTable({
+    runId: v.string(),
+    organizationWorkosId: v.string(),
+    step: v.number(),
+    promptTokens: v.number(),
+    completionTokens: v.number(),
+    totalTokens: v.number(),
+    costUsd: v.number(),
+    cumulativeCostUsd: v.number(),
+    timestamp: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_step", ["runId", "step"])
+    .index("by_organization_and_created", ["organizationWorkosId", "createdAt"]),
+
+  // Versioned model catalog snapshots after models.dev normalization.
+  aiModelSnapshots: defineTable({
+    snapshotId: v.string(),
+    source: v.string(),
+    updatedAt: v.number(),
+    modelCount: v.number(),
+    models: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_snapshot_id", ["snapshotId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Versioned pricing snapshots derived from model catalog snapshots.
+  aiPricingSnapshots: defineTable({
+    snapshotId: v.string(),
+    source: v.string(),
+    updatedAt: v.number(),
+    modelCount: v.number(),
+    pricing: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_snapshot_id", ["snapshotId"])
+    .index("by_updated_at", ["updatedAt"]),
+
+  // Organization-scoped router rules for capability-based model routing.
+  aiRouterRules: defineTable({
+    organizationWorkosId: v.string(),
+    rules: v.any(),
+    version: v.string(),
+    source: v.optional(v.string()),
+    updatedByWorkosUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationWorkosId"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
+
+  // Workspace/repo runtime session metadata for local execution and tool policy context.
+  aiRepoSessions: defineTable({
+    sessionId: v.string(),
+    organizationWorkosId: v.string(),
+    projectId: v.optional(v.string()),
+    workspaceRoot: v.string(),
+    runtime: v.union(v.literal("local"), v.literal("cloud")),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    metadata: v.optional(v.any()),
+    lastSeenAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session_id", ["sessionId"])
+    .index("by_organization_and_status", ["organizationWorkosId", "status"])
+    .index("by_organization_and_updated", ["organizationWorkosId", "updatedAt"]),
+
   // Audit logs for compliance
   auditLogs: defineTable({
     organizationId: v.id("organizations"),
@@ -411,7 +516,8 @@ export default defineSchema({
         v.literal("anthropic"),
         v.literal("openai"),
         v.literal("google"),
-        v.literal("xai")
+        v.literal("xai"),
+        v.literal("moonshotai")
       )
     ),
 

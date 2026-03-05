@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Download, HardDrive, Loader2, Plus, RefreshCw, Terminal } from 'lucide-react'
+import { AlertTriangle, Check, Download, Loader2, Plus, RefreshCw, Terminal } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Badge } from '../../components/ui/badge'
@@ -9,50 +9,9 @@ import { cn } from '../../lib/utils'
 import type { RuntimeHealth, RuntimeKind } from '../../types/electron'
 import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/useRuntimeInstallStore'
 
-interface ToolingFamily {
-  id: string
-  name: string
-  description: string
-  examples: string[]
-  requiredAll: RuntimeKind[]
-  requiredAny?: RuntimeKind[]
-}
-
 interface ToolingProps {
   surface?: 'page' | 'drawer'
 }
-
-const TOOLING_FAMILIES: ToolingFamily[] = [
-  {
-    id: 'js-web',
-    name: 'JavaScript Web Frameworks',
-    description: 'Primary web app stacks used by the builder and runtime resolver.',
-    examples: ['Next.js', 'Remix', 'Vite (React/Vue/Svelte)', 'Nuxt', 'Astro', 'SvelteKit', 'Angular', 'Qwik'],
-    requiredAll: ['node'],
-    requiredAny: ['npm', 'pnpm', 'yarn', 'bun'],
-  },
-  {
-    id: 'python-web',
-    name: 'Python Web Frameworks',
-    description: 'Web/API projects that run through the Python runtime pack flow.',
-    examples: ['FastAPI', 'Flask', 'Django'],
-    requiredAll: ['python'],
-  },
-  {
-    id: 'rust-web',
-    name: 'Rust Web Frameworks',
-    description: 'Rust-based web/API stacks executed through Cargo.',
-    examples: ['Axum', 'Actix Web'],
-    requiredAll: ['rust'],
-  },
-  {
-    id: 'go-web',
-    name: 'Go Web Frameworks',
-    description: 'Go web services and APIs run through the Go runtime pack.',
-    examples: ['Gin', 'Fiber', 'Echo'],
-    requiredAll: ['go'],
-  },
-]
 
 const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   node: 'Node.js',
@@ -64,28 +23,6 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   python: 'Python',
   rust: 'Rust (cargo)',
   go: 'Go',
-}
-
-function sourceLabel(source: RuntimeHealth['source']): string {
-  if (source === 'runtime-pack') return 'Runtime pack'
-  if (source === 'bundled') return 'Bundled'
-  if (source === 'override') return 'Override'
-  if (source === 'system') return 'System'
-  return 'Missing'
-}
-
-function isFamilyInstalled(family: ToolingFamily, byRuntime: Map<RuntimeKind, RuntimeHealth>): boolean {
-  const hasRequiredAll = family.requiredAll.every((runtime) => byRuntime.get(runtime)?.available)
-  if (!hasRequiredAll) return false
-  if (!family.requiredAny || family.requiredAny.length === 0) return true
-  return family.requiredAny.some((runtime) => byRuntime.get(runtime)?.available)
-}
-
-function requiredRuntimeSummary(family: ToolingFamily): string {
-  const requiredAll = family.requiredAll.map((runtime) => RUNTIME_LABELS[runtime]).join(' + ')
-  if (!family.requiredAny || family.requiredAny.length === 0) return requiredAll
-  const any = family.requiredAny.map((runtime) => RUNTIME_LABELS[runtime]).join(' / ')
-  return `${requiredAll} + any of (${any})`
 }
 
 function RuntimeProgressRing({ progress }: { progress: number }) {
@@ -185,21 +122,6 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
     }
   }, [loadRuntimeStatus, runtimeInstallJobs])
 
-  const runtimeByKind = useMemo(
-    () => new Map((runtimeStatus?.runtimes ?? []).map((runtime) => [runtime.runtime, runtime])),
-    [runtimeStatus]
-  )
-
-  const installedFamilies = useMemo(
-    () => TOOLING_FAMILIES.filter((family) => isFamilyInstalled(family, runtimeByKind)),
-    [runtimeByKind]
-  )
-
-  const missingFamilies = useMemo(
-    () => TOOLING_FAMILIES.filter((family) => !isFamilyInstalled(family, runtimeByKind)),
-    [runtimeByKind]
-  )
-
   const installedRuntimes = useMemo(
     () => (runtimeStatus?.runtimes ?? []).filter((runtime) => runtime.available),
     [runtimeStatus]
@@ -279,7 +201,6 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
               <Badge variant="secondary">Target: {runtimeStatus.target}</Badge>
               <Badge variant="secondary">Installed runtimes: {installedRuntimes.length}</Badge>
               <Badge variant="secondary">Missing runtimes: {missingRuntimes.length}</Badge>
-              <Badge variant="secondary">Installed framework families: {installedFamilies.length}</Badge>
             </div>
           )}
         </div>
@@ -326,80 +247,11 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Framework Families Installed</h3>
-          </div>
-          {installedFamilies.length === 0 ? (
-            <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
-              {isLoading && !runtimeStatus
-                ? 'Loading framework support...'
-                : 'No framework families are installed yet on this device.'}
-            </div>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {installedFamilies.map((family) => (
-                <div key={family.id} className="rounded-2xl bg-secondary/60 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium">{family.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
-                    </div>
-                    <Badge variant="secondary">Installed</Badge>
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Examples:</span>{' '}
-                    {family.examples.join(', ')}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Requires:</span>{' '}
-                    {requiredRuntimeSummary(family)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Framework Families Not Installed</h3>
-          </div>
-          {missingFamilies.length === 0 ? (
-            <div className="rounded-2xl bg-secondary/60 px-4 py-4 text-sm text-muted-foreground">
-              {isLoading && !runtimeStatus
-                ? 'Loading framework support...'
-                : 'All supported framework families are currently available in this Cozea instance.'}
-            </div>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {missingFamilies.map((family) => (
-                <div key={family.id} className="rounded-2xl bg-secondary/40 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium">{family.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{family.description}</p>
-                    </div>
-                    <Badge variant="secondary" className="opacity-80">Missing</Badge>
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Requires:</span>{' '}
-                    {requiredRuntimeSummary(family)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Terminal className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
-            <div className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
+            <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
               <span>Runtime</span>
-              <span>Source</span>
               <span>Path</span>
               <span className="text-right">Action</span>
             </div>
@@ -416,10 +268,9 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
                     return (
                       <div
                         key={runtime.runtime}
-                        className="grid grid-cols-[1fr_0.9fr_1.8fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
+                        className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
                       >
                         <span className="font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
-                        <span className="text-muted-foreground">{sourceLabel(runtime.source)}</span>
                         <span
                           className="truncate text-muted-foreground"
                           title={runtime.executablePath || installJob?.error || runtime.error || ''}

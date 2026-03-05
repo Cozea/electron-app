@@ -728,10 +728,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
           }
           lastRefreshAttemptAtRef.current = Date.now()
-          console.log('[Auth] Auto-refreshing token...')
           const success = await refreshToken()
           if (!success) {
-            console.log('[Auth] Auto-refresh failed')
+            console.warn('[Auth] Auto-refresh failed')
           }
         }, delayMs)
       }
@@ -739,7 +738,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const timeToExpiry = getTokenTimeToExpiry(accessToken)
       let refreshIn: number
       if (timeToExpiry === null) {
-        console.log('[Auth] Token expiry unknown, scheduling conservative refresh cadence')
         refreshIn = UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS
       } else {
         // Refresh around 80% of lifetime, but no later than 30 seconds pre-expiry.
@@ -747,11 +745,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (refreshIn > 0) {
-        console.log(`[Auth] Scheduling token refresh in ${Math.round(refreshIn / 1000)}s`)
         scheduleRefresh(refreshIn)
       } else if (timeToExpiry !== null) {
         // Token is already expired or about to expire, refresh immediately
-        console.log('[Auth] Token expiring, refreshing immediately...')
         scheduleRefresh(0)
       }
 

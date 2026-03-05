@@ -785,6 +785,12 @@ export interface ProviderAuthRequestAuthResult {
   code?: 'not_connected' | 'expired' | 'invalid' | 'refresh_failed'
 }
 
+export interface LocalAiRuntimeStatus {
+  enabled: boolean
+  running: boolean
+  endpoint?: string
+}
+
 export interface DbSupabaseSelectResult {
   success: boolean
   rows?: unknown[]
@@ -843,6 +849,9 @@ export interface ElectronAPI {
       organizationId: string
     }) => Promise<ProviderAuthRequestAuthResult>
     onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => () => void
+  }
+  localAiRuntime: {
+    getStatus: () => Promise<LocalAiRuntimeStatus>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
@@ -972,9 +981,6 @@ export interface ElectronAPI {
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
     getRuntimeStatus: (options?: { projectPath?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
-  }
-  localAiRuntime: {
-    getStatus: () => Promise<{ enabled: boolean; running: boolean; endpoint?: string }>
   }
   fs: {
     readDir: (path: string) => Promise<FileEntry[]>

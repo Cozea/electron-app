@@ -3,7 +3,14 @@ import type { ProviderAuthStatus } from '@shared/electronApiTypes'
 
 export type ConnectedProvider = string
 
-const COZEA_MANAGED_PROVIDERS: ConnectedProvider[] = ['openai', 'anthropic', 'google', 'xai']
+const COZEA_MANAGED_PROVIDERS: ConnectedProvider[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'moonshotai',
+  'moonshot',
+]
 
 export const isConnectedProvider = (value?: string): value is ConnectedProvider =>
   typeof value === 'string' && value.trim().length > 0
@@ -14,6 +21,8 @@ export function getProviderDisplayName(providerId: string): string {
     anthropic: 'Anthropic',
     google: 'Google',
     xai: 'xAI',
+    moonshotai: 'Moonshot AI',
+    moonshot: 'Moonshot AI',
     'github-copilot': 'GitHub Copilot',
     gitlab: 'GitLab',
     'amazon-bedrock': 'Amazon Bedrock',

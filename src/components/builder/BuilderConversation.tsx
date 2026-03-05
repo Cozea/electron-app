@@ -20,11 +20,14 @@ import { Loader } from '@/components/ai-elements/loader'
 import { parseBillingError, type BillingErrorData } from '@/components/assistant/BillingError'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
-import { AI_API_URL, AI_BASE_URL } from '@/lib/ai/apiEndpoints'
-import { reportLocalUsage } from '@/lib/ai/localUsage'
-import { useLocalAiRuntimeStatus } from '@/lib/ai/localRuntime'
-import { buildEncodedProviderAuthHeader, inferProviderFromModelId } from '@/lib/ai/providerAuth'
-import { DEFAULT_MODELS } from '@/lib/ai/defaultModels'
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import {
+  buildEncodedProviderAuthHeader,
+  inferProviderFromModelId,
+  isManagedProvider,
+} from '@/lib/ai/providerAuth'
+import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
+import { getModelCatalog } from '@/lib/ai/modelCatalogClient'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
@@ -34,24 +37,13 @@ import {
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
+import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
 
 // Fallback for workflow tools if metadata is briefly stale during startup.
 const BUILDER_WORKFLOW_FALLBACK_TOOLS = new Set([
   'todowrite',
   'build_complete',
 ])
-
-const FALLBACK_MODEL_BY_PROVIDER: Record<'openai' | 'google', string> = {
-  openai: 'gpt-5.2-codex',
-  google: 'gemini-3-pro',
-}
-
-function resolveFallbackModel(aiProvider?: string): string {
-  if (aiProvider === 'openai' || aiProvider === 'google') {
-    return FALLBACK_MODEL_BY_PROVIDER[aiProvider]
-  }
-  return DEFAULT_MODELS[0]?.id ?? 'gpt-5.2-codex'
-}
 
 // Project type from Convex
 interface Project {
@@ -154,21 +146,6 @@ interface BuilderConversationProps {
   onError: (error: string) => void
   onBillingError?: (error: BillingErrorData | null) => void
   className?: string
-}
-
-interface UsageDataPart {
-  data?: {
-    model?: string
-    promptTokens?: number
-    completionTokens?: number
-    totalTokens?: number
-    reasoningTokens?: number
-    cachedInputTokens?: number
-    runtime?: 'local' | 'remote'
-    durationMs?: number
-    finishReason?: string
-    rawFinishReason?: string
-  }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -387,12 +364,15 @@ export function BuilderConversation({
   }, [project.buildContract, project.targetPlatform])
   const preflightFailedRef = useRef(false)
   const promptSettings = project.promptSettings
-  const fallbackModel = resolveFallbackModel(project.stack?.aiProvider)
+  const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const [catalogFallbackModel, setCatalogFallbackModel] = useState<string>('')
+  const [modelResolutionAttempted, setModelResolutionAttempted] = useState(false)
   const requestedModel =
     typeof promptSettings?.model === 'string' && promptSettings.model.trim().length > 0
       ? promptSettings.model
-      : fallbackModel
-  const model = requestedModel
+      : (initialGlobalModelSettings.model ?? '')
+  const model = requestedModel || catalogFallbackModel
+  const hasModel = model.trim().length > 0
   console.log('[Builder] Project promptSettings:', promptSettings)
   console.log('[Builder] Using model:', model)
   // Builder execution is pinned to the project prompt settings.
@@ -409,14 +389,67 @@ export function BuilderConversation({
   useEffect(() => {
     let cancelled = false
     const organizationId = currentOrganization?.organizationId
+
+    if (requestedModel) {
+      setCatalogFallbackModel('')
+      setModelResolutionAttempted(true)
+      return
+    }
+
+    if (!accessToken || !organizationId) {
+      setCatalogFallbackModel('')
+      setModelResolutionAttempted(false)
+      return
+    }
+
+    setModelResolutionAttempted(false)
+    getModelCatalog({
+      organizationId,
+      accessToken,
+    })
+      .then((data) => {
+        if (cancelled) return
+        const fallback =
+          data.models.find((candidate) => isManagedProvider(candidate.provider) && candidate.id.trim().length > 0)?.id
+          ?? data.models.find((candidate) => candidate.id.trim().length > 0)?.id
+          ?? ''
+        setCatalogFallbackModel(fallback)
+        setModelResolutionAttempted(true)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setCatalogFallbackModel('')
+        setModelResolutionAttempted(true)
+        console.warn('Failed to resolve builder model from catalog:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, currentOrganization?.organizationId, requestedModel])
+
+  useEffect(() => {
+    let cancelled = false
+    const organizationId = currentOrganization?.organizationId
     if (!organizationId) {
       setProviderAuthHeader(null)
       setProviderAuthResolved(false)
       return
     }
 
+    if (!hasModel) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
+      return
+    }
+
     const provider = inferProviderFromModelId(model)
     if (!provider) {
+      setProviderAuthHeader(null)
+      setProviderAuthResolved(true)
+      return
+    }
+    if (isManagedProvider(provider)) {
       setProviderAuthHeader(null)
       setProviderAuthResolved(true)
       return
@@ -451,7 +484,7 @@ export function BuilderConversation({
     return () => {
       cancelled = true
     }
-  }, [model, currentOrganization?.organizationId, providerAuthRevision])
+  }, [hasModel, model, currentOrganization?.organizationId, providerAuthRevision])
 
   // Sync tools
   useEffect(() => {
@@ -462,7 +495,8 @@ export function BuilderConversation({
 
   // Fetch tools
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) {
+    if (!accessToken || !currentOrganization?.organizationId || !hasModel) {
+      setAvailableTools([])
       setToolsLoaded(false)
       return
     }
@@ -499,13 +533,7 @@ export function BuilderConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers, localPath, model])
-
-  const localRuntimeStatus = useLocalAiRuntimeStatus(true)
-  const localRuntimeEndpoint = localRuntimeStatus.enabled ? localRuntimeStatus.endpoint : undefined
-  const localRuntimeProvider = inferProviderFromModelId(model)
-  const canUseLocalRuntimeEndpoint =
-    localRuntimeProvider === 'openai' || localRuntimeProvider === 'google'
+  }, [accessToken, currentOrganization?.organizationId, hasModel, headers, localPath, model])
 
   // Build initial prompt with full plan context
   const initialPrompt = useMemo(() => {
@@ -544,7 +572,6 @@ Note: Provide structured task arrays using the "todos" field.
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
-  const chatApi = localRuntimeEndpoint && canUseLocalRuntimeEndpoint ? localRuntimeEndpoint : AI_API_URL
   const projectContextPayload = useMemo(() => ({
     name: project.name,
     slug: project.slug,
@@ -1161,7 +1188,6 @@ Now begin by defining your task list with todowrite, then start working through 
 
   // useChat hook
   const {
-    messages,
     status,
     error,
     sendMessage,
@@ -1186,7 +1212,6 @@ Now begin by defining your task list with todowrite, then start working through 
         ...(providerOptions ? { providerOptions } : {}),
       },
       providerAuthHeader,
-      api: chatApi,
     },
     autoRetry: {
       enabled: true,
@@ -1205,42 +1230,6 @@ Now begin by defining your task list with todowrite, then start working through 
   })
 
   addToolOutputRef.current = addToolOutput
-
-  const reportedLocalUsageRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
-
-    for (const message of messages) {
-      for (let index = 0; index < message.parts.length; index += 1) {
-        const part = message.parts[index]
-        if (part.type !== 'data-usage') continue
-
-        const data = (part as UsageDataPart).data
-        if (!data || data.runtime !== 'local') continue
-
-        const key = `${message.id}:${index}`
-        if (reportedLocalUsageRef.current.has(key)) continue
-        reportedLocalUsageRef.current.add(key)
-
-        void reportLocalUsage(accessToken, {
-          organizationId: currentOrganization.organizationId,
-          model: data.model || model,
-          conversationId,
-          feature: 'project-builder',
-          actionType: 'build',
-          promptTokens: data.promptTokens ?? 0,
-          completionTokens: data.completionTokens ?? 0,
-          totalTokens: data.totalTokens,
-          reasoningTokens: data.reasoningTokens,
-          cachedInputTokens: data.cachedInputTokens,
-          durationMs: data.durationMs,
-          finishReason: data.finishReason,
-          rawFinishReason: data.rawFinishReason,
-        })
-      }
-    }
-  }, [accessToken, conversationId, currentOrganization?.organizationId, messages, model])
 
   const cancelPendingToolOutputs = useCallback((reasonText: string) => {
     const addToolOutput = addToolOutputRef.current
@@ -1308,6 +1297,15 @@ Now begin by defining your task list with todowrite, then start working through 
   }, [])
 
   useEffect(() => {
+    if (!modelResolutionAttempted) return
+    if (hasModel) return
+    if (preflightFailedRef.current) return
+    preflightFailedRef.current = true
+    completedRef.current = true
+    onError('Build preflight failed: no AI models are available for this workspace.')
+  }, [hasModel, modelResolutionAttempted, onError])
+
+  useEffect(() => {
     if (stopRequestCount === lastStopRequestCountRef.current) return
     lastStopRequestCountRef.current = stopRequestCount
 
@@ -1320,6 +1318,7 @@ Now begin by defining your task list with todowrite, then start working through 
   // Send initial message on mount
   useEffect(() => {
     if (preflightDiagnostic) return
+    if (!hasModel) return
     if (!providerAuthResolved) return
     if (!toolsLoaded) return
     if (!hasSentInitialMessageRef.current && accessToken && currentOrganization?.organizationId && project._id) {
@@ -1330,6 +1329,7 @@ Now begin by defining your task list with todowrite, then start working through 
     accessToken,
     currentOrganization?.organizationId,
     initialPrompt,
+    hasModel,
     preflightDiagnostic,
     project._id,
     providerAuthResolved,
@@ -1499,6 +1499,16 @@ Now begin by defining your task list with todowrite, then start working through 
   }, [dedupedMessages])
 
   const isLoading = status === 'streaming' || status === 'submitted' || hasPendingToolCalls
+  const setAgentWorking = useCollaborationActivityStore(
+    (state) => state.actions.setAgentWorking
+  )
+
+  useEffect(() => {
+    setAgentWorking(isLoading)
+    return () => {
+      setAgentWorking(false)
+    }
+  }, [isLoading, setAgentWorking])
 
   // Filter out the initial plan prompt message (first user message with plan context)
   const visibleMessages = useMemo(() => {
