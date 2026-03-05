@@ -44,7 +44,7 @@ import {
   IconSquare,
   IconX,
 } from '@tabler/icons-react'
-import { AlertTriangle, Brain, MousePointer2 } from 'lucide-react'
+import { AlertTriangle, Brain, MousePointer2, Terminal } from 'lucide-react'
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -1715,44 +1715,77 @@ export function AIConversation({
 
           {pendingPromptContext ? (
             <div className="px-3 pt-3">
-              <div className="flex items-start gap-2">
+              <div className="flex items-start">
                 {pendingPromptContext.preview.kind === 'inspector' ? (
-                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-2.5 py-1 text-[11px] text-foreground">
-                    <MousePointer2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-teal-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-teal-900">
+                    <MousePointer2 className="h-3 w-3 shrink-0 text-teal-700/80 dark:text-teal-200/90" />
                     <span className="min-w-0 truncate">
                       {pendingPromptContext.preview.pillText || 'Inspected element'}
                     </span>
+                    <button
+                      type="button"
+                      className="pointer-events-none ml-0 grid h-4 w-0 shrink-0 place-items-center overflow-hidden rounded opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1.5 group-hover:w-4 group-hover:opacity-100 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
+                      onClick={() => setPendingPromptContext(null)}
+                      aria-label="Remove context"
+                    >
+                      <IconX className="size-3" />
+                    </button>
+                  </div>
+                ) : pendingPromptContext.preview.kind === 'terminal' ? (
+                  <div className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-sky-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-sky-900">
+                    <Terminal className="h-3 w-3 shrink-0 text-sky-700/80 dark:text-sky-200/90" />
+                    <span className="min-w-0 truncate">
+                      {pendingPromptContext.preview.pillText || 'Terminal output'}
+                    </span>
+                    <button
+                      type="button"
+                      className="pointer-events-none ml-0 grid h-4 w-0 shrink-0 place-items-center overflow-hidden rounded opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1.5 group-hover:w-4 group-hover:opacity-100 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
+                      onClick={() => setPendingPromptContext(null)}
+                      aria-label="Remove context"
+                    >
+                      <IconX className="size-3" />
+                    </button>
                   </div>
                 ) : pendingPromptContext.preview.kind === 'problem' ? (
-                  <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-2.5 py-1 text-[11px] text-foreground">
-                    <AlertTriangle className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-amber-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-amber-900">
+                    <AlertTriangle className="h-3 w-3 shrink-0 text-amber-700/80 dark:text-amber-200/90" />
                     <span className="min-w-0 truncate">
                       {pendingPromptContext.preview.pillText || 'Problem'}
                     </span>
+                    <button
+                      type="button"
+                      className="pointer-events-none ml-0 grid h-4 w-0 shrink-0 place-items-center overflow-hidden rounded opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1.5 group-hover:w-4 group-hover:opacity-100 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
+                      onClick={() => setPendingPromptContext(null)}
+                      aria-label="Remove context"
+                    >
+                      <IconX className="size-3" />
+                    </button>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-border/60 bg-background/35 px-2.5 py-2 min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-foreground">
-                      {pendingPromptContext.preview.title}
-                    </div>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {pendingPromptContext.preview.subtitle}
-                    </p>
-                    {pendingPromptContext.preview.snippet ? (
-                      <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                        {pendingPromptContext.preview.snippet}
+                  <div className="group min-w-0 flex flex-1 items-start gap-2 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium text-foreground">
+                        {pendingPromptContext.preview.title}
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {pendingPromptContext.preview.subtitle}
                       </p>
-                    ) : null}
+                      {pendingPromptContext.preview.snippet ? (
+                        <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                          {pendingPromptContext.preview.snippet}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="pointer-events-none ml-0 grid h-4 w-0 shrink-0 place-items-center overflow-hidden rounded opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:ml-1.5 group-hover:w-4 group-hover:opacity-100 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
+                      onClick={() => setPendingPromptContext(null)}
+                      aria-label="Remove context"
+                    >
+                      <IconX className="size-3" />
+                    </button>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="text-muted-foreground/70 transition-colors hover:text-foreground"
-                  onClick={() => setPendingPromptContext(null)}
-                  aria-label="Remove context"
-                >
-                  <IconX className="size-4" />
-                </button>
               </div>
             </div>
           ) : null}

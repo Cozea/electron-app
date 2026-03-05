@@ -25,6 +25,17 @@ function compactSnippet(value: string, maxLength = 180): string | undefined {
   return `${normalized.slice(0, maxLength - 1)}…`
 }
 
+function truncateAtWordCount(value: string, maxWords: number): string | undefined {
+  const words = value
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean)
+
+  if (words.length === 0) return undefined
+  if (words.length <= maxWords) return words.join(' ')
+  return `${words.slice(0, maxWords).join(' ')}…`
+}
+
 export function parseInjectedPromptForCompaction(text: string): InjectedPromptPreview | null {
   const normalized = text.trim()
   if (!normalized) return null
@@ -36,6 +47,7 @@ export function parseInjectedPromptForCompaction(text: string): InjectedPromptPr
     const intent = terminalMatch[1]
     const terminalBody = terminalMatch[2]?.trim() ?? ''
     const userRequest = terminalMatch[3]?.trim() ?? ''
+    const pillText = truncateAtWordCount(userRequest || terminalBody, 4) || 'Terminal output'
 
     return {
       kind: 'terminal',
@@ -45,6 +57,7 @@ export function parseInjectedPromptForCompaction(text: string): InjectedPromptPr
           ? 'Error analysis request'
           : 'Terminal output analysis request',
       snippet: compactSnippet(userRequest || terminalBody),
+      pillText,
     }
   }
 
