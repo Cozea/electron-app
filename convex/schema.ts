@@ -1611,6 +1611,18 @@ export default defineSchema({
     .index("by_org_conversation", ["organizationId", "conversationId"])
     .index("by_expires_at", ["expiresAt"]),
 
+  // Conversation compaction checkpoints for auto-context compression.
+  aiCompactionState: defineTable({
+    organizationId: v.string(), // WorkOS org id from AI runtime request
+    conversationId: v.string(),
+    summary: v.string(),
+    compactedThroughMessageId: v.string(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_org_conversation", ["organizationId", "conversationId"])
+    .index("by_expires_at", ["expiresAt"]),
+
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),

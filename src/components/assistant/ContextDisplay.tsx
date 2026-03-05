@@ -13,58 +13,10 @@ import {
   ContextTrigger,
   type LanguageModelUsage,
 } from "@/components/ai-elements/context";
+import { getCachedModelContextWindow } from "@/lib/ai/modelCatalogClient";
 
-// Model context window sizes (in tokens)
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI - GPT-5.x series (400K context)
-  "gpt-5.1-codex-mini": 400_000,
-  "gpt-5.1-codex-max": 400_000,
-  "gpt-5.2": 400_000,
-  "gpt-5.2-codex": 400_000,
-  "gpt-5.3-codex": 400_000,
-  // OpenAI - Legacy models
-  "gpt-4o": 128_000,
-  "gpt-4o-mini": 128_000,
-  "gpt-4-turbo": 128_000,
-  "gpt-4": 8_192,
-  "gpt-3.5-turbo": 16_385,
-  "o1": 200_000,
-  "o1-mini": 128_000,
-  "o1-preview": 128_000,
-  "o3-mini": 200_000,
-  // Google - Gemini 3 series (1M context)
-  "gemini-3-flash": 1_000_000,
-  "gemini-3-pro": 1_000_000,
-  "gemini-3.1-pro": 1_048_576,
-  "gemini-3.1-pro-customtools": 1_048_576,
-  // DeepSeek
-  "deepseek-chat": 64_000,
-  "deepseek-reasoner": 64_000,
-  // Mistral
-  "mistral-large-latest": 128_000,
-  "mistral-small-latest": 32_000,
-  // xAI
-  "grok-2": 131_072,
-  "grok-beta": 131_072,
-  // Default fallback
-  default: 200_000,
-};
-
-export function getContextWindowSize(modelId: string): number {
-  // Try exact match first
-  if (MODEL_CONTEXT_WINDOWS[modelId]) {
-    return MODEL_CONTEXT_WINDOWS[modelId];
-  }
-
-  // Try matching by model family
-  const modelLower = modelId.toLowerCase();
-  for (const [key, value] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-    if (modelLower.includes(key.toLowerCase())) {
-      return value;
-    }
-  }
-
-  return MODEL_CONTEXT_WINDOWS.default;
+export function getContextWindowSize(modelId: string): number | undefined {
+  return getCachedModelContextWindow(modelId);
 }
 
 export interface ContextDisplayProps {

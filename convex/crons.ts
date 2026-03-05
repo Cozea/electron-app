@@ -18,6 +18,14 @@ crons.interval(
   {}
 )
 
+// Clean up expired AI compaction checkpoints every hour
+crons.interval(
+  "cleanup expired ai compaction state",
+  { hours: 1 },
+  internal.aiConversations.cleanupExpiredCompactionState,
+  {}
+)
+
 // ============================================
 // SYNC SYSTEM CRON JOBS
 // ============================================

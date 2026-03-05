@@ -92,6 +92,9 @@ function isChromeErrorUrl(url?: string | null): boolean {
 type PreviewEmbedMode = 'standard' | 'credentialless'
 
 const BRIDGE_READY_TIMEOUT_MS = 2500
+const MIN_ZOOM_PERCENT = 25
+const MAX_ZOOM_PERCENT = 200
+const ZOOM_STEP_PERCENT = 25
 
 function resolvePreviewEmbedModeForRun(
     serverStatus: ServerStatus,
@@ -155,6 +158,7 @@ export function ProjectPagesPage() {
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const [zoom, setZoom] = useState(100)
+    const [zoomInputValue, setZoomInputValue] = useState('100')
     const [inspectorContextMenu, setInspectorContextMenu] = useState<{
         open: boolean
         x: number
@@ -229,6 +233,40 @@ export function ProjectPagesPage() {
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
     const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
+
+    const clampZoomPercent = useCallback((value: number) => {
+        return Math.max(MIN_ZOOM_PERCENT, Math.min(MAX_ZOOM_PERCENT, Math.round(value)))
+    }, [])
+
+    const handleZoomStepDown = useCallback(() => {
+        setZoom((previous) => clampZoomPercent(previous - ZOOM_STEP_PERCENT))
+    }, [clampZoomPercent])
+
+    const handleZoomStepUp = useCallback(() => {
+        setZoom((previous) => clampZoomPercent(previous + ZOOM_STEP_PERCENT))
+    }, [clampZoomPercent])
+
+    const commitZoomInput = useCallback(() => {
+        const normalized = zoomInputValue.replace('%', '').trim()
+        if (!normalized) {
+            setZoomInputValue(String(zoom))
+            return
+        }
+
+        const parsed = Number(normalized)
+        if (!Number.isFinite(parsed)) {
+            setZoomInputValue(String(zoom))
+            return
+        }
+
+        const nextZoom = clampZoomPercent(parsed)
+        setZoom(nextZoom)
+        setZoomInputValue(String(nextZoom))
+    }, [clampZoomPercent, zoom, zoomInputValue])
+
+    useEffect(() => {
+        setZoomInputValue(String(zoom))
+    }, [zoom])
 
     useEffect(() => {
         if (focusedRoute?.path) {
@@ -1683,9 +1721,9 @@ export function ProjectPagesPage() {
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => setZoom(prev => Math.max(25, prev - 25))}
+                                        onClick={handleZoomStepDown}
                                         className="h-7 w-7 rounded-full"
-                                        disabled={zoom <= 25}
+                                        disabled={zoom <= MIN_ZOOM_PERCENT}
                                     >
                                         <ZoomOut className="h-3.5 w-3.5" />
                                     </Button>
@@ -1710,9 +1748,9 @@ export function ProjectPagesPage() {
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => setZoom(prev => Math.min(200, prev + 25))}
+                                        onClick={handleZoomStepUp}
                                         className="h-7 w-7 rounded-full"
-                                        disabled={zoom >= 200}
+                                        disabled={zoom >= MAX_ZOOM_PERCENT}
                                     >
                                         <ZoomIn className="h-3.5 w-3.5" />
                                     </Button>
@@ -1765,33 +1803,67 @@ export function ProjectPagesPage() {
                                 Mobile (375px)
                                 {device === 'mobile' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => setZoom(prev => Math.max(25, prev - 25))}
-                                disabled={zoom <= 25}
-                            >
-                                <ZoomOut className="h-4 w-4 mr-2" />
-                                Zoom out
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setZoom(100)}>
-                                <span className="inline-flex h-4 w-4 mr-2 items-center justify-center text-xs font-mono">
-                                    1x
-                                </span>
-                                Reset to 100%
-                                {zoom === 100 && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => setZoom(prev => Math.min(200, prev + 25))}
-                                disabled={zoom >= 200}
-                            >
-                                <ZoomIn className="h-4 w-4 mr-2" />
-                                Zoom in
-                            </DropdownMenuItem>
-                            {[25, 50, 75, 100, 125, 150, 200].map((value) => (
-                                <DropdownMenuItem key={value} onClick={() => setZoom(value)}>
-                                    <span className="font-mono tabular-nums">{value}%</span>
-                                    {zoom === value && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                                </DropdownMenuItem>
-                            ))}
+                            <DropdownMenuSeparator />
+                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                                Zoom
+                            </div>
+                            <div className="px-2 pb-2">
+                                <div className="flex h-8 w-full items-center justify-center px-1">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={handleZoomStepDown}
+                                        disabled={zoom <= MIN_ZOOM_PERCENT}
+                                        aria-label="Zoom out"
+                                    >
+                                        <ZoomOut className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <div className="mx-2 h-4 w-px bg-border/60" />
+                                    <div className="flex w-14 items-center justify-center gap-0.5">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={zoomInputValue}
+                                            onChange={(event) => {
+                                                const next = event.target.value.replace('%', '').trim()
+                                                if (next === '' || /^\d{0,3}$/.test(next)) {
+                                                    setZoomInputValue(next)
+                                                }
+                                            }}
+                                            onBlur={commitZoomInput}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault()
+                                                    commitZoomInput()
+                                                    event.currentTarget.blur()
+                                                }
+                                                if (event.key === 'Escape') {
+                                                    event.preventDefault()
+                                                    setZoomInputValue(String(zoom))
+                                                    event.currentTarget.blur()
+                                                }
+                                            }}
+                                            className="h-6 w-10 border-0 bg-transparent p-0 text-center text-sm font-medium text-foreground outline-none"
+                                            aria-label="Zoom percent"
+                                        />
+                                        <span className="text-[11px] text-muted-foreground">%</span>
+                                    </div>
+                                    <div className="mx-2 h-4 w-px bg-border/60" />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={handleZoomStepUp}
+                                        disabled={zoom >= MAX_ZOOM_PERCENT}
+                                        aria-label="Zoom in"
+                                    >
+                                        <ZoomIn className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )}
@@ -1941,6 +2013,7 @@ export function ProjectPagesPage() {
         toolbarDensity,
         device,
         zoom,
+        zoomInputValue,
         isCapturingScreenshot,
         isCapturingPreview,
         inspectorEnabled,
@@ -1957,8 +2030,12 @@ export function ProjectPagesPage() {
         handleCaptureScreenshot,
         toggleInspector,
         handleUpdateProjectPreview,
+        handleZoomStepDown,
+        handleZoomStepUp,
+        commitZoomInput,
         setDevice,
         setZoom,
+        setZoomInputValue,
         setFocusedPageIndex,
     ])
 

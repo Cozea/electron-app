@@ -5,4 +5,5 @@ export interface ModelOption {
   chefSlug: string
   tier: string
   providers: string[]
+  limit?: { context?: number; output?: number }
 }

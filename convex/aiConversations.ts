@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const CONTINUATION_STATE_TTL_MS = 24 * 60 * 60 * 1000
+const COMPACTION_STATE_TTL_MS = 24 * 60 * 60 * 1000
 
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
@@ -348,6 +349,137 @@ export const clearConversationContinuationStateForServer = mutation({
 })
 
 /**
+ * Server-only: Read compaction checkpoint state.
+ */
+export const getCompactionStateForServer = query({
+  args: {
+    organizationId: v.string(),
+    conversationId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const state = await ctx.db
+      .query("aiCompactionState")
+      .withIndex("by_org_conversation", (q) =>
+        q.eq("organizationId", args.organizationId).eq("conversationId", args.conversationId)
+      )
+      .first()
+
+    if (!state) {
+      return null
+    }
+
+    if (state.expiresAt <= Date.now()) {
+      return null
+    }
+
+    return {
+      summary: state.summary,
+      compactedThroughMessageId: state.compactedThroughMessageId,
+      updatedAt: state.updatedAt,
+      expiresAt: state.expiresAt,
+    }
+  },
+})
+
+/**
+ * Server-only: Upsert compaction checkpoint state.
+ */
+export const upsertCompactionStateForServer = mutation({
+  args: {
+    organizationId: v.string(),
+    conversationId: v.string(),
+    summary: v.string(),
+    compactedThroughMessageId: v.string(),
+    expiresAt: v.optional(v.number()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const summary = args.summary.trim()
+    const compactedThroughMessageId = args.compactedThroughMessageId.trim()
+    if (!summary) {
+      throw new Error("summary is required")
+    }
+    if (!compactedThroughMessageId) {
+      throw new Error("compactedThroughMessageId is required")
+    }
+
+    const now = Date.now()
+    const expiresAt = args.expiresAt ?? now + COMPACTION_STATE_TTL_MS
+
+    const existing = await ctx.db
+      .query("aiCompactionState")
+      .withIndex("by_org_conversation", (q) =>
+        q.eq("organizationId", args.organizationId).eq("conversationId", args.conversationId)
+      )
+      .first()
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        summary,
+        compactedThroughMessageId,
+        updatedAt: now,
+        expiresAt,
+      })
+      return {
+        summary,
+        compactedThroughMessageId,
+        updatedAt: now,
+        expiresAt,
+      }
+    }
+
+    await ctx.db.insert("aiCompactionState", {
+      organizationId: args.organizationId,
+      conversationId: args.conversationId,
+      summary,
+      compactedThroughMessageId,
+      updatedAt: now,
+      expiresAt,
+    })
+
+    return {
+      summary,
+      compactedThroughMessageId,
+      updatedAt: now,
+      expiresAt,
+    }
+  },
+})
+
+/**
+ * Server-only: Clear one conversation compaction checkpoint row.
+ */
+export const clearCompactionStateForServer = mutation({
+  args: {
+    organizationId: v.string(),
+    conversationId: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const existing = await ctx.db
+      .query("aiCompactionState")
+      .withIndex("by_org_conversation", (q) =>
+        q.eq("organizationId", args.organizationId).eq("conversationId", args.conversationId)
+      )
+      .first()
+
+    if (!existing) {
+      return { deletedCount: 0 }
+    }
+
+    await ctx.db.delete(existing._id)
+    return { deletedCount: 1 }
+  },
+})
+
+/**
  * Internal: Cleanup expired continuation rows.
  */
 export const cleanupExpiredContinuationState = internalMutation({
@@ -356,6 +488,26 @@ export const cleanupExpiredContinuationState = internalMutation({
     const now = Date.now()
     const expired = await ctx.db
       .query("aiContinuationState")
+      .withIndex("by_expires_at", (q) => q.lte("expiresAt", now))
+      .collect()
+
+    for (const row of expired) {
+      await ctx.db.delete(row._id)
+    }
+
+    return { deletedCount: expired.length }
+  },
+})
+
+/**
+ * Internal: Cleanup expired compaction rows.
+ */
+export const cleanupExpiredCompactionState = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const expired = await ctx.db
+      .query("aiCompactionState")
       .withIndex("by_expires_at", (q) => q.lte("expiresAt", now))
       .collect()
 

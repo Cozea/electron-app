@@ -528,6 +528,7 @@ export function AIConversation({
             chefSlug: m.provider,
             tier: m.tier,
             providers: [m.provider],
+            limit: m.limit,
           }))
         // Store capabilities by model ID
         const caps: Record<string, RuntimeModelCapabilities> = {}
@@ -1923,7 +1924,7 @@ export function AIConversation({
                 </span>
               )}
               <Context
-                maxTokens={getContextWindowSize(model)}
+                maxTokens={selectedModelData?.limit?.context ?? getContextWindowSize(model)}
                 usedTokens={accumulatedUsage.usedTokens}
                 usage={accumulatedUsage.usage}
                 modelId={model}
