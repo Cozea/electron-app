@@ -687,6 +687,7 @@ export function ProjectBackendStudioPage() {
                 nodes={displayedNodes}
                 edges={displayedEdges}
                 nodeTypes={nodeTypes}
+                bgColor="var(--background)"
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
@@ -739,7 +740,7 @@ export function ProjectBackendStudioPage() {
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize="28" minSize="20" maxSize="45" className="min-w-0">
-            <div className="relative h-full bg-content-surface panel-fade-border">
+            <div className="relative h-full bg-content-surface border-l border-border">
               <div className="h-9 px-3 flex items-center justify-between bg-background/60 backdrop-blur-sm">
                 <div className="text-sm font-medium">Inspector</div>
               </div>

@@ -47,6 +47,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const isHistoryOpen = useAssistantPanelStore((state) => state.isHistoryOpen)
   const openHistory = useAssistantPanelStore((state) => state.openHistory)
   const closeHistory = useAssistantPanelStore((state) => state.closeHistory)
+  const startNewConversation = useAssistantPanelStore((state) => state.startNewConversation)
 
   const { user, currentOrganization } = useAuth()
   const isOpen = mode !== 'closed'
@@ -98,6 +99,14 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const isFullscreen = mode === 'fullscreen'
   const panelWidthValue = isFullscreen ? '100%' : `${storedWidth}px`
 
+  useEffect(() => {
+    if (!isFullscreen) return
+    if (isHistoryOpen) {
+      closeHistory()
+    }
+    setIsActionsMenuOpen(false)
+  }, [closeHistory, isFullscreen, isHistoryOpen])
+
   // Resize handle event handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     setIsDragging(true)
@@ -130,7 +139,8 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   return (
     <div
       className={cn(
-        'h-full flex flex-col bg-[var(--assistant-surface)] overflow-hidden relative border-l border-border [--assistant-surface:var(--content-surface)]',
+        'h-full flex flex-col bg-[var(--assistant-surface)] overflow-hidden relative [--assistant-surface:var(--content-surface)]',
+        !isFullscreen && 'border-l border-border',
         'relative',
         !isDragging && 'transition-[width,flex-grow,flex-shrink,min-width] duration-300 ease-in-out',
         className
@@ -178,6 +188,18 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
             <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
           </div>
           <div className="titlebar-no-drag flex items-center gap-1 shrink-0">
+            {isFullscreen ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+                onClick={startNewConversation}
+                aria-label="New chat"
+                title="New chat"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               size="icon"
@@ -192,49 +214,51 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
                 <Maximize2 className="h-4 w-4" />
               )}
             </Button>
-            <DropdownMenu
-              open={isActionsMenuOpen}
-              onOpenChange={(nextOpen) => {
-                if (nextOpen && isHistoryOpen) {
-                  closeHistory()
-                  setIsActionsMenuOpen(false)
-                  return
-                }
-                setIsActionsMenuOpen(nextOpen)
-              }}
-            >
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
-                  aria-label="Chat actions"
-                  title="Chat actions"
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem
-                  onSelect={() => {
+            {!isFullscreen ? (
+              <DropdownMenu
+                open={isActionsMenuOpen}
+                onOpenChange={(nextOpen) => {
+                  if (nextOpen && isHistoryOpen) {
+                    closeHistory()
                     setIsActionsMenuOpen(false)
-                    requestClearChat()
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  <span>New Chat</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setIsActionsMenuOpen(false)
-                    openHistory()
-                  }}
-                >
-                  <History className="mr-2 h-4 w-4" />
-                  <span>History</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    return
+                  }
+                  setIsActionsMenuOpen(nextOpen)
+                }}
+              >
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+                    aria-label="Chat actions"
+                    title="Chat actions"
+                  >
+                    <Menu className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setIsActionsMenuOpen(false)
+                      requestClearChat()
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    <span>New Chat</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setIsActionsMenuOpen(false)
+                      openHistory()
+                    }}
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    <span>History</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             {shouldShowWindowsCaptionSpacer ? (
               <>
                 <div className="mx-1 h-4 w-px shrink-0 bg-border/70" />
@@ -267,7 +291,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
       </div>
 
       {/* Chat History Sheet */}
-      {isHistoryOpen ? (
+      {isHistoryOpen && !isFullscreen ? (
         <Suspense fallback={null}>
           <ChatHistory
             isOpen={isHistoryOpen}

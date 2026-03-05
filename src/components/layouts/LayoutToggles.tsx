@@ -1,4 +1,9 @@
 import { Button } from '@/components/ui/button'
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
@@ -57,14 +62,22 @@ export function LayoutToggles() {
 
     return (
         <div className="flex items-center gap-0.5">
-            <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', state === 'expanded' && 'text-foreground')}
-                onClick={toggleSidebar}
-            >
-                <PanelLeftIcon active={state === 'expanded'} className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', state === 'expanded' && 'text-foreground')}
+                        onClick={toggleSidebar}
+                        aria-label={state === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+                    >
+                        <PanelLeftIcon active={state === 'expanded'} className="h-4 w-4" />
+                    </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                    {state === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+                </TooltipContent>
+            </Tooltip>
 
             {/* Terminal button: only visible where terminal is available; collapse animates spacing */}
             <div
@@ -73,14 +86,22 @@ export function LayoutToggles() {
                     canToggleTerminal ? 'w-7 opacity-100' : 'w-0 min-w-0 opacity-0'
                 )}
             >
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
-                    onClick={toggleTerminal}
-                >
-                    <PanelBottomIcon active={isTerminalOpen} className="h-4 w-4" />
-                </Button>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isTerminalOpen && 'text-foreground')}
+                            onClick={toggleTerminal}
+                            aria-label={isTerminalOpen ? 'Hide bottom panel' : 'Show bottom panel'}
+                        >
+                            <PanelBottomIcon active={isTerminalOpen} className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                        {isTerminalOpen ? 'Hide bottom panel' : 'Show bottom panel'}
+                    </TooltipContent>
+                </Tooltip>
             </div>
 
             {/* Assistant button: project context only; collapse animates spacing */}
@@ -90,14 +111,22 @@ export function LayoutToggles() {
                     canToggleAssistant ? 'w-7 opacity-100' : 'w-0 min-w-0 opacity-0'
                 )}
             >
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
-                    onClick={toggleAssistant}
-                >
-                    <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
-                </Button>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn('h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground', isAssistantOpen && 'text-foreground')}
+                            onClick={toggleAssistant}
+                            aria-label={isAssistantOpen ? 'Hide AI panel' : 'Show AI panel'}
+                        >
+                            <PanelRightIcon active={isAssistantOpen} className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                        {isAssistantOpen ? 'Hide AI panel' : 'Show AI panel'}
+                    </TooltipContent>
+                </Tooltip>
             </div>
         </div>
     )

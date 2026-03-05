@@ -323,11 +323,11 @@ export function CollaborativeMonacoEditor({
           tabSize: 2,
           scrollBeyondLastLine: false,
           scrollbar: {
-            vertical: 'auto',
+            vertical: 'hidden',
             horizontal: 'auto',
             verticalHasArrows: false,
             horizontalHasArrows: false,
-            verticalScrollbarSize: 8,
+            verticalScrollbarSize: 0,
             horizontalScrollbarSize: 8,
             alwaysConsumeMouseWheel: false,
             useShadows: false,
@@ -341,7 +341,7 @@ export function CollaborativeMonacoEditor({
         }
       />
       {showBottomFade && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent" />
       )}
     </div>
   )

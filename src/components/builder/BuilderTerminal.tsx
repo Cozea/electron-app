@@ -6,6 +6,45 @@ import { cn } from '@/lib/utils'
 import { TerminalIcon, CopyIcon, CheckIcon, Square, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+const colorToHex = (cssColor: string): string => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return '#000000'
+
+  ctx.fillStyle = cssColor
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+const resolveThemeColor = (container: HTMLElement, cssVar: string, fallback: string): string => {
+  const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
+  const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
+  const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
+  const computed = localComputed || rootComputed
+
+  if (!computed) return fallback
+
+  const tempDiv = document.createElement('div')
+  tempDiv.style.position = 'absolute'
+  tempDiv.style.visibility = 'hidden'
+  tempDiv.style.backgroundColor = computed
+  document.body.appendChild(tempDiv)
+  const resolvedColor = getComputedStyle(tempDiv).backgroundColor
+  document.body.removeChild(tempDiv)
+
+  if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
+    return fallback
+  }
+  return resolvedColor
+}
+
+const getThemeColorHex = (container: HTMLElement, cssVar: string, fallback: string): string => {
+  return colorToHex(resolveThemeColor(container, cssVar, fallback))
+}
+
 export interface BuilderTerminalProps {
   terminalId: string
   command?: string
@@ -58,9 +97,10 @@ export const BuilderTerminal = memo(function BuilderTerminal({
     const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
     const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
-    const computed = getComputedStyle(container)
-    const background = computed.backgroundColor || '#09090b'
-    const foreground = computed.color || '#fafafa'
+    // Match chat tool surface tokens so builder terminal visualizations stay in parity.
+    const background = getThemeColorHex(container, '--tool-surface', '#1a1a1a')
+    const foreground = getThemeColorHex(container, '--tool-surface-foreground', '#fafafa')
+    const muted = getThemeColorHex(container, '--muted', '#27272a')
 
     const term = new Terminal({
       theme: {
@@ -68,8 +108,8 @@ export const BuilderTerminal = memo(function BuilderTerminal({
         foreground,
         cursor: foreground,
         cursorAccent: background,
-        selectionBackground: 'rgba(127, 127, 127, 0.3)',
-        black: background,
+        selectionBackground: muted,
+        black: muted,
         red: '#f87171',
         green: '#4ade80',
         yellow: '#facc15',

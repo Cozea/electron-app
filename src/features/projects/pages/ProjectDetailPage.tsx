@@ -1,7 +1,9 @@
-import { Link } from 'react-router-dom'
+import { useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { FileViewer } from '../components/FileViewer'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import { Button } from '@/components/ui/button'
+import { TerminalPanel } from '../components/TerminalPanel'
 import {
   ArrowLeft,
   Code,
@@ -19,10 +21,14 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 export function ProjectDetailPage() {
   const { project, slugParam, projectIdParam } = useAccessibleProject()
+  const [, setSearchParams] = useSearchParams()
+  const syncContext = useOptionalProjectSyncContext()
+  const projectPath = syncContext?.projectPath ?? null
   const projectKey = project?.slug ?? slugParam ?? projectIdParam ?? ''
 
   // File tabs store
@@ -51,6 +57,26 @@ export function ProjectDetailPage() {
   // Ensure stores are initialized even if project is loading (we have the slug)
   if (!projectKey) return null
 
+  const handleOpenFile = useCallback((file: string, line?: number, column?: number) => {
+    const normalizedFile = file.replace(/\\/g, '/')
+    const normalizedProject = projectPath
+      ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
+      : null
+    const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
+
+    const pathForUrl = normalizedProject
+      ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
+        ? normalizedFile
+        : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
+      : normalizedFile
+
+    const params = new URLSearchParams()
+    params.set('path', pathForUrl)
+    if (line) params.set('line', String(line))
+    if (column) params.set('column', String(column))
+    setSearchParams(params)
+  }, [projectPath, setSearchParams])
+
   // Editor Layout - always shown, with tabs when files are open
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -72,6 +98,10 @@ export function ProjectDetailPage() {
           </Empty>
         )}
       </div>
+
+      {projectPath && (
+        <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenFile} />
+      )}
 
     </div>
   )

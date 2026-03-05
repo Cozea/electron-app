@@ -74,6 +74,11 @@ const ProjectSettingsPage = lazy(() =>
     default: module.ProjectSettingsPage,
   }))
 )
+const ProjectTeamPage = lazy(() =>
+  import('@/features/projects/pages/ProjectTeamPage').then((module) => ({
+    default: module.ProjectTeamPage,
+  }))
+)
 const Members = lazy(() =>
   import('@/pages/teams/Members').then((module) => ({ default: module.Members }))
 )
@@ -139,7 +144,9 @@ export const appRoutes: RouteObject[] = [
           { path: 'merge-queue', element: <Navigate to="../changes" replace /> },
           { path: 'version-control', element: <Navigate to="../changes" replace /> },
           { path: 'tasks', element: <TasksPage /> },
+          { path: 'team', element: <ProjectTeamPage /> },
           { path: 'settings', element: <ProjectSettingsPage /> },
+          { path: 'settings/team', element: <Navigate to="../team" replace /> },
           { path: 'settings/:section', element: <ProjectSettingsPage /> },
           { path: '*', element: <ProjectDetailPage /> },
         ],

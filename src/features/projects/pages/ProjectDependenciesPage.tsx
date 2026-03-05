@@ -32,6 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 
 
@@ -177,15 +178,23 @@ export function ProjectDependenciesPage() {
             <DropdownMenuItem onClick={() => setFilter('devDependencies')}>Dev ({devCount})</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleRefresh}
-          className="h-7 rounded-full px-2"
-          disabled={!projectPath}
-        >
-          <RefreshCw className="h-3 w-3" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRefresh}
+                className="h-7 rounded-full px-2"
+                disabled={!projectPath}
+                aria-label="Refresh dependencies"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Refresh dependencies</TooltipContent>
+        </Tooltip>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs">
@@ -231,13 +240,6 @@ export function ProjectDependenciesPage() {
       {/* Scrollable Content */}
       <div className="app-scrollbar flex-1 overflow-auto min-h-0">
         <div className="px-6 pt-2 pb-4 space-y-2">
-          <div className="text-xs text-muted-foreground flex items-center gap-2">
-            <span>Package manager: {snapshot?.pm ?? 'unknown'}</span>
-            <span>•</span>
-            <span>
-              Last checked: {snapshot?.lastCheckedAt ? new Date(snapshot.lastCheckedAt).toLocaleString() : '—'}
-            </span>
-          </div>
           {runningJobs.length > 0 && (
             <Card className="p-3 text-xs flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

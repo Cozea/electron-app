@@ -16,6 +16,7 @@ import {
     Database,
     Server,
     Settings,
+    Users,
     ChevronDown,
     Plus,
     RefreshCw,
@@ -82,6 +83,7 @@ const routeMap: Record<string, string> = {
     "Database": "database",
     "Backend Studio": "backend",
     // Settings
+    "Team": "team",
     "Settings": "settings",
 }
 
@@ -95,6 +97,7 @@ function getActiveTabFromPathname(pathname: string, base: string | null): string
     if (pathname === `${base}/dependencies` || pathname.startsWith(`${base}/dependencies/`)) return "Dependencies"
     if (pathname === `${base}/database` || pathname.startsWith(`${base}/database/`)) return "Database"
     if (pathname === `${base}/backend` || pathname.startsWith(`${base}/backend/`)) return "Backend Studio"
+    if (pathname === `${base}/team` || pathname.startsWith(`${base}/team/`)) return "Team"
     if (pathname.startsWith(`${base}/settings`)) return "Settings"
 
     return null
@@ -108,6 +111,7 @@ const projectRoutePreloaders: Record<string, () => Promise<unknown>> = {
     "Dependencies": () => import("@/features/projects/pages/ProjectDependenciesPage"),
     "Database": () => import("@/features/projects/pages/ProjectDatabasePage"),
     "Backend Studio": () => import("@/features/projects/pages/ProjectBackendStudioPage"),
+    "Team": () => import("@/features/projects/pages/ProjectTeamPage"),
     "Settings": () => import("@/features/projects/pages/ProjectSettingsPage"),
 }
 
@@ -142,6 +146,7 @@ const NAV_GROUPS = [
     {
         title: "Settings",
         items: [
+            { title: "Team", icon: Users },
             { title: "Settings", icon: Settings }
         ]
     }
@@ -183,6 +188,7 @@ export function ProjectSidebar({
         if (slug) return buildLegacyProjectPath(slug)
         return null
     }, [routeProjectId, slug])
+    const showProjectTeamTab = currentOrganization?.workspaceType === 'personal'
 
     const routeActiveTab = React.useMemo(
         () => getActiveTabFromPathname(location.pathname, routeBasePath),
@@ -464,6 +470,9 @@ export function ProjectSidebar({
                                 <SidebarGroupContent>
                                     <SidebarMenu>
                                         {group.items.map((item) => {
+                                            if (item.title === 'Team' && !showProjectTeamTab) {
+                                                return null
+                                            }
                                             // Determine interaction type
                                             const hasSecondaryPanel = ['Files', 'Pages'].includes(item.title)
                                             const isActive = activeTab === item.title

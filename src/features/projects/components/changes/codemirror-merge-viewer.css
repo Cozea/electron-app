@@ -9,6 +9,15 @@
   --cm-merge-deleted-line-number-bg: var(--tool-diff-deleted-line-number-bg, color-mix(in oklab, #ef4444 18%, transparent));
   --cm-merge-added-line-number-fg: var(--tool-diff-added-line-number-fg, #4ade80);
   --cm-merge-deleted-line-number-fg: var(--tool-diff-deleted-line-number-fg, #f87171);
+  --cm-merge-collapsed-bg: color-mix(in oklch, var(--secondary) 80%, transparent);
+}
+
+.dark .changes-codemirror-merge,
+.navy .changes-codemirror-merge,
+.wine .changes-codemirror-merge,
+.clay .changes-codemirror-merge,
+.forest .changes-codemirror-merge {
+  --cm-merge-collapsed-bg: color-mix(in oklch, var(--secondary) 40%, transparent);
 }
 
 .changes-codemirror-merge .cm-mergeView,
@@ -41,6 +50,9 @@
 
 .changes-codemirror-merge .cm-collapsedLines {
   color: var(--muted-foreground);
+  background: var(--cm-merge-collapsed-bg);
+  border: none;
+  box-shadow: none;
 }
 
 .changes-codemirror-merge .cm-deletedChunk {

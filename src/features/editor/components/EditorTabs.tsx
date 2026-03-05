@@ -35,6 +35,7 @@ export function EditorTabs() {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
     const [pendingClosePath, setPendingClosePath] = useState<string | null>(null)
     const [hoveredPath, setHoveredPath] = useState<string | null>(null)
+    const syncingFromUrlRef = useRef(false)
     const scrollerRef = useRef<HTMLDivElement | null>(null)
     const [showLeftFade, setShowLeftFade] = useState(false)
     const [showRightFade, setShowRightFade] = useState(false)
@@ -60,6 +61,7 @@ export function EditorTabs() {
 
     useEffect(() => {
         if (filePath && projectId) {
+            syncingFromUrlRef.current = true
             openFile(projectId, filePath)
             setActiveFile(projectId, filePath)
         }
@@ -143,6 +145,13 @@ export function EditorTabs() {
     useEffect(() => {
         if (!projectId) return
 
+        if (syncingFromUrlRef.current) {
+            if ((activeFile && filePath && pathsReferToSameFile(activeFile, filePath)) || !filePath) {
+                syncingFromUrlRef.current = false
+            }
+            return
+        }
+
         const urlPath = searchParams.get('path')
 
         if (activeFile) {
@@ -159,7 +168,7 @@ export function EditorTabs() {
             nextParams.delete('path')
             setSearchParams(nextParams, { replace: true })
         }
-    }, [activeFile, projectId, searchParams, setSearchParams])
+    }, [activeFile, filePath, projectId, searchParams, setSearchParams])
 
     useEffect(() => {
         const el = scrollerRef.current
@@ -183,7 +192,7 @@ export function EditorTabs() {
 
     return (
         <>
-            <div className="relative flex items-center h-9 bg-transparent">
+            <div className="relative flex w-full min-w-0 items-center h-9 bg-transparent">
                 <div className="relative flex-1 min-w-0 h-full">
                     <div ref={scrollerRef} className="flex items-center h-full overflow-x-auto scrollbar-hide">
                         {openFiles.map((path, index) => {

@@ -204,16 +204,18 @@ export function FileTreeRow({
     : getFileIcon(item.name)
 
   const content = (
-    <div className="flex w-full min-w-0 items-center justify-start gap-2 text-left" style={rowIndentStyle(depth)}>
+    <div className="flex w-full min-w-0 items-center gap-2 text-left" style={rowIndentStyle(depth)}>
       {icon}
       <div className="min-w-0 flex-1">{label}</div>
       {item.isDirectory && (
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
-            isExpanded && '-rotate-90'
-          )}
-        />
+        <span className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center">
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              isExpanded && '-rotate-90'
+            )}
+          />
+        </span>
       )}
     </div>
   )

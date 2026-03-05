@@ -1530,7 +1530,7 @@ Now begin by defining your task list with todowrite, then start working through 
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
         <Conversation className="h-full">
-          <ConversationContent className="w-full max-w-none px-4 pt-4 pb-24">
+          <ConversationContent className="w-full max-w-2xl mx-auto px-3 pt-4 pb-24">
             {visibleMessages.map((message) => (
               <MessageBubble
                 key={message.id}
@@ -1551,7 +1551,7 @@ Now begin by defining your task list with todowrite, then start working through 
               </div>
             )}
           </ConversationContent>
-          <ConversationScrollButton />
+          <ConversationScrollButton className="bottom-24" />
         </Conversation>
       </div>
     </div>
