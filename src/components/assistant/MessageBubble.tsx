@@ -29,8 +29,9 @@ import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress
 import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutput'
 import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
+import { parseInjectedPromptForCompaction } from '@/components/assistant/injectedPromptCompaction'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
-import { AlertCircle, Check, Copy, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Check, Copy, MousePointer2, X } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface MessageToolMeta {
@@ -87,18 +88,6 @@ interface SourcePart {
   title?: string
   favicon?: string
   source?: { url?: string; title?: string }
-}
-
-interface CompactedPromptField {
-  label: string
-  value: string
-}
-
-interface CompactedPromptPreview {
-  title: string
-  subtitle: string
-  snippet?: string
-  fields?: CompactedPromptField[]
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -207,24 +196,46 @@ function MessageBubbleComponent({
           if (part.type === 'text') {
             const compactedPrompt =
               message.role === 'user'
-                ? parseCompactedPromptPreview(part.text)
+                ? parseInjectedPromptForCompaction(part.text)
                 : null
 
             if (compactedPrompt) {
+              if (compactedPrompt.kind === 'inspector') {
+                return (
+                  <div key={`${message.id}-text-${index}`} className="flex">
+                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-foreground">
+                      <MousePointer2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Inspected element'}</span>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (compactedPrompt.kind === 'problem') {
+                return (
+                  <div key={`${message.id}-text-${index}`} className="flex">
+                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-secondary/55 px-2.5 py-1 text-[11px] text-foreground">
+                      <AlertTriangle className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Problem'}</span>
+                    </div>
+                  </div>
+                )
+              }
+
               return (
                 <div
                   key={`${message.id}-text-${index}`}
-                  className="rounded-xl border border-border/60 bg-secondary/55 px-3 py-2.5"
+                  className="rounded-lg border border-border/60 bg-secondary/55 px-2.5 py-2"
                 >
-                  <div className="text-sm font-medium text-foreground">{compactedPrompt.title}</div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{compactedPrompt.subtitle}</p>
+                  <div className="text-xs font-medium text-foreground">{compactedPrompt.title}</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{compactedPrompt.subtitle}</p>
                   {compactedPrompt.snippet ? (
-                    <p className="mt-2 truncate text-xs text-muted-foreground">{compactedPrompt.snippet}</p>
+                    <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{compactedPrompt.snippet}</p>
                   ) : null}
                   {compactedPrompt.fields && compactedPrompt.fields.length > 0 ? (
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-1.5 space-y-0.5">
                       {compactedPrompt.fields.map((field) => (
-                        <div key={field.label} className="flex items-start gap-1.5 text-xs">
+                        <div key={field.label} className="flex items-start gap-1 text-[11px]">
                           <span className="shrink-0 text-muted-foreground">{field.label}:</span>
                           <span className="min-w-0 truncate text-foreground/90">{field.value}</span>
                         </div>
@@ -520,64 +531,6 @@ function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
     .map((part) => part.text.trim())
     .filter((text) => text.length > 0)
   return textParts.join('\n\n')
-}
-
-function parseCompactedPromptPreview(text: string): CompactedPromptPreview | null {
-  const normalized = text.trim()
-  if (!normalized) return null
-
-  const terminalMatch = normalized.match(
-    /^(Help me understand this terminal output:|Explain this error and suggest how to fix it:)\s*```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]*?)```$/m
-  )
-  if (terminalMatch) {
-    const intent = terminalMatch[1]
-    const terminalText = terminalMatch[2]?.trim() ?? ''
-    const condensedSnippet = terminalText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .join(' ')
-      .slice(0, 180)
-
-    return {
-      title: 'Terminal context',
-      subtitle:
-        intent.startsWith('Explain')
-          ? 'Error analysis request'
-          : 'Terminal output analysis request',
-      snippet: condensedSnippet.length > 0 ? condensedSnippet : undefined,
-    }
-  }
-
-  if (!normalized.startsWith('I right-clicked an element in the preview inspector.')) {
-    return null
-  }
-
-  const lines = normalized
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const pageLine = lines.find((line) => line.startsWith('Page: '))
-  const selectorLine = lines.find((line) => line.startsWith('Selector: '))
-  const stackLine = lines.find((line) => line.startsWith('React component stack: '))
-  const changePromptIndex = lines.findIndex((line) => line.toLowerCase() === 'what i want to change:')
-  const requestedChange =
-    changePromptIndex >= 0
-      ? lines.slice(changePromptIndex + 1).join(' ').trim()
-      : ''
-
-  const fields: CompactedPromptField[] = []
-  if (pageLine) fields.push({ label: 'Page', value: pageLine.replace(/^Page:\s*/, '') })
-  if (selectorLine) fields.push({ label: 'Selector', value: selectorLine.replace(/^Selector:\s*/, '') })
-  if (stackLine) fields.push({ label: 'Stack', value: stackLine.replace(/^React component stack:\s*/, '') })
-
-  return {
-    title: 'Inspector context',
-    subtitle: 'Element details from preview inspector',
-    snippet: requestedChange.length > 0 ? requestedChange.slice(0, 180) : undefined,
-    fields: fields.length > 0 ? fields : undefined,
-  }
 }
 
 function formatToolPayload(value: unknown): string {
