@@ -219,6 +219,7 @@ export function EntryChoice({
               chefSlug: m.provider,
               tier: m.tier,
               providers: [m.provider],
+              limit: m.limit,
             }
           })
         setAvailableModels(mapped)
@@ -462,7 +463,7 @@ export function EntryChoice({
 
               {/* Context window usage */}
               <Context
-                maxTokens={getContextWindowSize(model)}
+                maxTokens={selectedModelData?.limit?.context ?? getContextWindowSize(model)}
                 usedTokens={0}
                 modelId={model}
               >

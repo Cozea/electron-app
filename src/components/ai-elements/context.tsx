@@ -20,12 +20,21 @@ type ModelId = string;
 
 type ContextSchema = {
   usedTokens: number;
-  maxTokens: number;
+  maxTokens?: number;
   usage?: LanguageModelUsage;
   modelId?: ModelId;
 };
 
 const ContextContext = createContext<ContextSchema | null>(null);
+
+function resolveUsagePercent(usedTokens: number, maxTokens?: number): number {
+  if (typeof maxTokens !== "number" || !Number.isFinite(maxTokens) || maxTokens <= 0) {
+    return 0;
+  }
+  const pct = usedTokens / maxTokens;
+  if (!Number.isFinite(pct)) return 0;
+  return Math.max(0, Math.min(1, pct));
+}
 
 const useContextValue = () => {
   const context = useContext(ContextContext);
@@ -64,7 +73,7 @@ const ContextIcon = ({ size = 16 }: { size?: number }) => {
   const strokeWidth = size * 0.12;
   const center = size / 2;
   const circumference = 2 * Math.PI * radius;
-  const usedPercent = usedTokens / maxTokens;
+  const usedPercent = resolveUsagePercent(usedTokens, maxTokens);
   const dashOffset = circumference * (1 - usedPercent);
 
   return (
@@ -108,8 +117,8 @@ export type ContextTriggerProps = ComponentProps<"button"> & {
 
 export const ContextTrigger = ({ children, iconOnly, className, ...props }: ContextTriggerProps) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
-  const renderedPercent = Math.round(usedPercent * 100);
+  const usedPercent = resolveUsagePercent(usedTokens, maxTokens);
+  const renderedPercent = typeof maxTokens === "number" && maxTokens > 0 ? `${Math.round(usedPercent * 100)}%` : "—";
 
   return (
     <HoverCardTrigger asChild>
@@ -125,7 +134,7 @@ export const ContextTrigger = ({ children, iconOnly, className, ...props }: Cont
           {...props}
         >
           <ContextIcon size={14} />
-          {!iconOnly && <span>{renderedPercent}%</span>}
+          {!iconOnly && <span>{renderedPercent}</span>}
         </button>
       )}
     </HoverCardTrigger>
@@ -152,31 +161,36 @@ export const ContextContentHeader = ({
   ...props
 }: ContextContentHeaderProps) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
+  const usedPercent = resolveUsagePercent(usedTokens, maxTokens);
+  const hasContextWindow = typeof maxTokens === "number" && Number.isFinite(maxTokens) && maxTokens > 0;
   const displayPct = new Intl.NumberFormat("en-US", {
     style: "percent",
     maximumFractionDigits: 1,
-  }).format(usedPercent);
+  }).format(usedPercent || 0);
   const used = new Intl.NumberFormat("en-US", {
     notation: "compact",
   }).format(usedTokens);
-  const total = new Intl.NumberFormat("en-US", {
-    notation: "compact",
-  }).format(maxTokens);
+  const total = hasContextWindow
+    ? new Intl.NumberFormat("en-US", {
+        notation: "compact",
+      }).format(maxTokens)
+    : "—";
 
   return (
     <div className={cn("w-full space-y-2 p-3", className)} {...props}>
       {children ?? (
         <>
           <div className="flex items-center justify-between gap-3 text-xs">
-            <p>{displayPct}</p>
+            <p>{hasContextWindow ? displayPct : "Context limit unavailable"}</p>
             <p className="font-mono text-muted-foreground">
               {used} / {total}
             </p>
           </div>
-          <div className="space-y-2">
-            <Progress className="bg-muted" value={usedPercent * PERCENT_MAX} />
-          </div>
+          {hasContextWindow ? (
+            <div className="space-y-2">
+              <Progress className="bg-muted" value={usedPercent * PERCENT_MAX} />
+            </div>
+          ) : null}
         </>
       )}
     </div>

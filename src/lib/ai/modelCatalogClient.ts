@@ -9,6 +9,7 @@ export interface ModelApiModel {
   displayName: string
   provider: string
   tier: string
+  limit?: { context?: number; output?: number }
   capabilities?: RuntimeModelCapabilities
 }
 
@@ -59,6 +60,22 @@ export function clearModelCatalogCache(organizationId?: string): void {
       modelCatalogCache.delete(key)
     }
   }
+}
+
+export function getCachedModelContextWindow(modelId: string): number | undefined {
+  const normalizedModelId = modelId.trim()
+  if (!normalizedModelId) return undefined
+
+  for (const entry of modelCatalogCache.values()) {
+    if (!entry.data?.models?.length) continue
+    const model = entry.data.models.find((candidate) => candidate.id === normalizedModelId)
+    const contextLimit = model?.limit?.context
+    if (typeof contextLimit === 'number' && Number.isFinite(contextLimit) && contextLimit > 0) {
+      return Math.floor(contextLimit)
+    }
+  }
+
+  return undefined
 }
 
 export async function getModelCatalog(args: {

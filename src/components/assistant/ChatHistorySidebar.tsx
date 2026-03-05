@@ -88,11 +88,11 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
           applyWindowControlsInset && 'mt-9'
         )}
       >
-        <div className="titlebar-no-drag flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-muted-foreground">
             Chats
           </span>
-          <div className="flex items-center gap-1">
+          <div className="titlebar-no-drag flex items-center gap-1">
             <Button
               type="button"
               variant="ghost"
@@ -169,7 +169,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
                     <Check className="h-3.5 w-3.5 shrink-0" />
                   ) : null}
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {formatRelativeTime(conv.updatedAt)}
+                    {formatRelativeTime(conv.createdAt)}
                   </span>
                 </button>
               ))

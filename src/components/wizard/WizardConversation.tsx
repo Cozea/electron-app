@@ -462,6 +462,7 @@ export function WizardConversation({
             chefSlug: m.provider,
             tier: m.tier,
             providers: [m.provider],
+            limit: m.limit,
           }))
         const caps: Record<string, RuntimeModelCapabilities> = {}
         for (const m of data.models) {
@@ -1169,7 +1170,7 @@ export function WizardConversation({
                   </span>
                 )}
                 <Context
-                  maxTokens={getContextWindowSize(model)}
+                  maxTokens={selectedModelData?.limit?.context ?? getContextWindowSize(model)}
                   usedTokens={accumulatedUsage.usedTokens}
                   usage={accumulatedUsage.usage}
                   modelId={model}

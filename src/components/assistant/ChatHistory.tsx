@@ -157,7 +157,7 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                  {formatRelativeTime(conv.updatedAt)}
+                  {formatRelativeTime(conv.createdAt)}
                 </span>
               </div>
             ))
