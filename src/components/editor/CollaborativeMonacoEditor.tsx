@@ -304,7 +304,7 @@ export function CollaborativeMonacoEditor({
   const modelPath = monaco.Uri.file(path).toString()
 
   return (
-    <div className="relative h-full overflow-hidden bg-sidebar">
+    <div className="relative h-full overflow-hidden bg-content-surface">
       <Editor
         height="100%"
         language={model.language}

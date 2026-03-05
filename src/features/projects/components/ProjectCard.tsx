@@ -29,6 +29,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
+import { buildProjectPath } from '../lib/projectRoutes'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary {
@@ -248,7 +249,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                     return
                 }
 
-                navigate(`/projects/${project.slug}`, {
+                navigate(buildProjectPath(String(project._id)), {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
@@ -458,7 +459,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                                 </DropdownMenuItem>
                                     <DropdownMenuItem onClick={(e) => {
                                         e.stopPropagation()
-                                        navigate(`/projects/${project.slug}/settings`)
+                                        navigate(buildProjectPath(String(project._id), 'settings'))
                                     }}>
                                         Settings
                                     </DropdownMenuItem>

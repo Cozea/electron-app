@@ -57,6 +57,13 @@ function isScopedModelId(modelId: string): boolean {
   return separatorIndex > 0 && separatorIndex < trimmed.length - 1
 }
 
+function buildUniqueRequestId(messageId?: string): string {
+  const base = typeof messageId === 'string' && messageId.trim().length > 0
+    ? messageId.trim()
+    : 'chat'
+  return `${base}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function useAiChatTransport({
   accessToken,
   organizationId,
@@ -280,7 +287,7 @@ export function useAiChatTransport({
         const nextBody = {
           ...requestBody,
           messages: dedupedMessages,
-          ...(messageId ? { requestId: messageId } : {}),
+          requestId: buildUniqueRequestId(messageId),
         }
 
         return { api, body: nextBody }

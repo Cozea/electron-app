@@ -17,7 +17,7 @@ import {
   type MouseEvent,
 } from 'react'
 import { Virtuoso } from 'react-virtuoso'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useFileExplorer } from '@/hooks/useFileExplorer'
 import { ExplorerItem } from '@/lib/fileExplorer/explorerModel'
 import { buildVisibleTreeRows, type VisibleTreeRow } from '@/lib/fileExplorer/visibleRows'
@@ -29,6 +29,7 @@ import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import { Input } from '@/components/ui/input'
 import { getFileIcon, getFolderIcon } from '@/lib/fileExplorer/fileIcons'
 import { useFileTreeExternalSync } from '../hooks/useFileTreeExternalSync'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -61,7 +62,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   { isVisible = true, scrollParent = null },
   ref
 ) {
-  const { slug } = useParams<{ slug: string }>()
+  const { project, slugParam, projectIdParam } = useAccessibleProject()
   const [searchParams, setSearchParams] = useSearchParams()
   const syncContext = useOptionalProjectSyncContext()
   const [lastSelectedItem, setLastSelectedItem] = useState<ExplorerItem | null>(null)
@@ -103,6 +104,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   })
 
   const rootPath = syncContext?.projectPath ?? null
+  const projectTabsKey = project?.slug ?? slugParam ?? projectIdParam ?? ''
   const inlineCreateTarget = createTarget?.resource ?? null
   const isVirtualRenderer = rendererMode === 'virtual'
 
@@ -733,7 +735,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   // When opening a file (from URL or elsewhere), expand ancestor folders and ensure it's selected
   const activeFileFromStore = useFileTabsStore((state) =>
-    slug ? state.projectTabs[slug]?.activeFile ?? null : null
+    projectTabsKey ? state.projectTabs[projectTabsKey]?.activeFile ?? null : null
   )
   const selectedPathFromUrl = searchParams.get('path')
   // Use active tab from store when available so tree stays in sync when switching tabs

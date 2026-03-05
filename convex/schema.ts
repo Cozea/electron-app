@@ -1062,6 +1062,29 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
+  // Project join links for personal-project collaboration sharing
+  projectJoinLinks: defineTable({
+    projectId: v.id("projects"),
+    token: v.string(),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.id("users")),
+    useCount: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_token", ["token"])
+    .index("by_project_and_status", ["projectId", "status"]),
+
   // Project teams - groups of users with shared access to projects
   projectTeams: defineTable({
     organizationId: v.id("organizations"),

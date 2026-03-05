@@ -1,4 +1,4 @@
-import { Bot, CreditCard, HardDrive, Palette, Terminal, UserCircle2 } from 'lucide-react'
+import { Bot, ChevronLeft, CreditCard, HardDrive, Palette, Terminal, UserCircle2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -59,6 +59,7 @@ export function SettingsDrawer() {
   const route = useSettingsDrawerStore((state) => state.route)
   const close = useSettingsDrawerStore((state) => state.close)
   const setSection = useSettingsDrawerStore((state) => state.setSection)
+  const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const [showSidebarTopFade, setShowSidebarTopFade] = useState(false)
@@ -125,51 +126,69 @@ export function SettingsDrawer() {
     <Sheet open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-none flex-col gap-0 p-0 sm:max-w-[960px] lg:max-w-[1100px]"
-        closeClassName="absolute top-3 right-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground/14 text-foreground opacity-100 hover:bg-foreground/20"
+        className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
+        closeClassName="hidden"
       >
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="relative w-56 shrink-0 bdry-r bdry-sidebar bg-sidebar text-sidebar-foreground sidebar-fade-border">
-            <div ref={sidebarScrollRef} className="h-full overflow-y-auto px-2 py-3">
-              <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">Settings</div>
-              <div className="space-y-1">
-                {SETTINGS_DRAWER_ITEMS.map((item) => {
-                  const Icon = item.icon
-                  const isActive = section === item.section
+          <aside className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar [--sidebar:var(--main-nav-sidebar-surface)] bg-sidebar text-sidebar-foreground">
+            <div className="relative min-h-0 flex-1">
+              <div
+                ref={sidebarScrollRef}
+                className={cn(
+                  'h-full overflow-y-auto scrollbar-hide px-2 py-3',
+                  isMacClient && 'pt-9'
+                )}
+              >
+                <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">Settings</div>
+                <div className="space-y-1">
+                  {SETTINGS_DRAWER_ITEMS.map((item) => {
+                    const Icon = item.icon
+                    const isActive = section === item.section
 
-                  return (
-                    <button
-                      key={item.section}
-                      type="button"
-                      data-active={isActive}
-                      onClick={() => setSection(item.section)}
-                      className={cn(
-                        'flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-foreground/10 hover:text-sidebar-foreground focus-visible:ring-2 active:bg-foreground/14 active:text-sidebar-foreground data-[active=true]:bg-foreground/14 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
-                      )}
-                    >
-                      <Icon className="opacity-60" />
-                      <span>{item.label}</span>
-                    </button>
-                  )
-                })}
+                    return (
+                      <button
+                        key={item.section}
+                        type="button"
+                        data-active={isActive}
+                        onClick={() => setSection(item.section)}
+                        className={cn(
+                          'flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-foreground/10 hover:text-sidebar-foreground focus-visible:ring-2 active:bg-foreground/14 active:text-sidebar-foreground data-[active=true]:bg-foreground/14 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
+                        )}
+                      >
+                        <Icon className="opacity-60" />
+                        <span>{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+              <div
+                className={cn(
+                  'pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-sidebar to-transparent transition-opacity duration-150',
+                  showSidebarTopFade ? 'opacity-100' : 'opacity-0'
+                )}
+              />
+              <div
+                className={cn(
+                  'pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-150',
+                  showSidebarBottomFade ? 'opacity-100' : 'opacity-0'
+                )}
+              />
             </div>
-            <div
-              className={cn(
-                'pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-sidebar to-transparent transition-opacity duration-150',
-                showSidebarTopFade ? 'opacity-100' : 'opacity-0'
-              )}
-            />
-            <div
-              className={cn(
-                'pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-150',
-                showSidebarBottomFade ? 'opacity-100' : 'opacity-0'
-              )}
-            />
+            <div className="mt-auto p-2 pb-3">
+              <button
+                type="button"
+                onClick={close}
+                className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-foreground/10 hover:text-sidebar-foreground"
+              >
+                <ChevronLeft className="h-4 w-4 opacity-60" />
+                <span>Back</span>
+              </button>
+            </div>
           </aside>
 
           <div className="relative min-w-0 flex-1">
-            <div ref={contentScrollRef} className="h-full overflow-y-auto">
+            <div ref={contentScrollRef} className="h-full overflow-y-auto scrollbar-hide">
               <SettingsDrawerBody section={section} route={route} />
             </div>
             <div

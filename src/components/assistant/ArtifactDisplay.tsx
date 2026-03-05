@@ -118,7 +118,11 @@ export function ArtifactDisplay({
         onClose={onClose}
         className={className}
       >
-        <CodeBlock code={content} language={language ?? "text"} />
+        <CodeBlock
+          code={content}
+          language={language ?? "text"}
+          className="[--codeblock-surface:var(--tool-surface)] [--codeblock-foreground:var(--tool-surface-foreground)] border-0 rounded-none"
+        />
       </CodeArtifact>
     );
   }

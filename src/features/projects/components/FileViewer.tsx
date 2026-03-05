@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import * as monaco from 'monaco-editor'
 import { MonacoEditor } from '@/components/editor/MonacoEditor'
 import { EditorBreadcrumb } from '@/components/editor/EditorBreadcrumb'
@@ -14,13 +14,14 @@ import {
   EmptyDescription,
 } from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 
 interface FileViewerProps {
   path: string
 }
 
 export function FileViewer({ path }: FileViewerProps) {
-  const { slug } = useParams<{ slug: string }>()
+  const { project, slugParam } = useAccessibleProject()
   const [searchParams] = useSearchParams()
   const editorActions = useEditorStore((state) => state.actions)
   const model = useEditorStore((state) => state.models[path])
@@ -36,6 +37,7 @@ export function FileViewer({ path }: FileViewerProps) {
   const [reloadToken, setReloadToken] = useState(0)
   const loadRequestIdRef = useRef(0)
   const displayModel = useEditorStore((state) => state.models[displayPath])
+  const projectSlug = project?.slug ?? slugParam ?? null
 
   // Callback when editor is ready
   const handleEditorReady = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
@@ -63,13 +65,13 @@ export function FileViewer({ path }: FileViewerProps) {
     const getProjectPath = async () => {
       const localPath =
         syncContext?.projectPath ??
-        (slug ? await window.electronAPI.project.getLocalPath(slug) : null)
+        (projectSlug ? await window.electronAPI.project.getLocalPath(projectSlug) : null)
       if (localPath) {
         setProjectPath(localPath)
       }
     }
     getProjectPath()
-  }, [syncContext?.projectPath, slug])
+  }, [projectSlug, syncContext?.projectPath])
 
   // Load file content when path changes and model doesn't exist
   useEffect(() => {
@@ -89,7 +91,7 @@ export function FileViewer({ path }: FileViewerProps) {
 
         const localPath =
           syncContext?.projectPath ??
-          (slug ? await window.electronAPI.project.getLocalPath(slug) : null)
+          (projectSlug ? await window.electronAPI.project.getLocalPath(projectSlug) : null)
         if (!localPath) {
           if (requestId === loadRequestIdRef.current) {
             setError('Project folder not found')
@@ -158,7 +160,7 @@ export function FileViewer({ path }: FileViewerProps) {
         loadRequestIdRef.current += 1
       }
     }
-  }, [path, syncContext?.projectPath, slug, model, editorActions, reloadToken])
+  }, [path, projectSlug, syncContext?.projectPath, model, editorActions, reloadToken])
 
   const handleRetry = () => {
     setError(null)

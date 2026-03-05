@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { AppSidebar } from "@/components/app-sidebar"
-import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import {
   SidebarInset,
   SidebarProvider,
@@ -99,6 +98,7 @@ function DashboardLayoutContent({
   const navigate = useNavigate()
   const location = useLocation()
   const { state } = useSidebar()
+  const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const [isFullScreen, setIsFullScreen] = useState(false)
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
@@ -111,6 +111,11 @@ function DashboardLayoutContent({
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
   const areAllSidebarsCollapsed = state === "collapsed"
+
+  useEffect(() => {
+    // Assistant panel is project-scoped and should never be visible in dashboard layout routes.
+    closeAssistantPanel()
+  }, [closeAssistantPanel])
 
   useEffect(() => {
     if (!isSettingsWindow || !isMacClient) return
@@ -244,7 +249,6 @@ function DashboardLayoutContent({
             )}
           </div>
         </SidebarInset>
-        <AssistantPanel />
       </div>
     </div>
   )

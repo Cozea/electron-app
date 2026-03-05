@@ -143,7 +143,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
 
     // Fallback to regular editor when not in collaborative mode
     return (
-        <div className="relative h-full overflow-hidden bg-sidebar">
+        <div className="relative h-full overflow-hidden bg-content-surface">
             <Editor
                 height="100%"
                 language={model.language}

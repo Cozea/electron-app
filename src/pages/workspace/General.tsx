@@ -356,7 +356,7 @@ export function General() {
         <div className="relative hidden xl:block min-w-0 flex-1 pl-6">
           <div className="absolute left-0 top-3 bottom-3 w-px bg-gradient-to-b from-transparent via-border/80 to-transparent" />
           <div
-            className="h-full min-h-[560px] rounded-2xl bg-sidebar/35"
+            className="h-full min-h-[560px] rounded-2xl bg-content-surface"
             style={{
               backgroundImage:
                 'radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--muted-foreground) 38%, transparent) 1.15px, transparent 0)',

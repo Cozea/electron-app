@@ -1,6 +1,8 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
+const PERSONAL_WORKSPACE_PREFIX = "personal:"
+
 // ============================================
 // INVITE QUERIES
 // ============================================
@@ -71,6 +73,78 @@ export const listForEmail = query({
         }
       })
     )
+  },
+})
+
+export const listIncomingForUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId)
+    if (!user) return []
+
+    const email = user.email.trim().toLowerCase()
+    if (!email) return []
+
+    const invites = await ctx.db
+      .query("projectInvites")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect()
+
+    const enriched = await Promise.all(
+      invites.map(async (invite) => {
+        const project = await ctx.db.get(invite.projectId)
+        if (!project || project.status === "deleted") return null
+
+        const ownerWorkspace = await ctx.db.get(project.organizationId)
+        if (
+          !ownerWorkspace ||
+          !ownerWorkspace.workosId ||
+          !ownerWorkspace.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+        ) {
+          return null
+        }
+
+        const inviter = await ctx.db.get(invite.invitedBy)
+        const ownerUser = await ctx.db.get(project.createdBy)
+
+        return {
+          ...invite,
+          project: {
+            id: project._id,
+            name: project.name,
+            slug: project.slug,
+            organizationId: project.organizationId,
+          },
+          ownerWorkspace: {
+            organizationId: ownerWorkspace._id,
+            workosId: ownerWorkspace.workosId,
+            name: ownerWorkspace.name,
+          },
+          ownerUser: ownerUser
+            ? {
+                id: ownerUser._id,
+                email: ownerUser.email,
+                firstName: ownerUser.firstName,
+                lastName: ownerUser.lastName,
+                profileImageUrl: ownerUser.profileImageUrl,
+              }
+            : null,
+          inviter: inviter
+            ? {
+                id: inviter._id,
+                email: inviter.email,
+                firstName: inviter.firstName,
+                lastName: inviter.lastName,
+              }
+            : null,
+        }
+      })
+    )
+
+    return enriched
+      .filter((item): item is Exclude<(typeof enriched)[number], null> => item !== null)
+      .sort((a, b) => b.invitedAt - a.invitedAt)
   },
 })
 

@@ -38,6 +38,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
+import { buildProjectPath } from '../lib/projectRoutes'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -259,7 +260,7 @@ export function ProjectListRow({
                     return
                 }
 
-                navigate(`/projects/${project.slug}`, {
+                navigate(buildProjectPath(String(project._id)), {
                     state: {
                         projectSlug: project.slug,
                         projectName: project.name,
@@ -385,7 +386,7 @@ export function ProjectListRow({
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
-                                navigate(`/projects/${project.slug}/settings`)
+                                navigate(buildProjectPath(String(project._id), 'settings'))
                             }}>
                                 Settings
                             </DropdownMenuItem>

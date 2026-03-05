@@ -28,7 +28,7 @@ export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = fals
 
   return (
     <div
-      className="h-9 w-full flex items-center fixed top-0 left-0 right-0 z-50 bg-sidebar px-3 text-sidebar-foreground titlebar-drag-region bdry-b bdry-sidebar"
+      className="h-9 w-full flex items-center fixed top-0 left-0 right-0 z-50 bg-content-surface px-3 text-sidebar-foreground titlebar-drag-region bdry-b bdry-sidebar"
     >
       {/* Traffic lights take ~70px on the left on macOS, but not in fullscreen */}
       <div

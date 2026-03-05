@@ -1,8 +1,4 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -36,11 +32,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 
 
 export function ProjectDependenciesPage() {
-  const { slug } = useParams<{ slug: string }>()
-  const { currentOrganization } = useAuth()
+  const { project } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const [filter, setFilter] = useState<'all' | 'dependencies' | 'devDependencies'>('all')
@@ -56,18 +52,6 @@ export function ProjectDependenciesPage() {
   const dependencies = useMemo(() => snapshot?.items ?? [], [snapshot?.items])
   const error = snapshot?.error ?? null
   const runningJobs = jobs.filter((job) => job.status === 'running')
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
 
   const sortedDeps = useMemo(() => {
     return [...dependencies].sort((a, b) => a.name.localeCompare(b.name))
@@ -243,7 +227,7 @@ export function ProjectDependenciesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--sidebar)]">
+    <div className="flex flex-col h-full bg-content-surface">
       {/* Scrollable Content */}
       <div className="app-scrollbar flex-1 overflow-auto min-h-0">
         <div className="px-6 pt-2 pb-4 space-y-2">

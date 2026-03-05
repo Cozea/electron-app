@@ -1020,8 +1020,8 @@ export function VisualEditorSidebar({
   return (
     <div
       className={cn(
-        'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative sidebar-fade-border',
-        inspectorSide === 'left' ? 'sidebar-fade-border-right' : 'sidebar-fade-border-left',
+        'flex flex-col bg-background text-sidebar-foreground overflow-hidden relative',
+        inspectorSide === 'right' && 'sidebar-fade-border sidebar-fade-border-left',
         className
       )}
       style={{

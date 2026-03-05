@@ -335,7 +335,7 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
         message: rawMessage,
       })
     }
-    if (message.includes('wallet_insufficient_funds') || message.includes('insufficient ai wallet')) {
+    if (message.includes('wallet_insufficient_funds')) {
       return normalizeBillingError({
         error: 'wallet_insufficient_funds',
         code: 'WALLET_INSUFFICIENT_FUNDS',

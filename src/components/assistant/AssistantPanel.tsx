@@ -48,7 +48,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const openHistory = useAssistantPanelStore((state) => state.openHistory)
   const closeHistory = useAssistantPanelStore((state) => state.closeHistory)
 
-  const { currentOrganization } = useAuth()
+  const { user, currentOrganization } = useAuth()
   const isOpen = mode !== 'closed'
   const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
   const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
@@ -56,6 +56,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
 
   const [hasMountedConversation, setHasMountedConversation] = useState(isOpen)
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -67,22 +68,28 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const shouldResolveProjectForHistory = Boolean(
     !projectId &&
     (isOpen || isHistoryOpen) &&
-    currentOrganization?.organizationId &&
+    user?.id &&
     projectSlug
   )
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    shouldResolveProjectForHistory && currentOrganization?.organizationId
-      ? { workosId: currentOrganization.organizationId }
+  const convexUser = useQuery(
+    api.users.getByWorkosId,
+    shouldResolveProjectForHistory && user?.id
+      ? { workosId: user.id }
       : 'skip'
   )
-  const project = useQuery(
-    api.projects.getBySlug,
-    shouldResolveProjectForHistory && convexOrg?._id && projectSlug
-      ? { organizationId: convexOrg._id, slug: projectSlug }
+  const projectResolution = useQuery(
+    api.projects.getAccessibleBySlug,
+    shouldResolveProjectForHistory && convexUser?._id && projectSlug
+      ? {
+          slug: projectSlug,
+          userId: convexUser._id,
+          preferredOrganizationId: currentOrganization?.convexOrgId as Id<'organizations'> | undefined,
+        }
       : 'skip'
   )
-  const resolvedProjectId = projectId ?? project?._id ?? null
+  const resolvedProjectId =
+    projectId ??
+    (projectResolution?.status === 'ok' ? projectResolution.project._id : null)
 
   const [isDragging, setIsDragging] = useState(false)
   const dragStartX = useRef(0)
@@ -123,7 +130,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   return (
     <div
       className={cn(
-        'flex flex-col bg-[var(--assistant-surface)] overflow-hidden relative sidebar-fade-border sidebar-fade-border-left [--assistant-surface:var(--background)]',
+        'h-full flex flex-col bg-[var(--assistant-surface)] overflow-hidden relative border-l border-border [--assistant-surface:var(--content-surface)]',
         'relative',
         !isDragging && 'transition-[width,flex-grow,flex-shrink,min-width] duration-300 ease-in-out',
         className
@@ -185,7 +192,17 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
                 <Maximize2 className="h-4 w-4" />
               )}
             </Button>
-            <DropdownMenu>
+            <DropdownMenu
+              open={isActionsMenuOpen}
+              onOpenChange={(nextOpen) => {
+                if (nextOpen && isHistoryOpen) {
+                  closeHistory()
+                  setIsActionsMenuOpen(false)
+                  return
+                }
+                setIsActionsMenuOpen(nextOpen)
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
@@ -199,8 +216,8 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
+                  onSelect={() => {
+                    setIsActionsMenuOpen(false)
                     requestClearChat()
                   }}
                 >
@@ -208,8 +225,8 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
                   <span>New Chat</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
+                  onSelect={() => {
+                    setIsActionsMenuOpen(false)
                     openHistory()
                   }}
                 >
@@ -239,6 +256,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
                 <AIConversation
                   className="w-full h-full"
                   projectPath={projectPath}
+                  projectId={resolvedProjectId}
                   projectName={projectName}
                   projectSlug={projectSlug}
                 />

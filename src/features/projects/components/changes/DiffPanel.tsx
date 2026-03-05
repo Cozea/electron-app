@@ -4,12 +4,11 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+import { cn } from '@/lib/utils'
 import { X, Bold, Italic, Underline, Link2, Smile, Minus, Plus, Asterisk } from 'lucide-react'
 import { CodeMirrorMergeViewer } from './CodeMirrorMergeViewer'
-import { CommentRichText } from '@/components/comments/CommentRichText'
 
 interface DiffPanelProps {
   changeId: Id<"fileChanges"> | null
@@ -112,15 +111,83 @@ function getRelativePath(filePath: string): string {
   return parts.slice(startIndex).join('/') || filePath
 }
 
+function convertEditorNodeToMarkdown(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent ?? ""
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return ""
+  }
+
+  const element = node as HTMLElement
+  const tagName = element.tagName.toLowerCase()
+  const childrenText = Array.from(element.childNodes)
+    .map((childNode) => convertEditorNodeToMarkdown(childNode))
+    .join("")
+
+  switch (tagName) {
+    case "strong":
+    case "b":
+      return childrenText.length > 0 ? `**${childrenText}**` : ""
+    case "em":
+    case "i":
+      return childrenText.length > 0 ? `*${childrenText}*` : ""
+    case "u":
+      return childrenText.length > 0 ? `<u>${childrenText}</u>` : ""
+    case "a": {
+      const rawHref = element.getAttribute("href")?.trim()
+      const label = childrenText.trim().length > 0 ? childrenText : rawHref ?? ""
+      if (!rawHref) return label
+      return `[${label}](${rawHref})`
+    }
+    case "br":
+      return "\n"
+    case "div":
+    case "p":
+    case "li":
+      return `${childrenText}\n`
+    default:
+      return childrenText
+  }
+}
+
+function getMarkdownFromEditor(editor: HTMLElement | null): string {
+  if (!editor) return ""
+
+  const markdown = Array.from(editor.childNodes)
+    .map((childNode) => convertEditorNodeToMarkdown(childNode))
+    .join("")
+
+  return markdown
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+interface ComposerFormatState {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  link: boolean
+}
+
 export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelProps) {
   const { convexUserId } = useAuth()
   const [commentText, setCommentText] = useState('')
-  const [composerMode, setComposerMode] = useState<'write' | 'preview'>('write')
+  const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
   const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const [activeFormats, setActiveFormats] = useState<ComposerFormatState>({
+    bold: false,
+    italic: false,
+    underline: false,
+    link: false,
+  })
+  const composerEditorRef = useRef<HTMLDivElement | null>(null)
   const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowTopFade(!atTop)
     setShowBottomFade(!atBottom)
@@ -133,7 +200,16 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
   useEffect(() => {
     setCommentText('')
-    setComposerMode('write')
+    setIsComposerFocused(false)
+    setActiveFormats({
+      bold: false,
+      italic: false,
+      underline: false,
+      link: false,
+    })
+    if (composerEditorRef.current) {
+      composerEditorRef.current.innerHTML = ''
+    }
   }, [changeId])
 
   const change = useQuery(
@@ -162,16 +238,21 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   }, [change, changeId])
 
   const handleSubmitComment = async () => {
-    if (!commentText.trim() || !changeId || !convexUserId) return
+    const serializedComment = getMarkdownFromEditor(composerEditorRef.current)
+    if (!serializedComment.trim() || !changeId || !convexUserId) return
 
     setIsSubmitting(true)
     try {
       await addComment({
         changeId,
         userId: convexUserId,
-        content: commentText.trim(),
+        content: serializedComment.trim(),
       })
       setCommentText('')
+      setIsComposerFocused(false)
+      if (composerEditorRef.current) {
+        composerEditorRef.current.innerHTML = ''
+      }
     } catch (error) {
       console.error('Failed to add comment:', error)
     } finally {
@@ -179,84 +260,165 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const syncCommentTextFromEditor = useCallback(() => {
+    setCommentText(getMarkdownFromEditor(composerEditorRef.current))
+  }, [])
+
+  const syncActiveFormats = useCallback(() => {
+    const editor = composerEditorRef.current
+    const selection = window.getSelection()
+    if (!editor || !selection || selection.rangeCount === 0) {
+      setActiveFormats({
+        bold: false,
+        italic: false,
+        underline: false,
+        link: false,
+      })
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const startNode = range.startContainer
+    const endNode = range.endContainer
+    const isSelectionInsideEditor =
+      (startNode === editor || editor.contains(startNode)) &&
+      (endNode === editor || editor.contains(endNode))
+
+    if (!isSelectionInsideEditor) {
+      setActiveFormats({
+        bold: false,
+        italic: false,
+        underline: false,
+        link: false,
+      })
+      return
+    }
+
+    const selectionElement =
+      startNode.nodeType === Node.ELEMENT_NODE
+        ? (startNode as Element)
+        : startNode.parentElement
+
+    const readCommandState = (command: 'bold' | 'italic' | 'underline') => {
+      try {
+        return document.queryCommandState(command)
+      } catch {
+        return false
+      }
+    }
+
+    const nextState: ComposerFormatState = {
+      bold: readCommandState('bold'),
+      italic: readCommandState('italic'),
+      underline: readCommandState('underline'),
+      link: Boolean(selectionElement?.closest('a')),
+    }
+
+    setActiveFormats((current) => {
+      if (
+        current.bold === nextState.bold &&
+        current.italic === nextState.italic &&
+        current.underline === nextState.underline &&
+        current.link === nextState.link
+      ) {
+        return current
+      }
+      return nextState
+    })
+  }, [])
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      syncActiveFormats()
+    }
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange)
+    }
+  }, [syncActiveFormats])
+
+  const focusComposerEditor = useCallback(() => {
+    const editor = composerEditorRef.current
+    if (!editor) return null
+    editor.focus()
+    return editor
+  }, [])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
-      handleSubmitComment()
+      void handleSubmitComment()
     }
   }
 
-  const applyWrapFormatting = useCallback(
-    (prefix: string, suffix: string) => {
-      const textarea = composerTextareaRef.current
-      if (!textarea) return
+  const applyInlineFormatting = useCallback(
+    (command: 'bold' | 'italic' | 'underline') => {
+      const editor = focusComposerEditor()
+      if (!editor) return
 
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selected = commentText.slice(start, end)
-
-      const nextText =
-        commentText.slice(0, start) +
-        prefix +
-        selected +
-        suffix +
-        commentText.slice(end)
-
-      setCommentText(nextText)
-
-      window.requestAnimationFrame(() => {
-        textarea.focus()
-        if (selected.length > 0) {
-          textarea.setSelectionRange(start + prefix.length, end + prefix.length)
-          return
-        }
-        const cursor = start + prefix.length
-        textarea.setSelectionRange(cursor, cursor)
-      })
+      document.execCommand(command)
+      setCommentText(getMarkdownFromEditor(editor))
+      syncActiveFormats()
     },
-    [commentText]
+    [focusComposerEditor, syncActiveFormats]
   )
 
   const insertTextAtCursor = useCallback(
     (text: string) => {
-      const textarea = composerTextareaRef.current
-      if (!textarea) return
+      const editor = focusComposerEditor()
+      if (!editor) return
 
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const nextText = commentText.slice(0, start) + text + commentText.slice(end)
-      setCommentText(nextText)
+      const inserted = document.execCommand('insertText', false, text)
+      if (!inserted) {
+        const selection = window.getSelection()
+        if (!selection || selection.rangeCount === 0) return
 
-      window.requestAnimationFrame(() => {
-        textarea.focus()
-        const cursor = start + text.length
-        textarea.setSelectionRange(cursor, cursor)
-      })
+        const range = selection.getRangeAt(0)
+        range.deleteContents()
+        const textNode = document.createTextNode(text)
+        range.insertNode(textNode)
+        range.setStartAfter(textNode)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+
+      setCommentText(getMarkdownFromEditor(editor))
+      syncActiveFormats()
     },
-    [commentText]
+    [focusComposerEditor, syncActiveFormats]
   )
 
   const handleLinkInsert = useCallback(() => {
-    const textarea = composerTextareaRef.current
-    if (!textarea) return
+    const editor = focusComposerEditor()
+    if (!editor) return
 
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selected = commentText.slice(start, end).trim() || 'link'
     const rawUrl = window.prompt('Enter link URL')
     if (!rawUrl) return
+
     const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+    const escapedUrl = normalizedUrl.replace(/"/g, '&quot;')
+    const selection = window.getSelection()
+    const hasSelectedText = Boolean(
+      selection &&
+        selection.rangeCount > 0 &&
+        !selection.getRangeAt(0).collapsed &&
+        selection.toString().trim().length > 0
+    )
 
-    const linkText = `[${selected}](${normalizedUrl})`
-    const nextText = commentText.slice(0, start) + linkText + commentText.slice(end)
-    setCommentText(nextText)
+    if (hasSelectedText) {
+      document.execCommand('createLink', false, normalizedUrl)
+    } else {
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<a href="${escapedUrl}" target="_blank" rel="noreferrer noopener">${normalizedUrl}</a>`
+      )
+    }
 
-    window.requestAnimationFrame(() => {
-      textarea.focus()
-      const cursor = start + linkText.length
-      textarea.setSelectionRange(cursor, cursor)
-    })
-  }, [commentText])
+    setCommentText(getMarkdownFromEditor(editor))
+    syncActiveFormats()
+  }, [focusComposerEditor, syncActiveFormats])
 
   if (!changeId) return null
 
@@ -281,9 +443,9 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   const isComposerLocked = isSubmitting || isSwitchingDiff
 
   return (
-    <div className="relative flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full bg-background [--cm-merge-gutter-bg:var(--background)]">
       {showHeader && (
-        <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
+        <div className="flex items-center gap-3 px-4 h-12 bg-background">
           {/* File info - flexible */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {getChangeIcon(displayedChange.changeType)}
@@ -322,9 +484,9 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       {/* Diff Content */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
         {/* Top fade gradient */}
-        <div className={`absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showTopFade ? 'opacity-100' : 'opacity-0'}`} />
+        <div className={`absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity ${showTopFade ? 'opacity-100' : 'opacity-0'}`} />
         {/* Bottom fade gradient */}
-        <div className={`absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-sidebar to-transparent z-10 pointer-events-none transition-opacity ${showBottomFade ? 'opacity-100' : 'opacity-0'}`} />
+        <div className={`absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none transition-opacity ${showBottomFade ? 'opacity-100' : 'opacity-0'}`} />
         {displayedChange.oldContent === '' && displayedChange.newContent === '' ? (
           <div className="flex items-center justify-center h-full text-center text-muted-foreground py-8">
             <div>
@@ -344,62 +506,35 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
       </div>
 
       {/* Comment Input */}
-      <div className="p-4 bg-sidebar">
-        <div className="rounded-xl border border-primary/30 bg-background overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-2 py-1.5">
-            <div className="inline-flex items-center rounded-md bg-muted p-0.5">
-              <button
-                type="button"
-                onClick={() => setComposerMode('write')}
-                className={`rounded-sm px-2 py-1 text-xs transition-colors ${
-                  composerMode === 'write'
-                    ? 'bg-background text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Write
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerMode('preview')}
-                className={`rounded-sm px-2 py-1 text-xs transition-colors ${
-                  composerMode === 'preview'
-                    ? 'bg-background text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Preview
-              </button>
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              {composerMode === 'preview' ? 'Rendered preview' : 'Markdown supported'}
-            </span>
-          </div>
-
+      <div className="p-4 bg-background">
+        <div className="rounded-xl bg-secondary overflow-hidden">
           {/* Text Input */}
-          <div className="min-h-[96px]">
-            {composerMode === 'write' ? (
-              <Textarea
-                ref={composerTextareaRef}
-                placeholder="Add comment"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="min-h-[96px] resize-none border-0 bg-transparent text-sm focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none"
-                disabled={isComposerLocked}
-              />
-            ) : (
-              <div className="min-h-[96px] px-3 py-2">
-                {commentText.trim().length > 0 ? (
-                  <CommentRichText
-                    content={commentText}
-                    className="text-sm text-foreground"
-                  />
-                ) : (
-                  <span className="text-sm text-muted-foreground">Nothing to preview yet.</span>
-                )}
-              </div>
+          <div className="relative min-h-[96px] px-3 py-2">
+            {!commentText.trim() && !isComposerFocused && (
+              <span className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">
+                Add comment
+              </span>
             )}
+            <div
+              ref={composerEditorRef}
+              contentEditable={!isComposerLocked}
+              suppressContentEditableWarning
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Add comment"
+              onInput={syncCommentTextFromEditor}
+              onFocus={() => {
+                setIsComposerFocused(true)
+                syncActiveFormats()
+              }}
+              onBlur={() => {
+                setIsComposerFocused(false)
+                syncCommentTextFromEditor()
+                syncActiveFormats()
+              }}
+              onKeyDown={handleKeyDown}
+              className="min-h-[96px] whitespace-pre-wrap break-words text-sm text-foreground outline-none"
+            />
           </div>
 
           {/* Toolbar */}
@@ -409,9 +544,12 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => applyWrapFormatting('**', '**')}
-                disabled={isComposerLocked || composerMode === 'preview'}
+                className={cn(
+                  "h-8 w-8 text-muted-foreground hover:text-foreground",
+                  activeFormats.bold && "bg-background text-foreground hover:bg-background"
+                )}
+                onClick={() => applyInlineFormatting('bold')}
+                disabled={isComposerLocked}
                 aria-label="Bold"
               >
                 <Bold className="h-4 w-4" />
@@ -419,9 +557,12 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => applyWrapFormatting('*', '*')}
-                disabled={isComposerLocked || composerMode === 'preview'}
+                className={cn(
+                  "h-8 w-8 text-muted-foreground hover:text-foreground",
+                  activeFormats.italic && "bg-background text-foreground hover:bg-background"
+                )}
+                onClick={() => applyInlineFormatting('italic')}
+                disabled={isComposerLocked}
                 aria-label="Italic"
               >
                 <Italic className="h-4 w-4" />
@@ -429,9 +570,12 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => applyWrapFormatting('<u>', '</u>')}
-                disabled={isComposerLocked || composerMode === 'preview'}
+                className={cn(
+                  "h-8 w-8 text-muted-foreground hover:text-foreground",
+                  activeFormats.underline && "bg-background text-foreground hover:bg-background"
+                )}
+                onClick={() => applyInlineFormatting('underline')}
+                disabled={isComposerLocked}
                 aria-label="Underline"
               >
                 <Underline className="h-4 w-4" />
@@ -444,9 +588,12 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                className={cn(
+                  "h-8 w-8 text-muted-foreground hover:text-foreground",
+                  activeFormats.link && "bg-background text-foreground hover:bg-background"
+                )}
                 onClick={handleLinkInsert}
-                disabled={isComposerLocked || composerMode === 'preview'}
+                disabled={isComposerLocked}
                 aria-label="Insert link"
               >
                 <Link2 className="h-4 w-4" />
@@ -456,7 +603,7 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => insertTextAtCursor('😄')}
-                disabled={isComposerLocked || composerMode === 'preview'}
+                disabled={isComposerLocked}
                 aria-label="Insert emoji"
               >
                 <Smile className="h-4 w-4" />

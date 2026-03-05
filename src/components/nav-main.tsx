@@ -95,7 +95,7 @@ export const NavMain = memo(function NavMain({
                 {item.icon && <item.icon className="opacity-60" />}
                 <span>{item.title}</span>
                 {item.alpha && (
-                  <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 font-normal">
+                  <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
                     alpha
                   </Badge>
                 )}

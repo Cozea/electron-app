@@ -13,6 +13,15 @@
 export type ModelTier = "fast" | "standard" | "powerful"
 export type Provider = "anthropic" | "openai" | "google"
 
+function normalizeModelId(modelId: string): string {
+  const trimmed = modelId.trim()
+  const separatorIndex = trimmed.indexOf("/")
+  if (separatorIndex > 0 && separatorIndex < trimmed.length - 1) {
+    return trimmed.slice(separatorIndex + 1)
+  }
+  return trimmed
+}
+
 export interface TierRates {
   inputCreditsPerK: number
   outputCreditsPerK: number
@@ -240,13 +249,14 @@ export type CreditPackType = keyof typeof CREDIT_PACKS
  * Get the model tier for a given model ID
  */
 export function getModelTier(modelId: string): ModelTier {
-  const model = MODEL_CATALOG[modelId]
+  const normalizedModelId = normalizeModelId(modelId)
+  const model = MODEL_CATALOG[normalizedModelId]
   if (model) {
     return model.tier
   }
 
   // Fallback: try to infer from model name patterns
-  const lowerModelId = modelId.toLowerCase()
+  const lowerModelId = normalizedModelId.toLowerCase()
 
   if (lowerModelId.includes("codex-mini")) {
     return "standard"
@@ -274,13 +284,14 @@ export function getModelTier(modelId: string): ModelTier {
  * Get the provider for a given model ID
  */
 export function getModelProvider(modelId: string): Provider {
-  const model = MODEL_CATALOG[modelId]
+  const normalizedModelId = normalizeModelId(modelId)
+  const model = MODEL_CATALOG[normalizedModelId]
   if (model) {
     return model.provider
   }
 
   // Fallback: infer from model name
-  const lowerModelId = modelId.toLowerCase()
+  const lowerModelId = normalizedModelId.toLowerCase()
 
   if (lowerModelId.includes("claude") || lowerModelId.includes("anthropic")) {
     return "anthropic"
@@ -302,8 +313,9 @@ export function getModelProvider(modelId: string): Provider {
  * Get the provider-specific model ID for API calls
  */
 export function getProviderModelId(modelId: string): string {
-  const model = MODEL_CATALOG[modelId]
-  return model?.providerModelId ?? modelId
+  const normalizedModelId = normalizeModelId(modelId)
+  const model = MODEL_CATALOG[normalizedModelId]
+  return model?.providerModelId ?? normalizedModelId
 }
 
 /**
@@ -319,7 +331,8 @@ export function calculateCredits(
   outputTokens: number,
   cachedInputTokens: number = 0
 ): number {
-  const rates = MODEL_CREDITS_PER_1K[modelId] ?? TIER_RATES[getModelTier(modelId)]
+  const normalizedModelId = normalizeModelId(modelId)
+  const rates = MODEL_CREDITS_PER_1K[normalizedModelId] ?? TIER_RATES[getModelTier(normalizedModelId)]
   const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens)
   const cachedRate = rates.cachedInputCreditsPerK ?? rates.inputCreditsPerK
 
@@ -372,8 +385,9 @@ export function calculateCreditsDetailed(
   tier: ModelTier
   rates: TierRates
 } {
-  const tier = getModelTier(modelId)
-  const rates = MODEL_CREDITS_PER_1K[modelId] ?? TIER_RATES[tier]
+  const normalizedModelId = normalizeModelId(modelId)
+  const tier = getModelTier(normalizedModelId)
+  const rates = MODEL_CREDITS_PER_1K[normalizedModelId] ?? TIER_RATES[tier]
   const billableInputTokens = Math.max(0, inputTokens - cachedInputTokens)
   const cachedRate = rates.cachedInputCreditsPerK ?? rates.inputCreditsPerK
 

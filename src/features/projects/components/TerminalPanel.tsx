@@ -129,14 +129,13 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     return (
         <div
             className={cn(
-                "flex flex-col border-t border-border w-full mt-auto relative",
+                "flex flex-col border-t border-border w-full mt-auto relative bg-content-surface",
                 isMaximized && "absolute inset-0 z-50",
                 !isPanelOpen && "hidden",
                 className
             )}
             style={{
                 height: actualHeight,
-                backgroundColor: "var(--terminal-panel-bg, var(--sidebar))",
             }}
         >
             {/* Resize Handle (only when not maximized) */}
@@ -191,7 +190,6 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                         // Empty state
                         <div
                             className="flex items-center justify-center h-full text-muted-foreground"
-                            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
                         >
                             <div className="text-center">
                                 <p className="text-sm">No terminal running</p>
@@ -223,7 +221,6 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                         // Fallback empty state
                         <div
                             className="flex items-center justify-center h-full text-muted-foreground"
-                            style={{ backgroundColor: "var(--terminal-panel-bg, var(--sidebar))" }}
                         >
                             <p className="text-sm">Select a terminal</p>
                         </div>

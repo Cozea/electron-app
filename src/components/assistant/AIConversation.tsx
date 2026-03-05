@@ -40,8 +40,6 @@ import {
   IconArrowUp,
   IconCheck,
   IconChevronDown,
-  IconHistory,
-  IconPaperclip,
   IconPlus,
   IconSquare,
   IconX,
@@ -120,6 +118,7 @@ import type { Id } from '../../../convex/_generated/dataModel'
 interface AIConversationProps {
   className?: string
   projectPath?: string | null
+  projectId?: Id<'projects'> | null
   projectName?: string | null
   projectSlug?: string | null
 }
@@ -251,7 +250,13 @@ function getMessageCreatedAt(message: UIMessage): number {
 
 type ChatHookResult = ReturnType<typeof useCozeaChat>
 
-export function AIConversation({ className, projectPath, projectName, projectSlug }: AIConversationProps) {
+export function AIConversation({
+  className,
+  projectPath,
+  projectId,
+  projectName,
+  projectSlug,
+}: AIConversationProps) {
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
   const assistantPanelWidth = useAssistantPanelStore((state) => state.panelWidth)
@@ -273,15 +278,19 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   // Context-based tool availability
   const hasProjectContext = !!projectPath
 
-  const project = useQuery(
-    api.projects.getBySlug,
-    currentOrganization?.convexOrgId && projectSlug
+  const projectBySlugResolution = useQuery(
+    api.projects.getAccessibleBySlug,
+    !projectId && projectSlug && convexUserId
       ? {
-        organizationId: currentOrganization.convexOrgId as Id<'organizations'>,
         slug: projectSlug,
+        userId: convexUserId,
+        preferredOrganizationId: currentOrganization?.convexOrgId as Id<'organizations'> | undefined,
       }
       : 'skip'
   )
+  const resolvedProjectId =
+    projectId ??
+    (projectBySlugResolution?.status === 'ok' ? projectBySlugResolution.project._id : null)
 
   const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
   const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
@@ -323,8 +332,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const conversationInitializedRef = useRef<string | null>(null)
   const isSavingRef = useRef(false)
-  const lastProjectSlugRef = useRef<string | null>(null)
+  const lastProjectScopeRef = useRef<string | null>(null)
   const previousStoredConversationIdRef = useRef(currentConversationId)
+
+  const projectScopeKey = resolvedProjectId ? String(resolvedProjectId) : (projectSlug ?? null)
 
   const transportConversationId = currentConversationId ?? ephemeralConversationId
 
@@ -671,7 +682,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     filePaths: string[],
     fn: () => Promise<T>
   ): Promise<T> => {
-    if (!project?._id) {
+    if (!resolvedProjectId) {
       throw new Error('Cannot acquire file lock: project not loaded')
     }
     if (!convexUserId) {
@@ -686,7 +697,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     try {
       for (const filePath of uniquePaths) {
         const result = await acquireFileLock({
-          projectId: project._id,
+          projectId: resolvedProjectId,
           filePath,
           userId: convexUserId,
         })
@@ -706,7 +717,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     } finally {
       await Promise.allSettled(
         acquired.map((filePath) =>
-          releaseFileLock({ projectId: project._id, filePath, userId: convexUserId })
+          releaseFileLock({ projectId: resolvedProjectId, filePath, userId: convexUserId })
         )
       )
     }
@@ -715,7 +726,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     convexUserId,
     formatLockConflictError,
     normalizeRelativeFilePath,
-    project?._id,
+    resolvedProjectId,
     releaseFileLock,
   ])
 
@@ -998,7 +1009,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
   useEffect(() => {
     if (!storedConversation) return
     if (conversationInitializedRef.current === currentConversationId) return
-    if (project && storedConversation.projectId !== project._id) return
+    if (resolvedProjectId && storedConversation.projectId !== resolvedProjectId) return
 
     // Convert stored messages to UIMessage format
     const uiMessages: UIMessage[] = storedConversation.messages.map((msg) => {
@@ -1029,46 +1040,43 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     if (storedConversation.title) {
       useAssistantPanelStore.getState().setChatTitle(storedConversation.title)
     }
-  }, [storedConversation, currentConversationId, project, setMessages])
+  }, [storedConversation, currentConversationId, resolvedProjectId, setMessages])
 
   // Clear project-scoped conversations when leaving or switching projects.
   useEffect(() => {
-    const nextSlug = projectSlug ?? null
-    if (lastProjectSlugRef.current === null) {
-      lastProjectSlugRef.current = nextSlug
+    if (lastProjectScopeRef.current === null) {
+      lastProjectScopeRef.current = projectScopeKey
       return
     }
 
-    if (lastProjectSlugRef.current !== nextSlug) {
+    if (lastProjectScopeRef.current !== projectScopeKey) {
       setCurrentConversationId(null)
       setMessages([])
       useAssistantPanelStore.getState().setChatTitle("New Chat")
-      lastProjectSlugRef.current = nextSlug
+      lastProjectScopeRef.current = projectScopeKey
     }
-  }, [projectSlug, setCurrentConversationId, setMessages])
+  }, [projectScopeKey, setCurrentConversationId, setMessages])
 
   // If a conversation doesn't belong to the current project, drop it.
   useEffect(() => {
-    if (!projectSlug) return
-    if (!project) return
+    if (!resolvedProjectId) return
     if (!currentConversationId || !storedConversation) return
-    if (storedConversation.projectId === project._id) return
+    if (storedConversation.projectId === resolvedProjectId) return
 
     setCurrentConversationId(null)
     setMessages([])
     useAssistantPanelStore.getState().setChatTitle("New Chat")
-  }, [projectSlug, project, currentConversationId, storedConversation, setCurrentConversationId, setMessages])
+  }, [resolvedProjectId, currentConversationId, storedConversation, setCurrentConversationId, setMessages])
 
-  // If project slug exists but project is missing, ensure we don't reuse old conversations.
+  // If project context exists but we cannot resolve a project id, ensure stale conversations are dropped.
   useEffect(() => {
-    if (!projectSlug) return
-    if (project !== null) return
+    if (!projectSlug || resolvedProjectId) return
     if (!currentConversationId) return
 
     setCurrentConversationId(null)
     setMessages([])
     useAssistantPanelStore.getState().setChatTitle("New Chat")
-  }, [projectSlug, project, currentConversationId, setCurrentConversationId, setMessages])
+  }, [projectSlug, resolvedProjectId, currentConversationId, setCurrentConversationId, setMessages])
 
   // Reset initialization ref when conversation changes to null
   useEffect(() => {
@@ -1079,7 +1087,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
   // Save messages to Convex when they change (debounced)
   useEffect(() => {
-    if (!projectSlug) return
+    if (!resolvedProjectId) return
     if (!currentConversationId) return
     if (uniqueMessages.length === 0) return
     if (isSavingRef.current) return
@@ -1122,7 +1130,7 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     // Debounce saves
     const timeoutId = setTimeout(saveMessages, 500)
     return () => clearTimeout(timeoutId)
-  }, [uniqueMessages, currentConversationId, projectSlug, status, saveConversationMessages])
+  }, [uniqueMessages, currentConversationId, resolvedProjectId, status, saveConversationMessages])
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
@@ -1476,10 +1484,10 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
     setBillingError(null)
 
     // Create conversation on first message if we don't have one
-    if (!currentConversationId && project?._id && convexUserId) {
+    if (!currentConversationId && resolvedProjectId && convexUserId) {
       try {
         const newConversationId = await createConversation({
-          projectId: project._id,
+          projectId: resolvedProjectId,
           userId: convexUserId,
           title: input.slice(0, 50) + (input.length > 50 ? '...' : '') || 'New Conversation',
         })
@@ -1620,12 +1628,12 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
       {/* Input Area - Compact AI Prompt */}
       <div
         className={cn(
-          "px-3 pb-3 shrink-0 mt-auto z-10 w-full max-w-2xl mx-auto",
+          "px-3 pb-3 shrink-0 mt-auto w-full max-w-2xl mx-auto",
           uniqueMessages.length === 0 ? "pt-1" : "pt-2"
         )}
         style={{ backgroundColor: 'var(--assistant-surface, var(--background))' }}
       >
-        <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
+        <div className="bg-secondary rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
               error={billingError as any}
@@ -1699,49 +1707,16 @@ export function AIConversation({ className, projectPath, projectName, projectSlu
 
           <div className="mb-2 px-2 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
-                  >
-                    <IconPlus className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent
-                  align="start"
-                  className="max-w-xs rounded-2xl p-1.5"
-                >
-                  <DropdownMenuGroup className="space-y-1">
-                    {supportsAttachments ? (
-                      <DropdownMenuItem
-                        className="rounded-[calc(1rem-6px)] text-xs"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <IconPaperclip size={16} className="opacity-60" />
-                        Attach Files
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem
-                        className="rounded-[calc(1rem-6px)] text-xs opacity-60"
-                        disabled
-                      >
-                        <IconPaperclip size={16} className="opacity-60" />
-                        Attachments unavailable
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      onClick={() => { }}
-                    >
-                      <IconHistory size={16} className="opacity-60" />
-                      Chat History
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!supportsAttachments}
+                title={supportsAttachments ? 'Attach files' : 'Attachments unavailable'}
+              >
+                <IconPlus className="size-3" />
+              </Button>
 
               {hasSelectableModel && (
                 <ModelSelector

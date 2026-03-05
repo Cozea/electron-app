@@ -1,6 +1,14 @@
 .changes-codemirror-merge {
   height: 100%;
   min-height: 0;
+  --cm-merge-added-bg: var(--tool-diff-added-bg, color-mix(in oklab, #16a34a 12%, transparent));
+  --cm-merge-deleted-bg: var(--tool-diff-deleted-bg, color-mix(in oklab, #dc2626 14%, transparent));
+  --cm-merge-added-gutter-bg: var(--tool-diff-added-gutter-bg, #22c55e);
+  --cm-merge-deleted-gutter-bg: var(--tool-diff-deleted-gutter-bg, #ef4444);
+  --cm-merge-added-line-number-bg: var(--tool-diff-added-line-number-bg, color-mix(in oklab, #22c55e 16%, transparent));
+  --cm-merge-deleted-line-number-bg: var(--tool-diff-deleted-line-number-bg, color-mix(in oklab, #ef4444 18%, transparent));
+  --cm-merge-added-line-number-fg: var(--tool-diff-added-line-number-fg, #4ade80);
+  --cm-merge-deleted-line-number-fg: var(--tool-diff-deleted-line-number-fg, #f87171);
 }
 
 .changes-codemirror-merge .cm-mergeView,
@@ -13,21 +21,21 @@
 .changes-codemirror-merge .cm-editor {
   height: 100%;
   min-height: 100%;
-  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
+  background: var(--cm-merge-gutter-bg, var(--background));
 }
 
 .changes-codemirror-merge .cm-scroller {
   height: 100%;
   overflow: auto;
-  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
+  background: var(--cm-merge-gutter-bg, var(--background));
 }
 
 .changes-codemirror-merge .cm-content {
-  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
+  background: var(--cm-merge-gutter-bg, var(--background));
 }
 
 .changes-codemirror-merge .cm-gutters {
-  background: var(--cm-merge-gutter-bg, color-mix(in oklab, var(--sidebar) 78%, transparent));
+  background: var(--cm-merge-gutter-bg, var(--background));
   display: flex;
 }
 
@@ -36,11 +44,11 @@
 }
 
 .changes-codemirror-merge .cm-deletedChunk {
-  background: color-mix(in oklab, #dc2626 14%, transparent);
+  background: var(--cm-merge-deleted-bg);
 }
 
 .changes-codemirror-merge .cm-merge-b .cm-changedLine {
-  background: color-mix(in oklab, #16a34a 12%, transparent);
+  background: var(--cm-merge-added-bg);
 }
 
 .changes-codemirror-merge .cm-changeGutter {
@@ -60,23 +68,23 @@
 }
 
 .changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-deletedLineGutter {
-  background: #ef4444;
+  background: var(--cm-merge-deleted-gutter-bg);
 }
 
 .changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-changedLineGutter,
 .changes-codemirror-merge .cm-changeGutter .cm-gutterElement.cm-inlineChangedLineGutter {
-  background: #22c55e;
+  background: var(--cm-merge-added-gutter-bg);
 }
 
 .changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-deletedLineGutter {
-  background: color-mix(in oklab, #ef4444 18%, transparent);
-  color: #f87171;
+  background: var(--cm-merge-deleted-line-number-bg);
+  color: var(--cm-merge-deleted-line-number-fg);
 }
 
 .changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-changedLineGutter,
 .changes-codemirror-merge .cm-lineNumbers .cm-gutterElement.cm-inlineChangedLineGutter {
-  background: color-mix(in oklab, #22c55e 16%, transparent);
-  color: #4ade80;
+  background: var(--cm-merge-added-line-number-bg);
+  color: var(--cm-merge-added-line-number-fg);
 }
 
 .changes-codemirror-merge .cm-merge-b .cm-changedText,

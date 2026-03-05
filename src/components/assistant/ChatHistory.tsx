@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, MessageSquare, Check } from 'lucide-react'
+import { Search, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ChatHistoryProps {
@@ -108,7 +108,7 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
   return (
     <div
       ref={panelRef}
-      className="absolute left-3 right-3 top-12 z-50 flex max-h-[420px] flex-col overflow-hidden rounded-2xl bg-background dark:bg-muted p-1 shadow-md animate-in fade-in-0 slide-in-from-top-2 duration-150"
+      className="absolute left-3 right-3 top-12 z-50 flex max-h-[420px] flex-col overflow-hidden rounded-2xl bg-secondary text-secondary-foreground p-1 shadow-xl animate-in fade-in-0 slide-in-from-top-2 duration-150"
     >
       {/* Search */}
       <div className="px-2 pt-1 pb-1.5">
@@ -126,9 +126,6 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
       </div>
 
       {/* Conversations list */}
-      <div className="px-2 pb-1 pt-0.5 text-xs text-muted-foreground">
-        Recent Conversations
-      </div>
       <ScrollArea className="flex-1 max-h-[336px]">
         <div className="px-1 pb-1">
           {conversations === undefined ? (
@@ -137,7 +134,6 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
             </div>
           ) : filteredConversations?.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-              <MessageSquare className="h-6 w-6 text-muted-foreground/50 mb-2" />
               <p className="text-sm text-muted-foreground">
                 {searchQuery ? 'No matching conversations' : 'No conversations yet'}
               </p>
@@ -154,9 +150,6 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
                     : "hover:bg-foreground/10 dark:hover:bg-foreground/16"
                 )}
               >
-                <div className="flex size-6 items-center justify-center rounded-md">
-                  <MessageSquare className="size-3.5 text-muted-foreground" />
-                </div>
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <span className="min-w-0 flex-1 truncate">{conv.title}</span>
                   {currentConversationId === conv._id && (

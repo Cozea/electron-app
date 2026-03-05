@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
 import { useProjectPagesStore } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { usePageContextStore } from '@/stores/usePageContextStore'
@@ -55,6 +54,8 @@ import {
 import { cn } from '@/lib/utils'
 import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 interface ProjectPresenceUser extends CompactPresenceUser {
     id: string
@@ -84,10 +85,9 @@ type PreviewEmbedMode = 'standard' | 'credentialless'
 const BRIDGE_READY_TIMEOUT_MS = 2500
 
 export function ProjectPagesPage() {
-    const { slug } = useParams<{ slug: string }>()
     const navigate = useViewTransitionNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
-    const { currentOrganization } = useAuth()
+    const { project, projectIdParam, slugParam } = useAccessibleProject()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
 
@@ -230,17 +230,11 @@ export function ProjectPagesPage() {
         prevProjectPathRef.current = projectPath
     }, [projectPath, actions])
 
-    // Get Convex organization
-    const convexOrg = useQuery(
-        api.organizations.getByWorkosId,
-        currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-    )
-
-    // Load project by slug
-    const project = useQuery(
-        api.projects.getBySlug,
-        convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-    )
+    const projectBasePath = useMemo(() => {
+        if (project?._id) return buildProjectPath(String(project._id))
+        if (projectIdParam) return buildProjectPath(projectIdParam)
+        return slugParam ? `/projects/${slugParam}` : null
+    }, [project?._id, projectIdParam, slugParam])
 
     const projectPresenceUsers = useQuery(
         api.projectPresence.getActiveUsers,
@@ -1392,10 +1386,10 @@ export function ProjectPagesPage() {
 
     const handleOpenInspectedSource = useCallback(() => {
         const fileName = inspectorContextMenu?.reactSource?.fileName
-        if (!fileName || !slug) return
-        navigate(`/projects/${slug}?path=${encodeURIComponent(fileName)}`)
+        if (!fileName || !projectBasePath) return
+        navigate(`${projectBasePath}?path=${encodeURIComponent(fileName)}`)
         closeInspectorContextMenu()
-    }, [inspectorContextMenu, closeInspectorContextMenu, navigate, slug])
+    }, [inspectorContextMenu, closeInspectorContextMenu, navigate, projectBasePath])
 
     const handleOpenCode = (file: string, line?: number, column?: number) => {
         // Use full path when available so Files page can open/select the file in tree and tabs
@@ -1411,7 +1405,8 @@ export function ProjectPagesPage() {
         params.set('path', pathForUrl)
         if (line) params.set('line', String(line))
         if (column) params.set('column', String(column))
-        navigate(`/projects/${slug}?${params.toString()}`)
+        if (!projectBasePath) return
+        navigate(`${projectBasePath}?${params.toString()}`)
     }
 
     const reloadFocusedPreview = useCallback((reason: 'manual' | 'fallback' = 'manual') => {
@@ -1887,7 +1882,7 @@ export function ProjectPagesPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="relative flex-1 min-h-0 min-w-0 bg-sidebar/60">
+                            <div className="relative flex-1 min-h-0 min-w-0 bg-content-surface">
                                 {!isFocusedPreview && (
                                 <div
                                     className="app-scrollbar absolute inset-0 overflow-y-auto p-6 animate-in fade-in duration-300"
@@ -2011,7 +2006,7 @@ export function ProjectPagesPage() {
                                                     }}
                                                 >
                                                     {serverStatus === 'running' && serverPort ? (
-                                                        <div className="relative h-full w-full bg-sidebar/40">
+                                                        <div className="relative h-full w-full bg-content-surface">
                                                             <iframe
                                                                 ref={iframeRef}
                                                                 key={`focused-preview-${previewEmbedMode}-${previewReloadToken}-${previewRoute.path}`}

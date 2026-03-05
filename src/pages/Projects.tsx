@@ -57,6 +57,7 @@ import type { SyncPlan, SyncProgress, SyncOperation } from '@/lib/sync/types'
 import type { ProjectOpenSyncReviewRequest } from '@/features/projects/lib/projectOpenSyncReview'
 import { isBootstrapOnlyLocalPath } from '@/features/projects/lib/localWorkspaceState'
 import type { GitReplicaConflictDecision, GitReplicaPlanResult } from '@shared/electronApiTypes'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -291,6 +292,7 @@ export function Projects() {
 
   const effectiveViewMode = isMobile ? 'list' : viewMode
   const ITEMS_PER_PAGE = 20
+  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
 
   // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
   const freshOrg = useQuery(
@@ -334,20 +336,35 @@ export function Projects() {
     convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
   )
 
-  // Query projects from Convex using the Convex org ID (with caching)
+  // Query projects with source based on active workspace type (with caching)
   const freshProjects = useQuery(
-    api.projects.listForOrganization,
-    convexOrg?._id ? { organizationId: convexOrg._id } : 'skip'
+    isPersonalWorkspace
+      ? api.projects.listForPersonalWorkspaceMemberView
+      : api.projects.listForOrganization,
+    isPersonalWorkspace
+      ? convexUser?._id
+        ? { userId: convexUser._id }
+        : 'skip'
+      : convexOrg?._id
+        ? { organizationId: convexOrg._id }
+        : 'skip'
   )
   const projects = useCachedQuery(
-    `projects-list-${convexOrg?._id}`,
+    isPersonalWorkspace
+      ? `projects-list-personal-${convexUser?._id}`
+      : `projects-list-org-${convexOrg?._id}`,
     freshProjects
+  )
+  const normalizedProjects = useMemo(
+    () => {
+      const rows = projects ?? []
+      return rows.filter((project): project is NonNullable<typeof project> => project !== null)
+    },
+    [projects]
   )
 
   const filteredProjects = useMemo(() => {
-    if (!projects) return []
-
-    let result = projects
+    let result = normalizedProjects
 
     if (statusFilter !== 'all') {
       if (statusFilter === 'building') {
@@ -368,7 +385,7 @@ export function Projects() {
           return right.updatedAt - left.updatedAt
       }
     })
-  }, [projects, statusFilter, sortBy])
+  }, [normalizedProjects, statusFilter, sortBy])
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredProjects.length / ITEMS_PER_PAGE)
@@ -382,8 +399,10 @@ export function Projects() {
     setCurrentPage(1)
   }, [statusFilter, sortBy])
 
-  const isLoading = convexOrg === undefined || (convexOrg && projects === undefined)
-  const hasProjects = (projects?.length ?? 0) > 0
+  const isLoading = isPersonalWorkspace
+    ? convexUser === undefined || projects === undefined
+    : convexOrg === undefined || (convexOrg && projects === undefined)
+  const hasProjects = normalizedProjects.length > 0
   const showProjectControls = hasProjects || isLoading
 
 
@@ -396,7 +415,7 @@ export function Projects() {
   const strokeDashoffset = circumference - (projectPercentage / 100) * circumference
 
   const openProjectAfterSyncReview = useCallback((review: PendingSyncReview) => {
-    navigate(`/projects/${review.projectSlug}`, {
+    navigate(buildProjectPath(String(review.projectId)), {
       state: {
         projectSlug: review.projectSlug,
         projectName: review.projectName,
@@ -740,11 +759,11 @@ export function Projects() {
         </Badge>
       ) : projectLimit?.isUnlimited ? (
         <Badge variant="secondary" className="text-xs font-normal">
-          {projects?.length ?? 0}
+          {normalizedProjects.length}
         </Badge>
-      ) : projects && projects.length > 0 ? (
+      ) : normalizedProjects.length > 0 ? (
         <Badge variant="secondary" className="text-xs font-normal">
-          {projects.length}
+          {normalizedProjects.length}
         </Badge>
       ) : null)}
     </>
@@ -827,7 +846,7 @@ export function Projects() {
       <TooltipProvider>
         {!isLoading && !hasProjects ? (
           <div className="flex min-h-full flex-1 items-center justify-center">
-            <div className="w-full rounded-xl bg-card/70 p-6 md:p-10">
+            <div className="w-full p-6 md:p-10">
               <Empty className="py-6">
                 <EmptyHeader>
                   <EmptyMedia>

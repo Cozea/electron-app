@@ -3,8 +3,9 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { cn } from '@/lib/utils'
-import { useParams } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import type { SVGProps } from 'react'
+import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 
 interface PanelIconProps extends SVGProps<SVGSVGElement> {
     active?: boolean
@@ -48,8 +49,9 @@ export function LayoutToggles() {
     const toggleAssistant = useAssistantPanelStore((state) => state.togglePanel)
     const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== 'closed')
 
-    const { slug } = useParams<{ slug: string }>()
-    const isProjectContext = Boolean(slug)
+    const location = useLocation()
+    const routeProject = parseProjectRoute(location.pathname)
+    const isProjectContext = Boolean(routeProject.projectId || routeProject.slug)
     const canToggleTerminal = isProjectContext || hasTerminalSessions
     const canToggleAssistant = isProjectContext
 

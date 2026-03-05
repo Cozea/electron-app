@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -31,6 +31,7 @@ import { DiffPanel } from '../components/changes/DiffPanel'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
 import { CommentRichText } from '@/components/comments/CommentRichText'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 
 interface SelectedChangeSummary {
   id: Id<"fileChanges">
@@ -217,7 +218,7 @@ function FeedLoadingRows() {
 function DiffPanelLoadingShell() {
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center gap-3 px-4 h-12 bg-sidebar">
+      <div className="flex items-center gap-3 px-4 h-12 bg-background">
         <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary" />
         <Shimmer className="text-sm">src/components/Example.tsx</Shimmer>
         <div className="ml-auto flex items-center gap-2">
@@ -226,7 +227,7 @@ function DiffPanelLoadingShell() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden relative p-4 bg-sidebar/30">
+      <div className="flex-1 min-h-0 overflow-hidden relative p-4 bg-background">
         <div className="space-y-2">
           <Shimmer className="text-sm">Loading diff preview...</Shimmer>
           <Shimmer className="text-sm">Preparing hunks...</Shimmer>
@@ -234,7 +235,7 @@ function DiffPanelLoadingShell() {
         </div>
       </div>
 
-      <div className="p-4 bg-sidebar">
+      <div className="p-4 bg-background">
         <div className="rounded-xl bg-background overflow-hidden shadow-sm">
           <div className="min-h-[80px] px-3 py-2">
             <Shimmer className="text-sm">Add comment</Shimmer>
@@ -569,25 +570,13 @@ const ChangeComments = memo(function ChangeComments({
 ChangeComments.displayName = "ChangeComments"
 
 export function ChangesPage() {
-  const { slug } = useParams<{ slug: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { currentOrganization, convexUserId } = useAuth()
+  const { convexUserId } = useAuth()
+  const { project } = useAccessibleProject()
   const [selectedChangeId, setSelectedChangeId] = useState<Id<"fileChanges"> | null>(null)
   const [selectionWasUserDriven, setSelectionWasUserDriven] = useState(false)
   const [backgroundPreloadIds, setBackgroundPreloadIds] = useState<Id<"fileChanges">[]>([])
   const selectedUserId = searchParams.get('userId')
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Load project by slug
-  const project = useQuery(
-    api.projects.getBySlug,
-    convexOrg?._id && slug ? { organizationId: convexOrg._id, slug } : 'skip'
-  )
 
   // Get activity feed
   const activity = useQuery(
@@ -750,10 +739,10 @@ export function ChangesPage() {
 
   // Mark sync feed as seen when page loads
   useEffect(() => {
-    if (slug) {
-      markSyncFeedAsSeen(slug)
+    if (project?.slug) {
+      markSyncFeedAsSeen(project.slug)
     }
-  }, [slug])
+  }, [project?.slug])
 
   const headerControls = useMemo(
     () => (
@@ -812,7 +801,7 @@ export function ChangesPage() {
   useProjectHeader(headerControls)
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden bg-sidebar/60">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-content-surface">
       {/* Timeline Panel */}
       <div className={`flex min-h-0 min-w-0 overflow-hidden flex-col ${showSplitPane ? 'w-1/2' : 'w-full'} transition-all`}>
         {/* Timeline Content */}
@@ -968,8 +957,8 @@ export function ChangesPage() {
               )}
             </div>
           </ScrollArea>
-          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-sidebar to-transparent z-10" />
-          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-sidebar to-transparent z-10" />
+          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-content-surface to-transparent z-10" />
+          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-content-surface to-transparent z-10" />
         </div>
       </div>
 

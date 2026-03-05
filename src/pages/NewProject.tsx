@@ -39,6 +39,7 @@ import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
 import { cn } from '@/lib/utils'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -811,7 +812,7 @@ export function NewProject() {
         })
       }
 
-      if (result.slug) {
+      if (result.projectId) {
         setImportSyncState('syncing')
 
         const runtimePreflight = await ensureProjectRuntimeToolchains(importPath, (progress) => {
@@ -872,16 +873,17 @@ export function NewProject() {
         setImportSyncState('ready')
         setImportSyncMessage('Opening project...')
         setTimeout(() => {
-          console.log('[Import] Navigating to:', `/projects/${result.slug}`)
-          navigate(`/projects/${result.slug}`)
+          const targetPath = buildProjectPath(String(result.projectId))
+          console.log('[Import] Navigating to:', targetPath)
+          navigate(targetPath)
           setImportSyncState('idle')
           setImportSyncMessage('')
         }, 200)
       } else {
-        console.error('[Import] No slug returned from createProject')
+        console.error('[Import] No projectId returned from createProject')
         setImportSyncState('error')
-        setImportSyncMessage('Project created but no slug was returned.')
-        setImportError('Project created but no slug was returned.')
+        setImportSyncMessage('Project created but no project id was returned.')
+        setImportError('Project created but no project id was returned.')
       }
     } catch (error) {
       console.error('[Import] Failed to create project:', error)

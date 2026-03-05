@@ -499,6 +499,7 @@ export function AI({ surface = 'page' }: AIProps) {
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
   const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
+  const walletTotalDebitedCents = walletSummary?.wallet?.totalDebitedCents ?? 0
   const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
   const activeWalletContext =
@@ -991,7 +992,9 @@ export function AI({ surface = 'page' }: AIProps) {
                       <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                         {recentUsage === undefined
                           ? 'Loading usage history...'
-                          : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
+                          : walletTotalDebitedCents > 0
+                            ? 'Wallet charges exist but usage rows are missing. The AI usage ingestion route may not be deployed on your server yet.'
+                            : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
                       </TableCell>
                     </TableRow>
                   )}

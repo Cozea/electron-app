@@ -47,7 +47,6 @@ import {
   IconArrowUp,
   IconChevronDown,
   IconPlus,
-  IconPaperclip,
   IconSquare,
   IconCheck,
   IconX,
@@ -965,7 +964,7 @@ export function WizardConversation({
 
       {/* Input Area */}
       <div className="shrink-0 pt-2 pb-3 px-3 bg-background w-full max-w-2xl mx-auto">
-        <div className="bg-muted/40 border border-border rounded-2xl overflow-hidden">
+        <div className="bg-secondary rounded-2xl overflow-hidden">
           {billingError ? (
             <BillingError
               error={billingError as any}
@@ -1015,30 +1014,16 @@ export function WizardConversation({
 
           <div className="mb-2 px-2 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
-                    disabled={!supportsAttachments}
-                  >
-                    <IconPlus className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5">
-                  <DropdownMenuGroup className="space-y-1">
-                    <DropdownMenuItem
-                      className="rounded-[calc(1rem-6px)] text-xs"
-                      disabled={!supportsAttachments}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <IconPaperclip size={16} className="opacity-60" />
-                      {supportsAttachments ? 'Attach Files' : 'Attachments unavailable'}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!supportsAttachments}
+                title={supportsAttachments ? 'Attach files' : 'Attachments unavailable'}
+              >
+                <IconPlus className="size-3" />
+              </Button>
 
               {hasSelectableModel && (
                 <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
@@ -1146,7 +1131,7 @@ export function WizardConversation({
                         <IconChevronDown className="size-3" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-popover border-border">
+                    <DropdownMenuContent align="start" className="max-w-xs rounded-2xl p-1.5 bg-secondary border-border">
                       <DropdownMenuGroup className="space-y-1">
                         {supportedVariants.map((variant) => (
                           <DropdownMenuItem

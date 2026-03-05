@@ -24,6 +24,8 @@ import {
   ExternalLink,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   XCircle,
   Loader2,
 } from 'lucide-react'
@@ -477,6 +479,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [selectedPlanSubtype, setSelectedPlanSubtype] = useState<PlanSubtype>('individual')
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
+  const [walletActivityPage, setWalletActivityPage] = useState(0)
+  const walletActivityPageSize = 5
 
   const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle>('monthly')
   const [checkoutSeatQuantity, setCheckoutSeatQuantity] = useState<number>(STARTUP_MIN_SEATS)
@@ -603,12 +607,36 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
   const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
+  const pagedWalletLedgerRows = walletLedgerRows.slice(
+    walletActivityPage * walletActivityPageSize,
+    (walletActivityPage + 1) * walletActivityPageSize
+  )
+  const walletActivityTotalPages = Math.max(1, Math.ceil(walletLedgerRows.length / walletActivityPageSize))
+  const getWalletActivityPageNumbers = () => {
+    if (walletActivityTotalPages <= 5) {
+      return Array.from({ length: walletActivityTotalPages }, (_, i) => i + 1)
+    }
+
+    const current = walletActivityPage + 1
+    if (current <= 3) return [1, 2, 3, '...', walletActivityTotalPages]
+    if (current >= walletActivityTotalPages - 2) {
+      return [1, '...', walletActivityTotalPages - 2, walletActivityTotalPages - 1, walletActivityTotalPages]
+    }
+    return [1, '...', current, '...', walletActivityTotalPages]
+  }
   const activeWalletContextLabel =
     walletSummary?.walletContexts?.active === 'workspace_seat'
       ? 'Workspace seat wallet'
       : walletSummary?.walletContexts?.active === 'personal'
         ? 'Personal wallet'
         : 'No active wallet context'
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(walletLedgerRows.length / walletActivityPageSize) - 1)
+    if (walletActivityPage > maxPage) {
+      setWalletActivityPage(maxPage)
+    }
+  }, [walletActivityPage, walletLedgerRows.length])
 
   const activeAssignmentsByUserId = useMemo(() => {
     const map = new Set<string>()
@@ -1384,7 +1412,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                   {walletLedgerRows.length > 0 ? (
-                    walletLedgerRows.map((entry) => {
+                    pagedWalletLedgerRows.map((entry) => {
                       const kindLabel = formatWalletLedgerKind(entry.kind)
                       const isDebit = entry.kind === 'debit'
                       const amountPrefix = isDebit ? '-' : '+'
@@ -1416,6 +1444,48 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 </TableBody>
               </Table>
             </div>
+            {walletLedgerRows.length > walletActivityPageSize && (
+              <div className="mt-4 flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing <span className="font-medium">{walletActivityPage * walletActivityPageSize + 1}-{Math.min((walletActivityPage + 1) * walletActivityPageSize, walletLedgerRows.length)}</span> of <span className="font-medium">{walletLedgerRows.length}</span> entries
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setWalletActivityPage((page) => page - 1)}
+                    disabled={walletActivityPage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {getWalletActivityPageNumbers().map((pageNumber, index) => (
+                    typeof pageNumber === 'number' ? (
+                      <Button
+                        key={index}
+                        variant={walletActivityPage + 1 === pageNumber ? 'default' : 'secondary'}
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onClick={() => setWalletActivityPage(pageNumber - 1)}
+                      >
+                        {pageNumber}
+                      </Button>
+                    ) : (
+                      <span key={index} className="px-2 text-muted-foreground">...</span>
+                    )
+                  ))}
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setWalletActivityPage((page) => page + 1)}
+                    disabled={walletActivityPage + 1 >= walletActivityTotalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

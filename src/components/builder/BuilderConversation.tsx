@@ -715,7 +715,8 @@ Now begin by defining your task list with todowrite, then start working through 
     const toolInput = isRecord(normalizedInput) ? normalizedInput : null
 
     const toolMeta = toolsByNameRef.current[toolName]
-    if (toolMeta?.executionEnvironment && toolMeta.executionEnvironment !== 'local') {
+    const isBuilderWorkflowTool = BUILDER_WORKFLOW_FALLBACK_TOOLS.has(toolName)
+    if (!isBuilderWorkflowTool && toolMeta?.executionEnvironment && toolMeta.executionEnvironment !== 'local') {
       void addToolOutput({
         state: 'output-error',
         tool: toolName,

@@ -181,8 +181,9 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
   const hasStats = stats.added > 0 || stats.removed > 0
   const fileName = getDisplayFileName(diff.filePath)
   const panelHeight = getAdaptivePanelHeight(diff, maxHeight)
-  const panelSurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
-  const panelBodySurface = 'var(--main-nav-sidebar-surface, var(--sidebar))'
+  // Match the standard tool result/table surface color in AI messages.
+  const panelSurface = 'var(--tool-surface)'
+  const panelBodySurface = 'var(--tool-surface)'
   const cardStyle: CSSProperties = {
     backgroundColor: panelSurface,
     ['--cm-merge-gutter-bg' as string]: panelSurface,
@@ -216,7 +217,10 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
           <Copy className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div className="h-px bg-white/8" />
+      <div
+        className="h-px"
+        style={{ backgroundColor: 'var(--tool-border)' }}
+      />
       <div
         className={cn('w-full')}
         style={{

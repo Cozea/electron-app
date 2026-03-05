@@ -213,7 +213,7 @@ export function EditorBreadcrumb({
   }, [editorRef, editorReady, symbols])
 
   return (
-    <div className="flex items-center h-6 bg-sidebar text-xs">
+    <div className="flex items-center h-6 bg-content-surface text-xs">
       <div className="flex min-w-0 flex-1 items-center overflow-x-auto scrollbar-hide px-2">
         {/* File path segments */}
         {pathSegments.map((segment, i) => {

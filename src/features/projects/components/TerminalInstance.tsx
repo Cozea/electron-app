@@ -107,8 +107,26 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
             return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
         }
 
-        // Get CSS variable value and convert to hex
-        const getThemeColor = (cssVar: string, fallback: string): string => {
+        // Composite two CSS colors and return the resulting opaque hex.
+        const compositeColorToHex = (foregroundCss: string, backgroundCss: string): string => {
+            const canvas = document.createElement('canvas')
+            canvas.width = 1
+            canvas.height = 1
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return colorToHex(foregroundCss)
+
+            ctx.clearRect(0, 0, 1, 1)
+            ctx.fillStyle = backgroundCss
+            ctx.fillRect(0, 0, 1, 1)
+            ctx.fillStyle = foregroundCss
+            ctx.fillRect(0, 0, 1, 1)
+
+            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+        }
+
+        // Resolve theme color to a concrete CSS rgb/rgba string.
+        const resolveThemeColor = (cssVar: string, fallback: string): string => {
             const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
             const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
             const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
@@ -129,7 +147,11 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
             if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
                 return fallback
             }
-            return colorToHex(resolvedColor)
+            return resolvedColor
+        }
+
+        const getThemeColorHex = (cssVar: string, fallback: string): string => {
+            return colorToHex(resolveThemeColor(cssVar, fallback))
         }
 
         const relativeLuminance = (hex: string): number => {
@@ -186,10 +208,12 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
         }
 
         // Map theme colors
-        const secondaryFallback = getThemeColor('--secondary', '#1a1a1a')
-        const background = getThemeColor('--terminal-panel-bg', secondaryFallback)
-        const foreground = getThemeColor('--foreground', '#fafafa')
-        const muted = getThemeColor('--muted', '#27272a')
+        const secondaryFallback = getThemeColorHex('--secondary', '#1a1a1a')
+        const panelBackground = resolveThemeColor('--terminal-panel-bg', secondaryFallback)
+        const appBackground = resolveThemeColor('--background', '#ffffff')
+        const background = compositeColorToHex(panelBackground, appBackground)
+        const foreground = getThemeColorHex('--foreground', '#fafafa')
+        const muted = getThemeColorHex('--muted', '#27272a')
         const useDarkPalette = relativeLuminance(background) < 0.45
         const ansi = buildAnsiPalette(useDarkPalette)
 
@@ -375,7 +399,7 @@ export function TerminalInstance({ terminalId, className, onFocus, shouldAutoFoc
     return (
         <div
             className={cn("relative w-full h-full overflow-hidden", className)}
-            style={{ backgroundColor: "var(--terminal-panel-bg, var(--secondary))" }}
+            style={{ backgroundColor: "var(--terminal-panel-bg, var(--content-surface))" }}
             onContextMenu={handleContextMenu}
         >
             {selectedText.trim().length > 0 && (

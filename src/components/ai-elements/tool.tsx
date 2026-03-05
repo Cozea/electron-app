@@ -505,7 +505,11 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
       Parameters
     </h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      <CodeBlock
+        code={JSON.stringify(input, null, 2)}
+        language="json"
+        className="[--codeblock-surface:var(--tool-surface)] [--codeblock-foreground:var(--tool-surface-foreground)] border-0"
+      />
     </div>
   </div>
 );
@@ -617,10 +621,20 @@ export const ToolOutput = ({
     Output = <ListDirOutput entries={listDirEntries} />;
   } else if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      <CodeBlock
+        code={JSON.stringify(output, null, 2)}
+        language="json"
+        className="[--codeblock-surface:var(--tool-surface)] [--codeblock-foreground:var(--tool-surface-foreground)] border-0"
+      />
     );
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    Output = (
+      <CodeBlock
+        code={output}
+        language="json"
+        className="[--codeblock-surface:var(--tool-surface)] [--codeblock-foreground:var(--tool-surface-foreground)] border-0"
+      />
+    );
   }
 
   return (
@@ -633,7 +647,7 @@ export const ToolOutput = ({
           "app-scrollbar overflow-x-auto rounded-md text-xs [&_table]:w-full",
           errorText
             ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
+            : "bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)]"
         )}
       >
         {errorText && <div className="p-3">{errorText}</div>}

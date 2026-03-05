@@ -5,6 +5,7 @@ import { Outlet, useLocation, useParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
 import { FileTree, type FileTreeHandle } from "../components/FileTree"
@@ -37,6 +38,7 @@ import { Loader2 } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
+import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -67,9 +69,8 @@ function buildPathPreferenceKey(projectId: string, userId: string): string {
     return `cozea:path-preference:${projectId}:${userId}`
 }
 
-function getProjectSubpageLabel(pathname: string, slug?: string): string | null {
-    if (!slug) return null
-    const basePath = `/projects/${slug}`
+function getProjectSubpageLabel(pathname: string, basePath: string | null): string | null {
+    if (!basePath) return null
     if (pathname === basePath || pathname === `${basePath}/`) return null
 
     if (!pathname.startsWith(basePath)) return null
@@ -106,6 +107,10 @@ interface ProjectLayoutHeaderProps {
     insetLeft?: number
     insetRight?: number
     compactHeaderActions?: boolean
+    projectInviteContext?: {
+        projectId: Id<"projects"> | null
+        projectName?: string | null
+    } | null
 }
 
 const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
@@ -118,6 +123,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     insetLeft = 0,
     insetRight = 0,
     compactHeaderActions = true,
+    projectInviteContext = null,
 }: ProjectLayoutHeaderProps) {
     const { state } = useSidebar()
     const areAllSidebarsCollapsed = state === "collapsed" && !isSecondarySidebarVisible
@@ -133,6 +139,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
             compactHeaderActions={compactHeaderActions}
+            projectInviteContext={projectInviteContext}
         />
     )
 })
@@ -186,7 +193,7 @@ export function ProjectLayout({
     const { user, logout, currentOrganization } = useAuth()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
-    const { slug } = useParams<{ slug: string }>()
+    const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const shouldGateSyncScreen = locationState?.gateSyncScreen === true
     const shouldSkipInitialSyncCheck = locationState?.skipInitialSyncCheck === true
@@ -216,16 +223,39 @@ export function ProjectLayout({
     )
 
     // Get project data (with caching)
-    const freshProject = useQuery(
-        api.projects.getBySlug,
-        convexOrg?._id && slug
-            ? { organizationId: convexOrg._id, slug }
+    const freshProjectById = useQuery(
+        api.projects.getAccessibleById,
+        routeProjectId && convexUser?._id
+            ? { projectId: routeProjectId as Id<"projects">, userId: convexUser._id }
             : "skip"
     )
+    const freshProjectBySlug = useQuery(
+        api.projects.getAccessibleBySlug,
+        !routeProjectId && routeSlug && convexUser?._id
+            ? {
+                slug: routeSlug,
+                userId: convexUser._id,
+                preferredOrganizationId: convexOrg?._id,
+            }
+            : "skip"
+    )
+    const freshProject = routeProjectId
+        ? freshProjectById
+        : freshProjectBySlug?.status === "ok"
+            ? freshProjectBySlug.project
+            : null
     const project = useCachedQuery(
-        `layout-project-${slug}`,
+        `layout-project-${routeProjectId ?? routeSlug}`,
         freshProject
     )
+    const projectSlug = project?.slug ?? routeSlug ?? null
+    const projectBasePath = routeProjectId
+        ? buildProjectPath(routeProjectId)
+        : project?._id
+            ? buildProjectPath(String(project._id))
+            : projectSlug
+                ? buildLegacyProjectPath(projectSlug)
+                : null
 
     // Get per-user local path for this project (machine-specific) (with caching)
     const freshMemberLocalPath = useQuery(
@@ -246,10 +276,10 @@ export function ProjectLayout({
         setEffectiveLocalPath(null)
         setPathRecoveryChoice(null)
         setPathResolutionError(null)
-    }, [project?._id, convexUser?._id, slug])
+    }, [project?._id, convexUser?._id, projectSlug])
 
     const resolvePathPreference = useCallback(async () => {
-        if (!project?._id || !convexUser?._id || !slug) {
+        if (!project?._id || !convexUser?._id || !projectSlug) {
             setEffectiveLocalPath(null)
             setPathRecoveryChoice(null)
             setPathResolutionError(null)
@@ -303,14 +333,14 @@ export function ProjectLayout({
 
             const [previousPathExists, existingTargetPath] = await Promise.all([
                 window.electronAPI.project.pathExists(storedPath),
-                window.electronAPI.project.getLocalPath(slug),
+                window.electronAPI.project.getLocalPath(projectSlug),
             ])
 
             if (!previousPathExists) {
                 let nextPath = existingTargetPath
                 if (!nextPath) {
                     const created = await window.electronAPI.project.createFolder({
-                        slug,
+                        slug: projectSlug,
                         initGit: true,
                     })
                     if (!created.success || !created.localPath) {
@@ -332,7 +362,7 @@ export function ProjectLayout({
 
             const targetPath =
                 existingTargetPath ??
-                `${projectsDirectory.replace(/[\\/]+$/, "")}/${slug}`
+                `${projectsDirectory.replace(/[\\/]+$/, "")}/${projectSlug}`
 
             setEffectiveLocalPath(null)
             setPathRecoveryChoice({
@@ -352,7 +382,7 @@ export function ProjectLayout({
         } finally {
             setIsResolvingPath(false)
         }
-    }, [convexUser?._id, memberLocalPath, project?._id, slug, updateMemberLocalPath])
+    }, [convexUser?._id, memberLocalPath, project?._id, projectSlug, updateMemberLocalPath])
 
     useEffect(() => {
         void resolvePathPreference()
@@ -372,16 +402,16 @@ export function ProjectLayout({
     }, [convexUser?._id, pathRecoveryChoice, project?._id])
 
     const handleUseCurrentDirectory = useCallback(async () => {
-        if (!project?._id || !convexUser?._id || !slug || !pathRecoveryChoice) return
+        if (!project?._id || !convexUser?._id || !projectSlug || !pathRecoveryChoice) return
 
         setIsResolvingPath(true)
         setPathResolutionError(null)
 
         try {
-            let targetPath = await window.electronAPI.project.getLocalPath(slug)
+            let targetPath = await window.electronAPI.project.getLocalPath(projectSlug)
             if (!targetPath) {
                 const created = await window.electronAPI.project.createFolder({
-                    slug,
+                    slug: projectSlug,
                     initGit: true,
                 })
                 if (!created.success || !created.localPath) {
@@ -421,11 +451,11 @@ export function ProjectLayout({
         } finally {
             setIsResolvingPath(false)
         }
-    }, [convexUser?._id, pathRecoveryChoice, project?._id, slug, updateMemberLocalPath])
+    }, [convexUser?._id, pathRecoveryChoice, project?._id, projectSlug, updateMemberLocalPath])
 
     const previousEffectivePathRef = useRef<string | null>(null)
     useEffect(() => {
-        if (!slug || !effectiveLocalPath) {
+        if (!projectSlug || !effectiveLocalPath) {
             previousEffectivePathRef.current = effectiveLocalPath
             return
         }
@@ -438,8 +468,8 @@ export function ProjectLayout({
         }
 
         const fileTabsStore = useFileTabsStore.getState()
-        fileTabsStore.actions.rebaseProjectPaths(slug, previousPath, effectiveLocalPath)
-    }, [effectiveLocalPath, slug])
+        fileTabsStore.actions.rebaseProjectPaths(projectSlug, previousPath, effectiveLocalPath)
+    }, [effectiveLocalPath, projectSlug])
 
     useDiagnosticsBridge(effectiveLocalPath)
     useDependenciesMonitor(effectiveLocalPath)
@@ -489,11 +519,11 @@ export function ProjectLayout({
     }, [effectiveLocalPath])
 
     const activeProjectFile = useFileTabsStore((state) =>
-        slug ? state.projectTabs[slug]?.activeFile ?? null : null
+        projectSlug ? state.projectTabs[projectSlug]?.activeFile ?? null : null
     )
     const currentPreviewPage = usePageContextStore((state) => state.currentPage)
     const isPagesRoute = Boolean(
-        slug && location.pathname.startsWith(`/projects/${slug}/pages`)
+        projectBasePath && location.pathname.startsWith(`${projectBasePath}/pages`)
     )
     const presenceActiveFile = isPagesRoute
         ? currentPreviewPage?.filePath ?? null
@@ -515,10 +545,10 @@ export function ProjectLayout({
 
     const handlePresenceUserClick = useCallback(
         (presenceUser: PresenceUser) => {
-            if (!slug) return
-            navigate(`/projects/${slug}/changes?userId=${encodeURIComponent(presenceUser.userId)}`)
+            if (!projectBasePath) return
+            navigate(`${projectBasePath}/changes?userId=${encodeURIComponent(presenceUser.userId)}`)
         },
-        [navigate, slug]
+        [navigate, projectBasePath]
     )
 
     // File tree ref for refresh functionality
@@ -558,7 +588,7 @@ export function ProjectLayout({
     }, [])
 
     // Check if we have open files (to remove padding for editor)
-    const projectTabs = useFileTabsStore(state => slug ? state.projectTabs[slug] : null)
+    const projectTabs = useFileTabsStore(state => projectSlug ? state.projectTabs[projectSlug] : null)
     const hasOpenFiles = (projectTabs?.openFiles?.length || 0) > 0
 
     // Check if we are on views that need full-bleed content (no padding)
@@ -566,12 +596,14 @@ export function ProjectLayout({
     const isBackendStudioView = location.pathname.endsWith('/backend')
     const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
-    const isFilesView = Boolean(slug && (location.pathname === `/projects/${slug}` || location.pathname === `/projects/${slug}/`))
+    const isFilesView = Boolean(
+        projectBasePath && (location.pathname === projectBasePath || location.pathname === `${projectBasePath}/`)
+    )
     // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data + resolved path decision)
-    const hasSyncIdentities = Boolean(project?._id && convexUser?._id && slug) && memberLocalPath !== undefined
+    const hasSyncIdentities = Boolean(project?._id && convexUser?._id && projectSlug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
     const shouldHoldWorkspaceForSyncGate = shouldGateSyncScreen && !canSync
     const {
@@ -592,8 +624,8 @@ export function ProjectLayout({
 
     // Main layout content
     const subpageLabel = useMemo(
-        () => getProjectSubpageLabel(location.pathname, slug),
-        [location.pathname, slug]
+        () => getProjectSubpageLabel(location.pathname, projectBasePath),
+        [location.pathname, projectBasePath]
     )
     const breadcrumbs = useMemo(
         () =>
@@ -601,10 +633,10 @@ export function ProjectLayout({
                 ? []
                 : [
                     { label: "Projects", href: "/projects" },
-                    ...(project?.name ? [{ label: project.name, href: slug ? `/projects/${slug}` : undefined }] : []),
+                    ...(project?.name ? [{ label: project.name, href: projectBasePath ?? undefined }] : []),
                     ...(subpageLabel ? [{ label: subpageLabel }] : []),
                 ],
-        [hideBreadcrumbs, isFilesView, project?.name, slug, subpageLabel]
+        [hideBreadcrumbs, isFilesView, project?.name, projectBasePath, subpageLabel]
     )
     const headerSlot = useMemo(
         () =>
@@ -708,6 +740,10 @@ export function ProjectLayout({
                                 insetLeft={insetLeft}
                                 insetRight={insetRight}
                                 compactHeaderActions={!isFilesView}
+                                projectInviteContext={{
+                                    projectId: project?._id ?? null,
+                                    projectName: project?.name ?? null,
+                                }}
                             />
                             <div
                                 className={cn(
@@ -724,11 +760,11 @@ export function ProjectLayout({
                         </div>
                         <ChatPanel />
                         <AssistantPanel
-                            className="[--assistant-surface:var(--sidebar-surface)]"
+                            className="[--assistant-surface:var(--content-surface)]"
                             projectPath={effectiveLocalPath ?? undefined}
                             projectId={project?._id ?? null}
                             projectName={project?.name}
-                            projectSlug={slug}
+                            projectSlug={projectSlug}
                         />
                     </SidebarInset>
                 </div >
@@ -746,14 +782,14 @@ export function ProjectLayout({
     )
 
     // Wrap with sync provider if we have all the required data
-    if (canSync && project && convexUser && slug) {
+    if (canSync && project && convexUser && projectSlug) {
         return (
             <ProjectSyncProvider
                 key={project._id}
                 projectId={project._id}
                 userId={convexUser._id}
                 userName={convexUser.firstName || convexUser.email || "User"}
-                projectSlug={slug}
+                projectSlug={projectSlug}
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
                 onFilesChanged={handleRefreshFiles}

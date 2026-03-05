@@ -183,7 +183,7 @@ export function ProblemsView({
     }, [openWithPrompt, projectPath])
 
     return (
-        <div className="h-full min-w-0 flex flex-col bg-sidebar">
+        <div className="h-full min-w-0 flex flex-col bg-content-surface">
             <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:!w-full [&>[data-slot=scroll-area-viewport]>div]:!min-w-0">
                 {filteredErrors.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">

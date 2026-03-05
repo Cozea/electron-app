@@ -272,8 +272,13 @@ export const CodeArtifact = memo(
       .join(" • ");
 
     return (
-      <Artifact className={className}>
-        <ArtifactHeader>
+      <Artifact
+        className={cn(
+          "bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] border-0 shadow-none",
+          className
+        )}
+      >
+        <ArtifactHeader className="border-[color:var(--tool-border)]">
           <ArtifactTitle>{title}</ArtifactTitle>
           {description && (
             <ArtifactDescription>{description}</ArtifactDescription>
