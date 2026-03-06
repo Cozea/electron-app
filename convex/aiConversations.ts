@@ -1,5 +1,9 @@
 import { v } from "convex/values"
 import { internalMutation, mutation, query } from "./_generated/server"
+import {
+  applyStorageDeltas,
+  estimateAiConversationBytes,
+} from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const CONTINUATION_STATE_TTL_MS = 24 * 60 * 60 * 1000
@@ -25,16 +29,32 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const { projectId, userId, title } = args
+    const project = await ctx.db.get(projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
 
-    return await ctx.db.insert("aiConversations", {
+    const conversationTitle = title || "New Conversation"
+    const now = Date.now()
+
+    const conversationId = await ctx.db.insert("aiConversations", {
       projectId,
       userId,
-      title: title || "New Conversation",
+      title: conversationTitle,
       messages: [],
       status: "active",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     })
+
+    await applyStorageDeltas(ctx, project.organizationId, {
+      aiHistory: estimateAiConversationBytes({
+        title: conversationTitle,
+        messages: [],
+      }),
+    })
+
+    return conversationId
   },
 })
 
@@ -104,6 +124,26 @@ export const saveMessages = mutation({
   },
   handler: async (ctx, args) => {
     const { conversationId, messages, title } = args
+    const existing = await ctx.db.get(conversationId)
+    if (!existing) {
+      throw new Error("Conversation not found")
+    }
+
+    const project = await ctx.db.get(existing.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
+    const nextTitle = title ?? existing.title
+    const now = Date.now()
+    const previousBytes = estimateAiConversationBytes({
+      title: existing.title,
+      messages: existing.messages,
+    })
+    const nextBytes = estimateAiConversationBytes({
+      title: nextTitle,
+      messages,
+    })
 
     const updates: {
       messages: typeof messages
@@ -111,7 +151,7 @@ export const saveMessages = mutation({
       title?: string
     } = {
       messages,
-      updatedAt: Date.now(),
+      updatedAt: now,
     }
 
     if (title) {
@@ -119,6 +159,9 @@ export const saveMessages = mutation({
     }
 
     await ctx.db.patch(conversationId, updates)
+    await applyStorageDeltas(ctx, project.organizationId, {
+      aiHistory: nextBytes - previousBytes,
+    })
   },
 })
 
@@ -131,9 +174,31 @@ export const updateTitle = mutation({
     title: v.string(),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.conversationId)
+    if (!existing) {
+      throw new Error("Conversation not found")
+    }
+
+    const project = await ctx.db.get(existing.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
+    const previousBytes = estimateAiConversationBytes({
+      title: existing.title,
+      messages: existing.messages,
+    })
+    const nextBytes = estimateAiConversationBytes({
+      title: args.title,
+      messages: existing.messages,
+    })
+
     await ctx.db.patch(args.conversationId, {
       title: args.title,
       updatedAt: Date.now(),
+    })
+    await applyStorageDeltas(ctx, project.organizationId, {
+      aiHistory: nextBytes - previousBytes,
     })
   },
 })
@@ -176,7 +241,23 @@ export const remove = mutation({
     id: v.id("aiConversations"),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.id)
+    if (!existing) {
+      return
+    }
+
+    const project = await ctx.db.get(existing.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
     await ctx.db.delete(args.id)
+    await applyStorageDeltas(ctx, project.organizationId, {
+      aiHistory: -estimateAiConversationBytes({
+        title: existing.title,
+        messages: existing.messages,
+      }),
+    })
   },
 })
 

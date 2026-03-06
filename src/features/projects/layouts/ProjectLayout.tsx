@@ -12,7 +12,7 @@ import { FileTree, type FileTreeHandle } from "../components/FileTree"
 import {
     SidebarInset,
     SidebarProvider,
-    useSidebar,
+    useOptionalSidebar,
 } from "@/components/ui/sidebar"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { SearchCommand } from "@/components/shared/SearchCommand"
@@ -128,8 +128,8 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     compactHeaderActions = true,
     projectInviteContext = null,
 }: ProjectLayoutHeaderProps) {
-    const { state } = useSidebar()
-    const areAllSidebarsCollapsed = state === "collapsed" && !isSecondarySidebarVisible
+    const sidebar = useOptionalSidebar()
+    const areAllSidebarsCollapsed = sidebar?.state === "collapsed" && !isSecondarySidebarVisible
 
     return (
         <UnifiedHeader
@@ -169,9 +169,13 @@ interface SidebarFullscreenSyncProps {
 }
 
 function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProps) {
-    const { isMobile, open, setOpen, setOpenMobile } = useSidebar()
+    const sidebar = useOptionalSidebar()
 
     useEffect(() => {
+        if (!sidebar) return
+
+        const { isMobile, open, setOpen, setOpenMobile } = sidebar
+
         if (assistantPanelMode !== 'fullscreen') return
 
         if (isMobile) {
@@ -188,7 +192,7 @@ function SidebarFullscreenSync({ assistantPanelMode }: SidebarFullscreenSyncProp
         return () => {
             window.clearTimeout(collapseTimer)
         }
-    }, [assistantPanelMode, isMobile, open, setOpen, setOpenMobile])
+    }, [assistantPanelMode, sidebar])
 
     return null
 }

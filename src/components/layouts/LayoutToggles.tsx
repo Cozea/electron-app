@@ -4,7 +4,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useSidebar } from '@/components/ui/sidebar'
+import { useOptionalSidebar } from '@/components/ui/sidebar'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { cn } from '@/lib/utils'
@@ -47,7 +47,7 @@ function PanelRightIcon({ active = false, className, ...props }: PanelIconProps)
 }
 
 export function LayoutToggles() {
-    const { toggleSidebar, state } = useSidebar()
+    const sidebar = useOptionalSidebar()
     const toggleTerminal = useTerminalStore((state) => state.actions.togglePanel)
     const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen)
     const hasTerminalSessions = useTerminalStore((state) => Object.keys(state.terminals).length > 0)
@@ -59,25 +59,28 @@ export function LayoutToggles() {
     const isProjectContext = Boolean(routeProject.projectId || routeProject.slug)
     const canToggleTerminal = isProjectContext || hasTerminalSessions
     const canToggleAssistant = isProjectContext
+    const sidebarState = sidebar?.state ?? 'collapsed'
 
     return (
         <div className="flex items-center gap-0.5">
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', state === 'expanded' && 'text-foreground')}
-                        onClick={toggleSidebar}
-                        aria-label={state === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
-                    >
-                        <PanelLeftIcon active={state === 'expanded'} className="h-4 w-4" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                    {state === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
-                </TooltipContent>
-            </Tooltip>
+            {sidebar ? (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', sidebarState === 'expanded' && 'text-foreground')}
+                            onClick={sidebar.toggleSidebar}
+                            aria-label={sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+                        >
+                            <PanelLeftIcon active={sidebarState === 'expanded'} className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                        {sidebarState === 'expanded' ? 'Hide sidebar' : 'Show sidebar'}
+                    </TooltipContent>
+                </Tooltip>
+            ) : null}
 
             {/* Terminal button: only visible where terminal is available; collapse animates spacing */}
             <div

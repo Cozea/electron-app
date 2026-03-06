@@ -4,7 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import {
   SidebarInset,
   SidebarProvider,
-  useSidebar,
+  useOptionalSidebar,
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -60,9 +60,13 @@ interface DashboardLayoutContentProps {
 
 function SidebarFullscreenSync() {
   const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
-  const { isMobile, open, setOpen, setOpenMobile } = useSidebar()
+  const sidebar = useOptionalSidebar()
 
   useEffect(() => {
+    if (!sidebar) return
+
+    const { isMobile, open, setOpen, setOpenMobile } = sidebar
+
     if (assistantPanelMode !== 'fullscreen') return
 
     if (isMobile) {
@@ -79,7 +83,7 @@ function SidebarFullscreenSync() {
     return () => {
       window.clearTimeout(collapseTimer)
     }
-  }, [assistantPanelMode, isMobile, open, setOpen, setOpenMobile])
+  }, [assistantPanelMode, sidebar])
 
   return null
 }
@@ -97,7 +101,7 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { state } = useSidebar()
+  const sidebar = useOptionalSidebar()
   const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const [isFullScreen, setIsFullScreen] = useState(false)
@@ -110,7 +114,7 @@ function DashboardLayoutContent({
     normalizedPath === '/settings/ai' || normalizedPath === '/workspace/ai' ? undefined : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
-  const areAllSidebarsCollapsed = state === "collapsed"
+  const areAllSidebarsCollapsed = sidebar?.state === "collapsed"
 
   useEffect(() => {
     // Assistant panel is project-scoped and should never be visible in dashboard layout routes.

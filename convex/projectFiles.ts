@@ -1,5 +1,9 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import {
+  estimateProjectStorageBreakdown,
+  syncProjectStorageUsage,
+} from "./lib/workspaceLimits"
 
 // Generate upload URL for a project file
 export const generateUploadUrl = mutation({
@@ -42,6 +46,7 @@ export const saveFile = mutation({
 
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
 
     // Check if file already exists at this path
     const existing = await ctx.db
@@ -72,6 +77,8 @@ export const saveFile = mutation({
       uploadedAt: now,
       status: "active",
     })
+
+    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
 
     return { fileId }
   },
@@ -118,11 +125,14 @@ export const deleteFile = mutation({
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, file.projectId)
 
     await ctx.db.patch(args.fileId, { status: "deleted" })
 
     // Optionally delete from storage (or keep for recovery)
     // await ctx.storage.delete(file.storageId)
+
+    await syncProjectStorageUsage(ctx, file.projectId, previousBreakdown)
 
     return { success: true }
   },
@@ -190,21 +200,7 @@ export const saveFiles = mutation({
 
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
-
-    for (const file of args.files) {
-      const existing = await ctx.db
-        .query("projectFiles")
-        .withIndex("by_project_and_path", (q) =>
-          q.eq("projectId", args.projectId).eq("filePath", file.filePath)
-        )
-        .filter((q) => q.eq(q.field("status"), "active"))
-        .first()
-
-      if (existing && existing.checksum === file.checksum) {
-        continue
-      }
-
-    }
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
 
     for (const file of args.files) {
       // Check if file already exists at this path
@@ -245,6 +241,8 @@ export const saveFiles = mutation({
 
       results.push({ path: file.filePath, fileId })
     }
+
+    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
 
     return { results, savedCount: results.length }
   },
@@ -300,6 +298,7 @@ export const markFilesDeleted = mutation({
     filePaths: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
     let deletedCount = 0
 
     for (const filePath of args.filePaths) {
@@ -316,6 +315,8 @@ export const markFilesDeleted = mutation({
         deletedCount++
       }
     }
+
+    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
 
     return { deletedCount }
   },
