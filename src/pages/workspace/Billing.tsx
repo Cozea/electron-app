@@ -18,6 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
@@ -35,13 +43,16 @@ import { featureFlags } from '@/lib/featureFlags'
 const AUTH_SERVER_URL =
   import.meta.env.VITE_AUTH_SERVER_URL ||
   'https://api.cozea.app'
+const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Plan'
 
 const STARTUP_MIN_SEATS = 2
+const STARTUP_MAX_SEATS = 10
 
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
 type SelfServePlan = CheckoutPlan
 type PlanSubtype = 'individual' | 'workspace'
+type PlanTierId = 'free' | CheckoutPlan | 'enterprise'
 
 interface BillingProps {
   surface?: 'page' | 'drawer'
@@ -59,8 +70,10 @@ interface PlanCard {
   description: string
   price: string
   period: string
+  priceSecondary?: string
   trial?: string
   yearlySavingsLabel?: string
+  featuresHeading?: string
   features: PlanFeature[]
   conclusion: string
   footerText: string
@@ -94,90 +107,110 @@ const FALLBACK_TRIAL_DAYS: Partial<Record<SelfServePlan, number>> = {
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
     id: 'free',
-    name: 'Free',
-    description: 'Personal BYOK mode with core limits and no paid seats.',
+    name: 'Starter',
+    description: 'For developers who want to explore Cozea locally.',
     price: 'Free',
     period: '',
+    trial: 'No credit card required',
+    featuresHeading: 'Includes:',
     features: [
-      { text: 'Individual workspace access', included: true },
-      { text: 'Bring your own AI provider keys', included: true },
-      { text: 'No paid seat assignment required', included: true },
-      { text: 'Collaboration and sync are gated', included: false },
+      { text: 'Full access to the Cozea IDE', included: true },
+      { text: 'Run coding agents locally', included: true },
+      { text: 'Bring your own AI API keys', included: true },
+      { text: 'Access to 20+ integrations', included: true },
+      { text: 'Local project workspace', included: true },
+      { text: 'Build and test projects on your machine', included: true },
     ],
-    conclusion: 'Great for solo exploration before upgrading.',
+    conclusion: '',
     footerText: '',
   },
   {
     id: 'pro',
     name: 'Pro',
-    description: 'Individual subscription for focused daily builders.',
+    description: 'For serious builders who want AI as a competitive edge.',
     price: '$20',
     period: '/ month',
+    trial: '7 day free trial',
+    featuresHeading: 'Includes:',
     features: [
-      { text: 'Individual paid plan', included: true },
-      { text: 'AI and sync entitlement included', included: true },
-      { text: 'Included AI wallet resets each cycle', included: true },
-      { text: 'No seat management required', included: true },
-      { text: 'Centralized seat pool billing', included: false },
+      { text: 'Unlimited real-time collaboration', included: true },
+      { text: 'Hosted AI credits included', included: true },
+      { text: 'All coding agents', included: true },
+      { text: '20+ integrations', included: true },
+      { text: 'Bring Your Own API Keys (optional)', included: true },
+      { text: 'Usage & storage tracking', included: true },
+      { text: 'Priority support', included: true },
     ],
-    conclusion: 'Simple paid access without seat administration.',
-    footerText: 'Best for a single operator or maker.',
+    conclusion: '',
+    footerText: '',
   },
   {
     id: 'max',
     name: 'Max',
-    description: 'Individual power plan with expanded usage headroom.',
+    description: 'For power users pushing AI to the limit.',
     price: '$49',
     period: '/ month',
+    trial: '7 day free trial',
+    featuresHeading: 'Everything in Pro, plus:',
     features: [
-      { text: 'Highest individual entitlement tier', included: true },
-      { text: 'AI and sync entitlement included', included: true },
-      { text: 'Included AI wallet resets each cycle', included: true },
-      { text: 'No seat management required', included: true },
-      { text: 'Centralized seat pool billing', included: false },
+      { text: '5× higher AI credits', included: true },
+      { text: 'Faster priority support', included: true },
     ],
-    conclusion: 'For heavy individual usage and extended workloads.',
-    footerText: 'Upgrade or downgrade anytime.',
+    conclusion: '',
+    footerText: '',
   },
 ]
 
 const STARTUP_PLAN_CARD: PlanCard = {
   id: 'startup',
   name: 'Startup',
-  description: 'Centralized billing with explicit paid-seat assignment.',
-  price: '$100',
-  period: '/ seat / month',
-  trial: '7 day free trial',
+  description: 'For fast-moving teams shipping real products.',
+  price: '$200',
+  period: '/ 2 seats / month',
+  priceSecondary: '$100 / seat / month',
+  featuresHeading: 'Includes:',
   features: [
-    { text: 'Workspace-level seat pool', included: true },
-    { text: 'Per-member seat assignment controls', included: true },
-    { text: 'AI and sync gated by seat assignment', included: true },
-    { text: 'Each assigned seat gets a full wallet each cycle', included: true },
-    { text: `Minimum ${STARTUP_MIN_SEATS} paid seats`, included: true },
+    { text: 'Unlimited real-time collaboration', included: true },
+    { text: '10× higher AI credits per seat', included: true },
+    { text: 'All coding agents', included: true },
+    { text: 'Shared AI Memory (Coming in Version 0.2.0)', included: true },
+    { text: 'Auto documentation (Coming in Version 0.2.0)', included: true },
+    { text: 'Centralized team billing', included: true },
+    { text: 'Admin visibility & usage oversight', included: true },
+    { text: '20+ integrations', included: true },
+    { text: 'Bring Your Own API Keys (optional)', included: true },
+    { text: 'Priority support', included: true },
   ],
-  conclusion: 'Best when a team needs centralized cost control.',
-  footerText: 'Billing owner always consumes one paid seat.',
+  conclusion: '',
+  footerText: '',
 }
 
 interface EnterprisePlanCard {
   name: string
   description: string
   priceLabel: string
+  featuresHeading: string
   features: string[]
   footerText: string
 }
 
 const ENTERPRISE_PLAN_CARD: EnterprisePlanCard = {
-  name: 'Enterprise',
-  description: 'Custom pricing, support, and controls for larger organizations.',
-  priceLabel: 'Custom',
+  name: 'Custom Enterprise',
+  description: 'For organizations with advanced security and AI integration needs.',
+  priceLabel: 'Custom pricing',
+  featuresHeading: 'Everything in Startup, plus:',
   features: [
-    'Custom seat bands and contract terms',
-    'Dedicated onboarding and billing support',
-    'Advanced governance and procurement support',
-    'Flexible rollout across multiple teams',
+    'Advanced security & compliance controls',
+    'Dedicated onboarding',
+    'Custom model connections',
+    'Custom integrations',
+    'SAML / OIDC',
+    'SCIM provisioning',
+    'Organization-wide access controls',
+    'RAG pipelines',
+    'Fine-tuning support',
   ],
-  footerText: 'Contact sales to structure enterprise billing.',
+  footerText: '',
 }
 
 interface StripeInvoice {
@@ -403,19 +436,135 @@ function planLabel(args: {
 
 function normalizeSeatQuantity(value: number): number {
   if (!Number.isFinite(value)) return STARTUP_MIN_SEATS
-  return Math.max(STARTUP_MIN_SEATS, Math.floor(value))
+  return Math.min(STARTUP_MAX_SEATS, Math.max(STARTUP_MIN_SEATS, Math.floor(value)))
 }
 
 function normalizeCurrentPlanForCards(
   source: 'account' | 'legacy' | 'trial' | 'free' | undefined,
   plan: string | undefined
-): 'free' | CheckoutPlan | 'enterprise' {
+): PlanTierId {
   if (source === 'trial') return 'startup'
   if (plan === 'team') return 'startup'
   if (plan === 'pro' || plan === 'max' || plan === 'startup' || plan === 'enterprise') {
     return plan
   }
   return 'free'
+}
+
+function normalizePlanFeatureText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function getPlanFeatureComparisonKey(feature: string): string {
+  const normalized = normalizePlanFeatureText(feature)
+  if (normalized.includes('ai credits')) return 'ai-credits'
+  if (normalized.includes('integrations')) return 'integrations'
+  if (normalized.includes('bring your own') && normalized.includes('api key')) return 'byo-api-keys'
+  return normalized
+}
+
+function getAiCreditFeatureLevel(feature: string): number {
+  const normalized = normalizePlanFeatureText(feature)
+  if (!normalized.includes('ai credits')) return 0
+
+  const multiplierMatch = normalized.match(/(\d+(?:\.\d+)?)\s*[x×]/i)
+  if (multiplierMatch) {
+    const parsed = Number(multiplierMatch[1])
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+
+  // Any AI credits statement without an explicit multiplier is treated as baseline credits.
+  return 1
+}
+
+function mergePlanFeatureLists(...featureLists: string[][]): string[] {
+  const merged: string[] = []
+  const indexByKey = new Map<string, number>()
+
+  for (const features of featureLists) {
+    for (const feature of features) {
+      const key = getPlanFeatureComparisonKey(feature)
+      const existingIndex = indexByKey.get(key)
+      if (existingIndex === undefined) {
+        indexByKey.set(key, merged.length)
+        merged.push(feature)
+      } else {
+        // Keep the highest-tier phrasing for duplicate benefit categories (for example AI credits).
+        merged[existingIndex] = feature
+      }
+    }
+  }
+
+  return merged
+}
+
+function getDirectPlanIncludedFeatures(planId: PlanTierId): string[] {
+  if (planId === 'enterprise') {
+    return ENTERPRISE_PLAN_CARD.features
+  }
+
+  if (planId === 'startup') {
+    return STARTUP_PLAN_CARD.features
+      .filter((feature) => feature.included)
+      .map((feature) => feature.text)
+  }
+
+  const planCard = INDIVIDUAL_PLAN_CARDS.find((card) => card.id === planId)
+  if (!planCard) return []
+  return planCard.features.filter((feature) => feature.included).map((feature) => feature.text)
+}
+
+function getPlanIncludedFeatures(planId: PlanTierId): string[] {
+  if (planId === 'max') {
+    return mergePlanFeatureLists(
+      getDirectPlanIncludedFeatures('pro'),
+      getDirectPlanIncludedFeatures('max')
+    )
+  }
+
+  if (planId === 'enterprise') {
+    return mergePlanFeatureLists(
+      getDirectPlanIncludedFeatures('startup'),
+      getDirectPlanIncludedFeatures('enterprise')
+    )
+  }
+
+  return getDirectPlanIncludedFeatures(planId)
+}
+
+function getPlanDisplayName(planId: PlanTierId): string {
+  if (planId === 'enterprise') return ENTERPRISE_PLAN_CARD.name
+  if (planId === 'startup') return STARTUP_PLAN_CARD.name
+  return INDIVIDUAL_PLAN_CARDS.find((card) => card.id === planId)?.name ?? 'Plan'
+}
+
+const PLAN_TIER_RANK: Record<PlanTierId, number> = {
+  free: 0,
+  pro: 1,
+  max: 2,
+  startup: 3,
+  enterprise: 4,
+}
+
+function getPlanCtaLabel(
+  targetPlanId: PlanTierId,
+  currentPlanId: PlanTierId,
+  targetPlanName: string
+): string {
+  if (targetPlanId === currentPlanId) {
+    return targetPlanId === 'free' ? 'Download Free' : 'Current Plan'
+  }
+
+  const targetRank = PLAN_TIER_RANK[targetPlanId]
+  const currentRank = PLAN_TIER_RANK[currentPlanId]
+
+  if (targetRank > currentRank) {
+    return `Upgrade to ${targetPlanName}`
+  }
+
+  return 'Downgrade'
 }
 
 function getPlanBadge(
@@ -476,6 +625,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
+  const [pendingDowngradeTargetPlanId, setPendingDowngradeTargetPlanId] = useState<PlanTierId | null>(null)
   const [selectedPlanSubtype, setSelectedPlanSubtype] = useState<PlanSubtype>('individual')
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
@@ -607,11 +757,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
   const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
-  const pagedWalletLedgerRows = walletLedgerRows.slice(
+  const walletDebitLedgerRows = walletLedgerRows.filter((entry) => entry.kind === 'debit')
+  const pagedWalletLedgerRows = walletDebitLedgerRows.slice(
     walletActivityPage * walletActivityPageSize,
     (walletActivityPage + 1) * walletActivityPageSize
   )
-  const walletActivityTotalPages = Math.max(1, Math.ceil(walletLedgerRows.length / walletActivityPageSize))
+  const walletActivityTotalPages = Math.max(1, Math.ceil(walletDebitLedgerRows.length / walletActivityPageSize))
   const getWalletActivityPageNumbers = () => {
     if (walletActivityTotalPages <= 5) {
       return Array.from({ length: walletActivityTotalPages }, (_, i) => i + 1)
@@ -632,11 +783,11 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         : 'No active wallet context'
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(walletLedgerRows.length / walletActivityPageSize) - 1)
+    const maxPage = Math.max(0, Math.ceil(walletDebitLedgerRows.length / walletActivityPageSize) - 1)
     if (walletActivityPage > maxPage) {
       setWalletActivityPage(maxPage)
     }
-  }, [walletActivityPage, walletLedgerRows.length])
+  }, [walletActivityPage, walletDebitLedgerRows.length])
 
   const activeAssignmentsByUserId = useMemo(() => {
     const map = new Set<string>()
@@ -659,40 +810,54 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const hasBillingOverviewContent =
     showPaidSeatSummary || (seatManagedEntitlement && Boolean(seatManagement?.billingUser))
   const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
+  const shouldShowFreeTrialText = currentPlanIdForCards === 'free'
+  const pendingDowngradeTargetPlanName = pendingDowngradeTargetPlanId
+    ? getPlanDisplayName(pendingDowngradeTargetPlanId)
+    : null
+  const pendingDowngradeLostBenefits = useMemo(() => {
+    if (!pendingDowngradeTargetPlanId) return []
+
+    const currentFeatures = getPlanIncludedFeatures(currentPlanIdForCards)
+    const targetFeatures = getPlanIncludedFeatures(pendingDowngradeTargetPlanId)
+    const targetSet = new Set(targetFeatures.map(getPlanFeatureComparisonKey))
+    const targetAiCreditLevel = targetFeatures.reduce((maxLevel, feature) => (
+      Math.max(maxLevel, getAiCreditFeatureLevel(feature))
+    ), 0)
+
+    return currentFeatures.filter(
+      (feature) => {
+        const featureKey = getPlanFeatureComparisonKey(feature)
+        if (featureKey === 'ai-credits') {
+          return getAiCreditFeatureLevel(feature) > targetAiCreditLevel
+        }
+
+        return !targetSet.has(featureKey)
+      }
+    )
+  }, [currentPlanIdForCards, pendingDowngradeTargetPlanId])
   const individualPlanCards = useMemo(() => {
     return INDIVIDUAL_PLAN_CARDS.map((card) => {
       if (card.id === 'free') return card
+      const resolvedPricing = resolvePlanPricing({
+        catalog: pricingCatalog,
+        plan: card.id,
+        cycle: checkoutCycle,
+      })
       return {
         ...card,
-        ...resolvePlanPricing({
-          catalog: pricingCatalog,
-          plan: card.id,
-          cycle: checkoutCycle,
-        }),
+        ...resolvedPricing,
+        trial: resolvedPricing.trial ?? card.trial,
       }
     })
   }, [checkoutCycle, pricingCatalog])
   const startupPlanCard = useMemo(() => {
     return {
       ...STARTUP_PLAN_CARD,
-      ...resolvePlanPricing({
-        catalog: pricingCatalog,
-        plan: 'startup',
-        cycle: checkoutCycle,
-      }),
     }
-  }, [checkoutCycle, pricingCatalog])
+  }, [])
   const normalizedCheckoutSeatQuantity = normalizeSeatQuantity(checkoutSeatQuantity)
-  const startupCycleAmountCents = resolvePlanAmountCents(
-    pricingCatalog,
-    'startup',
-    checkoutCycle
-  )
-  const startupCurrency = resolvePlanCurrency(pricingCatalog, 'startup', checkoutCycle)
-  const startupEstimatedTotalLabel = formatDisplayCurrencyFromCents(
-    startupCycleAmountCents * normalizedCheckoutSeatQuantity,
-    startupCurrency
-  )
+  const startupPlanCtaLabel = getPlanCtaLabel('startup', currentPlanIdForCards, 'Startup')
+  const enterprisePlanCtaLabel = getPlanCtaLabel('enterprise', currentPlanIdForCards, ENTERPRISE_PLAN_CARD.name)
 
   const handleManageBilling = useCallback(async () => {
     if (!currentOrganization?.organizationId || !accessToken) return
@@ -798,12 +963,51 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   ])
 
   const handlePlanCardCheckout = useCallback(
-    (planId: PlanCard['id']) => {
-      if (planId === 'free') return
-      void handleCheckout(planId as CheckoutPlan)
+    (planId: CheckoutPlan) => {
+      void handleCheckout(planId)
     },
     [handleCheckout]
   )
+
+  const executePlanAction = useCallback(
+    (targetPlanId: PlanTierId) => {
+      if (targetPlanId === 'free') {
+        void handleManageBilling()
+        return
+      }
+
+      if (targetPlanId === 'enterprise') {
+        void window.electronAPI.shell.openExternal(ENTERPRISE_SALES_MAILTO)
+        return
+      }
+
+      handlePlanCardCheckout(targetPlanId)
+    },
+    [handleManageBilling, handlePlanCardCheckout]
+  )
+
+  const handlePlanCtaClick = useCallback(
+    (targetPlanId: PlanTierId) => {
+      const isDowngradeFromPaidPlan =
+        currentPlanIdForCards !== 'free' &&
+        PLAN_TIER_RANK[targetPlanId] < PLAN_TIER_RANK[currentPlanIdForCards]
+
+      if (isDowngradeFromPaidPlan) {
+        setPendingDowngradeTargetPlanId(targetPlanId)
+        return
+      }
+
+      executePlanAction(targetPlanId)
+    },
+    [currentPlanIdForCards, executePlanAction]
+  )
+
+  const handleConfirmDowngrade = useCallback(() => {
+    if (!pendingDowngradeTargetPlanId) return
+    const targetPlanId = pendingDowngradeTargetPlanId
+    setPendingDowngradeTargetPlanId(null)
+    executePlanAction(targetPlanId)
+  }, [executePlanAction, pendingDowngradeTargetPlanId])
 
   const handleSeatToggle = useCallback(
     async (assignedUserId: Id<'users'>, nextActive: boolean) => {
@@ -933,7 +1137,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               <Button variant="outline" onClick={() => setShowUpgradeOptions((current) => !current)}>
                 {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
               </Button>
-              {showUpgradeOptions ? (
+            </div>
+            {showUpgradeOptions ? (
+              <div className="mt-3 flex justify-center">
                 <div className="inline-flex h-10 w-fit items-center rounded-full bg-muted p-1">
                   <Button
                     type="button"
@@ -952,8 +1158,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     Enterprise
                   </Button>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </CardHeader>
 
           {hasBillingOverviewContent ? (
@@ -1003,7 +1209,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           ) : null}
         </Card>
 
-            {showUpgradeOptions && (
+        {showUpgradeOptions && (
           <Card className="-mt-4 border-none bg-transparent shadow-none">
             <CardContent className="px-0 pt-0">
               {selectedPlanSubtype === 'individual' ? (
@@ -1011,7 +1217,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   {individualPlanCards.map((planCard, index) => {
                     const isCurrentPlan = currentPlanIdForCards === planCard.id
                     const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
-                    const showCardHeaderRow = planCard.id !== 'free'
+                    const planCardCtaLabel = getPlanCtaLabel(planCard.id, currentPlanIdForCards, planCard.name)
+                    const isFreeTrialCopy = Boolean(planCard.trial?.toLowerCase().includes('free trial'))
+                    const showTrialText = Boolean(planCard.trial) && (
+                      planCard.id === 'free'
+                        ? shouldShowFreeTrialText
+                        : shouldShowFreeTrialText || !isFreeTrialCopy
+                    )
 
                     return (
                       <div
@@ -1027,13 +1239,14 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           </div>
                         ) : null}
 
-                        {showCardHeaderRow ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
-                            </div>
-                            {renderCycleToggle()}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
                           </div>
+                          {planCard.id !== 'free' ? renderCycleToggle() : null}
+                        </div>
+                        {planCard.description ? (
+                          <p className="mt-2 text-sm text-muted-foreground">{planCard.description}</p>
                         ) : null}
                         <div className="mt-4 flex items-baseline gap-1">
                           <span className="text-3xl font-bold text-foreground">{planCard.price}</span>
@@ -1042,10 +1255,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                         {planCard.yearlySavingsLabel ? (
                           <p className="mt-1 text-xs text-muted-foreground">{planCard.yearlySavingsLabel}</p>
                         ) : null}
-                        {planCard.trial ? (
+                        {showTrialText ? (
                           <p className="mt-1 text-sm text-green-600 dark:text-green-400">{planCard.trial}</p>
                         ) : null}
 
+                        {planCard.featuresHeading ? (
+                          <p className="mt-4 text-sm font-medium text-foreground">{planCard.featuresHeading}</p>
+                        ) : null}
                         <ul className="mt-5 flex-1 space-y-2.5">
                           {planCard.features.map((feature, featureIndex) => (
                             <li key={`${planCard.id}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1059,28 +1275,30 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           ))}
                         </ul>
 
-                        <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
+                        {planCard.conclusion ? (
+                          <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
+                        ) : null}
 
                         {planCard.id === 'free' ? (
                           <Button
                             className="mt-5 w-full rounded-lg"
                             variant="outline"
-                            onClick={handleManageBilling}
-                            disabled={!canOpenCheckout || isPortalPending}
+                            onClick={() => handlePlanCtaClick('free')}
+                            disabled={!canOpenCheckout || isCurrentPlan || isPortalPending || isCheckoutPending}
                           >
-                            {isCurrentPlan ? 'Current Plan' : 'Downgrade in Billing Portal'}
+                            {planCardCtaLabel}
                           </Button>
                         ) : (
                           <Button
                             className="mt-5 w-full rounded-full"
                             variant={isCurrentPlan ? 'secondary' : 'default'}
-                            onClick={() => handlePlanCardCheckout(planCard.id)}
-                            disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending}
+                            onClick={() => handlePlanCtaClick(planCard.id)}
+                            disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending || isPortalPending}
                           >
                             {isCheckoutPending ? (
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : null}
-                            {isCurrentPlan ? 'Current Plan' : `Start ${planCard.name} Subscription`}
+                            {planCardCtaLabel}
                           </Button>
                         )}
 
@@ -1100,21 +1318,29 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                       </div>
                       {renderCycleToggle()}
                     </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{startupPlanCard.description}</p>
                     <div className="mt-4 flex items-baseline gap-1">
                       <span className="text-3xl font-bold text-foreground">{startupPlanCard.price}</span>
                       <span className="text-muted-foreground">{startupPlanCard.period}</span>
                     </div>
+                    {startupPlanCard.priceSecondary ? (
+                      <p className="mt-1 text-sm text-muted-foreground">{startupPlanCard.priceSecondary}</p>
+                    ) : null}
                     {startupPlanCard.yearlySavingsLabel ? (
                       <p className="mt-1 text-xs text-muted-foreground">{startupPlanCard.yearlySavingsLabel}</p>
                     ) : null}
-                    {startupPlanCard.trial ? (
+                    {startupPlanCard.trial && shouldShowFreeTrialText ? (
                       <p className="mt-1 text-sm text-green-600 dark:text-green-400">
                         {startupPlanCard.trial}
                       </p>
                     ) : null}
                     <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-muted-foreground">Seats</span>
+                        <span className="text-sm text-muted-foreground">Team Seats</span>
+                        <span className="text-xs text-muted-foreground">{STARTUP_MIN_SEATS}-{STARTUP_MAX_SEATS} seats</span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">{normalizedCheckoutSeatQuantity} seats</span>
                         <div className="flex items-center gap-2">
                           <Button
                             type="button"
@@ -1141,17 +1367,16 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                                 normalizeSeatQuantity(current + 1)
                               )
                             }
+                            disabled={normalizedCheckoutSeatQuantity >= STARTUP_MAX_SEATS}
                           >
                             +
                           </Button>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Minimum {STARTUP_MIN_SEATS} seats · Estimated total {startupEstimatedTotalLabel}
-                        {' / '}
-                        {checkoutCycle === 'yearly' ? 'year' : 'month'}
-                      </p>
                     </div>
+                    {startupPlanCard.featuresHeading ? (
+                      <p className="mt-4 text-sm font-medium text-foreground">{startupPlanCard.featuresHeading}</p>
+                    ) : null}
                     <ul className="mt-5 flex-1 space-y-2.5">
                       {startupPlanCard.features.map((feature, featureIndex) => (
                         <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1164,17 +1389,21 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
+                    {startupPlanCard.conclusion ? (
+                      <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
+                    ) : null}
                     <Button
                       className="mt-5 w-full rounded-lg"
                       variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
-                      onClick={() => handlePlanCardCheckout('startup')}
-                      disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending}
+                      onClick={() => handlePlanCtaClick('startup')}
+                      disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending || isPortalPending}
                     >
                       {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {currentPlanIdForCards === 'startup' ? 'Current Plan' : 'Start Startup Subscription'}
+                      {startupPlanCtaLabel}
                     </Button>
-                    <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
+                    {startupPlanCard.footerText ? (
+                      <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
+                    ) : null}
                   </div>
 
                   <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
@@ -1184,7 +1413,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                       </div>
                       {renderCycleToggle()}
                     </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{ENTERPRISE_PLAN_CARD.description}</p>
                     <p className="mt-4 text-3xl font-bold text-foreground">{ENTERPRISE_PLAN_CARD.priceLabel}</p>
+                    <p className="mt-4 text-sm font-medium text-foreground">{ENTERPRISE_PLAN_CARD.featuresHeading}</p>
                     <ul className="mt-5 flex-1 space-y-2.5">
                       {ENTERPRISE_PLAN_CARD.features.map((feature) => (
                         <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1195,19 +1426,72 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     </ul>
                     <Button
                       className="mt-6 w-full rounded-lg"
-                      onClick={() =>
-                        window.electronAPI.shell.openExternal('mailto:sales@cozea.com?subject=Enterprise%20Plan')
-                      }
+                      variant={currentPlanIdForCards === 'enterprise' ? 'secondary' : 'default'}
+                      onClick={() => handlePlanCtaClick('enterprise')}
+                      disabled={currentPlanIdForCards === 'enterprise' || isCheckoutPending || isPortalPending}
                     >
-                      Contact Enterprise Sales
+                      {enterprisePlanCtaLabel}
                     </Button>
-                    <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
+                    {ENTERPRISE_PLAN_CARD.footerText ? (
+                      <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
+                    ) : null}
                   </div>
                 </div>
               )}
             </CardContent>
           </Card>
         )}
+
+        <Dialog
+          open={pendingDowngradeTargetPlanId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDowngradeTargetPlanId(null)
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>You will Lose access to:</DialogTitle>
+              <DialogDescription>
+                {pendingDowngradeTargetPlanName
+                  ? `Downgrading from ${getPlanDisplayName(currentPlanIdForCards)} to ${pendingDowngradeTargetPlanName} will remove these benefits.`
+                  : 'Downgrading will remove benefits from your current plan.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {pendingDowngradeLostBenefits.length > 0 ? (
+                pendingDowngradeLostBenefits.map((benefit) => (
+                  <div key={benefit} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    <span>{benefit}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No specific feature differences were detected.</p>
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setPendingDowngradeTargetPlanId(null)}
+                disabled={isCheckoutPending || isPortalPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDowngrade}
+                disabled={isCheckoutPending || isPortalPending}
+              >
+                {isCheckoutPending || isPortalPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Lose all my benefits
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {seatManagedEntitlement && (
           <Card className="border-none shadow-none bg-transparent">
@@ -1395,7 +1679,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>AI Wallet Activity</CardTitle>
             <CardDescription>
-              Recent wallet events for the currently selected wallet context.
+              Recent debit wallet events for the currently selected wallet context.
             </CardDescription>
             <p className="text-xs text-muted-foreground">{activeWalletContextLabel}</p>
           </CardHeader>
@@ -1411,16 +1695,16 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {walletLedgerRows.length > 0 ? (
+                  {walletDebitLedgerRows.length > 0 ? (
                     pagedWalletLedgerRows.map((entry) => {
                       const kindLabel = formatWalletLedgerKind(entry.kind)
                       const isDebit = entry.kind === 'debit'
                       const amountPrefix = isDebit ? '-' : '+'
-                      const source =
-                        typeof entry.metadata?.source === 'string'
-                          ? entry.metadata.source
-                          : typeof entry.metadata?.reason === 'string'
-                            ? entry.metadata.reason
+                      const modelUsed =
+                        typeof entry.metadata?.model === 'string' && entry.metadata.model.trim().length > 0
+                          ? entry.metadata.model
+                          : typeof entry.metadata?.modelId === 'string' && entry.metadata.modelId.trim().length > 0
+                            ? entry.metadata.modelId
                             : '-'
 
                       return (
@@ -1430,24 +1714,26 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           <TableCell>
                             {amountPrefix}{formatCurrencyFromCents(entry.amountCents, walletCurrency)}
                           </TableCell>
-                          <TableCell className="text-right text-muted-foreground">{source}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            <span className="font-mono text-sm">{modelUsed}</span>
+                          </TableCell>
                         </TableRow>
                       )
                     })
                   ) : (
                     <TableRow>
                       <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
-                        No wallet activity yet.
+                        No debit wallet activity yet.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
-            {walletLedgerRows.length > walletActivityPageSize && (
+            {walletDebitLedgerRows.length > walletActivityPageSize && (
               <div className="mt-4 flex items-center justify-between px-4 py-3">
                 <p className="text-sm text-muted-foreground">
-                  Showing <span className="font-medium">{walletActivityPage * walletActivityPageSize + 1}-{Math.min((walletActivityPage + 1) * walletActivityPageSize, walletLedgerRows.length)}</span> of <span className="font-medium">{walletLedgerRows.length}</span> entries
+                  Showing <span className="font-medium">{walletActivityPage * walletActivityPageSize + 1}-{Math.min((walletActivityPage + 1) * walletActivityPageSize, walletDebitLedgerRows.length)}</span> of <span className="font-medium">{walletDebitLedgerRows.length}</span> entries
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
