@@ -157,10 +157,15 @@ interface RemotePricingResponse {
   }>
 }
 
+type WalletReserveReason =
+  | 'request_id_conflict'
+  | 'hold_not_active'
+  | 'insufficient_funds'
+
 interface WalletReserveResponse {
   ok?: boolean
   holdId?: string
-  reason?: string
+  reason?: WalletReserveReason
   availableCents?: number
   requiredCents?: number
 }
@@ -579,9 +584,9 @@ function normalizeRemotePayload(value: unknown): Record<string, unknown> {
 }
 
 function managedReserveCentsForTier(tier: string | undefined): number {
-  if (tier === 'fast') return 25
-  if (tier === 'standard') return 75
-  return 250
+  void tier
+  // Reserve the minimum non-zero amount so viable requests are not blocked early.
+  return 1
 }
 
 function resolveRequestId(candidate: string | undefined): string {
@@ -1619,7 +1624,7 @@ export class LocalAiRuntimeService {
               aiBaseUrlHeader,
             })
             if (!reserveResult.ok || !reserveResult.holdId) {
-              if (reserveResult.reason && reserveResult.reason !== 'insufficient_funds') {
+              if (reserveResult.reason === 'request_id_conflict' || reserveResult.reason === 'hold_not_active') {
                 sendJson(res, 409, {
                   error: 'wallet_reservation_conflict',
                   code: reserveResult.reason === 'request_id_conflict'
@@ -1638,9 +1643,25 @@ export class LocalAiRuntimeService {
                 })
                 return
               }
-              sendJson(res, 402, {
-                error: 'wallet_insufficient_funds',
-                message: 'Your available AI wallet balance is not enough for this request.',
+
+              if (reserveResult.reason === 'insufficient_funds') {
+                sendJson(res, 402, {
+                  error: 'wallet_insufficient_funds',
+                  code: 'WALLET_INSUFFICIENT_FUNDS',
+                  title: 'AI wallet balance low',
+                  message: 'Not enough AI wallet funds for this request.',
+                  hint: 'Open Billing or use your own provider in AI Settings.',
+                  action: {
+                    label: 'Billing',
+                    href: '/settings/billing',
+                  },
+                })
+                return
+              }
+
+              sendJson(res, 502, {
+                error: 'wallet_reserve_failed',
+                message: 'Failed to reserve AI wallet funds for this request.',
               })
               return
             }

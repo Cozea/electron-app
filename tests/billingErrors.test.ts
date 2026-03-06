@@ -43,6 +43,29 @@ describe('billing error parsing', () => {
     )
   })
 
+  it('parses structured wallet errors embedded in Error messages', () => {
+    const parsed = parseBillingError(
+      new Error(
+        'Request failed: {"error":"wallet_insufficient_funds","code":"WALLET_INSUFFICIENT_FUNDS","message":"Not enough AI wallet funds for this request.","action":{"label":"Billing","href":"/settings/billing"}}'
+      )
+    )
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        error: 'wallet_insufficient_funds',
+        code: 'WALLET_INSUFFICIENT_FUNDS',
+        title: 'AI wallet balance low',
+        message: 'Not enough AI wallet funds for this request.',
+        action: { label: 'Billing', href: '/settings/billing' },
+      })
+    )
+  })
+
+  it('does not false-positive on plain wallet error substrings', () => {
+    expect(parseBillingError('local_runtime_failed wallet_insufficient_funds')).toBeNull()
+    expect(isBillingError('local_runtime_failed wallet_insufficient_funds')).toBe(false)
+  })
+
   it('detects billing errors from plain message strings', () => {
     expect(isBillingError('provider_auth_required')).toBe(true)
     expect(isBillingError('network timeout')).toBe(false)

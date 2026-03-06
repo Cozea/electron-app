@@ -6,7 +6,7 @@ export interface RetryHintAction {
 export interface RetryHint {
   retryable: boolean
   code: 'duplicate_response_item_id' | 'provider_usage_limit' | 'provider_rate_limit' | 'provider_error'
-  provider?: 'openai' | 'google' | 'unknown'
+  provider?: string
   retryAfterSeconds?: number
   resetAt?: number
   shouldResetContinuation?: boolean
@@ -38,6 +38,12 @@ function parseAction(value: unknown): RetryHintAction | undefined {
     label: value.label.trim(),
     href: value.href.trim(),
   }
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 function formatDurationCompact(totalSeconds: number): string {
@@ -72,10 +78,7 @@ export function readLatestRetryHint(
       return {
         retryable: data.retryable,
         code: data.code as RetryHint['code'],
-        provider:
-          data.provider === 'openai' || data.provider === 'google' || data.provider === 'unknown'
-            ? data.provider
-            : undefined,
+        provider: asNonEmptyString(data.provider),
         retryAfterSeconds:
           typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined,
         resetAt: typeof data.resetAt === 'number' ? data.resetAt : undefined,

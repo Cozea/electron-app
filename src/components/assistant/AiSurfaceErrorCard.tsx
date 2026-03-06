@@ -20,10 +20,10 @@ const errorIcons = {
 } satisfies Record<AiSurfaceErrorData['code'], typeof AlertTriangle>
 
 const errorColors = {
-  provider_usage_limit: 'text-amber-600 bg-amber-500/10 border-amber-500/20',
-  provider_rate_limit: 'text-orange-600 bg-orange-500/10 border-orange-500/20',
-  provider_error: 'text-destructive bg-destructive/10 border-destructive/20',
-  duplicate_response_item_id: 'text-orange-600 bg-orange-500/10 border-orange-500/20',
+  provider_usage_limit: 'bg-amber-100 text-amber-950',
+  provider_rate_limit: 'bg-orange-100 text-orange-950',
+  provider_error: 'bg-red-100 text-red-950',
+  duplicate_response_item_id: 'bg-orange-100 text-orange-950',
 } satisfies Record<AiSurfaceErrorData['code'], string>
 
 export function AiSurfaceErrorCard({
@@ -50,7 +50,7 @@ export function AiSurfaceErrorCard({
   }
 
   return (
-    <div className={cn('rounded-lg border p-3', colorClass, className)}>
+    <div className={cn('rounded-lg p-3', colorClass, className)}>
       <div className="flex items-start gap-3">
         <div className="mt-0.5 shrink-0">
           <Icon className="h-5 w-5" />
@@ -58,10 +58,10 @@ export function AiSurfaceErrorCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-0.5">
-              <p className="text-sm font-medium leading-tight">
+              <p className="truncate text-sm font-medium leading-tight">
                 {error.title}
               </p>
-              <p className="text-sm leading-snug opacity-90">
+              <p className="truncate text-xs leading-5 opacity-90">
                 {error.message}
               </p>
             </div>
@@ -99,11 +99,6 @@ export function AiSurfaceErrorCard({
               )}
             </div>
           </div>
-          {error.hint && (
-            <p className="mt-1.5 text-xs leading-relaxed opacity-80">
-              {error.hint}
-            </p>
-          )}
         </div>
       </div>
     </div>

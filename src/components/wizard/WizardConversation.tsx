@@ -756,7 +756,8 @@ export function WizardConversation({
       retrySurfaceError.code,
       retrySurfaceError.title,
       retrySurfaceError.message,
-      retrySurfaceError.hint ?? '',
+      retrySurfaceError.action?.label ?? '',
+      retrySurfaceError.action?.href ?? '',
     ].join('|')
   }, [retrySurfaceError])
 
@@ -1095,7 +1096,7 @@ export function WizardConversation({
           ) : showRetrySurfaceError && retrySurfaceError ? (
             <AiSurfaceErrorCard
               error={retrySurfaceError}
-              className="border-0 border-b rounded-none p-3"
+              className="rounded-none p-3"
               onDismiss={() => setDismissedError(retrySurfaceErrorKey)}
             />
           ) : showGenericError && surfaceErrorMessage && (
