@@ -1032,6 +1032,7 @@ export function ProjectPagesPage() {
                             type: 'image',
                             data: data.dataUrl,
                             name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
+                            mediaType: 'image/png',
                             context: {
                                 pagePath: focusedRoute.path,
                                 pageFile: focusedRoute.file,
@@ -2171,21 +2172,23 @@ export function ProjectPagesPage() {
                                                                 <h3 className="font-medium text-sm text-foreground/90 truncate" title={route.path}>
                                                                     {route.name}
                                                                 </h3>
-                                                                <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 truncate max-w-[40%] text-right bg-muted/50 px-1.5 py-0.5 rounded">
-                                                                    {route.path}
-                                                                </span>
+                                                                <div className="flex shrink-0 items-center gap-1.5">
+                                                                    {routePresenceUsers.length > 0 && (
+                                                                        <CompactPresenceIndicator
+                                                                            users={routePresenceUsers}
+                                                                            size="sm"
+                                                                            className="shrink-0"
+                                                                        />
+                                                                    )}
+                                                                    <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 truncate max-w-[40%] text-right bg-muted/50 px-1.5 py-0.5 rounded">
+                                                                        {route.path}
+                                                                    </span>
+                                                                </div>
                                                             </div>
-                                                            <div className="mt-1 flex items-center justify-between gap-2">
+                                                            <div className="mt-1 min-w-0">
                                                                 <p className="min-w-0 flex-1 text-[11px] text-muted-foreground line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                     {route.description ?? ''}
                                                                 </p>
-                                                                {routePresenceUsers.length > 0 && (
-                                                                    <CompactPresenceIndicator
-                                                                        users={routePresenceUsers}
-                                                                        size="sm"
-                                                                        className="shrink-0"
-                                                                    />
-                                                                )}
                                                             </div>
                                                         </div>
                                                     </Card>

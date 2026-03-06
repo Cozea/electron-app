@@ -1,3 +1,5 @@
+import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -13,8 +15,60 @@ function tryParseJsonObject(input: string): unknown {
   }
 }
 
+function normalizeTodowriteInput(rawInput: unknown, depth = 0): unknown {
+  if (depth > 2) return rawInput
+
+  if (Array.isArray(rawInput)) {
+    return { todos: rawInput }
+  }
+
+  if (typeof rawInput === 'string') {
+    const parsedArray = parseJsonArrayLoose(rawInput)
+    if (parsedArray !== null) {
+      return { todos: parsedArray }
+    }
+
+    const parsedObject = tryParseJsonObject(rawInput)
+    if (parsedObject !== rawInput) {
+      return normalizeTodowriteInput(parsedObject, depth + 1)
+    }
+
+    return rawInput
+  }
+
+  if (!isPlainObject(rawInput)) return rawInput
+
+  const next: Record<string, unknown> = { ...rawInput }
+
+  if (!Array.isArray(next.tasks) && !Array.isArray(next.todos)) {
+    const parsedTasksJson = parseJsonArrayLoose(next.tasks_json)
+    if (parsedTasksJson !== null) {
+      next.todos = parsedTasksJson
+    }
+  }
+
+  if (Array.isArray(next.tasks) || Array.isArray(next.todos)) {
+    return next
+  }
+
+  for (const key of ['input', 'payload', 'args', 'arguments', 'data', 'value']) {
+    const candidate = next[key]
+    const normalizedCandidate = normalizeTodowriteInput(candidate, depth + 1)
+    if (!isPlainObject(normalizedCandidate)) continue
+    if (Array.isArray(normalizedCandidate.tasks) || Array.isArray(normalizedCandidate.todos)) {
+      return normalizedCandidate
+    }
+  }
+
+  return next
+}
+
 export function normalizeToolInput(toolName: string, rawInput: unknown): unknown {
   let input: unknown = rawInput
+
+  if (toolName === 'todowrite') {
+    return normalizeTodowriteInput(input)
+  }
 
   // Some models send tool input as a JSON string. Best-effort parse.
   if (typeof input === 'string') {

@@ -4,6 +4,7 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+import { ChatAttachmentCard } from '@/components/assistant/ChatAttachmentCard'
 import { Button } from '@/components/ui/button'
 import {
   Tool,
@@ -31,6 +32,7 @@ import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { parseInjectedPromptForCompaction } from '@/components/assistant/injectedPromptCompaction'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
+import { cn } from '@/lib/utils'
 import { AlertCircle, AlertTriangle, Check, Copy, MousePointer2, Terminal, X } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -88,6 +90,13 @@ interface SourcePart {
   title?: string
   favicon?: string
   source?: { url?: string; title?: string }
+}
+
+interface FilePart {
+  type: 'file'
+  mediaType: string
+  filename?: string
+  url: string
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -157,6 +166,10 @@ function MessageBubbleComponent({
     [message.parts]
   )
   const canCopy = message.role === 'user' && copyableText.length > 0
+  const hasStandaloneAttachments = useMemo(
+    () => message.role === 'user' && message.parts.some(isFilePart),
+    [message.parts, message.role]
+  )
 
   const handleCopyMessage = useCallback(async () => {
     if (!canCopy) return
@@ -186,11 +199,37 @@ function MessageBubbleComponent({
 
   return (
     <Message from={message.role}>
-      <MessageContent>
+      <MessageContent
+        className={cn(
+          hasStandaloneAttachments && [
+            'group-[.is-user]:w-full',
+            'group-[.is-user]:bg-transparent',
+            'group-[.is-user]:rounded-none',
+            'group-[.is-user]:px-0',
+            'group-[.is-user]:py-0',
+          ]
+        )}
+      >
         {message.parts.map((part, index) => {
           // Skip step-start separators (no visual divider needed)
           if (part.type === 'step-start') {
             return null
+          }
+
+          if (isFilePart(part)) {
+            return (
+              <div
+                key={`${message.id}-file-${index}`}
+                className={message.role === 'user' ? 'flex justify-end' : 'flex'}
+              >
+                <ChatAttachmentCard
+                  mediaType={part.mediaType}
+                  name={part.filename || defaultAttachmentName(part.mediaType)}
+                  url={part.url}
+                  size="message"
+                />
+              </div>
+            )
           }
 
           if (part.type === 'text') {
@@ -258,9 +297,19 @@ function MessageBubbleComponent({
             }
 
             return (
-              <MessageResponse key={`${message.id}-text-${index}`}>
-                {part.text}
-              </MessageResponse>
+              hasStandaloneAttachments && message.role === 'user'
+                ? (
+                  <div key={`${message.id}-text-${index}`} className="flex justify-end">
+                    <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
+                      <MessageResponse>{part.text}</MessageResponse>
+                    </div>
+                  </div>
+                )
+                : (
+                  <MessageResponse key={`${message.id}-text-${index}`}>
+                    {part.text}
+                  </MessageResponse>
+                )
             )
           }
 
@@ -535,6 +584,26 @@ function MessageBubbleComponent({
 }
 
 export const MessageBubble = memo(MessageBubbleComponent)
+
+function defaultAttachmentName(mediaType: string): string {
+  if (mediaType.toLowerCase() === 'application/pdf') {
+    return 'Attachment.pdf'
+  }
+
+  if (mediaType.toLowerCase().startsWith('image/')) {
+    return 'Image attachment'
+  }
+
+  return 'Attachment'
+}
+
+function isFilePart(part: UIMessage['parts'][number]): part is FilePart {
+  return (
+    part.type === 'file' &&
+    typeof (part as FilePart).mediaType === 'string' &&
+    typeof (part as FilePart).url === 'string'
+  )
+}
 
 function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
   const textParts = parts

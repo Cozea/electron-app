@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Id } from '../../convex/_generated/dataModel'
+import type { ChatComposerAttachment } from '@/lib/ai/chatAttachments'
 
 type AssistantPanelMode = 'closed' | 'panel' | 'fullscreen'
 
@@ -11,17 +12,7 @@ export const MAX_PANEL_WIDTH = 2400
 export const MAX_DRAG_PANEL_WIDTH = 520
 const DEFAULT_PANEL_WIDTH = 400
 
-export interface PendingAttachment {
-  type: 'image'
-  data: string // base64 data URL
-  name: string
-  context?: {
-    pagePath?: string
-    pageFile?: string
-    projectName?: string
-    serverPort?: number
-  }
-}
+export type PendingAttachment = ChatComposerAttachment
 
 interface AssistantPanelState {
   mode: AssistantPanelMode

@@ -152,13 +152,32 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 function normalizeBuildTaskStatus(value: unknown): BuildTask['status'] | null {
-  if (value === 'pending' || value === 'in_progress' || value === 'completed') {
-    return value
+  if (typeof value !== 'string') return null
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[.\s-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+  if (normalized === 'pending' || normalized === 'todo' || normalized === 'not_started') {
+    return 'pending'
   }
-  if (value === 'in-progress' || value === 'inprogress' || value === 'active') {
+  if (
+    normalized === 'in_progress' ||
+    normalized === 'inprogress' ||
+    normalized === 'active' ||
+    normalized === 'working' ||
+    normalized === 'current'
+  ) {
     return 'in_progress'
   }
-  if (value === 'complete' || value === 'done') {
+  if (
+    normalized === 'completed' ||
+    normalized === 'complete' ||
+    normalized === 'done' ||
+    normalized === 'finished'
+  ) {
     return 'completed'
   }
   return null
@@ -171,13 +190,24 @@ function normalizeBuildTaskList(value: unknown): BuildTask[] | null {
   for (const entry of value) {
     if (!isRecord(entry)) continue
 
-    const content = typeof entry.content === 'string' ? entry.content.trim() : ''
+    const contentCandidate =
+      entry.content ?? entry.title ?? entry.task ?? entry.text ?? entry.name
+    const content =
+      typeof contentCandidate === 'string'
+        ? contentCandidate.trim()
+        : ''
     const status = normalizeBuildTaskStatus(entry.status)
     if (!content || !status) continue
 
+    const activeFormCandidate =
+      entry.activeForm ??
+      entry.active_form ??
+      entry.inProgressText ??
+      entry.in_progress_text ??
+      entry.progressLabel
     const activeForm =
-      typeof entry.activeForm === 'string' && entry.activeForm.trim().length > 0
-        ? entry.activeForm.trim()
+      typeof activeFormCandidate === 'string' && activeFormCandidate.trim().length > 0
+        ? activeFormCandidate.trim()
         : content
 
     const files = Array.isArray(entry.files)
@@ -201,25 +231,60 @@ function normalizeBuildTaskList(value: unknown): BuildTask[] | null {
   return tasks
 }
 
-function parseTodowriteTasksPayload(input: Record<string, unknown>): BuildTask[] | null {
-  const fromTasks = normalizeBuildTaskList(input.tasks)
-  if (fromTasks !== null) return fromTasks
+function parseTodowriteTaskArrayValue(value: unknown): BuildTask[] | null {
+  const directTasks = normalizeBuildTaskList(value)
+  if (directTasks !== null) return directTasks
 
-  const fromTodos = normalizeBuildTaskList(input.todos)
-  if (fromTodos !== null) return fromTodos
-
-  if (typeof input.tasks_json === 'string') {
-    const parsed = parseJsonArrayLoose(input.tasks_json)
-    const fromTasksJson = normalizeBuildTaskList(parsed)
-    if (fromTasksJson !== null) return fromTasksJson
+  const parsedStringArray = parseJsonArrayLoose(value)
+  if (parsedStringArray !== null) {
+    return normalizeBuildTaskList(parsedStringArray)
   }
 
   return null
 }
 
-function parseTodowriteTasksAny(value: unknown): BuildTask[] | null {
+function parseTodowriteTasksPayload(input: Record<string, unknown>): BuildTask[] | null {
+  for (const key of ['tasks', 'todos', 'steps', 'items', 'taskList', 'task_list']) {
+    const parsedTasks = parseTodowriteTaskArrayValue(input[key])
+    if (parsedTasks !== null) return parsedTasks
+  }
+
+  const fromTasksJson = parseTodowriteTaskArrayValue(input.tasks_json)
+  if (fromTasksJson !== null) return fromTasksJson
+
+  const fromTasksJsonCamel = parseTodowriteTaskArrayValue(input.tasksJson)
+  if (fromTasksJsonCamel !== null) return fromTasksJsonCamel
+
+  return null
+}
+
+function parseTodowriteTasksAny(value: unknown, depth = 0): BuildTask[] | null {
+  if (depth > 2) return null
+
+  const directTasks = parseTodowriteTaskArrayValue(value)
+  if (directTasks !== null) return directTasks
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    try {
+      return parseTodowriteTasksAny(JSON.parse(trimmed), depth + 1)
+    } catch {
+      return null
+    }
+  }
+
   if (!isRecord(value)) return null
-  return parseTodowriteTasksPayload(value)
+
+  const directPayload = parseTodowriteTasksPayload(value)
+  if (directPayload !== null) return directPayload
+
+  for (const key of ['input', 'payload', 'args', 'arguments', 'data', 'value', 'result']) {
+    const nestedTasks = parseTodowriteTasksAny(value[key], depth + 1)
+    if (nestedTasks !== null) return nestedTasks
+  }
+
+  return null
 }
 
 const MAX_TERMINAL_OUTPUT_LENGTH = 60_000
@@ -296,6 +361,8 @@ export function BuilderConversation({
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
   const lastTasksSignatureRef = useRef<string | null>(null)
+  const latestTasksRef = useRef<BuildTask[]>([])
+  const lastGeminiTodowriteLogSignatureRef = useRef<string | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const lastStopRequestCountRef = useRef(stopRequestCount)
 
@@ -373,6 +440,10 @@ export function BuilderConversation({
       : (initialGlobalModelSettings.model ?? '')
   const model = requestedModel || catalogFallbackModel
   const hasModel = model.trim().length > 0
+  const isGeminiModel = useMemo(() => {
+    const normalizedModel = model.trim().toLowerCase()
+    return inferProviderFromModelId(model) === 'google' || normalizedModel.includes('gemini')
+  }, [model])
   console.log('[Builder] Project promptSettings:', promptSettings)
   console.log('[Builder] Using model:', model)
   // Builder execution is pinned to the project prompt settings.
@@ -385,6 +456,28 @@ export function BuilderConversation({
     if (!accessToken) return {}
     return { Authorization: `Bearer ${accessToken}` }
   }, [accessToken])
+
+  const logGeminiTodowrite = useCallback((phase: string, payload: Record<string, unknown>) => {
+    if (!isGeminiModel) return
+
+    let signature: string
+    try {
+      signature = `${phase}:${JSON.stringify(payload)}`
+    } catch {
+      signature = `${phase}:unserializable`
+    }
+
+    if (lastGeminiTodowriteLogSignatureRef.current === signature) {
+      return
+    }
+    lastGeminiTodowriteLogSignatureRef.current = signature
+
+    console.debug('[Builder][Gemini][todowrite]', {
+      model,
+      phase,
+      ...payload,
+    })
+  }, [isGeminiModel, model])
 
   useEffect(() => {
     let cancelled = false
@@ -567,7 +660,7 @@ IMPORTANT WORKFLOW - You MUST follow this pattern to update progress:
 
 This updates the progress UI so the user can track your work in real-time. The user sees your progress through the todowrite tool calls, so call it frequently!
 
-Note: Provide structured task arrays using the "todos" field.
+Use todowrite with the "tasks" field. Only switch to "tasks_json" if the tool/schema explicitly rejects "tasks" and asks for a JSON string. Do not use "todos".
 
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
@@ -729,6 +822,14 @@ Now begin by defining your task list with todowrite, then start working through 
     if (toolMeta?.inputSchema) {
       const validation = validateInputAgainstSchema(toolMeta.inputSchema, normalizedInput)
       if (!validation.valid) {
+        if (toolName === 'todowrite') {
+          logGeminiTodowrite('validation_failed', {
+            toolCallId,
+            input,
+            normalizedInput,
+            validationError: validation.error,
+          })
+        }
         void addToolOutput({
           state: 'output-error',
           tool: toolName,
@@ -741,23 +842,19 @@ Now begin by defining your task list with todowrite, then start working through 
 
     try {
       if (toolName === 'todowrite') {
-        if (!toolInput) {
-          void addToolOutput({
-            state: 'output-error',
-            tool: toolName,
-            toolCallId,
-            errorText: 'todowrite failed: input must be an object.',
-          })
-          return
-        }
-
-        const tasks = parseTodowriteTasksPayload(toolInput)
+        const tasks = parseTodowriteTasksAny(normalizedInput)
+        logGeminiTodowrite('run_local_tool', {
+          toolCallId,
+          input,
+          normalizedInput,
+          parsedTasks: tasks,
+        })
         if (tasks === null) {
           void addToolOutput({
             state: 'output-error',
             tool: toolName,
             toolCallId,
-            errorText: 'todowrite failed: provide tasks, todos, or valid tasks_json.',
+            errorText: 'todowrite failed: provide tasks, or use valid tasks_json only if the provider requires a JSON string.',
           })
           return
         }
@@ -773,6 +870,7 @@ Now begin by defining your task list with todowrite, then start working through 
           // Avoid re-applying identical task lists (prevents render churn / loops).
         } else {
           lastTasksSignatureRef.current = signature
+          latestTasksRef.current = tasks
           onTasksUpdate(tasks)
         }
 
@@ -800,6 +898,38 @@ Now begin by defining your task list with todowrite, then start working through 
       }
 
       if (toolName === 'build_complete') {
+        const currentTasks = latestTasksRef.current
+        if (currentTasks.length === 0) {
+          logGeminiTodowrite('build_complete_blocked_missing_tasks', {
+            toolCallId,
+            input,
+          })
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: 'Before calling build_complete, call todowrite with your task list in the tasks field and update progress as you work.',
+          })
+          return
+        }
+
+        const incompleteTasks = currentTasks.filter((task) => task.status !== 'completed')
+        if (incompleteTasks.length > 0) {
+          logGeminiTodowrite('build_complete_blocked_incomplete_tasks', {
+            toolCallId,
+            input,
+            currentTasks,
+            incompleteCount: incompleteTasks.length,
+          })
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: `Before calling build_complete, update todowrite so all tasks are completed. ${incompleteTasks.length} task(s) are still pending or in progress.`,
+          })
+          return
+        }
+
         const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
         console.log('[Builder] build_complete called with summary:', summary)
         const finalDiagnostics = await getFinalDiagnosticsSummary()
@@ -1117,6 +1247,7 @@ Now begin by defining your task list with todowrite, then start working through 
   }, [
     conversationId,
     enrichToolOutputWithDiagnostics,
+    logGeminiTodowrite,
     localPath,
     localRuntime,
     normalizeProjectPath,
@@ -1151,12 +1282,40 @@ Now begin by defining your task list with todowrite, then start working through 
 
   // Handle tool calls with assistant-style local execution rules.
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
+    if (toolCall?.toolName === 'todowrite') {
+      logGeminiTodowrite('tool_call_received', {
+        toolCallId: toolCall.toolCallId,
+        input: toolCall.input,
+        dynamic: toolCall.dynamic === true,
+        providerExecuted: toolCall.providerExecuted === true,
+      })
+    }
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
 
     const { toolName, input, toolCallId } = toolCall
     const addToolOutput = addToolOutputRef.current
     if (!addToolOutput) return
+
+    const currentTasks = latestTasksRef.current
+    const requiresInitialTodowrite =
+      toolName !== 'todowrite' &&
+      toolName !== 'build_complete' &&
+      currentTasks.length === 0
+    if (requiresInitialTodowrite) {
+      logGeminiTodowrite('blocked_until_initial_todowrite', {
+        toolCallId,
+        toolName,
+        input,
+      })
+      void addToolOutput({
+        state: 'output-error',
+        tool: toolName,
+        toolCallId,
+        errorText: 'Before using other tools, call todowrite with your full task list in the tasks field and mark the first task as in_progress.',
+      })
+      return
+    }
 
     const toolMeta = toolsByNameRef.current[toolName]
     const isBuilderWorkflowTool = BUILDER_WORKFLOW_FALLBACK_TOOLS.has(toolName)
@@ -1185,7 +1344,7 @@ Now begin by defining your task list with todowrite, then start working through 
     }
 
     await runLocalTool(toolName, toolCallId, input)
-  }, [runLocalTool, shouldRequireLocalApproval])
+  }, [logGeminiTodowrite, runLocalTool, shouldRequireLocalApproval])
 
   // useChat hook
   const {
@@ -1408,6 +1567,14 @@ Now begin by defining your task list with todowrite, then start working through 
           : part.type.replace(/^tool-/, '')
         if (toolName !== 'todowrite') continue
 
+        logGeminiTodowrite('streamed_tool_part', {
+          messageId: message.id,
+          partType: part.type,
+          state: toolPart.state ?? 'input-streaming',
+          input: toolPart.input,
+          output: toolPart.output,
+        })
+
         const inputTasks = parseTodowriteTasksAny(toolPart.input)
         if (inputTasks !== null) {
           latestTasks = inputTasks
@@ -1446,6 +1613,7 @@ Now begin by defining your task list with todowrite, then start working through 
 
       if (!signature || signature !== lastTasksSignatureRef.current) {
         lastTasksSignatureRef.current = signature
+        latestTasksRef.current = latestTasks
         onTasksUpdate(latestTasks)
       }
       const allCompleted = latestTasks.length > 0 && latestTasks.every(t => t.status === 'completed')
@@ -1461,7 +1629,7 @@ Now begin by defining your task list with todowrite, then start working through 
         setTimeout(() => onComplete(), 500)
       }
     }
-  }, [dedupedMessages, onTasksUpdate, onComplete])
+  }, [dedupedMessages, logGeminiTodowrite, onTasksUpdate, onComplete])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()

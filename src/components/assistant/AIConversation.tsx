@@ -67,6 +67,14 @@ import {
   useConnectedProviders,
   type ConnectedProvider,
 } from '@/hooks/useConnectedProviders'
+import {
+  buildAttachmentRejectionMessage,
+  chatComposerAttachmentToFilePart,
+  fileListToChatComposerAttachments,
+  getChatAttachmentAccept,
+  hasFilesInDataTransfer,
+  resolveChatAttachmentSupport,
+} from '@/lib/ai/chatAttachments'
 import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
 import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachment'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
@@ -112,7 +120,6 @@ import {
   ContextTrigger,
   ContextContent,
   ContextContentHeader,
-  ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { BillingError } from './BillingError'
 import { useMutation, useQuery } from 'convex/react'
@@ -269,6 +276,7 @@ export function AIConversation({
     triggerClearChat,
     pendingPrompt,
     setPendingPrompt,
+    addPendingAttachment,
     pendingAttachments,
     removePendingAttachment,
     clearPendingAttachments,
@@ -328,13 +336,16 @@ export function AIConversation({
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [pendingPromptContext, setPendingPromptContext] = useState<{
     raw: string
     preview: InjectedPromptPreview
   } | null>(null)
   const [ephemeralConversationId, setEphemeralConversationId] = useState(() => crypto.randomUUID())
+  const [isDragActive, setIsDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const dragDepthRef = useRef(0)
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const addToolApprovalResponseRef = useRef<ChatHookResult['addToolApprovalResponse'] | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
@@ -402,10 +413,21 @@ export function AIConversation({
   const selectedModelCapabilities = useMemo(() => {
     return modelCapabilities[model] ?? null
   }, [model, modelCapabilities])
-  const supportsAttachments =
-    !selectedModelCapabilities ||
-    selectedModelCapabilities.supportsImageInput ||
-    selectedModelCapabilities.supportsPdfInput
+  const attachmentSupport = useMemo(
+    () => resolveChatAttachmentSupport(selectedModelCapabilities),
+    [selectedModelCapabilities]
+  )
+  const supportsAttachments = attachmentSupport.images || attachmentSupport.pdf
+  const attachmentAccept = useMemo(
+    () => getChatAttachmentAccept(attachmentSupport),
+    [attachmentSupport]
+  )
+  const handleAttachmentSelection = useCallback(async (files: FileList | File[]) => {
+    const { attachments, rejected } = await fileListToChatComposerAttachments(files, attachmentSupport)
+
+    attachments.forEach((attachment) => addPendingAttachment(attachment))
+    setAttachmentError(buildAttachmentRejectionMessage(rejected, attachmentSupport) || null)
+  }, [addPendingAttachment, attachmentSupport])
   const supportedVariants = useMemo(
     () =>
       getSupportedVariantsForModel({
@@ -1547,22 +1569,19 @@ export function AIConversation({
         : pendingPromptContext.raw)
       : trimmedInput
 
-    const messageOptions: { text: string; experimental_attachments?: Array<{ url: string; contentType: string }> } = {
-      text: textWithContext || 'Analyze this screenshot',
-    }
-
-    // Include attachments if any
-    if (pendingAttachments.length > 0) {
-      messageOptions.experimental_attachments = pendingAttachments.map((attachment) => ({
-        url: attachment.data,
-        contentType: 'image/png',
-      }))
-    }
+    const messageText = textWithContext || (pendingAttachments.length > 0 ? 'Analyze this attachment' : '')
+    const fileParts = pendingAttachments.map(chatComposerAttachmentToFilePart)
+    const messageOptions = fileParts.length > 0
+      ? (messageText
+        ? { text: messageText, files: fileParts }
+        : { files: fileParts })
+      : { text: messageText }
 
     // Clear input immediately before sending (don't wait for response)
     setInput("")
     setPendingPromptContext(null)
     clearPendingAttachments()
+    setAttachmentError(null)
 
     // Send message (don't await - let it stream in the background)
     void sendMessage(messageOptions)
@@ -1632,6 +1651,41 @@ export function AIConversation({
   const hasDraftInput = input.trim().length > 0 || pendingAttachments.length > 0 || pendingPromptContext !== null
   const submitDisabled = !isLoading && (!hasSelectableModel || !providerAuthResolved || !hasDraftInput)
 
+  const handleComposerDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    if (!supportsAttachments) return
+    dragDepthRef.current += 1
+    setIsDragActive(true)
+  }, [supportsAttachments])
+
+  const handleComposerDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    if (!supportsAttachments) return
+    e.dataTransfer.dropEffect = 'copy'
+  }, [supportsAttachments])
+
+  const handleComposerDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) {
+      setIsDragActive(false)
+    }
+  }, [])
+
+  const handleComposerDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setIsDragActive(false)
+    if (!supportsAttachments) return
+
+    if (e.dataTransfer.files.length > 0) {
+      void handleAttachmentSelection(e.dataTransfer.files)
+    }
+  }, [handleAttachmentSelection, supportsAttachments])
+
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', className)}>
       {/* Messages Area */}
@@ -1687,7 +1741,16 @@ export function AIConversation({
         )}
         style={{ backgroundColor: 'var(--assistant-surface, var(--background))' }}
       >
-        <div className="bg-secondary rounded-2xl overflow-hidden">
+        <div
+          className={cn(
+            'bg-secondary rounded-2xl overflow-hidden transition-[background-color,box-shadow] duration-150',
+            isDragActive && 'bg-secondary/90 ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
+          )}
+          onDragEnter={handleComposerDragEnter}
+          onDragOver={handleComposerDragOver}
+          onDragLeave={handleComposerDragLeave}
+          onDrop={handleComposerDrop}
+        >
           {billingError ? (
             <BillingError
               error={billingError as any}
@@ -1724,10 +1787,13 @@ export function AIConversation({
             ref={fileInputRef}
             type="file"
             multiple
+            accept={attachmentAccept}
             className="sr-only"
             onChange={(e) => {
-              // Handle file selection
-              console.log(e.target.files)
+              if (e.target.files && e.target.files.length > 0) {
+                void handleAttachmentSelection(e.target.files)
+              }
+              e.target.value = ''
             }}
           />
 
@@ -1736,6 +1802,11 @@ export function AIConversation({
             attachments={pendingAttachments}
             onRemove={removePendingAttachment}
           />
+          {attachmentError ? (
+            <div className="px-3 pb-2 text-xs text-destructive">
+              {attachmentError}
+            </div>
+          ) : null}
 
           {pendingPromptContext ? (
             <div className="px-3 pt-3">
@@ -2042,11 +2113,6 @@ export function AIConversation({
           {/* Context window usage display - right aligned */}
           {hasSelectableModel && (
             <div className="flex items-center gap-2">
-              {accumulatedUsage.totalCostUsd > 0 && (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  ${accumulatedUsage.totalCostUsd.toFixed(4)}
-                </span>
-              )}
               <Context
                 maxTokens={selectedModelData?.limit?.context ?? getContextWindowSize(model)}
                 usedTokens={accumulatedUsage.usedTokens}
@@ -2056,7 +2122,6 @@ export function AIConversation({
                 <ContextTrigger />
                 <ContextContent>
                   <ContextContentHeader />
-                  <ContextContentFooter />
                 </ContextContent>
               </Context>
             </div>

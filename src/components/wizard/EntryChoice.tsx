@@ -58,7 +58,6 @@ import {
   ContextTrigger,
   ContextContent,
   ContextContentHeader,
-  ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { ModelOption } from '@/lib/ai/modelOptions'
@@ -467,10 +466,9 @@ export function EntryChoice({
                 usedTokens={0}
                 modelId={model}
               >
-                <ContextTrigger className="h-6 px-2 rounded-full border border-transparent hover:bg-accent text-muted-foreground text-xs" />
+                <ContextTrigger className="h-6 w-6 text-muted-foreground hover:text-foreground" />
                 <ContextContent>
                   <ContextContentHeader />
-                  <ContextContentFooter />
                 </ContextContent>
               </Context>
             </>

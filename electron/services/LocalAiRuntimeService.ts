@@ -1342,6 +1342,9 @@ export class LocalAiRuntimeService {
         })
 
         const startedAt = Date.now()
+        const shouldLogBuilderGeminiSteps =
+          (parsedBody.surface === 'builder' || parsedBody.agentId === 'build') &&
+          (modelInfo.provider.trim().toLowerCase() === 'google' || model.toLowerCase().includes('gemini'))
         const stream = createUIMessageStream<UIMessage>({
           originalMessages: messages,
           execute: async ({ writer }) => {
@@ -1370,6 +1373,67 @@ export class LocalAiRuntimeService {
                 orgAiSettings: null,
                 apiKey: envelope.accessToken,
                 exaWebSearch: undefined,
+                onStepFinish: (event: unknown) => {
+                  if (!shouldLogBuilderGeminiSteps) return
+
+                  const eventRecord = isRecord(event) ? event : {}
+                  const rawToolCalls = Array.isArray(eventRecord.toolCalls) ? eventRecord.toolCalls : []
+                  const rawToolResults = Array.isArray(eventRecord.toolResults) ? eventRecord.toolResults : []
+
+                  const toolCalls = rawToolCalls.map((entry) => {
+                    if (!isRecord(entry)) return entry
+                    return {
+                      toolCallId:
+                        typeof entry.toolCallId === 'string'
+                          ? entry.toolCallId
+                          : typeof entry.id === 'string'
+                            ? entry.id
+                            : undefined,
+                      toolName:
+                        typeof entry.toolName === 'string'
+                          ? entry.toolName
+                          : typeof entry.name === 'string'
+                            ? entry.name
+                            : undefined,
+                      input: entry.input ?? entry.args ?? entry.parameters,
+                    }
+                  })
+
+                  const toolResults = rawToolResults.map((entry) => {
+                    if (!isRecord(entry)) return entry
+                    return {
+                      toolCallId:
+                        typeof entry.toolCallId === 'string'
+                          ? entry.toolCallId
+                          : typeof entry.id === 'string'
+                            ? entry.id
+                            : undefined,
+                      toolName:
+                        typeof entry.toolName === 'string'
+                          ? entry.toolName
+                          : typeof entry.name === 'string'
+                            ? entry.name
+                            : undefined,
+                      output: entry.output ?? entry.result,
+                      isError: entry.isError === true,
+                    }
+                  })
+
+                  console.log('[LocalAI][Builder][Gemini][StepFinish]', JSON.stringify({
+                    model,
+                    finishReason:
+                      typeof eventRecord.finishReason === 'string'
+                        ? eventRecord.finishReason
+                        : undefined,
+                    stepType:
+                      typeof eventRecord.stepType === 'string'
+                        ? eventRecord.stepType
+                        : undefined,
+                    toolCalls,
+                    toolResults,
+                    eventKeys: Object.keys(eventRecord),
+                  }, null, 2))
+                },
                 onFinish: async (event: unknown) => {
                   const eventRecord = isRecord(event) ? event : {}
                   const usage = isRecord(eventRecord.totalUsage) ? eventRecord.totalUsage : {}

@@ -796,12 +796,13 @@ export function AI({ surface = 'page' }: AIProps) {
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[12%]">Date</TableHead>
-                    <TableHead className="w-[18%]">Provider</TableHead>
-                    <TableHead className="w-[36%]">Model</TableHead>
-                    <TableHead className="w-[10%] text-right">Requests</TableHead>
-                    <TableHead className="w-[12%] text-right">Tokens</TableHead>
-                    <TableHead className="w-[12%] text-right">Cost</TableHead>
+                    <TableHead className="w-[11%]">Date</TableHead>
+                    <TableHead className="w-[16%]">Provider</TableHead>
+                    <TableHead className="w-[27%]">Model</TableHead>
+                    <TableHead className="w-[8%] text-right">Requests</TableHead>
+                    <TableHead className="w-[10%] text-right">Input</TableHead>
+                    <TableHead className="w-[12%] text-right">Output</TableHead>
+                    <TableHead className="w-[16%] text-right">Total Cost</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -830,7 +831,10 @@ export function AI({ surface = 'page' }: AIProps) {
                           </TableCell>
                           <TableCell className="text-right">1</TableCell>
                           <TableCell className="text-right">
-                            {(usage.totalTokens || 0).toLocaleString()}
+                            {(usage.promptTokens || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {(usage.completionTokens || 0).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {typeof usage.debitCents === 'number'
@@ -843,7 +847,7 @@ export function AI({ surface = 'page' }: AIProps) {
                       ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="h-20 text-center text-muted-foreground">
                         {recentUsage === undefined
                           ? 'Loading usage history...'
                           : walletTotalDebitedCents > 0
@@ -856,7 +860,7 @@ export function AI({ surface = 'page' }: AIProps) {
               </Table>
             </div>
             {recentUsage && recentUsage.length > usagePageSize && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
+              <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-muted-foreground">
                   {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
                 </span>

@@ -47,6 +47,7 @@ const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Pla
 
 const STARTUP_MIN_SEATS = 2
 const STARTUP_MAX_SEATS = 10
+const MAX_TRIAL_INCLUDED_PERCENT = 5
 
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
@@ -101,7 +102,7 @@ const FALLBACK_CATALOG_AMOUNTS_CENTS: Record<SelfServePlan, Record<BillingCycle,
 }
 
 const FALLBACK_TRIAL_DAYS: Partial<Record<SelfServePlan, number>> = {
-  startup: 7,
+  max: 7,
 }
 
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
@@ -130,7 +131,6 @@ const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
     description: 'For serious builders who want AI as a competitive edge.',
     price: '$20',
     period: '/ month',
-    trial: '7 day free trial',
     featuresHeading: 'Includes:',
     features: [
       { text: 'Unlimited real-time collaboration', included: true },
@@ -157,7 +157,7 @@ const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
       { text: 'Faster priority support', included: true },
     ],
     conclusion: '',
-    footerText: '',
+    footerText: 'Trial starts with 5% of Max hosted usage. Activate paid Max anytime to unlock the rest.',
   },
 ]
 
@@ -314,6 +314,10 @@ function resolvePlanTrialDays(
   plan: SelfServePlan,
   cycle: BillingCycle
 ): number | null {
+  if (plan !== 'max') {
+    return null
+  }
+
   const catalogPrice = resolveCatalogPrice(catalog, plan, cycle)
   if (catalogPrice) {
     if (
@@ -606,6 +610,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [pricingCatalog, setPricingCatalog] = useState<StripeCatalogResponse | null>(null)
   const [, setIsCatalogLoading] = useState(false)
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
+  const [isActivatingPaidMax, setIsActivatingPaidMax] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
   const [pendingDowngradeTargetPlanId, setPendingDowngradeTargetPlanId] = useState<PlanTierId | null>(null)
@@ -739,6 +744,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     paidSeatTotal > 0 ? Math.min((paidSeatAssigned / paidSeatTotal) * 100, 100) : 0
 
   const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
+  const includedUsagePerCycleCents = Math.max(0, walletSummary?.includedCentsPerCycle ?? 0)
+  const activeWalletAvailableCents = Math.max(0, walletSummary?.wallet?.availableCents ?? 0)
+  const includedUsageLeftCents = Math.min(includedUsagePerCycleCents, activeWalletAvailableCents)
+  const includedUsageLeftPercent =
+    includedUsagePerCycleCents > 0
+      ? Math.max(0, Math.min(100, (includedUsageLeftCents / includedUsagePerCycleCents) * 100))
+      : 0
   const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
   const walletDebitLedgerRows = walletLedgerRows.filter((entry) => entry.kind === 'debit')
   const pagedWalletLedgerRows = walletDebitLedgerRows.slice(
@@ -794,6 +806,21 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     showPaidSeatSummary || (seatManagedEntitlement && Boolean(seatManagement?.billingUser))
   const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
   const shouldShowFreeTrialText = currentPlanIdForCards === 'free'
+  const hasConsumedMaxTrial = Boolean(
+    seatManagement?.accountSubscription?.trialStart &&
+    seatManagement?.accountSubscription?.stripeSubscriptionId
+  )
+  const maxTrialEligible = shouldShowFreeTrialText && !hasConsumedMaxTrial
+  const hasActiveMaxTrial = Boolean(
+    entitlement?.source === 'account' &&
+    entitlement?.plan === 'max' &&
+    entitlement?.status === 'trialing' &&
+    entitlement?.trialActive
+  )
+  const maxTrialEndsLabel =
+    hasActiveMaxTrial && entitlement?.trialEndsAt
+      ? formatDate(entitlement.trialEndsAt)
+      : null
   const pendingDowngradeTargetPlanName = pendingDowngradeTargetPlanId
     ? getPlanDisplayName(pendingDowngradeTargetPlanId)
     : null
@@ -877,6 +904,40 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       alert(err instanceof Error ? err.message : 'Failed to open billing portal')
     } finally {
       setIsPortalPending(false)
+    }
+  }, [accessToken, currentOrganization?.organizationId])
+
+  const handleActivatePaidMax = useCallback(async () => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    setIsActivatingPaidMax(true)
+    try {
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/activate-paid-max`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganization.organizationId,
+          }),
+        },
+        { timeoutMs: 15000 }
+      )
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { message?: string; error?: string } | null
+        throw new Error(error?.message || error?.error || 'Failed to activate paid Max')
+      }
+
+      alert('Paid Max activated. Your full Max allocation is now available.')
+    } catch (err) {
+      console.error('Activate paid Max error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to activate paid Max')
+    } finally {
+      setIsActivatingPaidMax(false)
     }
   }, [accessToken, currentOrganization?.organizationId])
 
@@ -1201,12 +1262,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     const isCurrentPlan = currentPlanIdForCards === planCard.id
                     const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
                     const planCardCtaLabel = getPlanCtaLabel(planCard.id, currentPlanIdForCards, planCard.name)
-                    const isFreeTrialCopy = Boolean(planCard.trial?.toLowerCase().includes('free trial'))
                     const showTrialText = Boolean(planCard.trial) && (
                       planCard.id === 'free'
                         ? shouldShowFreeTrialText
-                        : shouldShowFreeTrialText || !isFreeTrialCopy
+                        : planCard.id === 'max'
+                          ? maxTrialEligible
+                          : false
                     )
+                    const planCardFooterText =
+                      planCard.id === 'max' && !(maxTrialEligible || hasActiveMaxTrial)
+                        ? ''
+                        : planCard.footerText
 
                     return (
                       <div
@@ -1285,8 +1351,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           </Button>
                         )}
 
-                        {planCard.footerText ? (
-                          <p className="mt-2 text-center text-xs text-muted-foreground">{planCard.footerText}</p>
+                        {planCardFooterText ? (
+                          <p className="mt-2 text-center text-xs text-muted-foreground">{planCardFooterText}</p>
                         ) : null}
                       </div>
                     )
@@ -1657,6 +1723,56 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             </CardContent>
           </Card>
         )}
+
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader className="pt-0 px-0 pb-4">
+            <CardTitle>Included Usage</CardTitle>
+            <CardDescription>
+              Remaining hosted AI usage included with your current billing cycle.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0 px-0">
+            <div className="rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Usage left</p>
+                  <p className="text-xs text-muted-foreground">
+                    {includedUsagePerCycleCents > 0
+                      ? hasActiveMaxTrial
+                        ? `${Math.round(includedUsageLeftPercent)}% of your trial allocation remains. Trial usage is capped at ${MAX_TRIAL_INCLUDED_PERCENT}% of the full Max allowance.`
+                        : `${Math.round(includedUsageLeftPercent)}% remaining in this billing cycle.`
+                      : 'Your current plan does not include hosted AI usage.'}
+                  </p>
+                  {hasActiveMaxTrial ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {maxTrialEndsLabel
+                        ? `Your Max trial ends on ${maxTrialEndsLabel}. Activate paid Max now to unlock the remaining 95% immediately.`
+                        : 'Activate paid Max now to unlock the remaining 95% immediately.'}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="text-sm font-medium tabular-nums">
+                  {Math.round(includedUsageLeftPercent)}%
+                </span>
+              </div>
+              <Progress value={includedUsageLeftPercent} className="mt-3 h-2.5" />
+              {hasActiveMaxTrial ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={() => void handleActivatePaidMax()}
+                    disabled={isActivatingPaidMax || isCheckoutPending || isPortalPending}
+                  >
+                    {isActivatingPaidMax ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Activate Paid Max
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Charges the saved payment method now and switches this trial to normal Max billing.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0 px-0 pb-4">
