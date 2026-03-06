@@ -344,10 +344,12 @@ export function calculateCredits(
 }
 
 /**
- * Convert tracked credit units to currency spend in minor units (cents).
+ * Convert tracked credit units to an estimated currency spend in minor units
+ * (cents) when exact provider pricing is unavailable.
  *
- * Current policy maps 1 tracked credit unit to $0.01 (1 cent) for wallet
- * accounting while preserving the existing model-rate weighting behavior.
+ * Managed-provider wallet debits use exact pricing upstream. This fallback is
+ * only for compatibility with visibility/reporting paths that still expect a
+ * spend estimate from tracked usage units.
  */
 export function calculateSpendCents(
   modelId: string,

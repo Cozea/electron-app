@@ -131,6 +131,47 @@ interface UsagePoint {
   requests: number
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+const UTC_DAY_LABEL_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+const UTC_DAY_TOOLTIP_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+function getUtcDayStart(value: number): number {
+  const date = new Date(value)
+  return Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate()
+  )
+}
+
+function formatUtcDayKey(value: number): string {
+  const date = new Date(value)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseUtcDayKey(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`)
+}
+
+function formatCurrencyFromCents(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cents / 100)
+}
+
 const FALLBACK_PROVIDER_ROWS: ProviderCatalogRow[] = [
   {
     id: 'openai',
@@ -280,15 +321,15 @@ export function AI({ surface = 'page' }: AIProps) {
   )
 
   const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
+  const usageDaysToShow =
+    usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
   const usageDateRange = useMemo(() => {
-    const now = Date.now()
-    const daysToSubtract =
-      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
+    const currentDayStart = getUtcDayStart(Date.now())
     return {
-      startDate: now - daysToSubtract * 24 * 60 * 60 * 1000,
-      endDate: now,
+      startDate: currentDayStart - (usageDaysToShow - 1) * DAY_MS,
+      endDate: currentDayStart + DAY_MS - 1,
     }
-  }, [usageTimeRange])
+  }, [usageDaysToShow])
 
   const usageAggregates = useQuery(
     api.aiUsage.getAggregates,
@@ -317,6 +358,7 @@ export function AI({ surface = 'page' }: AIProps) {
   const [providerStatuses, setProviderStatuses] = useState<Record<string, LocalProviderStatus>>({})
   const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogRow[]>([])
   const [availableProviderMethods, setAvailableProviderMethods] = useState<Record<string, ProviderAuthMethod[]>>({})
+  const now = Date.now()
   const [providersError, setProvidersError] = useState<string | null>(null)
 
   // Usage history pagination
@@ -480,19 +522,13 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   const walletTotalDebitedCents = walletSummary?.wallet?.totalDebitedCents ?? 0
-  const now = Date.now()
   const chartData = useMemo<UsagePoint[]>(() => {
-    const daysToShow =
-      usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
     const dates: UsagePoint[] = []
-    const currentDate = new Date()
 
-    for (let i = daysToShow - 1; i >= 0; i -= 1) {
-      const date = new Date(currentDate)
-      date.setDate(date.getDate() - i)
-      date.setHours(0, 0, 0, 0)
+    for (let i = 0; i < usageDaysToShow; i += 1) {
+      const dayStart = usageDateRange.startDate + i * DAY_MS
       dates.push({
-        date: date.toISOString().split('T')[0],
+        date: formatUtcDayKey(dayStart),
         tokens: 0,
         requests: 0,
       })
@@ -504,7 +540,7 @@ export function AI({ surface = 'page' }: AIProps) {
 
     const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
     for (const aggregate of usageAggregates) {
-      const dateStr = new Date(aggregate.periodStart).toISOString().split('T')[0]
+      const dateStr = formatUtcDayKey(aggregate.periodStart)
       const index = indexByDate.get(dateStr)
       if (index === undefined) continue
       dates[index] = {
@@ -515,7 +551,7 @@ export function AI({ surface = 'page' }: AIProps) {
     }
 
     return dates
-  }, [usageAggregates, usageTimeRange])
+  }, [usageAggregates, usageDateRange.startDate, usageDaysToShow])
   const usageTotals = useMemo(() => {
     return chartData.reduce(
       (totals, point) => ({
@@ -647,30 +683,31 @@ export function AI({ surface = 'page' }: AIProps) {
     >
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0 px-0">
-            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">AI Token Usage</p>
-                  <p className="text-sm text-muted-foreground">
-                    Daily token consumption across this workspace
-                  </p>
-                </div>
-                <Select
-                  value={usageTimeRange}
-                  onValueChange={(value) =>
-                    setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
-                  }
-                >
-                  <SelectTrigger className="w-[140px]" aria-label="Select time range">
-                    <SelectValue placeholder="Last 30 days" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
-                    <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                    <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="font-medium">AI Token Usage</p>
+                <p className="text-sm text-muted-foreground">
+                  Daily token consumption across this workspace
+                </p>
               </div>
+              <Select
+                value={usageTimeRange}
+                onValueChange={(value) =>
+                  setUsageTimeRange(value === '7d' || value === '90d' ? value : '30d')
+                }
+              >
+                <SelectTrigger className="w-[140px]" aria-label="Select time range">
+                  <SelectValue placeholder="Last 30 days" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="90d" className="rounded-lg">Last 3 months</SelectItem>
+                  <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                  <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
 
               <ChartContainer config={usageChartConfig} className="aspect-auto h-[200px] w-full">
                 <AreaChart data={chartData}>
@@ -687,25 +724,17 @@ export function AI({ surface = 'page' }: AIProps) {
                     axisLine={false}
                     tickMargin={8}
                     minTickGap={32}
-                    tickFormatter={(value) => {
-                      const date = new Date(value)
-                      return date.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    }}
+                    tickFormatter={(value) =>
+                      UTC_DAY_LABEL_FORMATTER.format(parseUtcDayKey(String(value)))
+                    }
                   />
                   <ChartTooltip
                     cursor={false}
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(value) => {
-                          return new Date(value).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })
-                        }}
+                        labelFormatter={(value) =>
+                          UTC_DAY_TOOLTIP_FORMATTER.format(parseUtcDayKey(String(value)))
+                        }
                         indicator="dot"
                       />
                     }
@@ -765,9 +794,10 @@ export function AI({ surface = 'page' }: AIProps) {
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-[12%]">Date</TableHead>
                     <TableHead className="w-[18%]">Provider</TableHead>
-                    <TableHead className="w-[44%]">Model</TableHead>
-                    <TableHead className="w-[14%] text-right">Requests</TableHead>
-                    <TableHead className="w-[14%] text-right">Tokens</TableHead>
+                    <TableHead className="w-[36%]">Model</TableHead>
+                    <TableHead className="w-[10%] text-right">Requests</TableHead>
+                    <TableHead className="w-[12%] text-right">Tokens</TableHead>
+                    <TableHead className="w-[12%] text-right">Cost</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -798,11 +828,18 @@ export function AI({ surface = 'page' }: AIProps) {
                           <TableCell className="text-right">
                             {(usage.totalTokens || 0).toLocaleString()}
                           </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {typeof usage.debitCents === 'number'
+                              ? formatCurrencyFromCents(usage.debitCents)
+                              : usage.keySource === 'provider_auth'
+                                ? 'BYO'
+                                : '—'}
+                          </TableCell>
                         </TableRow>
                       ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
                         {recentUsage === undefined
                           ? 'Loading usage history...'
                           : walletTotalDebitedCents > 0

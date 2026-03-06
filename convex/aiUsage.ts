@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server"
-import type { MutationCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import {
@@ -7,8 +7,15 @@ import {
   calculateSpendCents,
   getModelTier,
 } from "./lib/modelTiers"
+import {
+  getTrailingUtcDayRange,
+  getUtcDayStartTimestamp,
+  getUtcMonthStartTimestamp,
+} from "./lib/usagePeriods"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
+type UsageReadCtx = Pick<QueryCtx, "db">
+type UsageRecord = Doc<"aiUsage">
 
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
@@ -42,6 +49,62 @@ const toolCallsValidator = v.optional(
   })
 )
 
+function normalizeReportedSpendCents(
+  spendCents: number | undefined,
+  fallbackArgs: {
+    model: string
+    promptTokens: number
+    completionTokens: number
+    cachedInputTokens?: number
+  }
+): number {
+  if (typeof spendCents === "number" && Number.isFinite(spendCents)) {
+    return Math.max(0, Math.ceil(spendCents))
+  }
+
+  return calculateSpendCents(
+    fallbackArgs.model,
+    fallbackArgs.promptTokens,
+    fallbackArgs.completionTokens,
+    fallbackArgs.cachedInputTokens ?? 0
+  )
+}
+
+async function attachDebitAmounts(ctx: UsageReadCtx, records: UsageRecord[]) {
+  return await Promise.all(
+    records.map(async (record) => {
+      if (record.keySource !== "organization" || !record.requestId) {
+        return {
+          ...record,
+          trackedUnits: record.trackedUnits,
+          debitCents: undefined,
+        }
+      }
+
+      const ledger = await ctx.db
+        .query("aiWalletLedger")
+        .withIndex("by_request", (q) => q.eq("requestId", record.requestId!))
+        .collect()
+
+      const debitCents = ledger.reduce((sum, entry) => {
+        if (
+          entry.kind !== "debit" ||
+          String(entry.organizationId) !== String(record.organizationId)
+        ) {
+          return sum
+        }
+        return sum + entry.amountCents
+      }, 0)
+
+      return {
+        ...record,
+        trackedUnits: record.trackedUnits,
+        debitCents: debitCents > 0 ? debitCents : undefined,
+      }
+    })
+  )
+}
+
 export const log = mutation({
   args: {
     organizationId: v.id("organizations"),
@@ -62,6 +125,7 @@ export const log = mutation({
     durationMs: v.optional(v.number()),
     finishReason: v.optional(v.string()),
     rawFinishReason: v.optional(v.string()),
+    spendCents: v.optional(v.number()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -76,12 +140,12 @@ export const log = mutation({
 
       if (existing) {
         const trackedUnits = existing.trackedUnits
-        const spendCents = calculateSpendCents(
-          existing.model,
-          existing.promptTokens,
-          existing.completionTokens,
-          existing.extendedUsage?.cachedInputTokens ?? 0
-        )
+        const spendCents = normalizeReportedSpendCents(args.spendCents, {
+          model: existing.model,
+          promptTokens: existing.promptTokens,
+          completionTokens: existing.completionTokens,
+          cachedInputTokens: existing.extendedUsage?.cachedInputTokens ?? 0,
+        })
         return {
           trackedUnits,
           spendCents,
@@ -98,12 +162,12 @@ export const log = mutation({
       cachedInputTokens
     )
     const modelTier = getModelTier(args.model)
-    const spendCents = calculateSpendCents(
-      args.model,
-      args.promptTokens,
-      args.completionTokens,
-      cachedInputTokens
-    )
+    const spendCents = normalizeReportedSpendCents(args.spendCents, {
+      model: args.model,
+      promptTokens: args.promptTokens,
+      completionTokens: args.completionTokens,
+      cachedInputTokens,
+    })
 
     await ctx.db.insert("aiUsage", {
       organizationId: args.organizationId,
@@ -129,14 +193,21 @@ export const log = mutation({
       timestamp: now,
     })
 
-    const dayStart = new Date(now)
-    dayStart.setHours(0, 0, 0, 0)
-    await updateAggregate(ctx, args, "daily", dayStart.getTime(), trackedUnits)
+    await updateAggregate(
+      ctx,
+      args,
+      "daily",
+      getUtcDayStartTimestamp(now),
+      trackedUnits
+    )
 
-    const monthStart = new Date(now)
-    monthStart.setDate(1)
-    monthStart.setHours(0, 0, 0, 0)
-    await updateAggregate(ctx, args, "monthly", monthStart.getTime(), trackedUnits)
+    await updateAggregate(
+      ctx,
+      args,
+      "monthly",
+      getUtcMonthStartTimestamp(now),
+      trackedUnits
+    )
 
     return {
       trackedUnits,
@@ -220,10 +291,7 @@ export const getRecentForUser = query({
       .order("desc")
       .take(args.limit || 50)
 
-    return records.map((record) => ({
-      ...record,
-      trackedUnits: record.trackedUnits,
-    }))
+    return await attachDebitAmounts(ctx, records)
   },
 })
 
@@ -241,10 +309,7 @@ export const getRecentForOrganization = query({
       .order("desc")
       .take(args.limit || 100)
 
-    return records.map((record) => ({
-      ...record,
-      trackedUnits: record.trackedUnits,
-    }))
+    return await attachDebitAmounts(ctx, records)
   },
 })
 
@@ -257,7 +322,7 @@ export const getAggregates = query({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000
+    const defaultRange = getTrailingUtcDayRange(30, now)
 
     const aggregates = await ctx.db
       .query("aiUsageAggregates")
@@ -266,8 +331,8 @@ export const getAggregates = query({
       )
       .filter((q) =>
         q.and(
-          q.gte(q.field("periodStart"), args.startDate || thirtyDaysAgo),
-          q.lte(q.field("periodStart"), args.endDate || now)
+          q.gte(q.field("periodStart"), args.startDate ?? defaultRange.startDate),
+          q.lte(q.field("periodStart"), args.endDate ?? defaultRange.endDate)
         )
       )
       .collect()
@@ -291,9 +356,7 @@ export const getUsageSummary = query({
       return null
     }
 
-    const monthStart = new Date()
-    monthStart.setDate(1)
-    monthStart.setHours(0, 0, 0, 0)
+    const monthStart = getUtcMonthStartTimestamp(Date.now())
 
     const monthlyAggregate = await ctx.db
       .query("aiUsageAggregates")
@@ -301,7 +364,7 @@ export const getUsageSummary = query({
         q
           .eq("organizationId", args.organizationId)
           .eq("period", "monthly")
-          .eq("periodStart", monthStart.getTime())
+          .eq("periodStart", monthStart)
       )
       .first()
 
@@ -309,7 +372,7 @@ export const getUsageSummary = query({
 
     return {
       period: "monthly",
-      periodStart: monthStart.getTime(),
+      periodStart: monthStart,
       requestCount: monthlyAggregate?.requestCount ?? 0,
       totalTokens: monthlyAggregate?.totalTokens ?? 0,
       totalPromptTokens: monthlyAggregate?.totalPromptTokens ?? 0,

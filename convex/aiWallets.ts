@@ -583,10 +583,11 @@ export const captureForServer = mutation({
 
     const now = Date.now()
     const normalizedFinal = Math.max(0, Math.ceil(args.finalCents))
-    const capturedCents = Math.min(normalizedFinal, hold.amountCents)
-    const releasedCents = Math.max(0, hold.amountCents - capturedCents)
-
     const nextHeldCents = Math.max(0, wallet.heldCents - hold.amountCents)
+    const maxCapturableCents = Math.max(0, wallet.balanceCents - nextHeldCents)
+    const capturedCents = Math.min(normalizedFinal, maxCapturableCents)
+    const releasedCents = Math.max(0, hold.amountCents - Math.min(capturedCents, hold.amountCents))
+    const underCapturedByCents = Math.max(0, normalizedFinal - capturedCents)
     const nextBalanceCents = Math.max(0, wallet.balanceCents - capturedCents)
 
     await ctx.db.patch(wallet._id, {
@@ -649,8 +650,10 @@ export const captureForServer = mutation({
     return {
       ok: true,
       walletId: wallet._id,
+      requestedCents: normalizedFinal,
       capturedCents,
       releasedCents,
+      underCapturedByCents,
       balanceCents: nextBalanceCents,
       availableCents: Math.max(0, nextBalanceCents - nextHeldCents),
     }
