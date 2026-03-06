@@ -127,6 +127,10 @@ interface WalletReserveResponse {
 interface WalletCaptureResponse {
   ok?: boolean
   reason?: string
+  requestedCents?: number
+  capturedCents?: number
+  releasedCents?: number
+  underCapturedByCents?: number
 }
 
 interface ManagedEnvelopeFetchResult {
@@ -882,6 +886,7 @@ export class LocalAiRuntimeService {
     durationMs?: number
     finishReason?: string
     rawFinishReason?: string
+    spendCents?: number
     keySource: 'organization' | 'provider_auth'
     aiBaseUrlHeader?: string
   }): Promise<string | null> {
@@ -912,6 +917,7 @@ export class LocalAiRuntimeService {
           ...(typeof args.durationMs === 'number' ? { durationMs: args.durationMs } : {}),
           ...(args.finishReason ? { finishReason: args.finishReason } : {}),
           ...(args.rawFinishReason ? { rawFinishReason: args.rawFinishReason } : {}),
+          ...(typeof args.spendCents === 'number' ? { spendCents: args.spendCents } : {}),
           keySource: args.keySource,
         },
       })
@@ -1426,6 +1432,13 @@ export class LocalAiRuntimeService {
                         finalCents,
                         aiBaseUrlHeader: walletHoldBaseUrlHeader,
                       })
+                      if (
+                        captureResult.ok &&
+                        typeof captureResult.underCapturedByCents === 'number' &&
+                        captureResult.underCapturedByCents > 0
+                      ) {
+                        console.warn('Managed wallet capture settled below requested amount:', captureResult)
+                      }
                       if (!captureResult.ok) {
                         usageError = usageError
                           ? `${usageError}; wallet capture failed: ${captureResult.reason || 'unknown'}`
@@ -1483,6 +1496,7 @@ export class LocalAiRuntimeService {
                       durationMs,
                       finishReason,
                       rawFinishReason,
+                      spendCents,
                       keySource: managedProvider ? 'organization' : 'provider_auth',
                       aiBaseUrlHeader,
                     })

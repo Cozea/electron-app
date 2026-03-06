@@ -12,6 +12,10 @@ import {
   formatBytes,
   estimateStorageBreakdown,
 } from "./lib/workspaceLimits"
+import {
+  getUtcDayStartTimestamp,
+  getUtcMonthStartTimestamp,
+} from "./lib/usagePeriods"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai", "moonshotai"] as const
@@ -926,10 +930,11 @@ export const getUsageSummary = query({
     period: v.union(v.literal("daily"), v.literal("monthly")),
   },
   handler: async (ctx, args) => {
+    const now = Date.now()
     const periodStart =
       args.period === "daily"
-        ? new Date().setHours(0, 0, 0, 0)
-        : new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
+        ? getUtcDayStartTimestamp(now)
+        : getUtcMonthStartTimestamp(now)
 
     const aggregate = await ctx.db
       .query("aiUsageAggregates")

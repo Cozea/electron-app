@@ -6,6 +6,7 @@ interface UsageData {
   completionTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  spendCents?: number
 }
 
 interface AgentLedgerData {
@@ -21,6 +22,7 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
     let outputTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    let usageSpendCents = 0
     const runCosts = new Map<string, number>()
 
     for (const message of messages) {
@@ -32,6 +34,7 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
             outputTokens += data.completionTokens ?? 0
             reasoningTokens += data.reasoningTokens ?? 0
             cachedInputTokens += data.cachedInputTokens ?? 0
+            usageSpendCents += Math.max(0, data.spendCents ?? 0)
           }
         }
         if (part.type === 'data-agent-ledger') {
@@ -50,7 +53,10 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
     }
 
     const totalTokens = inputTokens + outputTokens
-    const totalCostUsd = Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
+    const totalCostUsd =
+      runCosts.size > 0
+        ? Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
+        : usageSpendCents / 100
 
     return {
       usedTokens: totalTokens,
