@@ -195,8 +195,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showMessageBox: (options: any) => ipcRenderer.invoke('dialog:showMessageBox', options),
   },
   storage: {
+    getSnapshot: (options?: { page?: number; pageSize?: number; forceRefresh?: boolean }) =>
+      ipcRenderer.invoke('storage:getSnapshot', options),
     getUsage: () => ipcRenderer.invoke('storage:getUsage'),
     listProjects: () => ipcRenderer.invoke('storage:listProjects'),
+    openProjectsDirectory: () => ipcRenderer.invoke('storage:openProjectsDirectory'),
+    clearCache: () => ipcRenderer.invoke('storage:clearCache'),
+    clearLogs: () => ipcRenderer.invoke('storage:clearLogs'),
+    deleteProject: (options: { projectPath: string }) => ipcRenderer.invoke('storage:deleteProject', options),
+    clearAll: () => ipcRenderer.invoke('storage:clearAll'),
   },
   window: {
     isFullScreen: () => ipcRenderer.invoke('window:isFullScreen'),

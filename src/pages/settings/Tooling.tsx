@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Download, Loader2, Plus, RefreshCw, Terminal } from 'lucide-react'
+import { AlertTriangle, Check, Download, Loader2, Package, Plus, RefreshCw, Terminal } from 'lucide-react'
+import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Badge } from '../../components/ui/badge'
@@ -23,6 +24,34 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   python: 'Python',
   rust: 'Rust (cargo)',
   go: 'Go',
+}
+
+function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
+  const foregroundColor = 'var(--foreground)'
+  const mutedColor = 'var(--muted-foreground)'
+
+  switch (runtime) {
+    case 'node':
+      return <SiNodedotjs className="h-4 w-4" style={{ color: '#5FA04E' }} />
+    case 'npm':
+      return <SiNpm className="h-4 w-4" style={{ color: '#CB3837' }} />
+    case 'corepack':
+      return <Package className="h-4 w-4" style={{ color: mutedColor }} />
+    case 'pnpm':
+      return <SiPnpm className="h-4 w-4" style={{ color: '#F9AD00' }} />
+    case 'yarn':
+      return <SiYarn className="h-4 w-4" style={{ color: '#2C8EBB' }} />
+    case 'bun':
+      return <SiBun className="h-4 w-4" style={{ color: foregroundColor }} />
+    case 'python':
+      return <SiPython className="h-4 w-4" style={{ color: '#3776AB' }} />
+    case 'rust':
+      return <SiRust className="h-4 w-4" style={{ color: foregroundColor }} />
+    case 'go':
+      return <SiGo className="h-4 w-4" style={{ color: '#00ADD8' }} />
+    default:
+      return <Package className="h-4 w-4" style={{ color: mutedColor }} />
+  }
 }
 
 function RuntimeProgressRing({ progress }: { progress: number }) {
@@ -270,7 +299,12 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
                         key={runtime.runtime}
                         className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
                       >
-                        <span className="font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/70">
+                            <RuntimeLogo runtime={runtime.runtime} />
+                          </div>
+                          <span className="truncate font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
+                        </div>
                         <span
                           className="truncate text-muted-foreground"
                           title={runtime.executablePath || installJob?.error || runtime.error || ''}

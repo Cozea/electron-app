@@ -10,6 +10,12 @@ import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useProblemsStore, selectProjectProblems, selectUnreadCount } from "@/stores/useProblemsStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+    buildAnsiPalette,
+    getThemeColorHex,
+    relativeLuminance,
+    syncTerminalTheme,
+} from "@/lib/xtermTheme"
 
 type TabType = "console" | "problems"
 
@@ -17,6 +23,22 @@ interface DevServerPanelProps {
     className?: string
     defaultCollapsed?: boolean
     projectPath?: string | null
+}
+
+const buildDevServerTerminalTheme = (container: HTMLElement) => {
+    const background = getThemeColorHex(container, '--sidebar', '#1a1a1a')
+    const foreground = getThemeColorHex(container, '--foreground', '#fafafa')
+    const muted = getThemeColorHex(container, '--muted', '#27272a')
+    const useDarkPalette = relativeLuminance(background) < 0.45
+
+    return {
+        background,
+        foreground,
+        cursor: foreground,
+        cursorAccent: background,
+        selectionBackground: muted,
+        ...buildAnsiPalette(useDarkPalette),
+    }
 }
 
 export function DevServerPanel({ className, defaultCollapsed = false, projectPath }: DevServerPanelProps) {
@@ -96,119 +118,10 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         const cols = Math.max(80, Math.floor((rect.width - 16) / charWidth))
         const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
-        // Convert CSS color (including oklch) to hex using canvas
-        const colorToHex = (cssColor: string): string => {
-            const canvas = document.createElement('canvas')
-            canvas.width = 1
-            canvas.height = 1
-            const ctx = canvas.getContext('2d')
-            if (!ctx) return '#000000'
-
-            ctx.fillStyle = cssColor
-            ctx.fillRect(0, 0, 1, 1)
-            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-        }
-
-        // Get CSS variable value and convert to hex
-        const getThemeColor = (cssVar: string, fallback: string): string => {
-            // Use the terminal container's parent to get correct theme context
-            const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
-            const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
-
-            if (!computed) {
-                return fallback
-            }
-
-            // Create temp element within the theme context to resolve the color
-            const tempDiv = document.createElement('div')
-            tempDiv.style.position = 'absolute'
-            tempDiv.style.visibility = 'hidden'
-            tempDiv.style.backgroundColor = computed
-            document.body.appendChild(tempDiv)
-            const resolvedColor = getComputedStyle(tempDiv).backgroundColor
-            document.body.removeChild(tempDiv)
-
-            if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
-                return fallback
-            }
-            return colorToHex(resolvedColor)
-        }
-
-        const relativeLuminance = (hex: string): number => {
-            const normalized = hex.replace('#', '')
-            if (normalized.length !== 6) return 0
-            const r = parseInt(normalized.slice(0, 2), 16) / 255
-            const g = parseInt(normalized.slice(2, 4), 16) / 255
-            const b = parseInt(normalized.slice(4, 6), 16) / 255
-            const channel = (value: number) =>
-                value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
-            return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
-        }
-
-        const buildAnsiPalette = (useDarkPalette: boolean) => {
-            if (useDarkPalette) {
-                return {
-                    black: '#09090b',
-                    red: '#f87171',
-                    green: '#4ade80',
-                    yellow: '#facc15',
-                    blue: '#60a5fa',
-                    magenta: '#c084fc',
-                    cyan: '#22d3ee',
-                    white: '#d4d4d8',
-                    brightBlack: '#52525b',
-                    brightRed: '#fca5a5',
-                    brightGreen: '#86efac',
-                    brightYellow: '#fde047',
-                    brightBlue: '#93c5fd',
-                    brightMagenta: '#d8b4fe',
-                    brightCyan: '#67e8f9',
-                    brightWhite: '#f4f4f5',
-                }
-            }
-
-            return {
-                black: '#2f333d',
-                red: '#d73a49',
-                green: '#22863a',
-                yellow: '#9a6700',
-                blue: '#005cc5',
-                magenta: '#6f42c1',
-                cyan: '#0a7ea4',
-                white: '#57606a',
-                brightBlack: '#6e7781',
-                brightRed: '#cf222e',
-                brightGreen: '#1a7f37',
-                brightYellow: '#8a4600',
-                brightBlue: '#0969da',
-                brightMagenta: '#8250df',
-                brightCyan: '#1b7c83',
-                brightWhite: '#24292f',
-            }
-        }
-
-        // Map theme colors - resolved from CSS variables to hex
-        // Use --sidebar to match the app's sidebar color
-        const background = getThemeColor('--sidebar', '#1a1a1a')
-        const foreground = getThemeColor('--foreground', '#fafafa')
-        const muted = getThemeColor('--muted', '#27272a')
-        const useDarkPalette = relativeLuminance(background) < 0.45
-        const ansi = buildAnsiPalette(useDarkPalette)
-
-        console.log('[Terminal] Theme colors - bg:', background, 'fg:', foreground, 'muted:', muted)
-
         const term = new Terminal({
             cols,
             rows,
-            theme: {
-                background,
-                foreground,
-                cursor: foreground,
-                cursorAccent: background,
-                selectionBackground: muted,
-                ...ansi,
-            },
+            theme: buildDevServerTerminalTheme(container),
             // Font settings (matching VS Code defaults)
             fontSize: 12,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -318,6 +231,14 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
             searchAddonRef.current = null
         }
     }, [serverStatus, isCollapsed, terminalInitRetry, projectPath])
+
+    useEffect(() => {
+        const container = terminalContainerRef.current
+        const term = xtermRef.current
+        if (!container || !term || isCollapsed || serverStatus === 'stopped') return
+
+        return syncTerminalTheme(term, () => buildDevServerTerminalTheme(container))
+    }, [isCollapsed, serverStatus, terminalInitRetry])
 
     // Listen for new output and write to terminal
     useEffect(() => {

@@ -64,11 +64,39 @@ function isMacClient(): boolean {
 }
 
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
-  const applyWindowControlsInset = isMacClient()
+  const isMacPlatform =
+    typeof window !== "undefined" && window.electronAPI?.platform === "darwin"
+      ? true
+      : isMacClient()
+  const [isFullScreen, setIsFullScreen] = React.useState(false)
+  const applyWindowControlsInset = isMacPlatform && !isFullScreen
   const { currentOrganization } = useAuth()
   const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
   const teamItems = personalWorkspaceSelected ? [] : TEAM_ITEMS
   const workspaceItems = personalWorkspaceSelected ? PERSONAL_WORKSPACE_ITEMS : WORKSPACE_ITEMS
+
+  React.useEffect(() => {
+    if (!isMacPlatform) return
+
+    let isMounted = true
+
+    void window.electronAPI?.window?.isFullScreen?.()
+      .then((fullScreen) => {
+        if (isMounted) setIsFullScreen(Boolean(fullScreen))
+      })
+      .catch(() => {
+        if (isMounted) setIsFullScreen(false)
+      })
+
+    const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullScreen) => {
+      if (isMounted) setIsFullScreen(Boolean(fullScreen))
+    })
+
+    return () => {
+      isMounted = false
+      cleanup?.()
+    }
+  }, [isMacPlatform])
 
   return (
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">

@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getDevServerConfig } from '@/utils/projectDetector'
+import {
+  checkDependenciesInstalled,
+  detectPackageManager,
+  getDevServerConfig,
+  getInstallCommand,
+  hasPackageJson,
+} from '@/utils/projectDetector'
 import {
   initialDevServerLifecycle,
   transitionDevServerLifecycle,
@@ -272,12 +278,25 @@ export function useDevServerManager({
       }
       expectedPortRef.current = config.port
 
-      console.log('[DevServer] Starting with config:', config)
+      let command = config.command
+      const packageJsonExists = await hasPackageJson(projectPath)
+      if (packageJsonExists) {
+        const packageManager = await detectPackageManager(projectPath)
+        const dependenciesInstalled = await checkDependenciesInstalled(projectPath, packageManager)
+        if (!dependenciesInstalled) {
+          command = `${getInstallCommand(packageManager)} && ${config.command}`
+        }
+      }
+
+      console.log('[DevServer] Starting with config:', {
+        ...config,
+        command,
+      })
 
       // Start the dev server
       const result = await window.electronAPI.devServer.start({
         projectPath,
-        command: config.command,
+        command,
         port: config.port,
         runId: requestedRunId,
       })

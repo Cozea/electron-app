@@ -70,6 +70,62 @@ export function normalizeToolInput(toolName: string, rawInput: unknown): unknown
     return normalizeTodowriteInput(input)
   }
 
+  if (toolName === 'preview_start') {
+    if (typeof input === 'string') {
+      input = tryParseJsonObject(input)
+    }
+    return isPlainObject(input) ? { ...input } : {}
+  }
+
+  if (toolName === 'preview_browser') {
+    if (typeof input === 'string') {
+      input = tryParseJsonObject(input)
+    }
+    if (!isPlainObject(input)) return {}
+
+    const next: Record<string, unknown> = { ...input }
+    if (typeof next.path !== 'string' || !next.path.trim()) {
+      const candidate = next.route ?? next.pathname
+      if (typeof candidate === 'string') {
+        next.path = candidate
+      }
+    }
+
+    if (typeof next.text !== 'string' || !next.text.trim()) {
+      const candidate = next.waitForText
+      if (typeof candidate === 'string') {
+        next.text = candidate
+      }
+    }
+
+    if (typeof next.action === 'string' && next.action.trim()) {
+      const normalized = next.action
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+      next.action =
+        normalized === 'take_screenshot'
+          ? 'screenshot'
+          : normalized === 'press_key'
+            ? 'press'
+            : normalized
+    }
+
+    if (typeof next.action !== 'string' || !next.action.trim()) {
+      if (
+        typeof next.text === 'string' ||
+        typeof next.textGone === 'string' ||
+        typeof next.time === 'number'
+      ) {
+        next.action = 'wait_for'
+      } else {
+        next.action = 'snapshot'
+      }
+    }
+
+    return next
+  }
+
   // Some models send tool input as a JSON string. Best-effort parse.
   if (typeof input === 'string') {
     input = tryParseJsonObject(input)

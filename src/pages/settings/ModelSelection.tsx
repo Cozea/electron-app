@@ -461,23 +461,30 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
     <div
       className={
         surface === 'drawer'
-          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
-          : 'mx-auto w-full max-w-6xl space-y-6 px-6 pt-6 pb-10'
+          ? 'mx-auto w-full max-w-6xl space-y-8 px-6 py-6'
+          : 'mx-auto w-full max-w-6xl space-y-8 px-6 pt-6 pb-10'
       }
     >
-      <div className="space-y-2 rounded-2xl border border-border/60 bg-card/50 p-5">
-        <Label htmlFor="model-selection-search">Search Models</Label>
-        <Input
-          id="model-selection-search"
-          value={modelSearchQuery}
-          onChange={(event) => {
-            setModelSearchQuery(event.target.value)
-          }}
-          placeholder="Search by model or provider..."
-        />
-      </div>
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <Label htmlFor="model-selection-search">Search Models</Label>
+          <p className="text-sm text-muted-foreground">
+            Filter saved models and provider catalogs by name, ID, or provider.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
+          <Input
+            id="model-selection-search"
+            value={modelSearchQuery}
+            onChange={(event) => {
+              setModelSearchQuery(event.target.value)
+            }}
+            placeholder="Search by model or provider..."
+          />
+        </div>
+      </section>
 
-      <div className="space-y-4 rounded-2xl border border-border/60 bg-card/50 p-5">
+      <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <h3 className="text-base font-medium">Saved Models</h3>
@@ -490,14 +497,16 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
           </p>
         </div>
 
-        {filteredSavedModels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {normalizedModelSearchQuery
-              ? 'No saved models match your search.'
-              : 'No saved models yet. Use the star button on the right side of a model to save it.'}
-          </p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border/60">
+        <div className="overflow-hidden rounded-2xl bg-secondary/80 px-2 py-1 dark:bg-secondary/40">
+          {filteredSavedModels.length === 0 ? (
+            <div className="px-4 py-6">
+              <p className="text-sm text-muted-foreground">
+                {normalizedModelSearchQuery
+                  ? 'No saved models match your search.'
+                  : 'No saved models yet. Use the star button on the right side of a model to save it.'}
+              </p>
+            </div>
+          ) : (
             <Table className="[&_th]:px-4 [&_td]:px-4">
               <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                 <TableRow className="hover:bg-transparent">
@@ -563,8 +572,8 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
                 })}
               </TableBody>
             </Table>
-          </div>
-        )}
+          )}
+        </div>
 
         {unavailableSavedCount > 0 ? (
           <p className="text-xs text-muted-foreground">
@@ -572,9 +581,9 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
             {unavailableSavedCount === 1 ? '' : 's'} not shown because they are not currently available.
           </p>
         ) : null}
-      </div>
+      </section>
 
-      <div className="space-y-4 rounded-2xl border border-border/60 bg-card/50 p-5">
+      <section className="space-y-4">
         <div className="space-y-1">
           <h3 className="text-base font-medium">All Models</h3>
           <p className="text-sm text-muted-foreground">Models are grouped by provider.</p>
@@ -610,8 +619,8 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
         ) : null}
 
         {!isLoadingModels && !modelsError && filteredGroupedModels.length > 0 ? (
-          <div className="space-y-4">
-            {filteredGroupedModels.map((group) => {
+          <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
+            {filteredGroupedModels.map((group, index) => {
               const isExpanded = expandedProviders[group.providerId] ?? false
               return (
                 <Collapsible
@@ -624,28 +633,38 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
                     }))
                   }}
                   className={cn(
-                    'overflow-hidden rounded-xl border border-border/60 bg-background/60 transition-colors hover:border-border/90',
-                    isExpanded && 'bg-background/80'
+                    'overflow-hidden',
+                    index > 0 && 'border-t border-border/60'
                   )}
                 >
                   <CollapsibleTrigger asChild>
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left hover:bg-accent/30 focus:outline-none focus-visible:outline-none"
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-background/30 focus:outline-none focus-visible:outline-none',
+                        isExpanded && 'bg-background/25'
+                      )}
                       aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${group.providerName} models`}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <img
-                          alt={`${group.providerName} logo`}
-                          className="h-4 w-4 shrink-0 rounded-sm"
-                          loading="lazy"
-                          src={getProviderLogoUrl(group.providerId)}
-                          style={{ filter: providerLogoFilter }}
-                        />
-                        <p className="truncate text-sm font-medium">{group.providerName}</p>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-background/70">
+                          <img
+                            alt={`${group.providerName} logo`}
+                            className="h-4 w-4 shrink-0 rounded-sm"
+                            loading="lazy"
+                            src={getProviderLogoUrl(group.providerId)}
+                            style={{ filter: providerLogoFilter }}
+                          />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{group.providerName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {group.models.length} available model{group.models.length === 1 ? '' : 's'}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">
+                        <p className="rounded-full bg-background/70 px-2.5 py-1 text-xs text-muted-foreground">
                           {group.models.length} models
                         </p>
                         <ChevronDown
@@ -659,93 +678,95 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
                   </CollapsibleTrigger>
 
                   <CollapsibleContent className="border-t border-border/60">
-                    <Table className="[&_th]:px-4 [&_td]:px-4">
-                      <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead>Model</TableHead>
-                          <TableHead>ID</TableHead>
-                          <TableHead>Details</TableHead>
-                          <TableHead className="w-12 text-right" />
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                        {group.models.map((model) => {
-                          const isSaved = savedModelIds.includes(model.id)
-                          const isRequiredSavedModel = requiredSavedModelId === model.id
-                          const contextLimit = formatTokenLimit(model.limit?.context)
-                          return (
-                            <TableRow key={model.id}>
-                              <TableCell className="max-w-0">
-                                <div className="flex min-w-0 items-center gap-1.5">
-                                  <p className="truncate text-sm font-medium">{model.displayName}</p>
-                                  {modelSupportsThinking(model) ? (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span
-                                          className="inline-flex shrink-0 cursor-help items-center text-muted-foreground"
-                                          aria-label="This model supports thinking"
-                                        >
-                                          <Brain className="h-3.5 w-3.5" />
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top">
-                                        This model supports thinking.
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  ) : null}
-                                </div>
-                              </TableCell>
-                              <TableCell className="max-w-0">
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {model.id}
-                                </p>
-                              </TableCell>
-                              <TableCell>
-                                <p className="text-xs text-muted-foreground">
-                                  Tier: {model.tier}
-                                  {contextLimit ? ` · Context: ${contextLimit}` : ''}
-                                </p>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
-                                  onClick={() => {
-                                    toggleSavedModel(model.id)
-                                  }}
-                                  disabled={isSaved && isRequiredSavedModel}
-                                  aria-label={
-                                    isSaved && isRequiredSavedModel
-                                      ? `${model.displayName} is required as at least one saved model`
-                                      : isSaved
-                                      ? `Remove ${model.displayName} from saved models`
-                                      : `Save ${model.displayName}`
-                                  }
-                                >
-                                  <Star
-                                    className={cn(
-                                      'h-4 w-4',
-                                      isSaved
-                                        ? 'fill-amber-400 text-amber-500'
-                                        : 'text-muted-foreground'
-                                    )}
-                                  />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
+                    <div className="px-2 pb-2">
+                      <Table className="[&_th]:px-4 [&_td]:px-4">
+                        <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead>Model</TableHead>
+                            <TableHead>ID</TableHead>
+                            <TableHead>Details</TableHead>
+                            <TableHead className="w-12 text-right" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                          {group.models.map((model) => {
+                            const isSaved = savedModelIds.includes(model.id)
+                            const isRequiredSavedModel = requiredSavedModelId === model.id
+                            const contextLimit = formatTokenLimit(model.limit?.context)
+                            return (
+                              <TableRow key={model.id}>
+                                <TableCell className="max-w-0">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <p className="truncate text-sm font-medium">{model.displayName}</p>
+                                    {modelSupportsThinking(model) ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span
+                                            className="inline-flex shrink-0 cursor-help items-center text-muted-foreground"
+                                            aria-label="This model supports thinking"
+                                          >
+                                            <Brain className="h-3.5 w-3.5" />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                          This model supports thinking.
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="max-w-0">
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {model.id}
+                                  </p>
+                                </TableCell>
+                                <TableCell>
+                                  <p className="text-xs text-muted-foreground">
+                                    Tier: {model.tier}
+                                    {contextLimit ? ` · Context: ${contextLimit}` : ''}
+                                  </p>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
+                                    onClick={() => {
+                                      toggleSavedModel(model.id)
+                                    }}
+                                    disabled={isSaved && isRequiredSavedModel}
+                                    aria-label={
+                                      isSaved && isRequiredSavedModel
+                                        ? `${model.displayName} is required as at least one saved model`
+                                        : isSaved
+                                        ? `Remove ${model.displayName} from saved models`
+                                        : `Save ${model.displayName}`
+                                    }
+                                  >
+                                    <Star
+                                      className={cn(
+                                        'h-4 w-4',
+                                        isSaved
+                                          ? 'fill-amber-400 text-amber-500'
+                                          : 'text-muted-foreground'
+                                      )}
+                                    />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </CollapsibleContent>
                 </Collapsible>
               )
             })}
           </div>
         ) : null}
-      </div>
+      </section>
     </div>
   )
 

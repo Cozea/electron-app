@@ -51,6 +51,8 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   // Workflow
   plan_write: ListChecksIcon,
   todowrite: ListChecksIcon,
+  preview_start: GlobeIcon,
+  preview_browser: GlobeIcon,
   build_complete: CheckIcon,
 };
 
@@ -72,6 +74,8 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   web_search: { present: "Searching", past: "Searched" },
   plan_write: { present: "Writing plans", past: "Wrote plans" },
   todowrite: { present: "Updating tasks", past: "Updated tasks" },
+  preview_start: { present: "Starting preview", past: "Started preview" },
+  preview_browser: { present: "Inspecting preview", past: "Inspected preview" },
   build_complete: { present: "Finalizing build", past: "Finalized build" },
 };
 
@@ -614,6 +618,7 @@ export const ToolOutput = ({
 
   // Check for list special rendering
   const listDirEntries = toolName === "list" ? parseListDirOutput(output) : null;
+  const showOutputLabel = errorText ? true : !listDirEntries;
 
   let Output = <div>{output as ReactNode}</div>;
 
@@ -639,9 +644,11 @@ export const ToolOutput = ({
 
   return (
     <div className={cn("space-y-2 p-4", className)} {...props}>
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {errorText ? "Error" : "Result"}
-      </h4>
+      {showOutputLabel ? (
+        <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          {errorText ? "Error" : "Result"}
+        </h4>
+      ) : null}
       <div
         className={cn(
           "app-scrollbar overflow-x-auto rounded-md text-xs [&_table]:w-full",

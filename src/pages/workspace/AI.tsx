@@ -16,6 +16,7 @@ import { getProviderLogoUrl } from '../../lib/ai/providerLogos'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
+import { Switch } from '../../components/ui/switch'
 import {
   ChartContainer,
   ChartTooltip,
@@ -131,6 +132,7 @@ interface AIProps {
 }
 
 type UsageRange = '7d' | '30d' | '90d'
+type UsageHistoryView = 'daily' | 'activity'
 
 interface UsagePoint {
   date: string
@@ -314,12 +316,6 @@ export function AI({ surface = 'page' }: AIProps) {
     freshOrg
   )
 
-  // Get recent usage history (fetch more for pagination)
-  const recentUsage = useQuery(
-    api.aiUsage.getRecentForOrganization,
-    convexOrg?._id ? { organizationId: convexOrg._id, limit: 50 } : 'skip'
-  )
-
   const walletSummary = useQuery(
     api.aiWallets.getWalletForViewer,
     convexOrg?._id && convexUserId
@@ -337,13 +333,21 @@ export function AI({ surface = 'page' }: AIProps) {
       endDate: currentDayStart + DAY_MS - 1,
     }
   }, [usageDaysToShow])
-
-  const usageAggregates = useQuery(
-    api.aiUsage.getAggregates,
+  const dailyUsageHistory = useQuery(
+    api.aiUsage.getDailyHistory,
     convexOrg?._id
       ? {
           organizationId: convexOrg._id,
-          period: 'daily' as const,
+          startDate: usageDateRange.startDate,
+          endDate: usageDateRange.endDate,
+        }
+      : 'skip'
+  )
+  const detailedUsageHistory = useQuery(
+    api.aiUsage.getDetailedHistory,
+    convexOrg?._id
+      ? {
+          organizationId: convexOrg._id,
           startDate: usageDateRange.startDate,
           endDate: usageDateRange.endDate,
         }
@@ -370,6 +374,7 @@ export function AI({ surface = 'page' }: AIProps) {
   const [isManualProvidersOpen, setIsManualProvidersOpen] = useState(false)
 
   // Usage history pagination
+  const [usageHistoryView, setUsageHistoryView] = useState<UsageHistoryView>('daily')
   const [usagePage, setUsagePage] = useState(0)
   const usagePageSize = 5
 
@@ -542,24 +547,24 @@ export function AI({ surface = 'page' }: AIProps) {
       })
     }
 
-    if (!usageAggregates) {
+    if (!dailyUsageHistory) {
       return dates
     }
 
     const indexByDate = new Map(dates.map((point, index) => [point.date, index]))
-    for (const aggregate of usageAggregates) {
-      const dateStr = formatUtcDayKey(aggregate.periodStart)
+    for (const day of dailyUsageHistory) {
+      const dateStr = formatUtcDayKey(day.periodStart)
       const index = indexByDate.get(dateStr)
       if (index === undefined) continue
       dates[index] = {
         ...dates[index],
-        tokens: aggregate.totalTokens,
-        requests: aggregate.requestCount,
+        tokens: day.totalTokens,
+        requests: day.requestCount,
       }
     }
 
     return dates
-  }, [usageAggregates, usageDateRange.startDate, usageDaysToShow])
+  }, [dailyUsageHistory, usageDateRange.startDate, usageDaysToShow])
   const usageTotals = useMemo(() => {
     return chartData.reduce(
       (totals, point) => ({
@@ -569,6 +574,75 @@ export function AI({ surface = 'page' }: AIProps) {
       { tokens: 0, requests: 0 }
     )
   }, [chartData])
+  const detailedUsageRows = useMemo(
+    () => (detailedUsageHistory ?? []).filter((row) =>
+      row.totalTokens > 0 ||
+      typeof row.debitCents === 'number' ||
+      row.keySource === 'provider_auth'
+    ),
+    [detailedUsageHistory]
+  )
+  const dailyUsageRows = useMemo(() => {
+    const grouped = new Map<number, {
+      periodStart: number
+      hasIncludedUsage: boolean
+      hasByoUsage: boolean
+      providers: string[]
+      totalTokens: number
+      debitCents: number
+    }>()
+
+    for (const row of detailedUsageRows) {
+      const periodStart = getUtcDayStart(row.timestamp)
+      const existing = grouped.get(periodStart)
+      if (existing) {
+        if (row.keySource === 'organization') {
+          existing.hasIncludedUsage = true
+        } else {
+          existing.hasByoUsage = true
+        }
+        if (!existing.providers.includes(row.provider)) {
+          existing.providers.push(row.provider)
+          existing.providers.sort((a, b) => a.localeCompare(b))
+        }
+        existing.totalTokens += row.totalTokens
+        existing.debitCents += row.debitCents ?? 0
+        continue
+      }
+
+      grouped.set(periodStart, {
+        periodStart,
+        hasIncludedUsage: row.keySource === 'organization',
+        hasByoUsage: row.keySource === 'provider_auth',
+        providers: [row.provider],
+        totalTokens: row.totalTokens,
+        debitCents: row.debitCents ?? 0,
+      })
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => {
+      if (a.periodStart !== b.periodStart) return b.periodStart - a.periodStart
+      if (a.totalTokens !== b.totalTokens) return b.totalTokens - a.totalTokens
+      return a.providers.join(',').localeCompare(b.providers.join(','))
+    })
+  }, [detailedUsageRows])
+  const pagedDailyUsageRows = useMemo(
+    () => dailyUsageRows.slice(
+      usagePage * usagePageSize,
+      (usagePage + 1) * usagePageSize
+    ),
+    [dailyUsageRows, usagePage]
+  )
+  const pagedDetailedUsageRows = useMemo(
+    () => detailedUsageRows.slice(
+      usagePage * usagePageSize,
+      (usagePage + 1) * usagePageSize
+    ),
+    [detailedUsageRows, usagePage]
+  )
+  const activeUsageRowCount = usageHistoryView === 'daily'
+    ? dailyUsageRows.length
+    : detailedUsageRows.length
   const providerRows = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
 
@@ -597,6 +671,10 @@ export function AI({ surface = 'page' }: AIProps) {
     ? availableProviderMethods[selectedProvider] ?? []
     : []
   const selectedProviderAuthStrategies = selectedProviderInfo?.authStrategies ?? []
+  const providerNameById = useMemo(() => {
+    const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
+    return new Map(rows.map((provider) => [provider.id, provider.name]))
+  }, [providerCatalog])
   const selectedProviderUsesCloudCredentials =
     selectedProviderAuthStrategies.includes('cloud_credentials') ||
     selectedProviderMethods.includes('cloud_credentials') ||
@@ -671,6 +749,20 @@ export function AI({ surface = 'page' }: AIProps) {
     providerPage * providerPageSize,
     (providerPage + 1) * providerPageSize
   )
+
+  useEffect(() => {
+    setUsagePage(0)
+  }, [usageHistoryView, usageTimeRange])
+
+  useEffect(() => {
+    const activeRowCount = usageHistoryView === 'daily'
+      ? dailyUsageRows.length
+      : detailedUsageRows.length
+    const nextMaxPage = Math.max(0, Math.ceil(activeRowCount / usagePageSize) - 1)
+    if (usagePage > nextMaxPage) {
+      setUsagePage(nextMaxPage)
+    }
+  }, [dailyUsageRows.length, detailedUsageRows.length, usageHistoryView, usagePage])
 
   useEffect(() => {
     const maxPage = Math.max(0, Math.ceil(providerRows.length / providerPageSize) - 1)
@@ -783,93 +875,171 @@ export function AI({ surface = 'page' }: AIProps) {
         {/* Usage History */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="px-0">
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Usage History
-            </CardTitle>
-            <CardDescription>
-              Recent AI usage across your organization
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  AI Usage History
+                </CardTitle>
+                <CardDescription>
+                  {usageHistoryView === 'daily'
+                    ? 'Daily AI usage totals by model with hosted costs across your organization'
+                    : 'Request-level AI activity with model, tokens, and hosted cost'}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-3 rounded-full bg-secondary/80 px-3 py-2 dark:bg-secondary/40">
+                <span className={usageHistoryView === 'daily' ? 'text-sm font-medium text-foreground' : 'text-sm text-muted-foreground'}>
+                  Daily
+                </span>
+                <Switch
+                  checked={usageHistoryView === 'activity'}
+                  onCheckedChange={(checked) => {
+                    setUsageHistoryView(checked ? 'activity' : 'daily')
+                  }}
+                  aria-label="Toggle detailed AI usage activity"
+                />
+                <span className={usageHistoryView === 'activity' ? 'text-sm font-medium text-foreground' : 'text-sm text-muted-foreground'}>
+                  Activity
+                </span>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="px-0 py-0 overflow-hidden">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[11%]">Date</TableHead>
-                    <TableHead className="w-[16%]">Provider</TableHead>
-                    <TableHead className="w-[27%]">Model</TableHead>
-                    <TableHead className="w-[8%] text-right">Requests</TableHead>
-                    <TableHead className="w-[10%] text-right">Input</TableHead>
-                    <TableHead className="w-[12%] text-right">Output</TableHead>
-                    <TableHead className="w-[16%] text-right">Total Cost</TableHead>
+                    <TableHead className={usageHistoryView === 'daily' ? 'w-[24%]' : 'w-[24%]'}>Date</TableHead>
+                    <TableHead className={usageHistoryView === 'daily' ? 'w-[14%]' : 'w-[14%]'}>Type</TableHead>
+                    <TableHead className={usageHistoryView === 'daily' ? 'w-[28%]' : 'w-[26%]'}>
+                      {usageHistoryView === 'daily' ? 'Providers' : 'Model'}
+                    </TableHead>
+                    <TableHead className={usageHistoryView === 'daily' ? 'w-[16%] text-right' : 'w-[16%] text-right'}>Tokens</TableHead>
+                    <TableHead className={usageHistoryView === 'daily' ? 'w-[18%] text-right' : 'w-[20%] text-right'}>Cost</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {(recentUsage ?? []).length > 0 ? (
-                    (recentUsage ?? [])
-                      .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
-                      .map((usage) => (
+                  {activeUsageRowCount > 0 ? (
+                    usageHistoryView === 'daily' ? (
+                      pagedDailyUsageRows.map((usage) => (
+                          <TableRow key={usage.periodStart}>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(usage.periodStart).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                timeZone: 'UTC',
+                              })}
+                            </TableCell>
+                            <TableCell className="capitalize text-muted-foreground">
+                              {usage.hasIncludedUsage && usage.hasByoUsage
+                                ? 'Mixed'
+                                : usage.hasByoUsage
+                                  ? 'BYO'
+                                  : 'Included'}
+                            </TableCell>
+                            <TableCell>
+                              {usage.providers.length === 1 ? (
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="flex h-6 w-6 items-center justify-center rounded-full bg-background/60"
+                                    title={providerNameById.get(usage.providers[0]) ?? usage.providers[0]}
+                                  >
+                                    <ProviderIcon provider={usage.providers[0]} className="h-3.5 w-3.5 shrink-0" />
+                                  </span>
+                                  <span className="text-sm text-foreground">
+                                    {providerNameById.get(usage.providers[0]) ?? usage.providers[0]}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {usage.providers.map((provider) => (
+                                    <span
+                                      key={`${usage.periodStart}-${provider}`}
+                                      className="flex h-6 w-6 items-center justify-center rounded-full bg-background/60"
+                                      title={providerNameById.get(provider) ?? provider}
+                                    >
+                                      <ProviderIcon provider={provider} className="h-3.5 w-3.5 shrink-0" />
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatTokens(usage.totalTokens)}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {usage.hasIncludedUsage && usage.hasByoUsage
+                                ? usage.debitCents > 0
+                                  ? `${formatCurrencyFromCents(usage.debitCents)} Included + BYO`
+                                  : 'Included + BYO'
+                                : usage.hasByoUsage
+                                  ? 'BYO'
+                                  : usage.debitCents > 0
+                                    ? `${formatCurrencyFromCents(usage.debitCents)} Included`
+                                    : 'Included'}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    ) : (
+                      pagedDetailedUsageRows.map((usage) => (
                         <TableRow key={usage._id}>
                           <TableCell className="text-muted-foreground">
-                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
+                            {new Date(usage.timestamp).toLocaleString('en-US', {
                               month: 'short',
                               day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
                             })}
+                          </TableCell>
+                          <TableCell className="capitalize text-muted-foreground">
+                            {usage.keySource === 'provider_auth' ? 'BYO' : 'Included'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <ProviderIcon
-                                provider={usage.provider}
-                                className="h-4 w-4"
-                              />
-                              <span className="capitalize">{usage.provider}</span>
+                              <ProviderIcon provider={usage.provider} className="h-4 w-4 shrink-0" />
+                              <span className="font-mono text-sm">{usage.model}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm">{usage.model}</span>
-                          </TableCell>
-                          <TableCell className="text-right">1</TableCell>
                           <TableCell className="text-right">
-                            {(usage.promptTokens || 0).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {(usage.completionTokens || 0).toLocaleString()}
+                            {formatTokens(usage.totalTokens)}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
-                            {typeof usage.debitCents === 'number'
-                              ? formatCurrencyFromCents(usage.debitCents)
-                              : usage.keySource === 'provider_auth'
-                                ? 'BYO'
-                                : '—'}
+                            {usage.keySource === 'provider_auth'
+                              ? 'BYO'
+                              : typeof usage.debitCents === 'number'
+                                ? `${formatCurrencyFromCents(usage.debitCents)} Included`
+                                : 'Included'}
                           </TableCell>
                         </TableRow>
                       ))
+                    )
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-20 text-center text-muted-foreground">
-                        {recentUsage === undefined
-                          ? 'Loading usage history...'
+                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
+                        {detailedUsageHistory === undefined
+                          ? `Loading ${usageHistoryView === 'daily' ? 'daily' : 'activity'} usage history...`
                           : walletTotalDebitedCents > 0
-                            ? 'Wallet charges exist but usage rows are missing. The AI usage ingestion route may not be deployed on your server yet.'
-                            : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
+                            ? 'No usage rows were found in the selected range.'
+                            : 'No AI usage in the selected range yet.'}
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
-            {recentUsage && recentUsage.length > usagePageSize && (
+            {activeUsageRowCount > usagePageSize && (
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-muted-foreground">
-                  {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
+                  {usagePage * usagePageSize + 1}-
+                  {Math.min((usagePage + 1) * usagePageSize, activeUsageRowCount)} of {activeUsageRowCount}
                 </span>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="secondary"
                     size="icon"
                     className="h-8 w-8 rounded-full"
-                    onClick={() => setUsagePage(p => p - 1)}
+                    onClick={() => setUsagePage((p) => p - 1)}
                     disabled={usagePage === 0}
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -878,8 +1048,8 @@ export function AI({ surface = 'page' }: AIProps) {
                     variant="secondary"
                     size="icon"
                     className="h-8 w-8 rounded-full"
-                    onClick={() => setUsagePage(p => p + 1)}
-                    disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
+                    onClick={() => setUsagePage((p) => p + 1)}
+                    disabled={(usagePage + 1) * usagePageSize >= activeUsageRowCount}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>

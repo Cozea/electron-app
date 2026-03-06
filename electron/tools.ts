@@ -73,6 +73,27 @@ interface RunInTerminalInput {
   workdir?: string
 }
 
+interface PreviewBrowserInput {
+  action?: string
+  currentUrl?: string
+  url?: string
+  path?: string
+  element?: string
+  ref?: string
+  text?: string
+  textGone?: string
+  time?: number
+  key?: string
+  submit?: boolean
+  slowly?: boolean
+  filename?: string
+  fullPage?: boolean
+  type?: string
+  doubleClick?: boolean
+  button?: string
+  modifiers?: string[]
+}
+
 const WORKSPACE_ROOT = path.resolve(
   process.env.COZEA_WORKSPACE_ROOT || process.env.APP_ROOT || process.cwd()
 )
@@ -102,6 +123,7 @@ const TOOLS_REQUIRING_PROJECT_CONTEXT = new Set<string>([
   'edit',
   'multiedit',
   'bash',
+  'preview_browser',
 ])
 const READ_ONLY_TOOLS_WITHOUT_PROJECT = new Set<string>([
   'read',
@@ -925,6 +947,296 @@ async function runInTerminal(input: {
   }
 }
 
+type PreviewBrowserAction =
+  | 'snapshot'
+  | 'navigate'
+  | 'click'
+  | 'type'
+  | 'press'
+  | 'wait_for'
+  | 'screenshot'
+
+const LOOPBACK_PREVIEW_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+
+function normalizePreviewBrowserAction(value: unknown): PreviewBrowserAction {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return 'snapshot'
+  }
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+
+  switch (normalized) {
+    case 'navigate':
+    case 'click':
+    case 'type':
+    case 'press':
+    case 'wait_for':
+    case 'snapshot':
+      return normalized
+    case 'take_screenshot':
+    case 'screenshot':
+      return 'screenshot'
+    case 'press_key':
+      return 'press'
+    default:
+      return 'snapshot'
+  }
+}
+
+function isLoopbackPreviewHost(hostname: string): boolean {
+  return LOOPBACK_PREVIEW_HOSTS.has(hostname) || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+}
+
+function normalizePreviewBrowserBaseUrl(rawUrl: string): URL {
+  const parsed = new URL(rawUrl)
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Preview browser only supports http(s) preview URLs.')
+  }
+
+  if (parsed.hostname === '0.0.0.0') {
+    parsed.hostname = '127.0.0.1'
+  }
+
+  if (!isLoopbackPreviewHost(parsed.hostname)) {
+    throw new Error('Preview browser only supports localhost preview URLs.')
+  }
+
+  parsed.hash = ''
+  return parsed
+}
+
+function resolvePreviewBrowserUrl(input: PreviewBrowserInput): string {
+  const currentUrl =
+    typeof input.currentUrl === 'string' && input.currentUrl.trim().length > 0
+      ? input.currentUrl.trim()
+      : ''
+  if (!currentUrl) {
+    throw new Error('Preview is not ready yet. Call preview_start, wait for the preview to load, and retry.')
+  }
+
+  const baseUrl = normalizePreviewBrowserBaseUrl(currentUrl)
+  const requestedUrl =
+    typeof input.url === 'string' && input.url.trim().length > 0
+      ? input.url.trim()
+      : null
+  const requestedPath =
+    typeof input.path === 'string' && input.path.trim().length > 0
+      ? input.path.trim()
+      : null
+
+  const resolved = requestedUrl
+    ? new URL(requestedUrl, baseUrl)
+    : requestedPath
+      ? new URL(requestedPath, baseUrl)
+      : baseUrl
+
+  if (resolved.hostname === '0.0.0.0') {
+    resolved.hostname = '127.0.0.1'
+  }
+
+  if (!isLoopbackPreviewHost(resolved.hostname)) {
+    throw new Error('Preview browser only supports localhost preview URLs.')
+  }
+
+  resolved.hash = ''
+  return resolved.toString()
+}
+
+function isMissingPlaywrightBrowserError(error: string): boolean {
+  const normalized = error.toLowerCase()
+  return (
+    normalized.includes('browser') &&
+    (
+      normalized.includes('install') ||
+      normalized.includes('executable') ||
+      normalized.includes('download')
+    )
+  )
+}
+
+async function callPlaywrightTool(args: {
+  workspaceRoot: string
+  preferredNames: string[]
+  argVariants: Array<Record<string, unknown>>
+  timeoutMs: number
+}): Promise<Awaited<ReturnType<typeof localMcpToolRuntime.callTool>>> {
+  let result = await localMcpToolRuntime.callTool({
+    kind: 'playwright',
+    workspaceRoot: args.workspaceRoot,
+    preferredNames: args.preferredNames,
+    argVariants: args.argVariants,
+    timeoutMs: args.timeoutMs,
+  })
+
+  if (result.ok || !isMissingPlaywrightBrowserError(result.error)) {
+    return result
+  }
+
+  const installResult = await localMcpToolRuntime.callTool({
+    kind: 'playwright',
+    workspaceRoot: args.workspaceRoot,
+    preferredNames: ['browser_install'],
+    argVariants: [{}],
+    timeoutMs: 180_000,
+  })
+  if (!installResult.ok) {
+    return installResult
+  }
+
+  result = await localMcpToolRuntime.callTool({
+    kind: 'playwright',
+    workspaceRoot: args.workspaceRoot,
+    preferredNames: args.preferredNames,
+    argVariants: args.argVariants,
+    timeoutMs: args.timeoutMs,
+  })
+
+  return result
+}
+
+async function runPreviewBrowser(input: PreviewBrowserInput, workingDir: string): Promise<{
+  action: PreviewBrowserAction
+  url: string
+  snapshot?: unknown
+  result?: unknown
+}> {
+  const action = normalizePreviewBrowserAction(input.action)
+  const targetUrl = resolvePreviewBrowserUrl(input)
+  const currentUrl = normalizePreviewBrowserBaseUrl(input.currentUrl as string).toString()
+  const shouldNavigate = action === 'navigate' || targetUrl !== currentUrl
+
+  const invoke = async (
+    preferredNames: string[],
+    argVariants: Array<Record<string, unknown>>,
+    timeoutMs = 30_000
+  ): Promise<unknown> => {
+    const result = await callPlaywrightTool({
+      workspaceRoot: workingDir,
+      preferredNames,
+      argVariants,
+      timeoutMs,
+    })
+    if (!result.ok) {
+      throw new Error(result.error)
+    }
+    return extractStructuredOrText(result.value)
+  }
+
+  const captureSnapshot = async (): Promise<unknown> =>
+    invoke(['browser_snapshot'], [{}], 30_000)
+
+  if (shouldNavigate) {
+    await invoke(['browser_navigate'], [{ url: targetUrl }], 45_000)
+  }
+
+  if (action === 'navigate' || action === 'snapshot') {
+    return {
+      action,
+      url: targetUrl,
+      snapshot: await captureSnapshot(),
+    }
+  }
+
+  if (action === 'click') {
+    if (typeof input.ref !== 'string' || input.ref.trim().length === 0) {
+      throw new Error('preview_browser click requires ref from a prior snapshot.')
+    }
+    const payload: Record<string, unknown> = { ref: input.ref }
+    if (typeof input.element === 'string' && input.element.trim().length > 0) payload.element = input.element
+    if (typeof input.doubleClick === 'boolean') payload.doubleClick = input.doubleClick
+    if (typeof input.button === 'string' && input.button.trim().length > 0) payload.button = input.button
+    if (Array.isArray(input.modifiers)) payload.modifiers = input.modifiers.filter((item) => typeof item === 'string')
+    const result = await invoke(['browser_click'], [payload], 30_000)
+    return {
+      action,
+      url: targetUrl,
+      result,
+      snapshot: await captureSnapshot(),
+    }
+  }
+
+  if (action === 'type') {
+    if (typeof input.ref !== 'string' || input.ref.trim().length === 0) {
+      throw new Error('preview_browser type requires ref from a prior snapshot.')
+    }
+    if (typeof input.text !== 'string') {
+      throw new Error('preview_browser type requires text.')
+    }
+    const payload: Record<string, unknown> = {
+      ref: input.ref,
+      text: input.text,
+    }
+    if (typeof input.element === 'string' && input.element.trim().length > 0) payload.element = input.element
+    if (typeof input.submit === 'boolean') payload.submit = input.submit
+    if (typeof input.slowly === 'boolean') payload.slowly = input.slowly
+    const result = await invoke(['browser_type'], [payload], 30_000)
+    return {
+      action,
+      url: targetUrl,
+      result,
+      snapshot: await captureSnapshot(),
+    }
+  }
+
+  if (action === 'press') {
+    if (typeof input.key !== 'string' || input.key.trim().length === 0) {
+      throw new Error('preview_browser press requires key.')
+    }
+    const result = await invoke(['browser_press_key'], [{ key: input.key.trim() }], 20_000)
+    return {
+      action,
+      url: targetUrl,
+      result,
+      snapshot: await captureSnapshot(),
+    }
+  }
+
+  if (action === 'wait_for') {
+    const payload: Record<string, unknown> = {}
+    if (typeof input.text === 'string' && input.text.trim().length > 0) payload.text = input.text
+    if (typeof input.textGone === 'string' && input.textGone.trim().length > 0) payload.textGone = input.textGone
+    if (typeof input.time === 'number' && Number.isFinite(input.time) && input.time >= 0) {
+      payload.time = input.time
+    }
+    if (Object.keys(payload).length === 0) {
+      throw new Error('preview_browser wait_for requires text, textGone, or time.')
+    }
+    const timeoutMs =
+      typeof payload.time === 'number'
+        ? Math.max(10_000, Math.ceil(payload.time * 1000) + 5_000)
+        : 30_000
+    const result = await invoke(['browser_wait_for'], [payload], timeoutMs)
+    return {
+      action,
+      url: targetUrl,
+      result,
+      snapshot: await captureSnapshot(),
+    }
+  }
+
+  if ((input.element && !input.ref) || (!input.element && input.ref)) {
+    throw new Error('preview_browser screenshot requires both element and ref together.')
+  }
+
+  const payload: Record<string, unknown> = {}
+  if (typeof input.type === 'string' && (input.type === 'png' || input.type === 'jpeg')) {
+    payload.type = input.type
+  }
+  if (typeof input.filename === 'string' && input.filename.trim().length > 0) payload.filename = input.filename
+  if (typeof input.fullPage === 'boolean') payload.fullPage = input.fullPage
+  if (typeof input.element === 'string' && input.element.trim().length > 0) payload.element = input.element
+  if (typeof input.ref === 'string' && input.ref.trim().length > 0) payload.ref = input.ref
+  const result = await invoke(['browser_take_screenshot'], [payload], 45_000)
+  return {
+    action,
+    url: targetUrl,
+    result,
+  }
+}
+
 export async function runTool(request: ToolRequest): Promise<ToolResult> {
   if (!request.projectPath && TOOLS_REQUIRING_PROJECT_CONTEXT.has(request.name)) {
     return {
@@ -996,6 +1308,11 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
         return {
           success: true,
           output: await runInTerminal(request.input as RunInTerminalInput, workingDir),
+        }
+      case 'preview_browser':
+        return {
+          success: true,
+          output: await runPreviewBrowser(request.input as PreviewBrowserInput, workingDir),
         }
       case 'apply_patch':
         return { success: false, error: 'apply_patch is not yet enabled in this runtime' }

@@ -399,7 +399,7 @@ function MessageBubbleComponent({
               toolName === 'bing_search'
 
             // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read'
+            const isStaticTool = toolName === 'read' || toolName === 'grep'
 
             // Render static (non-expandable) tools
             if (isStaticTool) {
@@ -495,11 +495,14 @@ function MessageBubbleComponent({
                           return <TaskProgress tasks={tasks} showSummary />
                         })()
                         : isTerminalTool
-                          ? <BuilderTerminalOutput
-                            command={typeof toolInput?.command === 'string' ? toolInput.command : undefined}
-                            output={extractTerminalOutput(toolPart.output)}
-                            className="border-t"
-                          />
+                          ? (
+                            <div className="px-2 pb-2">
+                              <BuilderTerminalOutput
+                                command={typeof toolInput?.command === 'string' ? toolInput.command : undefined}
+                                output={extractTerminalOutput(toolPart.output)}
+                              />
+                            </div>
+                          )
                           : isEditTool
                             ? null // Diff viewer already shows the edit, no need to show output
                             : isWebSearchTool

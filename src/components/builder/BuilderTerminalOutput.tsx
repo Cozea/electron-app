@@ -6,6 +6,37 @@ import { cn } from '@/lib/utils'
 import { CopyIcon, CheckIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState, useCallback } from 'react'
+import { getThemeColorHex, syncTerminalTheme } from '@/lib/xtermTheme'
+
+const buildTerminalOutputTheme = (container: HTMLElement) => {
+  const background = getThemeColorHex(container, '--tool-surface', '#1a1a1a')
+  const foreground = getThemeColorHex(container, '--tool-surface-foreground', '#fafafa')
+  const muted = getThemeColorHex(container, '--muted', '#27272a')
+
+  return {
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: muted,
+    black: '#09090b',
+    red: '#f87171',
+    green: '#4ade80',
+    yellow: '#facc15',
+    blue: '#60a5fa',
+    magenta: '#c084fc',
+    cyan: '#22d3ee',
+    white: '#d4d4d8',
+    brightBlack: '#52525b',
+    brightRed: '#fca5a5',
+    brightGreen: '#86efac',
+    brightYellow: '#fde047',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#d8b4fe',
+    brightCyan: '#67e8f9',
+    brightWhite: '#f4f4f5',
+  }
+}
 
 interface BuilderTerminalOutputProps {
   command?: string
@@ -39,73 +70,8 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       return
     }
 
-    // Convert CSS color (including oklch) to hex using canvas
-    const colorToHex = (cssColor: string): string => {
-      const canvas = document.createElement('canvas')
-      canvas.width = 1
-      canvas.height = 1
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return '#000000'
-
-      ctx.fillStyle = cssColor
-      ctx.fillRect(0, 0, 1, 1)
-      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-    }
-
-    // Get CSS variable value and convert to hex
-    const getThemeColor = (cssVar: string, fallback: string): string => {
-      // Use the terminal container's parent to get correct theme context
-      const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
-      const computed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
-
-      if (!computed) {
-        return fallback
-      }
-
-      // Create temp element within the theme context to resolve the color
-      const tempDiv = document.createElement('div')
-      tempDiv.style.position = 'absolute'
-      tempDiv.style.visibility = 'hidden'
-      tempDiv.style.backgroundColor = computed
-      document.body.appendChild(tempDiv)
-      const resolvedColor = getComputedStyle(tempDiv).backgroundColor
-      document.body.removeChild(tempDiv)
-
-      if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
-        return fallback
-      }
-      return colorToHex(resolvedColor)
-    }
-
-    const background = getThemeColor('--tool-surface', '#1a1a1a')
-    const foreground = getThemeColor('--tool-surface-foreground', '#fafafa')
-    const muted = getThemeColor('--muted', '#27272a')
-
     const term = new Terminal({
-      theme: {
-        background,
-        foreground,
-        cursor: foreground,
-        cursorAccent: background,
-        selectionBackground: muted,
-        black: '#09090b',
-        red: '#f87171',
-        green: '#4ade80',
-        yellow: '#facc15',
-        blue: '#60a5fa',
-        magenta: '#c084fc',
-        cyan: '#22d3ee',
-        white: '#d4d4d8',
-        brightBlack: '#52525b',
-        brightRed: '#fca5a5',
-        brightGreen: '#86efac',
-        brightYellow: '#fde047',
-        brightBlue: '#93c5fd',
-        brightMagenta: '#d8b4fe',
-        brightCyan: '#67e8f9',
-        brightWhite: '#f4f4f5',
-      },
+      theme: buildTerminalOutputTheme(container),
       fontSize: 12,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       lineHeight: 1.2,
@@ -147,6 +113,14 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       terminalRef.current = null
       fitAddonRef.current = null
     }
+  }, [command])
+
+  useEffect(() => {
+    const container = containerRef.current
+    const term = terminalRef.current
+    if (!container || !term) return
+
+    return syncTerminalTheme(term, () => buildTerminalOutputTheme(container))
   }, [command])
 
   // Update output when it changes
@@ -195,22 +169,38 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
   }, [command, output])
 
   return (
-    <div className={cn('bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] overflow-hidden relative group px-3 py-2 rounded-md', className)}>
-      {/* Copy button - appears on hover */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        onClick={handleCopy}
-      >
-        {isCopied ? <CheckIcon className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}
-      </Button>
-
-      {/* Terminal content */}
-      <div
-        ref={containerRef}
-        className="h-48 overflow-hidden"
-      />
+    <div
+      className={cn(
+        'group relative w-full overflow-hidden rounded-2xl bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)]',
+        className
+      )}
+    >
+      <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1">
+        <div className="min-w-0">
+          <p className="truncate font-mono text-[11px] text-muted-foreground">
+            {command ? `$ ${command}` : 'Terminal output'}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+          onClick={handleCopy}
+          title="Copy output"
+        >
+          {isCopied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
+        </Button>
+      </div>
+      <div className="relative h-48 w-full overflow-hidden px-3 py-2">
+        <div
+          ref={containerRef}
+          className="h-full w-full overflow-hidden"
+        />
+        <div
+          className="pointer-events-none absolute inset-x-3 top-2 h-5"
+          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
+        />
+      </div>
     </div>
   )
 })

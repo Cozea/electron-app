@@ -37,6 +37,7 @@ const extendedUsageValidator = v.optional(
   v.object({
     reasoningTokens: v.optional(v.number()),
     cachedInputTokens: v.optional(v.number()),
+    cacheWriteTokens: v.optional(v.number()),
     toolCallTokens: v.optional(v.number()),
   })
 )
@@ -341,6 +342,116 @@ export const getAggregates = query({
       ...aggregate,
       totalTrackedUnits: aggregate.totalTrackedUnits,
     }))
+  },
+})
+
+export const getDailyHistory = query({
+  args: {
+    organizationId: v.id("organizations"),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const defaultRange = getTrailingUtcDayRange(30, now)
+    const startDate = args.startDate ?? defaultRange.startDate
+    const endDate = args.endDate ?? defaultRange.endDate
+
+    const [aggregates, ledgerEntries] = await Promise.all([
+      ctx.db
+        .query("aiUsageAggregates")
+        .withIndex("by_organization_and_period", (q) =>
+          q.eq("organizationId", args.organizationId).eq("period", "daily")
+        )
+        .filter((q) =>
+          q.and(
+            q.gte(q.field("periodStart"), startDate),
+            q.lte(q.field("periodStart"), endDate)
+          )
+        )
+        .collect(),
+      ctx.db
+        .query("aiWalletLedger")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("kind"), "debit"),
+            q.gte(q.field("createdAt"), startDate),
+            q.lte(q.field("createdAt"), endDate)
+          )
+        )
+        .collect(),
+    ])
+
+    const rows = new Map<number, {
+      periodStart: number
+      requestCount: number
+      totalPromptTokens: number
+      totalCompletionTokens: number
+      totalTokens: number
+      totalTrackedUnits: number
+      debitCents: number
+    }>()
+
+    for (const aggregate of aggregates) {
+      rows.set(aggregate.periodStart, {
+        periodStart: aggregate.periodStart,
+        requestCount: aggregate.requestCount,
+        totalPromptTokens: aggregate.totalPromptTokens,
+        totalCompletionTokens: aggregate.totalCompletionTokens,
+        totalTokens: aggregate.totalTokens,
+        totalTrackedUnits: aggregate.totalTrackedUnits,
+        debitCents: 0,
+      })
+    }
+
+    for (const entry of ledgerEntries) {
+      const dayStart = getUtcDayStartTimestamp(entry.createdAt)
+      const existing = rows.get(dayStart)
+      if (existing) {
+        existing.debitCents += entry.amountCents
+        continue
+      }
+
+      rows.set(dayStart, {
+        periodStart: dayStart,
+        requestCount: 0,
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0,
+        totalTokens: 0,
+        totalTrackedUnits: 0,
+        debitCents: entry.amountCents,
+      })
+    }
+
+    return Array.from(rows.values()).sort((a, b) => b.periodStart - a.periodStart)
+  },
+})
+
+export const getDetailedHistory = query({
+  args: {
+    organizationId: v.id("organizations"),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const defaultRange = getTrailingUtcDayRange(30, now)
+    const startDate = args.startDate ?? defaultRange.startDate
+    const endDate = args.endDate ?? defaultRange.endDate
+
+    const records = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_organization_and_timestamp", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .gte("timestamp", startDate)
+          .lte("timestamp", endDate)
+      )
+      .order("desc")
+      .collect()
+
+    return await attachDebitAmounts(ctx, records)
   },
 })
 

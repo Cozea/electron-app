@@ -21,6 +21,7 @@ import { parseBillingError, type BillingErrorData } from '@/components/assistant
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { getRetryHintSurfaceError, type AiSurfaceErrorData } from '@/lib/ai/surfaceErrors'
 import {
   buildEncodedProviderAuthHeader,
   inferProviderFromModelId,
@@ -38,11 +39,14 @@ import {
 import { isFileMutatingTool } from '@/lib/diagnostics/mutatingTools'
 import type { ToolCallPayload } from '@/lib/ai/toolTypes'
 import { useCollaborationActivityStore } from '@/stores/useCollaborationActivityStore'
+import type { DevServerStatus } from '@/hooks/useDevServerManager'
 
 // Fallback for workflow tools if metadata is briefly stale during startup.
 const BUILDER_WORKFLOW_FALLBACK_TOOLS = new Set([
   'todowrite',
   'build_complete',
+  'preview_start',
+  'preview_browser',
 ])
 
 // Project type from Convex
@@ -124,6 +128,15 @@ interface ToolPart {
   approval?: { id?: string }
 }
 
+interface BuilderTasksDataPart {
+  type: 'data-builder-tasks'
+  data?: {
+    tasks?: unknown
+    toolCallId?: string
+    source?: string
+  }
+}
+
 interface BuilderTerminalOutputState {
   id: string
   command: string
@@ -139,12 +152,16 @@ interface BuilderTerminalOutputState {
 interface BuilderConversationProps {
   project: Project
   localPath: string
+  previewUrl: string | null
+  previewStatus: DevServerStatus
   stopRequestCount?: number
   onTasksUpdate: (tasks: BuildTask[]) => void
   onFileCreated: (file: { path: string; content: string }) => void
+  onPreviewStartRequest?: (reason?: string) => void
   onComplete: () => void
   onError: (error: string) => void
   onBillingError?: (error: BillingErrorData | null) => void
+  onSurfaceError?: (error: AiSurfaceErrorData | null) => void
   className?: string
 }
 
@@ -324,17 +341,40 @@ const truncateTerminalOutput = (output: string) => {
 const appendTerminalOutput = (current: string, chunk: string) =>
   truncateTerminalOutput(current + chunk)
 
+function normalizePreviewBrowserAction(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return 'snapshot'
+  }
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+
+  if (normalized === 'take_screenshot') return 'screenshot'
+  if (normalized === 'press_key') return 'press'
+  return normalized
+}
+
+function countsAsPreviewValidation(action: string): boolean {
+  return action !== 'screenshot'
+}
+
 type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 export function BuilderConversation({
   project,
   localPath,
+  previewUrl,
+  previewStatus,
   stopRequestCount = 0,
   onTasksUpdate,
   onFileCreated,
+  onPreviewStartRequest,
   onComplete,
   onError,
   onBillingError,
+  onSurfaceError,
   className,
 }: BuilderConversationProps) {
   const { accessToken, currentOrganization, convexUserId } = useAuth()
@@ -352,6 +392,9 @@ export function BuilderConversation({
   const [conversationId] = useState(() => crypto.randomUUID())
   const hasSentInitialMessageRef = useRef(false)
   const completedRef = useRef(false)
+  const previewMutationVersionRef = useRef(0)
+  const previewValidatedVersionRef = useRef<number | null>(null)
+  const lastPreviewUrlRef = useRef<string | null>(previewUrl)
   // Track active terminal sessions for live terminal rendering
   const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
   const terminalListenerCleanupRef = useRef<Map<string, () => void>>(new Map())
@@ -389,6 +432,45 @@ export function BuilderConversation({
     })
     return unsubscribe
   }, [])
+
+  const markPreviewDirty = useCallback(() => {
+    previewMutationVersionRef.current += 1
+    previewValidatedVersionRef.current = null
+  }, [])
+
+  const markPreviewValidated = useCallback(() => {
+    previewValidatedVersionRef.current = previewMutationVersionRef.current
+  }, [])
+
+  const getPreviewCompletionBlocker = useCallback((): string | null => {
+    if (!previewUrl || previewStatus !== 'ready') {
+      if (previewStatus === 'starting') {
+        return 'Preview is still starting. Wait for it to load, then use preview_browser({ action: "snapshot" }) before calling build_complete.'
+      }
+      if (previewStatus === 'error' || previewStatus === 'unhealthy') {
+        return 'Preview is not healthy yet. Fix the app so the live preview loads, then use preview_browser({ action: "snapshot" }) before calling build_complete.'
+      }
+      return 'Before calling build_complete, call preview_start, wait until the preview is ready, and use preview_browser({ action: "snapshot" }) to inspect the final UI.'
+    }
+
+    if (previewValidatedVersionRef.current !== previewMutationVersionRef.current) {
+      return 'Before calling build_complete, run preview_browser on the latest preview state. Start with preview_browser({ action: "snapshot" }) and use the returned refs for any click/type checks you need.'
+    }
+
+    return null
+  }, [previewStatus, previewUrl])
+
+  useEffect(() => {
+    if (previewStatus !== 'ready') {
+      previewValidatedVersionRef.current = null
+    }
+  }, [previewStatus])
+
+  useEffect(() => {
+    if (previewUrl === lastPreviewUrlRef.current) return
+    lastPreviewUrlRef.current = previewUrl
+    previewValidatedVersionRef.current = null
+  }, [previewUrl])
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const preflightDiagnostic = useMemo(() => {
@@ -662,6 +744,10 @@ This updates the progress UI so the user can track your work in real-time. The u
 
 Use todowrite with the "tasks" field. Only switch to "tasks_json" if the tool/schema explicitly rejects "tasks" and asks for a JSON string. Do not use "todos".
 
+When the project should render something visible in the browser, call preview_start and continue building. Do this early once a basic shell, route, or page can render. Do not wait until the end.
+
+Before build_complete, you MUST use preview_browser on the live preview after your latest code changes. Start with preview_browser({ action: "snapshot" }) to inspect the current UI and get fresh refs. If you need another route first, use preview_browser({ action: "snapshot", path: "/target-route" }).
+
 Now begin by defining your task list with todowrite, then start working through them one by one, updating statuses as you go.`
   }, [project])
 
@@ -729,6 +815,37 @@ Now begin by defining your task list with todowrite, then start working through 
       maxItems: 8,
     })
   }, [localPath])
+
+  const commitTaskUpdate = useCallback((tasks: BuildTask[]) => {
+    let signature: string | null = null
+    try {
+      signature = JSON.stringify(tasks)
+    } catch {
+      signature = null
+    }
+
+    latestTasksRef.current = tasks
+
+    if (signature && signature === lastTasksSignatureRef.current) {
+      return false
+    }
+
+    lastTasksSignatureRef.current = signature
+    onTasksUpdate(tasks)
+    return true
+  }, [onTasksUpdate])
+
+  const finalizeIfTasksCompleted = useCallback(async (tasks: BuildTask[]) => {
+    const allCompleted = tasks.length > 0 && tasks.every((task) => task.status === 'completed')
+    if (!allCompleted) {
+      return null
+    }
+
+    return {
+      finalDiagnostics: await getFinalDiagnosticsSummary(),
+      previewCompletionBlocker: getPreviewCompletionBlocker(),
+    }
+  }, [getFinalDiagnosticsSummary, getPreviewCompletionBlocker])
 
   const formatLockConflictError = useCallback((
     filePath: string,
@@ -859,34 +976,20 @@ Now begin by defining your task list with todowrite, then start working through 
           return
         }
 
-        let signature: string | null = null
-        try {
-          signature = JSON.stringify(tasks)
-        } catch {
-          signature = null
-        }
-
-        if (signature && signature === lastTasksSignatureRef.current) {
-          // Avoid re-applying identical task lists (prevents render churn / loops).
-        } else {
-          lastTasksSignatureRef.current = signature
-          latestTasksRef.current = tasks
-          onTasksUpdate(tasks)
-        }
-
-        const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'completed')
-        let finalDiagnostics = null
-        if (allCompleted && !completedRef.current) {
-          finalDiagnostics = await getFinalDiagnosticsSummary()
-          completedRef.current = true
-          setTimeout(() => onComplete(), 500)
-        }
+        commitTaskUpdate(tasks)
+        const completionState = await finalizeIfTasksCompleted(tasks)
 
         const outputPayload = {
           success: true,
           taskCount: tasks.length,
           tasks,
-          ...(finalDiagnostics ? { diagnostics: finalDiagnostics } : {}),
+          ...(completionState?.finalDiagnostics ? { diagnostics: completionState.finalDiagnostics } : {}),
+          ...(completionState
+            ? { readyForBuildComplete: !completionState.previewCompletionBlocker }
+            : {}),
+          ...(completionState?.previewCompletionBlocker
+            ? { nextStep: completionState.previewCompletionBlocker }
+            : {}),
         }
 
         void addToolOutput({
@@ -930,6 +1033,17 @@ Now begin by defining your task list with todowrite, then start working through 
           return
         }
 
+        const previewCompletionBlocker = getPreviewCompletionBlocker()
+        if (previewCompletionBlocker) {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: previewCompletionBlocker,
+          })
+          return
+        }
+
         const summary = toolInput && typeof toolInput.summary === 'string' ? toolInput.summary : undefined
         console.log('[Builder] build_complete called with summary:', summary)
         const finalDiagnostics = await getFinalDiagnosticsSummary()
@@ -959,6 +1073,72 @@ Now begin by defining your task list with todowrite, then start working through 
         return
       }
 
+      if (toolName === 'preview_start') {
+        const reason =
+          toolInput && typeof toolInput.reason === 'string' && toolInput.reason.trim().length > 0
+            ? toolInput.reason.trim()
+            : undefined
+
+        markPreviewDirty()
+        onPreviewStartRequest?.(reason)
+        void addToolOutput({
+          tool: toolName,
+          toolCallId,
+          output: JSON.stringify({
+            success: true,
+            started: true,
+            message: 'Preview start requested',
+            ...(reason ? { reason } : {}),
+          }),
+        })
+        return
+      }
+
+      if (toolName === 'preview_browser') {
+        const action = normalizePreviewBrowserAction(toolInput?.action)
+        if (!previewUrl || previewStatus !== 'ready') {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: getPreviewCompletionBlocker() ?? 'Preview is not ready yet.',
+          })
+          return
+        }
+
+        const runtimeResult = await localRuntime.requestToolExecution(conversationId, {
+          toolName,
+          input: {
+            ...(toolInput ?? {}),
+            currentUrl: previewUrl,
+          },
+          projectPath: localPath,
+          toolCallId,
+        })
+
+        if (cancelledToolCallsRef.current.has(toolCallId)) return
+        if (!runtimeResult.success) {
+          void addToolOutput({
+            state: 'output-error',
+            tool: toolName,
+            toolCallId,
+            errorText: runtimeResult.error || 'Preview inspection failed',
+          })
+          return
+        }
+
+        if (countsAsPreviewValidation(action)) {
+          markPreviewValidated()
+        }
+
+        void addToolOutput({
+          tool: toolName,
+          toolCallId,
+          output: runtimeResult.output,
+        })
+        return
+      }
+
       if (toolName === 'write') {
         if (!toolInput || typeof toolInput.filePath !== 'string' || typeof toolInput.content !== 'string') {
           throw new Error('write requires filePath and content')
@@ -977,6 +1157,7 @@ Now begin by defining your task list with todowrite, then start working through 
           }
 
           onFileCreated({ path: filePath, content })
+          markPreviewDirty()
           const enrichedOutput = await enrichToolOutputWithDiagnostics(
             toolName,
             toolInput,
@@ -1067,6 +1248,7 @@ Now begin by defining your task list with todowrite, then start working through 
           if (!writeResult.success) {
             throw new Error(writeResult.error || 'Failed to write file')
           }
+          markPreviewDirty()
           const enrichedOutput = await enrichToolOutputWithDiagnostics(
             toolName,
             toolInput,
@@ -1162,6 +1344,7 @@ Now begin by defining your task list with todowrite, then start working through 
             }
             results.push({ filePath: edit.filePath, replacements: replacementCount })
           }
+          markPreviewDirty()
           const enrichedOutput = await enrichToolOutputWithDiagnostics(
             toolName,
             toolInput,
@@ -1217,6 +1400,9 @@ Now begin by defining your task list with todowrite, then start working through 
 
       if (cancelledToolCallsRef.current.has(toolCallId)) return
       if (runtimeResult.success) {
+        if (toolName === 'bash') {
+          markPreviewDirty()
+        }
         const enrichedOutput = await enrichToolOutputWithDiagnostics(
           toolName,
           toolInput,
@@ -1250,11 +1436,17 @@ Now begin by defining your task list with todowrite, then start working through 
     logGeminiTodowrite,
     localPath,
     localRuntime,
+    markPreviewDirty,
+    markPreviewValidated,
     normalizeProjectPath,
     onComplete,
     onFileCreated,
+    onPreviewStartRequest,
     onTasksUpdate,
     getFinalDiagnosticsSummary,
+    getPreviewCompletionBlocker,
+    previewStatus,
+    previewUrl,
     withFileLocks,
   ])
 
@@ -1283,12 +1475,20 @@ Now begin by defining your task list with todowrite, then start working through 
   // Handle tool calls with assistant-style local execution rules.
   const handleToolCall = useCallback(async ({ toolCall }: { toolCall: ToolCallPayload }) => {
     if (toolCall?.toolName === 'todowrite') {
+      const normalizedInput = normalizeToolInput('todowrite', toolCall.input)
+      const parsedTasks = parseTodowriteTasksAny(normalizedInput)
       logGeminiTodowrite('tool_call_received', {
         toolCallId: toolCall.toolCallId,
         input: toolCall.input,
+        normalizedInput,
+        parsedTasks,
         dynamic: toolCall.dynamic === true,
         providerExecuted: toolCall.providerExecuted === true,
       })
+      if (parsedTasks !== null) {
+        commitTaskUpdate(parsedTasks)
+        void finalizeIfTasksCompleted(parsedTasks)
+      }
     }
     if (toolCall?.dynamic) return
     if (toolCall?.providerExecuted) return
@@ -1344,7 +1544,13 @@ Now begin by defining your task list with todowrite, then start working through 
     }
 
     await runLocalTool(toolName, toolCallId, input)
-  }, [logGeminiTodowrite, runLocalTool, shouldRequireLocalApproval])
+  }, [
+    commitTaskUpdate,
+    finalizeIfTasksCompleted,
+    logGeminiTodowrite,
+    runLocalTool,
+    shouldRequireLocalApproval,
+  ])
 
   // useChat hook
   const {
@@ -1388,6 +1594,12 @@ Now begin by defining your task list with todowrite, then start working through 
       onError(err.title || 'Billing Error')
     },
   })
+
+  const retrySurfaceError = useMemo(() => getRetryHintSurfaceError(hookRetryHint), [hookRetryHint])
+
+  useEffect(() => {
+    onSurfaceError?.(retrySurfaceError)
+  }, [onSurfaceError, retrySurfaceError])
 
   addToolOutputRef.current = addToolOutput
 
@@ -1524,6 +1736,11 @@ Now begin by defining your task list with todowrite, then start working through 
       return
     }
 
+    if (retrySurfaceError) {
+      onError(retrySurfaceError.message)
+      return
+    }
+
     const message = error instanceof Error
       ? error.message
       : typeof error === 'string'
@@ -1548,6 +1765,8 @@ Now begin by defining your task list with todowrite, then start working through 
     hookRetryHint,
     onBillingError,
     onError,
+    onSurfaceError,
+    retrySurfaceError,
   ])
 
   // Fallback: extract todowrite updates directly from streamed messages
@@ -1557,7 +1776,17 @@ Now begin by defining your task list with todowrite, then start working through 
     for (let i = dedupedMessages.length - 1; i >= 0; i -= 1) {
       const message = dedupedMessages[i]
       if (message.role !== 'assistant') continue
-      for (const part of message.parts) {
+      for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+        const part = message.parts[partIndex]
+        if (part.type === 'data-builder-tasks') {
+          const data = (part as BuilderTasksDataPart).data
+          const streamedTasks = parseTodowriteTasksAny(data?.tasks ?? data)
+          if (streamedTasks !== null) {
+            latestTasks = streamedTasks
+            break
+          }
+        }
+
         if (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) {
           continue
         }
@@ -1604,32 +1833,17 @@ Now begin by defining your task list with todowrite, then start working through 
     }
 
     if (latestTasks) {
-      let signature: string | null = null
-      try {
-        signature = JSON.stringify(latestTasks)
-      } catch {
-        signature = null
-      }
-
-      if (!signature || signature !== lastTasksSignatureRef.current) {
-        lastTasksSignatureRef.current = signature
-        latestTasksRef.current = latestTasks
-        onTasksUpdate(latestTasks)
-      }
-      const allCompleted = latestTasks.length > 0 && latestTasks.every(t => t.status === 'completed')
+      commitTaskUpdate(latestTasks)
+      const allCompleted = latestTasks.length > 0 && latestTasks.every((task) => task.status === 'completed')
       console.log('[Builder] Task completion check:', {
         taskCount: latestTasks.length,
         allCompleted,
         completedRefCurrent: completedRef.current,
-        statuses: latestTasks.map(t => t.status),
+        statuses: latestTasks.map((task) => task.status),
       })
-      if (allCompleted && !completedRef.current) {
-        console.log('[Builder] All tasks completed, calling onComplete()')
-        completedRef.current = true
-        setTimeout(() => onComplete(), 500)
-      }
+      void finalizeIfTasksCompleted(latestTasks)
     }
-  }, [dedupedMessages, logGeminiTodowrite, onTasksUpdate, onComplete])
+  }, [commitTaskUpdate, dedupedMessages, finalizeIfTasksCompleted, logGeminiTodowrite])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, MessageToolMeta>()

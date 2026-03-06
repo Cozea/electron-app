@@ -22,6 +22,8 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import {
+  ChevronLeft,
+  ChevronRight,
   Folder,
   Trash2,
   FileText,
@@ -29,11 +31,14 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react'
-import type { StorageUsage, LocalProject } from '../../types/electron'
+import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage } from '../../types/electron'
 
 interface StorageProps {
   surface?: 'page' | 'drawer'
 }
+
+const PROJECTS_PAGE_SIZE = 10
+let cachedStorageSnapshot: StorageSnapshot | null = null
 
 // Format bytes to human readable size
 function formatBytes(bytes: number): string {
@@ -64,67 +69,282 @@ function formatRelativeTime(timestamp: number): string {
   return 'Just now'
 }
 
+function getPageNumbers(currentPage: number, totalPages: number): Array<number | '...'> {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1)
+  }
+
+  if (currentPage <= 3) {
+    return [1, 2, 3, '...', totalPages]
+  }
+
+  if (currentPage >= totalPages - 2) {
+    return [1, '...', totalPages - 2, totalPages - 1, totalPages]
+  }
+
+  return [1, '...', currentPage, '...', totalPages]
+}
+
 export function Storage({ surface = 'page' }: StorageProps) {
   const { user, logout } = useAuth()
-  const [projectsDirectory, setProjectsDirectory] = useState<string>('~/Developer/Cozea')
-  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
-  const [localProjects, setLocalProjects] = useState<LocalProject[]>([])
-  const [isLoadingStorage, setIsLoadingStorage] = useState(true)
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true)
+  const [projectsDirectory, setProjectsDirectory] = useState<string>(
+    cachedStorageSnapshot?.projectsDirectory ?? '~/Developer/Cozea'
+  )
+  const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(cachedStorageSnapshot)
+  const [currentPage, setCurrentPage] = useState<number>(cachedStorageSnapshot?.projects.page ?? 1)
+  const [isLoadingStorage, setIsLoadingStorage] = useState(!cachedStorageSnapshot)
+  const [isLoadingProjects, setIsLoadingProjects] = useState(!cachedStorageSnapshot)
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false)
+  const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = useState(false)
+  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false)
 
-  // Load storage usage
-  const loadStorageUsage = useCallback(async () => {
-    if (!window.electronAPI?.storage) return
-    setIsLoadingStorage(true)
-    try {
-      const usage = await window.electronAPI.storage.getUsage()
-      setStorageUsage(usage)
-    } catch (err) {
-      console.error('Failed to load storage usage:', err)
-    } finally {
-      setIsLoadingStorage(false)
-    }
-  }, [])
+  const loadStorageSnapshot = useCallback(
+    async (options?: {
+      forceRefresh?: boolean
+      page?: number
+      silent?: boolean
+      mode?: 'all' | 'projects'
+    }) => {
+      if (!window.electronAPI?.storage?.getSnapshot) return
 
-  // Load local projects
-  const loadLocalProjects = useCallback(async () => {
-    if (!window.electronAPI?.storage) return
-    setIsLoadingProjects(true)
-    try {
-      const projects = await window.electronAPI.storage.listProjects()
-      setLocalProjects(projects)
-    } catch (err) {
-      console.error('Failed to load local projects:', err)
-    } finally {
-      setIsLoadingProjects(false)
-    }
-  }, [])
-
-  // Load settings and storage on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      if (window.electronAPI?.settings) {
-        const settings = await window.electronAPI.settings.get()
-        setProjectsDirectory(settings.projectsDirectory)
+      const mode = options?.mode ?? 'all'
+      if (!options?.silent) {
+        if (mode === 'all') {
+          setIsLoadingStorage(true)
+        }
+        setIsLoadingProjects(true)
       }
-    }
-    loadSettings()
-    loadStorageUsage()
-    loadLocalProjects()
-  }, [loadStorageUsage, loadLocalProjects])
 
-  // Handle directory change
-  const handleChangeDirectory = async () => {
+      try {
+        const snapshot = await window.electronAPI.storage.getSnapshot({
+          page: options?.page ?? 1,
+          pageSize: PROJECTS_PAGE_SIZE,
+          forceRefresh: options?.forceRefresh,
+        })
+
+        cachedStorageSnapshot = snapshot
+        setStorageSnapshot(snapshot)
+        setProjectsDirectory(snapshot.projectsDirectory)
+        setCurrentPage(snapshot.projects.page)
+        setActionError(null)
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to load storage overview.'
+        console.error('Failed to load storage overview:', error)
+        setActionError(message)
+      } finally {
+        if (!options?.silent) {
+          if (mode === 'all') {
+            setIsLoadingStorage(false)
+          }
+          setIsLoadingProjects(false)
+        }
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    void loadStorageSnapshot({
+      page: cachedStorageSnapshot?.projects.page ?? 1,
+      silent: Boolean(cachedStorageSnapshot),
+      mode: 'all',
+    })
+  }, [loadStorageSnapshot])
+
+  const showErrorDialog = useCallback(async (title: string, detail: string) => {
     if (!window.electronAPI?.dialog) return
+    await window.electronAPI.dialog.showMessageBox({
+      type: 'error',
+      title,
+      message: title,
+      detail,
+    })
+  }, [])
+
+  const refreshSnapshot = useCallback(
+    async (page: number, mode: 'all' | 'projects' = 'all') => {
+      await loadStorageSnapshot({ page, forceRefresh: mode === 'all', mode })
+    },
+    [loadStorageSnapshot]
+  )
+
+  const handleChangeDirectory = useCallback(async () => {
+    if (!window.electronAPI?.dialog || !window.electronAPI?.settings) return
 
     const result = await window.electronAPI.dialog.selectDirectory()
-    if (result.success && result.path) {
-      setProjectsDirectory(result.path)
+    if (!result.success || !result.path) return
+
+    setPendingAction('change-directory')
+    try {
       await window.electronAPI.settings.set({ projectsDirectory: result.path })
-      // Refresh storage usage after changing directory
-      loadStorageUsage()
+      cachedStorageSnapshot = null
+      await loadStorageSnapshot({ page: 1, forceRefresh: true, mode: 'all' })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to update the projects directory.'
+      setActionError(message)
+      await showErrorDialog('Directory Change Failed', message)
+    } finally {
+      setPendingAction(null)
     }
-  }
+  }, [loadStorageSnapshot, showErrorDialog])
+
+  const handleOpenProjectsDirectory = useCallback(async () => {
+    if (!window.electronAPI?.storage?.openProjectsDirectory) return
+
+    setPendingAction('open-folder')
+    try {
+      const result = await window.electronAPI.storage.openProjectsDirectory()
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to open the projects directory.')
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to open the projects directory.'
+      setActionError(message)
+      await showErrorDialog('Open Folder Failed', message)
+    } finally {
+      setPendingAction(null)
+    }
+  }, [showErrorDialog])
+
+  const handleClearCache = useCallback(async () => {
+    if (!window.electronAPI?.storage?.clearCache) return
+
+    setPendingAction('clear-cache')
+    try {
+      const result = await window.electronAPI.storage.clearCache()
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear build cache.')
+      }
+
+      setIsClearCacheDialogOpen(false)
+      await refreshSnapshot(currentPage, 'all')
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to clear build cache.'
+      setActionError(message)
+      await showErrorDialog('Clear Cache Failed', message)
+    } finally {
+      setPendingAction(null)
+    }
+  }, [currentPage, refreshSnapshot, showErrorDialog])
+
+  const handleClearLogs = useCallback(async () => {
+    if (!window.electronAPI?.storage?.clearLogs) return
+
+    setPendingAction('clear-logs')
+    try {
+      const result = await window.electronAPI.storage.clearLogs()
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear logs.')
+      }
+
+      setIsClearLogsDialogOpen(false)
+      await refreshSnapshot(currentPage, 'all')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to clear logs.'
+      setActionError(message)
+      await showErrorDialog('Clear Logs Failed', message)
+    } finally {
+      setPendingAction(null)
+    }
+  }, [currentPage, refreshSnapshot, showErrorDialog])
+
+  const handleRefresh = useCallback(async () => {
+    setPendingAction('refresh')
+    try {
+      await refreshSnapshot(currentPage, 'all')
+    } finally {
+      setPendingAction(null)
+    }
+  }, [currentPage, refreshSnapshot])
+
+  const handleDeleteProject = useCallback(
+    async (project: LocalProject) => {
+      if (!window.electronAPI?.dialog || !window.electronAPI?.storage?.deleteProject) return
+
+      const confirmation = await window.electronAPI.dialog.showMessageBox({
+        type: 'warning',
+        buttons: ['Cancel', 'Delete Project'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Delete Local Project',
+        message: `Delete ${project.name}?`,
+        detail:
+          'This removes the local project folder from your device. Cloud-synced data is not affected.',
+      })
+
+      if (confirmation.response !== 1) return
+
+      const actionKey = `delete:${project.path}`
+      setPendingAction(actionKey)
+
+      try {
+        const result = await window.electronAPI.storage.deleteProject({
+          projectPath: project.path,
+        })
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to delete the local project.')
+        }
+
+        const nextPage =
+          storageSnapshot?.projects.page === currentPage &&
+          storageSnapshot.projects.items.length === 1 &&
+          currentPage > 1
+            ? currentPage - 1
+            : currentPage
+
+        await refreshSnapshot(nextPage, 'all')
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to delete the local project.'
+        setActionError(message)
+        await showErrorDialog('Delete Project Failed', message)
+      } finally {
+        setPendingAction(null)
+      }
+    },
+    [currentPage, refreshSnapshot, showErrorDialog, storageSnapshot]
+  )
+
+  const handleClearAll = useCallback(async () => {
+    if (!window.electronAPI?.storage?.clearAll) return
+
+    setPendingAction('clear-all')
+    try {
+      const result = await window.electronAPI.storage.clearAll()
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear local data.')
+      }
+
+      cachedStorageSnapshot = null
+      setIsClearAllDialogOpen(false)
+      await loadStorageSnapshot({ page: 1, forceRefresh: true, mode: 'all' })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to clear local data.'
+      setActionError(message)
+      await showErrorDialog('Clear Local Data Failed', message)
+    } finally {
+      setPendingAction(null)
+    }
+  }, [loadStorageSnapshot, showErrorDialog])
+
+  const handleProjectPageChange = useCallback(
+    async (page: number) => {
+      setCurrentPage(page)
+      await loadStorageSnapshot({ page, mode: 'projects' })
+    },
+    [loadStorageSnapshot]
+  )
+
+  const storageUsage: StorageUsage | null = storageSnapshot?.usage ?? null
+  const projectsPage: StorageProjectsPage | null = storageSnapshot?.projects ?? null
+  const localProjects = projectsPage?.items ?? []
 
   // Calculate segments from real data
   const segments = storageUsage ? [
@@ -138,6 +358,15 @@ export function Storage({ surface = 'page' }: StorageProps) {
   const diskTotal = storageUsage?.diskTotal || 0
   const diskFree = storageUsage?.diskFree || 0
   const total = diskTotal > 0 ? bytesToGB(diskTotal) : 100 // Use actual disk size or default to 100 GB
+  const projectPageNumbers = getPageNumbers(projectsPage?.page ?? 1, projectsPage?.totalPages ?? 1)
+  const showingStart =
+    projectsPage && projectsPage.total > 0
+      ? (projectsPage.page - 1) * projectsPage.pageSize + 1
+      : 0
+  const showingEnd =
+    projectsPage && projectsPage.total > 0
+      ? Math.min(projectsPage.page * projectsPage.pageSize, projectsPage.total)
+      : 0
 
   const content = (
     <div
@@ -154,6 +383,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
             <CardDescription>Storage usage on this device</CardDescription>
           </CardHeader>
           <CardContent>
+            {actionError && (
+              <div className="mb-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {actionError}
+              </div>
+            )}
             {isLoadingStorage && (
               <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -217,9 +451,9 @@ export function Storage({ surface = 'page' }: StorageProps) {
             </div>
 
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Dialog>
+              <Dialog open={isClearCacheDialogOpen} onOpenChange={setIsClearCacheDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage}>
+                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage || Boolean(pendingAction)}>
                     <Package className="h-4 w-4" />
                     Clear Cache
                   </Button>
@@ -232,15 +466,24 @@ export function Storage({ surface = 'page' }: StorageProps) {
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
-                    <Button variant="outline">Cancel</Button>
-                    <Button variant="destructive">Clear Cache</Button>
+                    <Button variant="outline" onClick={() => setIsClearCacheDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => void handleClearCache()}
+                      disabled={pendingAction === 'clear-cache'}
+                    >
+                      {pendingAction === 'clear-cache' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Clear Cache
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
 
-              <Dialog>
+              <Dialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage}>
+                  <Button variant="outline" className="w-full gap-2" disabled={isLoadingStorage || Boolean(pendingAction)}>
                     <FileText className="h-4 w-4" />
                     Clear Logs
                   </Button>
@@ -253,8 +496,17 @@ export function Storage({ surface = 'page' }: StorageProps) {
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
-                    <Button variant="outline">Cancel</Button>
-                    <Button variant="destructive">Clear Logs</Button>
+                    <Button variant="outline" onClick={() => setIsClearLogsDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => void handleClearLogs()}
+                      disabled={pendingAction === 'clear-logs'}
+                    >
+                      {pendingAction === 'clear-logs' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Clear Logs
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -262,14 +514,19 @@ export function Storage({ surface = 'page' }: StorageProps) {
               <Button
                 variant="outline"
                 className="w-full gap-2"
-                onClick={loadStorageUsage}
-                disabled={isLoadingStorage}
+                onClick={() => void handleRefresh()}
+                disabled={isLoadingStorage || Boolean(pendingAction)}
               >
-                <RefreshCw className={cn("h-4 w-4", isLoadingStorage && "animate-spin")} />
+                <RefreshCw className={cn("h-4 w-4", pendingAction === 'refresh' && "animate-spin")} />
                 Refresh
               </Button>
 
-              <Button variant="outline" className="w-full gap-2">
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => void handleOpenProjectsDirectory()}
+                disabled={Boolean(pendingAction)}
+              >
                 <Folder className="h-4 w-4" />
                 View Folder
               </Button>
@@ -294,7 +551,10 @@ export function Storage({ surface = 'page' }: StorageProps) {
                   New projects will be created in this directory
                 </p>
               </div>
-              <Button variant="outline" onClick={handleChangeDirectory}>Change</Button>
+              <Button variant="outline" onClick={() => void handleChangeDirectory()} disabled={Boolean(pendingAction)}>
+                {pendingAction === 'change-directory' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Change
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -328,8 +588,18 @@ export function Storage({ surface = 'page' }: StorageProps) {
                           {formatRelativeTime(project.lastModified)}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => void handleDeleteProject(project)}
+                            disabled={pendingAction === `delete:${project.path}`}
+                          >
+                            {pendingAction === `delete:${project.path}` ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            ) : (
                             <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            )}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -346,6 +616,51 @@ export function Storage({ surface = 'page' }: StorageProps) {
                 </TableBody>
               </Table>
             </div>
+            {projectsPage && projectsPage.total > projectsPage.pageSize && (
+              <div className="mt-4 flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing <span className="font-medium">{showingStart}-{showingEnd}</span> of <span className="font-medium">{projectsPage.total}</span> entries
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => void handleProjectPageChange((projectsPage.page ?? 1) - 1)}
+                    disabled={projectsPage.page === 1 || isLoadingProjects}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {projectPageNumbers.map((pageNumber, index) => (
+                    typeof pageNumber === 'number' ? (
+                      <Button
+                        key={index}
+                        variant={projectsPage.page === pageNumber ? 'default' : 'secondary'}
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onClick={() => void handleProjectPageChange(pageNumber)}
+                        disabled={isLoadingProjects}
+                      >
+                        {pageNumber}
+                      </Button>
+                    ) : (
+                      <span key={index} className="px-2 text-muted-foreground">
+                        {pageNumber}
+                      </span>
+                    )
+                  ))}
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => void handleProjectPageChange((projectsPage.page ?? 1) + 1)}
+                    disabled={projectsPage.page >= projectsPage.totalPages || isLoadingProjects}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -355,16 +670,16 @@ export function Storage({ surface = 'page' }: StorageProps) {
             <CardTitle className="text-destructive">Danger Zone</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">
+            <div className="flex items-center justify-between rounded-2xl bg-destructive/5 p-5">
               <div>
                 <h4 className="font-medium">Clear All Local Data</h4>
                 <p className="text-sm text-muted-foreground">
                   Remove all local projects, cache, and settings from this device
                 </p>
               </div>
-              <Dialog>
+              <Dialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="destructive" className="gap-2">
+                  <Button variant="destructive" className="gap-2" disabled={Boolean(pendingAction)}>
                     <Trash2 className="h-4 w-4" />
                     Clear All
                   </Button>
@@ -378,8 +693,17 @@ export function Storage({ surface = 'page' }: StorageProps) {
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
-                    <Button variant="outline">Cancel</Button>
-                    <Button variant="destructive">Clear Everything</Button>
+                    <Button variant="outline" onClick={() => setIsClearAllDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => void handleClearAll()}
+                      disabled={pendingAction === 'clear-all'}
+                    >
+                      {pendingAction === 'clear-all' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Clear Everything
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

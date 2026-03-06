@@ -915,6 +915,16 @@ function createWindow() {
   // Register window state listeners
   mainWindowState.manage(win)
 
+  const emitFullScreenChange = () => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('window:fullscreen-change', win.isFullScreen())
+  }
+
+  win.on('enter-full-screen', emitFullScreenChange)
+  win.on('leave-full-screen', emitFullScreenChange)
+  win.on('enter-html-full-screen', emitFullScreenChange)
+  win.on('leave-html-full-screen', emitFullScreenChange)
+
   if (isReleaseBuild) {
     // Prevent browser-style navigations/popups in packaged builds.
     win.webContents.setWindowOpenHandler(({ url }) => {
@@ -963,6 +973,7 @@ function createWindow() {
   win.once('ready-to-show', () => {
     win?.show()
     win?.focus()
+    emitFullScreenChange()
   })
 
   // Update background color on system theme change

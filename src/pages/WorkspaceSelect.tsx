@@ -82,6 +82,7 @@ export function WorkspaceSelect() {
                 return (
                   <TableRow
                     key={org.organizationId}
+                    data-state={isCurrent ? 'selected' : undefined}
                     tabIndex={0}
                     onClick={() => handleSelectWorkspace(org.organizationId)}
                     onKeyDown={(event) => {
@@ -90,9 +91,7 @@ export function WorkspaceSelect() {
                         handleSelectWorkspace(org.organizationId)
                       }
                     }}
-                    className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
-                      isCurrent ? 'bg-background/50 hover:bg-background/60' : 'hover:bg-background/40'
-                    }`}
+                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">

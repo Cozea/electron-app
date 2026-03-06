@@ -13,7 +13,7 @@ const PLAN_DEFAULTS: Record<AccountSubscriptionPlan, PlanDefaults> = {
   free: { monthlyCents: 0 },
   pro: { monthlyCents: 1500 },
   max: { monthlyCents: 4000 },
-  startup: { monthlyCents: 3000 },
+  startup: { monthlyCents: 7000 },
   enterprise: { monthlyCents: 10000 },
 }
 
