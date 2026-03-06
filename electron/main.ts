@@ -67,6 +67,33 @@ const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
 const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
+const DEV_SERVER_ORIGIN = (() => {
+  if (!VITE_DEV_SERVER_URL) return null
+  try {
+    return new URL(VITE_DEV_SERVER_URL).origin
+  } catch {
+    return null
+  }
+})()
+const APP_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https: http:",
+  "font-src 'self' data: https:",
+  "connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* data: blob:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https: http://localhost:* http://127.0.0.1:*",
+  "media-src 'self' data: blob: https: http:",
+].join('; ')
+const DEV_CONTENT_SECURITY_POLICY = APP_CONTENT_SECURITY_POLICY.replace(
+  "script-src 'self'",
+  "script-src 'self' 'unsafe-inline'"
+)
 
 function matchesProtocolUrl(url: string, routePrefix: string): boolean {
   return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))
@@ -209,6 +236,15 @@ function isLoopbackPreviewUrl(rawUrl: string): boolean {
   }
 }
 
+function isRendererDevServerUrl(rawUrl: string): boolean {
+  if (!DEV_SERVER_ORIGIN) return false
+  try {
+    return new URL(rawUrl).origin === DEV_SERVER_ORIGIN
+  } catch {
+    return false
+  }
+}
+
 let previewHeaderPolicyInstalled = false
 let previewHeaderCompatDisabledLogged = false
 const previewHeaderDiagnostics = new Map<string, PreviewHeaderDiagnostic>()
@@ -279,8 +315,36 @@ function installPreviewHeaderCompatibilityPolicy(): void {
       return
     }
 
-    if (!isLoopbackPreviewUrl(details.url)) {
+    const isLoopbackUrl = isLoopbackPreviewUrl(details.url)
+    const isDevRendererUrl = isRendererDevServerUrl(details.url)
+
+    if (!isLoopbackUrl && !isDevRendererUrl) {
       callback({})
+      return
+    }
+
+    const responseHeaders: ResponseHeaderMap = details.responseHeaders
+      ? { ...details.responseHeaders }
+      : {}
+    let responseHeadersChanged = false
+
+    if (isDevRendererUrl) {
+      const cspKey = findHeaderKey(responseHeaders, 'content-security-policy')
+      if (!cspKey) {
+        setHeaderValue(responseHeaders, 'Content-Security-Policy', DEV_CONTENT_SECURITY_POLICY)
+        responseHeadersChanged = true
+      }
+    }
+
+    if (!isLoopbackUrl) {
+      callback(
+        responseHeadersChanged
+          ? {
+              responseHeaders,
+              statusLine: details.statusLine,
+            }
+          : {}
+      )
       return
     }
 
@@ -301,7 +365,14 @@ function installPreviewHeaderCompatibilityPolicy(): void {
         ensured: [],
         capturedAt: Date.now(),
       })
-      callback({})
+      callback(
+        responseHeadersChanged
+          ? {
+              responseHeaders,
+              statusLine: details.statusLine,
+            }
+          : {}
+      )
       return
     }
 
@@ -319,11 +390,16 @@ function installPreviewHeaderCompatibilityPolicy(): void {
         ensured: [],
         capturedAt: Date.now(),
       })
-      callback({})
+      callback(
+        responseHeadersChanged
+          ? {
+              responseHeaders,
+              statusLine: details.statusLine,
+            }
+          : {}
+      )
       return
     }
-
-    const responseHeaders: ResponseHeaderMap = { ...details.responseHeaders }
     let removedXFrameOptions = false
     let removedFrameAncestors = false
     const ensuredHeaderNames: string[] = []
@@ -377,13 +453,21 @@ function installPreviewHeaderCompatibilityPolicy(): void {
         ensured: [],
         capturedAt: Date.now(),
       })
-      callback({})
+      callback(
+        responseHeadersChanged
+          ? {
+              responseHeaders,
+              statusLine: details.statusLine,
+            }
+          : {}
+      )
       return
     }
 
     const removedHeaderNames: string[] = []
     if (removedXFrameOptions) removedHeaderNames.push('x-frame-options')
     if (removedFrameAncestors) removedHeaderNames.push('content-security-policy:frame-ancestors')
+    responseHeadersChanged = true
 
     rememberPreviewHeaderDiagnostic({
       url: details.url,

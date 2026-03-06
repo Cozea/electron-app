@@ -27,7 +27,6 @@ import {
 import {
   FileCode,
   History,
-  Database,
   Trash2,
   Users,
   GitBranch,
@@ -85,12 +84,12 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
   buildCache: {
     id: 'builds',
     categoryKey: 'buildCache',
-    name: 'Build Cache',
-    description: 'Compiled assets, bundled output, and build artifacts',
+    name: 'Build History',
+    description: 'Builder run logs, task state, and execution metadata',
     icon: Archive,
     color: 'bg-orange-500',
     canClear: true,
-    clearWarning: 'Build caches will be regenerated on next build. This is safe to clear.',
+    clearWarning: 'This will permanently delete stored builder run history across your workspace.',
   },
   snapshots: {
     id: 'snapshots',
@@ -110,16 +109,6 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     icon: GitBranch,
     color: 'bg-rose-500',
     canClear: false,
-  },
-  databaseBackups: {
-    id: 'database',
-    categoryKey: 'databaseBackups',
-    name: 'Database Backups',
-    description: 'Local database snapshots and migration history',
-    icon: Database,
-    color: 'bg-cyan-500',
-    canClear: true,
-    clearWarning: 'This will delete database backups. Current databases are not affected.',
   },
   assets: {
     id: 'assets',
@@ -158,8 +147,6 @@ const getLegendLabel = (category: StorageCategory): string => {
       return 'Snapshots'
     case 'gitHistory':
       return 'Git'
-    case 'databaseBackups':
-      return 'Backups'
     case 'assets':
       return 'Assets'
     default:
@@ -222,7 +209,6 @@ export function Sync() {
       | 'aiHistory'
       | 'buildCache'
       | 'snapshots'
-      | 'databaseBackups'
 
     setIsClearing(true)
     try {

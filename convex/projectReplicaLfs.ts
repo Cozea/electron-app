@@ -2,6 +2,10 @@ import { internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
+import {
+  estimateProjectStorageBreakdown,
+  syncProjectStorageUsage,
+} from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_LFS_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
@@ -51,6 +55,7 @@ export const upsertObjectForServer = mutation({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
     await assertSyncProjectAccess(ctx, args.projectId)
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
 
     const existing = await ctx.db
       .query("projectReplicaLfsObjects")
@@ -72,6 +77,7 @@ export const upsertObjectForServer = mutation({
           // Best effort cleanup; maintenance cron retries stale metadata cleanup.
         }
       }
+      await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
       return await ctx.db.get(existing._id)
     }
 
@@ -84,6 +90,8 @@ export const upsertObjectForServer = mutation({
       createdAt: now,
       createdBy: args.userId,
     })
+
+    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
 
     return await ctx.db.get(docId)
   },
@@ -133,6 +141,7 @@ export const cleanupStaleLfsMetadata = internalMutation({
       .collect()
 
     let deleted = 0
+    const affectedProjects = new Map<Id<"projects">, Awaited<ReturnType<typeof estimateProjectStorageBreakdown>>>()
     for (const entry of candidates) {
       if (deleted >= maxDeletes) break
       if (entry.createdAt > cutoff) continue
@@ -140,8 +149,18 @@ export const cleanupStaleLfsMetadata = internalMutation({
       const url = await ctx.storage.getUrl(entry.storageId)
       if (url) continue
 
+      if (!affectedProjects.has(entry.projectId)) {
+        affectedProjects.set(
+          entry.projectId,
+          await estimateProjectStorageBreakdown(ctx, entry.projectId)
+        )
+      }
       await ctx.db.delete(entry._id)
       deleted += 1
+    }
+
+    for (const [projectId, previousBreakdown] of affectedProjects.entries()) {
+      await syncProjectStorageUsage(ctx, projectId, previousBreakdown)
     }
 
     return {

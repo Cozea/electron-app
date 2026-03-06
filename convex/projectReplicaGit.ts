@@ -2,6 +2,10 @@ import { internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
+import {
+  estimateProjectStorageBreakdown,
+  syncProjectStorageUsage,
+} from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_SESSION_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
@@ -59,6 +63,7 @@ export const upsertReplicaForServer = mutation({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
     await assertSyncProjectAccess(ctx, args.projectId)
+    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
     const now = Date.now()
 
     const existing = await ctx.db
@@ -92,6 +97,7 @@ export const upsertReplicaForServer = mutation({
           // Best effort: stale bundle cleanup can retry via maintenance cron.
         }
       }
+      await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
       return await ctx.db.get(existing._id)
     }
 
@@ -106,6 +112,8 @@ export const upsertReplicaForServer = mutation({
       updatedAt: now,
       updatedBy: args.userId,
     })
+
+    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
 
     return await ctx.db.get(replicaId)
   },

@@ -1,5 +1,24 @@
+import type { MutationCtx } from "./_generated/server"
 import { mutation, query } from "./_generated/server"
+import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
+import { applyStorageDeltas } from "./lib/workspaceLimits"
+
+async function hasSiblingStorageReference(
+  ctx: MutationCtx,
+  assetId: string,
+  projectId: Id<"projects">,
+  storageId: string
+): Promise<boolean> {
+  const assets = await ctx.db
+    .query("projectAssets")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .collect()
+
+  return assets.some(
+    (asset) => String(asset._id) !== assetId && String(asset.storageId) === storageId
+  )
+}
 
 // Generate upload URL for an asset
 export const generateUploadUrl = mutation({
@@ -70,6 +89,12 @@ export const create = mutation({
       uploadedAt: now,
     })
 
+    if (args.storageId && args.mimeType !== "application/x-directory") {
+      await applyStorageDeltas(ctx, args.organizationId, {
+        assets: Math.max(0, args.size),
+      })
+    }
+
     return { assetId }
   },
 })
@@ -112,8 +137,18 @@ export const remove = mutation({
     const asset = await ctx.db.get(args.assetId)
     if (!asset) throw new Error("Asset not found")
 
+    const hasSiblingReference =
+      asset.storageId && asset.mimeType !== "application/x-directory"
+        ? await hasSiblingStorageReference(
+            ctx,
+            String(asset._id),
+            asset.projectId,
+            String(asset.storageId)
+          )
+        : false
+
     // Delete from storage (only if it's a real file, not a folder placeholder)
-    if (asset.storageId && asset.mimeType !== "application/x-directory") {
+    if (asset.storageId && asset.mimeType !== "application/x-directory" && !hasSiblingReference) {
       try {
         await ctx.storage.delete(asset.storageId)
       } catch (e) {
@@ -124,6 +159,12 @@ export const remove = mutation({
 
     // Delete the record
     await ctx.db.delete(args.assetId)
+
+    if (asset.storageId && asset.mimeType !== "application/x-directory" && !hasSiblingReference) {
+      await applyStorageDeltas(ctx, asset.organizationId, {
+        assets: -Math.max(0, asset.size),
+      })
+    }
 
     return { success: true }
   },
@@ -316,24 +357,94 @@ export const bulkDelete = mutation({
     assetIds: v.array(v.id("projectAssets")),
   },
   handler: async (ctx, args) => {
-    const results = await Promise.all(
-      args.assetIds.map(async (assetId) => {
-        const asset = await ctx.db.get(assetId)
-        if (!asset) return { assetId, success: false, error: "Not found" }
-
-        // Delete from storage if it's a real file
-        if (asset.storageId && asset.mimeType !== "application/x-directory") {
-          try {
-            await ctx.storage.delete(asset.storageId)
-          } catch (e) {
-            console.warn("Could not delete storage file:", e)
-          }
-        }
-
-        await ctx.db.delete(assetId)
-        return { assetId, success: true }
-      })
+    const deletingIds = new Set(args.assetIds.map((assetId) => String(assetId)))
+    const assets = await Promise.all(args.assetIds.map(async (assetId) => await ctx.db.get(assetId)))
+    type AssetDoc = NonNullable<(typeof assets)[number]>
+    const uniqueProjectIds = Array.from(
+      new Set(assets.filter((asset) => asset).map((asset) => String(asset!.projectId)))
     )
+    const projectAssets = new Map<string, AssetDoc[]>()
+    for (const projectId of uniqueProjectIds) {
+      const assetsForProject = await ctx.db
+        .query("projectAssets")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId as Id<"projects">))
+        .collect()
+      projectAssets.set(projectId, assetsForProject)
+    }
+
+    const deletedStorageIds = new Set<string>()
+    const results: Array<{
+      assetId: Id<"projectAssets">
+      success: boolean
+      error?: string
+      freedBytes: number
+      organizationId?: Id<"organizations">
+    }> = []
+
+    for (let index = 0; index < args.assetIds.length; index += 1) {
+      const assetId = args.assetIds[index]
+      const asset = assets[index]
+      if (!asset) {
+        results.push({ assetId, success: false, error: "Not found", freedBytes: 0 })
+        continue
+      }
+
+      const assetsForProject = projectAssets.get(String(asset.projectId)) ?? []
+      const storageKey = asset.storageId ? String(asset.storageId) : null
+      const hasRemainingReference =
+        storageKey && asset.mimeType !== "application/x-directory"
+          ? assetsForProject.some(
+              (candidate) =>
+                String(candidate._id) !== String(asset._id) &&
+                !deletingIds.has(String(candidate._id)) &&
+                String(candidate.storageId) === storageKey
+            )
+          : false
+
+      const shouldDeleteUnderlyingStorage =
+        !!storageKey &&
+        asset.mimeType !== "application/x-directory" &&
+        !hasRemainingReference &&
+        !deletedStorageIds.has(storageKey)
+
+      if (shouldDeleteUnderlyingStorage) {
+        try {
+          await ctx.storage.delete(asset.storageId!)
+        } catch (e) {
+          console.warn("Could not delete storage file:", e)
+        }
+        deletedStorageIds.add(storageKey)
+      }
+
+      await ctx.db.delete(assetId)
+      results.push({
+        assetId,
+        success: true,
+        freedBytes: shouldDeleteUnderlyingStorage ? Math.max(0, asset.size) : 0,
+        organizationId: asset.organizationId,
+      })
+    }
+
+    const freedBytesByOrganization = new Map<string, { organizationId: Id<"organizations">; bytes: number }>()
+    for (const result of results) {
+      if (!result.success || !result.organizationId || result.freedBytes <= 0) continue
+      const key = String(result.organizationId)
+      const existing = freedBytesByOrganization.get(key)
+      if (existing) {
+        existing.bytes += result.freedBytes
+      } else {
+        freedBytesByOrganization.set(key, {
+          organizationId: result.organizationId,
+          bytes: result.freedBytes,
+        })
+      }
+    }
+
+    for (const entry of freedBytesByOrganization.values()) {
+      await applyStorageDeltas(ctx, entry.organizationId, {
+        assets: -entry.bytes,
+      })
+    }
 
     return { results, deletedCount: results.filter((r) => r.success).length }
   },

@@ -2,7 +2,7 @@ import { Bot, ChevronLeft, CreditCard, HardDrive, Palette, SlidersHorizontal, Te
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
@@ -153,6 +153,10 @@ export function SettingsDrawer() {
         className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
         closeClassName="hidden"
       >
+        <SheetHeader className="sr-only">
+          <SheetTitle>Settings</SheetTitle>
+          <SheetDescription>Browse and update account, billing, AI, appearance, storage, and tooling settings.</SheetDescription>
+        </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <aside className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar [--sidebar:var(--left-sidebar-surface)] bg-sidebar text-sidebar-foreground">
             <div className="relative min-h-0 flex-1">

@@ -266,12 +266,6 @@ export function AI({ surface = 'page' }: AIProps) {
     freshOrg
   )
 
-  // Get usage summary
-  const usageSummary = useQuery(
-    api.organizations.getUsageSummary,
-    convexOrg?._id ? { orgId: convexOrg._id, period: 'monthly' } : 'skip'
-  )
-
   // Get recent usage history (fetch more for pagination)
   const recentUsage = useQuery(
     api.aiUsage.getRecentForOrganization,
@@ -485,9 +479,6 @@ export function AI({ surface = 'page' }: AIProps) {
     }
   }
 
-  // Get aggregate usage data
-  const aggregate = usageSummary?.aggregate
-  const totalTokens = aggregate?.totalTokens || 0
   const walletTotalDebitedCents = walletSummary?.wallet?.totalDebitedCents ?? 0
   const now = Date.now()
   const chartData = useMemo<UsagePoint[]>(() => {
@@ -525,6 +516,21 @@ export function AI({ surface = 'page' }: AIProps) {
 
     return dates
   }, [usageAggregates, usageTimeRange])
+  const usageTotals = useMemo(() => {
+    return chartData.reduce(
+      (totals, point) => ({
+        tokens: totals.tokens + point.tokens,
+        requests: totals.requests + point.requests,
+      }),
+      { tokens: 0, requests: 0 }
+    )
+  }, [chartData])
+  const usagePeriodLabel =
+    usageTimeRange === '7d'
+      ? 'Last 7 days'
+      : usageTimeRange === '90d'
+        ? 'Last 3 months'
+        : 'Last 30 days'
   const providerRows = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
 
@@ -639,27 +645,6 @@ export function AI({ surface = 'page' }: AIProps) {
           : 'space-y-6 pb-10'
       }
     >
-        {/* Usage Overview */}
-        <div className="px-4">
-          <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-border w-full">
-            {/* Requests MTD */}
-            <div className="sm:flex-1 px-6 py-2">
-              <p className="text-sm text-muted-foreground mb-1">Requests (MTD)</p>
-              <p className="text-2xl font-semibold">
-                {(aggregate?.requestCount || 0).toLocaleString()}
-              </p>
-            </div>
-
-            {/* Tokens MTD */}
-            <div className="sm:flex-1 px-6 py-2">
-              <p className="text-sm text-muted-foreground mb-1">Tokens (MTD)</p>
-              <p className="text-2xl font-semibold">
-                {formatTokens(totalTokens)}
-              </p>
-            </div>
-          </div>
-        </div>
-
         <Card className="border-none shadow-none bg-transparent">
           <CardContent className="pt-0 px-0">
             <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
@@ -733,6 +718,30 @@ export function AI({ surface = 'page' }: AIProps) {
                   />
                 </AreaChart>
               </ChartContainer>
+
+              <div className="mt-4 flex justify-end">
+                <div className="flex w-full max-w-md flex-wrap items-end justify-end gap-y-3 text-right">
+                  <p className="w-full text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {usagePeriodLabel}
+                  </p>
+                  <div className="pr-4">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      Requests
+                    </p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums">
+                      {usageTotals.requests.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="border-l border-border/60 pl-4">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      Tokens
+                    </p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums">
+                      {formatTokens(usageTotals.tokens)}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
           </CardContent>

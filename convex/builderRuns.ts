@@ -1,5 +1,9 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import {
+  applyStorageDeltas,
+  estimateBuilderRunBytes,
+} from "./lib/workspaceLimits"
 
 const buildTaskValidator = v.object({
   content: v.string(),
@@ -48,6 +52,18 @@ export const startRun = mutation({
       updatedAt: now,
     })
 
+    await applyStorageDeltas(ctx, project.organizationId, {
+      buildCache: estimateBuilderRunBytes({
+        runId: args.runId,
+        status: "running",
+        attempt: args.attempt,
+        conversationId: args.conversationId,
+        localPath: args.localPath,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    })
+
     return { builderRunId }
   },
 })
@@ -75,14 +91,32 @@ export const checkpointRun = mutation({
       throw new Error("Run does not match project")
     }
 
+    const project = await ctx.db.get(run.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
     const now = Date.now()
-    await ctx.db.patch(run._id, {
+    const previousBytes = estimateBuilderRunBytes(run)
+    const nextRun = {
+      ...run,
       tasks: args.tasks ?? run.tasks,
       progress: args.progress ?? run.progress,
       statusMessage: args.statusMessage ?? run.statusMessage,
       logs: args.logs ?? run.logs,
       updatedAt: now,
       lastCheckpointAt: now,
+    }
+    await ctx.db.patch(run._id, {
+      tasks: nextRun.tasks,
+      progress: nextRun.progress,
+      statusMessage: nextRun.statusMessage,
+      logs: nextRun.logs,
+      updatedAt: nextRun.updatedAt,
+      lastCheckpointAt: nextRun.lastCheckpointAt,
+    })
+    await applyStorageDeltas(ctx, project.organizationId, {
+      buildCache: estimateBuilderRunBytes(nextRun) - previousBytes,
     })
 
     return { success: true }
@@ -111,12 +145,28 @@ export const updateRunStatus = mutation({
       throw new Error("Run does not match project")
     }
 
+    const project = await ctx.db.get(run.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
     const now = Date.now()
-    await ctx.db.patch(run._id, {
+    const previousBytes = estimateBuilderRunBytes(run)
+    const nextRun = {
+      ...run,
       status: args.status,
       statusMessage: args.statusMessage ?? run.statusMessage,
       errorMessage: args.errorMessage,
       updatedAt: now,
+    }
+    await ctx.db.patch(run._id, {
+      status: nextRun.status,
+      statusMessage: nextRun.statusMessage,
+      errorMessage: nextRun.errorMessage,
+      updatedAt: nextRun.updatedAt,
+    })
+    await applyStorageDeltas(ctx, project.organizationId, {
+      buildCache: estimateBuilderRunBytes(nextRun) - previousBytes,
     })
 
     return { success: true }

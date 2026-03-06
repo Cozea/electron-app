@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import * as Y from "yjs"
+import { applyStorageDeltas } from "./lib/workspaceLimits"
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
@@ -40,7 +41,7 @@ async function assertCollaborationWriteAllowed(
   projectId: Id<"projects">,
   _additionalBytes: number
 ) {
-  await getProject(ctx, projectId)
+  return await getProject(ctx, projectId)
 }
 
 async function getLatestSeq(ctx: YjsSyncCtx, projectId: Id<"projects">): Promise<number> {
@@ -68,7 +69,7 @@ async function insertSequencedUpdate(
   seq: number
   created: boolean
 }> {
-  await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
+  const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.update.byteLength)
 
   if (args.idempotencyKey?.trim()) {
     const existing = await ctx.db
@@ -104,6 +105,10 @@ async function insertSequencedUpdate(
     origin: args.origin,
     idempotencyKey: args.idempotencyKey?.trim() || undefined,
     timestamp: args.timestamp ?? Date.now(),
+  })
+
+  await applyStorageDeltas(ctx, project.organizationId, {
+    collaborationData: args.update.byteLength,
   })
 
   return { seq: nextSeq, created: true }
@@ -264,7 +269,7 @@ export const saveSnapshot = mutation({
     createdByClientId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
+    const project = await assertCollaborationWriteAllowed(ctx, args.projectId, args.snapshot.byteLength)
     const fallbackBaseSeq =
       typeof args.snapshotBaseSeq === "number" && Number.isFinite(args.snapshotBaseSeq)
         ? Math.max(0, Math.floor(args.snapshotBaseSeq))
@@ -279,6 +284,10 @@ export const saveSnapshot = mutation({
       createdByClientId: args.createdByClientId,
       createdAt: Date.now(),
     })
+
+    await applyStorageDeltas(ctx, project.organizationId, {
+      snapshots: args.snapshot.byteLength,
+    })
   },
 })
 
@@ -292,16 +301,26 @@ export const cleanupOldUpdates = mutation({
     olderThan: v.number(),
   },
   handler: async (ctx, args) => {
-    await assertCollaborationAccess(ctx, args.projectId)
+    const project = await getProject(ctx, args.projectId)
     const oldUpdates = await ctx.db
       .query("yjsUpdates")
       .withIndex("by_project_and_time", (q) =>
         q.eq("projectId", args.projectId).lt("timestamp", args.olderThan)
       )
       .collect()
+    const deletedBytes = oldUpdates.reduce(
+      (sum, update) => sum + (update.update?.byteLength ?? 0),
+      0
+    )
 
     for (const update of oldUpdates) {
       await ctx.db.delete(update._id)
+    }
+
+    if (deletedBytes > 0) {
+      await applyStorageDeltas(ctx, project.organizationId, {
+        collaborationData: -deletedBytes,
+      })
     }
 
     return { deleted: oldUpdates.length }
@@ -317,7 +336,7 @@ export const maybeCompactProject = mutation({
     force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await assertCollaborationAccess(ctx, args.projectId)
+    const project = await getProject(ctx, args.projectId)
 
     const [latestSnapshot, latestSeqUpdate, recentUpdates] = await Promise.all([
       ctx.db
@@ -384,6 +403,23 @@ export const maybeCompactProject = mutation({
     for (let index = SNAPSHOT_RETAIN_COUNT; index < allSnapshots.length; index += 1) {
       await ctx.db.delete(allSnapshots[index]._id)
     }
+
+    const removedUpdateBytes = oldUpdates.reduce(
+      (sum, update) => sum + (update.update?.byteLength ?? 0),
+      0
+    )
+    const removedSnapshotBytes = allSnapshots
+      .slice(SNAPSHOT_RETAIN_COUNT)
+      .reduce(
+        (sum, snapshotDoc) =>
+          sum + Math.max(0, snapshotDoc.byteSize ?? snapshotDoc.snapshot?.byteLength ?? 0),
+        0
+      )
+
+    await applyStorageDeltas(ctx, project.organizationId, {
+      collaborationData: -removedUpdateBytes,
+      snapshots: snapshot.byteLength - removedSnapshotBytes,
+    })
 
     return {
       compacted: true,
