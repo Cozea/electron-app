@@ -331,12 +331,6 @@ export function Projects() {
     return map
   }, [members])
 
-  // Query usage limits (for project count limits)
-  const usageLimits = useQuery(
-    api.organizations.getUsageLimits,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-
   // Query projects with source based on active workspace type (with caching)
   const freshProjects = useQuery(
     isPersonalWorkspace
@@ -405,15 +399,6 @@ export function Projects() {
     : convexOrg === undefined || (convexOrg && projects === undefined)
   const hasProjects = normalizedProjects.length > 0
   const showProjectControls = hasProjects || isLoading
-
-
-  // Project limit calculations for circular gauge
-  const projectLimit = usageLimits?.projects
-  const projectPercentage = projectLimit && projectLimit.limit > 0
-    ? Math.min((projectLimit.current / projectLimit.limit) * 100, 100)
-    : 0
-  const circumference = 2 * Math.PI * 8 // radius = 8
-  const strokeDashoffset = circumference - (projectPercentage / 100) * circumference
 
   const openProjectAfterSyncReview = useCallback((review: PendingSyncReview) => {
     navigate(buildProjectPath(String(review.projectId)), {
@@ -722,53 +707,11 @@ export function Projects() {
     await executeSyncReviewPlan(pendingSyncReview.workingPlan)
   }, [pendingSyncReview, executeSyncReviewPlan])
 
-  const breadcrumbAddon = (
-    <>
-      {usageLimits === undefined ? (
-        <Badge variant="secondary" className="text-xs font-normal">
-          --
-        </Badge>
-      ) : hasProjects && (projectLimit && projectLimit.limit > 0 ? (
-        <Badge
-          variant="secondary"
-          className="flex items-center gap-1.5 text-xs font-normal pl-1.5 pr-2 py-0.5"
-          title={`${projectLimit.current} / ${projectLimit.limit} projects used`}
-        >
-          <svg width="16" height="16" viewBox="0 0 20 20" className="transform -rotate-90">
-            <circle
-              cx="10"
-              cy="10"
-              r="8"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              className="opacity-20"
-            />
-            <circle
-              cx="10"
-              cy="10"
-              r="8"
-              fill="none"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              className={projectLimit.current >= projectLimit.limit ? 'text-destructive stroke-current' : projectLimit.current >= projectLimit.limit - 1 ? 'text-amber-500 stroke-current' : 'text-primary stroke-current'}
-            />
-          </svg>
-          <span>{projectLimit.current}/{projectLimit.limit}</span>
-        </Badge>
-      ) : projectLimit?.isUnlimited ? (
-        <Badge variant="secondary" className="text-xs font-normal">
-          {normalizedProjects.length}
-        </Badge>
-      ) : normalizedProjects.length > 0 ? (
-        <Badge variant="secondary" className="text-xs font-normal">
-          {normalizedProjects.length}
-        </Badge>
-      ) : null)}
-    </>
-  )
+  const breadcrumbAddon = hasProjects ? (
+    <Badge variant="secondary" className="text-xs font-normal">
+      {normalizedProjects.length}
+    </Badge>
+  ) : null
 
   const headerContent = showProjectControls ? (
     <div className="flex items-center gap-2">

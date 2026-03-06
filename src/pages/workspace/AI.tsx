@@ -653,11 +653,11 @@ export function AI({ surface = 'page' }: AIProps) {
     <>
       <div
         className={
-          surface === 'drawer'
-            ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
-            : 'space-y-6 pb-10'
-        }
-      >
+        surface === 'drawer'
+          ? 'mx-auto w-full max-w-6xl space-y-6 px-6 py-6'
+          : 'space-y-6 pb-10'
+      }
+    >
         {/* Usage Overview */}
         <div className="px-4">
           <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-border w-full">

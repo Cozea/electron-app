@@ -21,11 +21,13 @@ const SETTINGS_PATH_TO_SECTION: Record<string, SettingsDrawerSection> = {
   '/settings/account': 'account',
   '/settings/billing': 'billing',
   '/settings/ai': 'ai',
+  '/settings/ai/model-selection': 'ai',
   '/settings/appearance': 'appearance',
   '/settings/storage': 'storage',
   '/settings/tooling': 'tooling',
   '/workspace/billing': 'billing',
   '/workspace/ai': 'ai',
+  '/workspace/ai/model-selection': 'ai',
 }
 
 const SECTION_TO_SETTINGS_PATH: Record<SettingsDrawerSection, string> = {
@@ -84,12 +86,20 @@ function splitRoute(route?: string): { path: string; query: string } {
 export function parseSettingsRoute(route?: string): ParsedSettingsRoute {
   const { path, query } = splitRoute(route)
   const normalizedPath = normalizePath(path)
-  const section = SETTINGS_PATH_TO_SECTION[normalizedPath] ?? DEFAULT_SECTION
+  const section =
+    SETTINGS_PATH_TO_SECTION[normalizedPath] ??
+    Array.from(SETTINGS_SECTIONS).find((candidate) =>
+      normalizedPath.startsWith(`${SECTION_TO_SETTINGS_PATH[candidate]}/`)
+    ) ??
+    DEFAULT_SECTION
   const canonicalPath = SECTION_TO_SETTINGS_PATH[section]
+  const routePath = normalizedPath.startsWith(`${canonicalPath}/`)
+    ? normalizedPath
+    : canonicalPath
 
   return {
     section,
-    path: canonicalPath,
+    path: routePath,
     query,
   }
 }

@@ -12,6 +12,7 @@ import { Integrations } from '@/pages/workspace/Integrations'
 import { Sync } from '@/pages/workspace/Sync'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
+import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
 
@@ -189,11 +190,13 @@ export const appRoutes: RouteObject[] = [
       },
       { path: 'workspace/billing', element: <Navigate to="/settings/billing" replace /> },
       { path: 'workspace/ai', element: <Navigate to="/settings/ai" replace /> },
+      { path: 'workspace/ai/model-selection', element: <Navigate to="/settings/ai/model-selection" replace /> },
       { path: 'workspace/integrations', element: <Integrations /> },
       { path: 'workspace/sync', element: <Sync /> },
       { path: 'settings/account', element: <Account /> },
       { path: 'settings/billing', element: <Billing /> },
       { path: 'settings/ai', element: <AI /> },
+      { path: 'settings/ai/model-selection', element: <ModelSelection /> },
       { path: 'settings/appearance', element: <Appearance /> },
       { path: 'settings/tooling', element: <Tooling /> },
       { path: 'settings/storage', element: <Storage /> },
