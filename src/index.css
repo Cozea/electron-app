@@ -39,7 +39,7 @@
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.875 0.01 258);
+  --sidebar-accent: color-mix(in oklch, var(--sidebar) 86%, var(--foreground) 14%);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.86 0.006 258);
   --sidebar-ring: oklch(0.708 0 0);
@@ -57,7 +57,7 @@
   --tool-diff-deleted-line-number-fg: #f87171;
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: color-mix(in oklch, var(--secondary) 74%, var(--border) 26%);
-  --left-sidebar-accent: color-mix(in oklch, var(--secondary) 44%, var(--border) 56%);
+  --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 86%, var(--foreground) 14%);
   --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
   --app-scrollbar-size: 8px;
   --app-scrollbar-radius: 9999px;

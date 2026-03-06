@@ -437,6 +437,27 @@ export const BRIDGE_SCRIPT = `
     }
   }
 
+  function shouldSuppressConsoleWarn(args) {
+    try {
+      const message = args
+        .map((value) => {
+          if (typeof value === 'string') return value;
+          if (value && typeof value === 'object' && typeof value.message === 'string') {
+            return value.message;
+          }
+          return '';
+        })
+        .join(' ');
+
+      return (
+        message.includes('React Router Future Flag Warning') &&
+        (message.includes('v7_startTransition') || message.includes('v7_relativeSplatPath'))
+      );
+    } catch (_err) {
+      return false;
+    }
+  }
+
   // Forward console errors/warnings to host
   try {
     const originalConsoleError = console.error.bind(console);
@@ -446,6 +467,9 @@ export const BRIDGE_SCRIPT = `
     };
     const originalConsoleWarn = console.warn.bind(console);
     console.warn = function(...args) {
+      if (shouldSuppressConsoleWarn(args)) {
+        return;
+      }
       originalConsoleWarn(...args);
       emitConsole('warn', args);
     };

@@ -262,58 +262,68 @@ export function Members() {
     setInviteError(null)
 
     try {
-      // Dual-write: Send invites via both WorkOS (sends email) and Convex (tracks state)
-      const results = await Promise.all(
-        inviteMembers.map(async (member) => {
-          try {
-            // 1. Send via WorkOS (this sends the actual email)
-            const workosResult = await inviteMember(currentOrganization.organizationId, member.email, member.role)
+      let sentCount = 0
+      const alreadyInvitedEmails: string[] = []
+      const otherErrors: string[] = []
 
-            // Check for errors in the response
-            if (!workosResult || workosResult.error) {
-              const errorMsg = workosResult?.error || 'Unknown error'
-              // Check for "already invited" error
-              if (errorMsg.toLowerCase().includes('already invited')) {
-                return { success: false, email: member.email, error: 'already_invited' }
-              }
-              return { success: false, email: member.email, error: errorMsg }
+      for (const member of inviteMembers) {
+        try {
+          // Send sequentially so workspace seat-cap checks observe the latest invite count.
+          const workosResult = await inviteMember(
+            currentOrganization.organizationId,
+            member.email,
+            member.role
+          )
+
+          if (!workosResult || workosResult.error) {
+            const errorMsg = workosResult?.error || 'Unknown error'
+            const normalizedError = errorMsg.toLowerCase()
+
+            if (normalizedError.includes('already invited')) {
+              alreadyInvitedEmails.push(member.email)
+              continue
             }
 
-            // 2. Track in Convex (for local display) with WorkOS invitation ID for revocation
-            try {
-              await createInvitation({
-                orgId: convexOrg._id,
-                invitedBy: convexUserId,
-                email: member.email,
-                role: member.role,
-                workosInvitationId: workosResult.invitationId || undefined,
-              })
-            } catch (convexErr) {
-              // Convex might fail if invitation already exists locally - log but don't fail
-              // since the WorkOS invite was sent successfully
-              console.warn(`Convex invitation tracking failed for ${member.email}:`, convexErr)
+            otherErrors.push(errorMsg)
+            if (
+              normalizedError.includes('purchased seat') ||
+              normalizedError.includes('add more seats in billing') ||
+              normalizedError.includes('seat limit')
+            ) {
+              break
             }
-
-            return { success: true, email: member.email }
-          } catch (err) {
-            console.error(`Failed to invite ${member.email}:`, err)
-            return { success: false, email: member.email, error: 'unknown' }
+            continue
           }
-        })
-      )
 
-      const failed = results.filter((r) => !r.success)
-      const alreadyInvited = failed.filter((r) => r.error === 'already_invited')
-      const otherErrors = failed.filter((r) => r.error !== 'already_invited')
+          try {
+            await createInvitation({
+              orgId: convexOrg._id,
+              invitedBy: convexUserId,
+              email: member.email,
+              role: member.role,
+              workosInvitationId: workosResult.invitationId || undefined,
+            })
+          } catch (convexErr) {
+            console.warn(`Convex invitation tracking failed for ${member.email}:`, convexErr)
+          }
 
-      if (failed.length > 0) {
+          sentCount += 1
+        } catch (err) {
+          console.error(`Failed to invite ${member.email}:`, err)
+          otherErrors.push('Failed to send invitation')
+        }
+      }
+
+      if (alreadyInvitedEmails.length > 0 || otherErrors.length > 0) {
         const errorMessages: string[] = []
-        if (alreadyInvited.length > 0) {
-          const emails = alreadyInvited.map((r) => r.email).join(', ')
-          errorMessages.push(`Already invited: ${emails}`)
+        if (sentCount > 0) {
+          errorMessages.push(`Sent ${sentCount} invitation${sentCount === 1 ? '' : 's'}`)
+        }
+        if (alreadyInvitedEmails.length > 0) {
+          errorMessages.push(`Already invited: ${alreadyInvitedEmails.join(', ')}`)
         }
         if (otherErrors.length > 0) {
-          errorMessages.push(`Failed to send ${otherErrors.length} invitation(s)`)
+          errorMessages.push(otherErrors[0])
         }
         setInviteError(errorMessages.join('. '))
       } else {
@@ -675,7 +685,7 @@ export function Members() {
             <AlertTitle>Paid seat coverage</AlertTitle>
             <AlertDescription>
               {seatManagement.entitlement.seatCounts.assigned}/{seatManagement.entitlement.seatCounts.total} paid seats assigned.
-              Members can still join this workspace without a paid seat, but AI and sync require seat assignment.
+              Workspace access is capped by purchased seats. Members still need an assigned paid seat for AI and sync.
             </AlertDescription>
           </Alert>
         )}

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -156,7 +155,6 @@ const getLegendLabel = (category: StorageCategory): string => {
 
 export function Sync() {
   const { user, logout, currentOrganization, convexUserId } = useAuth()
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const [clearingCategory, setClearingCategory] = useState<StorageCategory | null>(null)
   const [isClearing, setIsClearing] = useState(false)
 
@@ -222,25 +220,6 @@ export function Sync() {
     } finally {
       setIsClearing(false)
       setClearingCategory(null)
-    }
-  }
-
-  // Plan upgrade messages
-  const getUpgradeMessage = (plan: string) => {
-    switch (plan) {
-      case 'free':
-        return 'Upgrade to Pro for more storage and shared sync.'
-      case 'pro':
-        return 'Upgrade to Max for more storage and larger project limits.'
-      case 'max':
-        return 'Need centralized seat billing? Upgrade to Startup.'
-      case 'startup':
-      case 'team':
-        return 'Startup plan active. Contact sales for enterprise customization.'
-      case 'enterprise':
-        return 'Enterprise plan active.'
-      default:
-        return ''
     }
   }
 
@@ -397,19 +376,16 @@ export function Sync() {
           </div>
         </div>
 
-        {/* Storage Plan */}
-        {usageLimits?.plan !== 'enterprise' && (
-          <div className="px-4">
+        <div className="px-4">
           <div className="rounded-2xl bg-primary/5 p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {getUpgradeMessage(usageLimits?.plan ?? 'free')}
-                </p>
-                <Button size="sm" onClick={() => openSettingsDrawer('/settings/billing')}>Upgrade Plan</Button>
-              </div>
+            <p className="text-sm text-muted-foreground">
+              More storage options per workspace will be supported soon.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This page will expand with additional workspace-level storage controls as they roll out.
+            </p>
             </div>
           </div>
-        )}
       </div>
 
       {/* Clear Confirmation Dialog */}
