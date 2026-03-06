@@ -243,7 +243,7 @@ export const BuilderTerminal = memo(function BuilderTerminal({
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[color:var(--tool-border)] px-3 py-2">
+      <div className="flex items-center justify-between border-b border-[color:var(--tool-divider)] px-3 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <TerminalIcon className="h-4 w-4" />
           <span>Terminal</span>

@@ -285,7 +285,7 @@ export function ProjectDependenciesPage() {
                     </TableHeader>
                     <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                       {paginatedDeps.map((dep) => (
-                        <TableRow key={dep.name} className="hover:bg-muted/50">
+                        <TableRow key={dep.name}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
                               <Package className="h-4 w-4 text-muted-foreground" />

@@ -393,23 +393,6 @@ function formatEntitlementStatus(status?: string): string {
   return status
 }
 
-function formatWalletLedgerKind(kind: string): string {
-  switch (kind) {
-    case 'credit':
-      return 'Credit'
-    case 'debit':
-      return 'Debit'
-    case 'hold':
-      return 'Hold'
-    case 'release':
-      return 'Release'
-    case 'adjustment':
-      return 'Adjustment'
-    default:
-      return kind
-  }
-}
-
 function isSeatManagedEntitlement(args: {
   source?: 'account' | 'legacy' | 'trial' | 'free'
   plan?: string
@@ -1689,7 +1672,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead className="text-right">Details</TableHead>
                   </TableRow>
@@ -1697,7 +1679,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
                   {walletDebitLedgerRows.length > 0 ? (
                     pagedWalletLedgerRows.map((entry) => {
-                      const kindLabel = formatWalletLedgerKind(entry.kind)
                       const isDebit = entry.kind === 'debit'
                       const amountPrefix = isDebit ? '-' : '+'
                       const modelUsed =
@@ -1710,7 +1691,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                       return (
                         <TableRow key={entry._id}>
                           <TableCell>{formatDate(entry.createdAt)}</TableCell>
-                          <TableCell>{kindLabel}</TableCell>
                           <TableCell>
                             {amountPrefix}{formatCurrencyFromCents(entry.amountCents, walletCurrency)}
                           </TableCell>
@@ -1722,7 +1702,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
+                      <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
                         No debit wallet activity yet.
                       </TableCell>
                     </TableRow>

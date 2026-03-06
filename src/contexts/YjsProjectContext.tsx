@@ -69,6 +69,7 @@ interface YjsProjectProviderProps {
   userName: string
   projectPath: string | null
   collabSession?: CollabSessionDescriptor | null
+  refreshCollabSession?: () => Promise<CollabSessionDescriptor | null>
   children: ReactNode
 }
 
@@ -78,6 +79,7 @@ export function YjsProjectProvider({
   userName,
   projectPath,
   collabSession = null,
+  refreshCollabSession,
   children,
 }: YjsProjectProviderProps) {
   const [yjsDoc, setYjsDoc] = useState<YjsProjectDoc | null>(null)
@@ -121,6 +123,17 @@ export function YjsProjectProvider({
   useEffect(() => {
     setWsCircuitOpen(false)
   }, [projectId, wsSession?.roomId, wsSession?.collabWsUrl])
+
+  useEffect(() => {
+    if (!wsSession || !wsProviderRef.current) return
+    wsProviderRef.current.updateSession(wsSession)
+  }, [
+    wsSession?.projectId,
+    wsSession?.roomId,
+    wsSession?.collabWsUrl,
+    wsSession?.token,
+    wsSession?.protocolVersion,
+  ])
 
   const updatesSince = shouldUseConvexTail && lastSyncTime !== null ? Math.max(0, lastSyncTime - 1) : null
   const updates = useQuery(
@@ -177,6 +190,7 @@ export function YjsProjectProvider({
           session: wsSession,
           clientType: 'electron',
           initialKnownSeq,
+          refreshSession: refreshCollabSession,
           onStateChange: (state) => {
             if (disposed) return
             setIsConnected(state === 'connected')
@@ -252,7 +266,18 @@ export function YjsProjectProvider({
       setYjsDoc(null)
       docInstance?.destroy()
     }
-  }, [convex, projectId, projectPath, shouldUseWsTransport, userId, userName, wsSession])
+  }, [
+    convex,
+    projectId,
+    projectPath,
+    refreshCollabSession,
+    shouldUseWsTransport,
+    userId,
+    userName,
+    wsSession?.projectId,
+    wsSession?.roomId,
+    wsSession?.collabWsUrl,
+  ])
 
   useEffect(() => {
     if (!shouldUseConvexTail || !updates || updates.length === 0 || !convexProviderRef.current) return

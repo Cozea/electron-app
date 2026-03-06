@@ -219,7 +219,7 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
       </div>
       <div
         className="h-px"
-        style={{ backgroundColor: 'var(--tool-border)' }}
+        style={{ backgroundColor: 'var(--tool-divider)' }}
       />
       <div
         className={cn('w-full')}

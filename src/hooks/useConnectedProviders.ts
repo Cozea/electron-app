@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderAuthStatus } from '@shared/electronApiTypes'
+import {
+  getManagedProviderIdsForApp,
+  isProviderEnabledInApp,
+} from '@shared/aiProviderAvailability'
 
 export type ConnectedProvider = string
 
-const COZEA_MANAGED_PROVIDERS: ConnectedProvider[] = [
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'moonshotai',
-  'moonshot',
-]
+const COZEA_MANAGED_PROVIDERS: ConnectedProvider[] = getManagedProviderIdsForApp()
 
 export const isConnectedProvider = (value?: string): value is ConnectedProvider =>
   typeof value === 'string' && value.trim().length > 0
@@ -69,6 +66,7 @@ export function useConnectedProviders() {
         nextStatuses[status.provider] = status
         if (!status.connected) continue
         if (typeof status.expiresAt === 'number' && status.expiresAt <= now) continue
+        if (!isProviderEnabledInApp(status.provider)) continue
         connectedSet.add(status.provider)
       }
 

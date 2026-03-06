@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react"
 import { useMutation } from "convex/react"
@@ -356,7 +357,11 @@ export function ProjectSyncProvider({
 
   const [replicaPlan, setReplicaPlan] = useState<GitReplicaPlanResult | null>(null)
 
-  const { status: collabSessionStatus, session: collabSession } = useCollabSession({
+  const {
+    status: collabSessionStatus,
+    session: collabSession,
+    refresh: refreshCollabSession,
+  } = useCollabSession({
     projectId: String(projectId),
     accessToken,
     enabled: Boolean(accessToken),
@@ -372,6 +377,24 @@ export function ProjectSyncProvider({
           protocolVersion: collabSession.protocolVersion,
         }
       : null
+
+  const refreshActiveCollabSession = useMemo(
+    () => async (): Promise<CollabSessionDescriptor | null> => {
+      const nextSession = await refreshCollabSession()
+      if (!nextSession?.token || !nextSession?.roomId) {
+        return null
+      }
+
+      return {
+        projectId: String(projectId),
+        roomId: nextSession.roomId,
+        collabWsUrl: nextSession.collabWsUrl,
+        token: nextSession.token,
+        protocolVersion: nextSession.protocolVersion,
+      }
+    },
+    [projectId, refreshCollabSession]
+  )
 
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   // Use per-user local path (stored in projectMembers, not projects)
@@ -857,6 +880,7 @@ export function ProjectSyncProvider({
         userName={userName}
         projectPath={currentLocalPath}
         collabSession={activeCollabSession}
+        refreshCollabSession={refreshActiveCollabSession}
       >
         <DeleteConflictDialog />
         {isBlockingSyncScreen ? (

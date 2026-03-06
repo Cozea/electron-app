@@ -278,7 +278,7 @@ export const CodeArtifact = memo(
           className
         )}
       >
-        <ArtifactHeader className="border-[color:var(--tool-border)]">
+        <ArtifactHeader className="border-[color:var(--tool-divider)]">
           <ArtifactTitle>{title}</ArtifactTitle>
           {description && (
             <ArtifactDescription>{description}</ArtifactDescription>

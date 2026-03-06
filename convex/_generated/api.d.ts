@@ -27,6 +27,7 @@ import type * as lib_modelTiers from "../lib/modelTiers.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_planNames from "../lib/planNames.js";
 import type * as lib_seatLimits from "../lib/seatLimits.js";
+import type * as lib_usagePeriods from "../lib/usagePeriods.js";
 import type * as lib_walletPolicy from "../lib/walletPolicy.js";
 import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as organizations from "../organizations.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   "lib/permissions": typeof lib_permissions;
   "lib/planNames": typeof lib_planNames;
   "lib/seatLimits": typeof lib_seatLimits;
+  "lib/usagePeriods": typeof lib_usagePeriods;
   "lib/walletPolicy": typeof lib_walletPolicy;
   "lib/workspaceLimits": typeof lib_workspaceLimits;
   organizations: typeof organizations;

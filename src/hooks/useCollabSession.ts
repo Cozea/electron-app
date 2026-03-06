@@ -29,7 +29,7 @@ interface UseCollabSessionResult {
   session: CollabSession | null
   capabilities: CollabCapabilities | null
   error: string | null
-  refresh: () => Promise<void>
+  refresh: () => Promise<CollabSession | null>
 }
 
 function normalizeGatewayBaseUrl(raw: string | undefined): string | null {
@@ -77,7 +77,7 @@ export function useCollabSession({
       setSession(null)
       setCapabilities(null)
       setError(null)
-      return
+      return null
     }
 
     if (!accessToken || !gatewayBaseUrl) {
@@ -85,7 +85,7 @@ export function useCollabSession({
       setError('Collab gateway is not configured')
       setSession(null)
       setCapabilities(null)
-      return
+      return null
     }
 
     setStatus('loading')
@@ -137,12 +137,14 @@ export function useCollabSession({
       setSession(parsedSession)
       setStatus('ready')
       setError(null)
+      return parsedSession
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Failed to initialize collaboration session'
       setStatus('error')
       setSession(null)
       setCapabilities(null)
       setError(message)
+      return null
     }
   }, [accessToken, enabled, gatewayBaseUrl, projectId])
 
