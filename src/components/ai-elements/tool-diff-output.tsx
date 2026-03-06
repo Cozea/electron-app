@@ -194,11 +194,11 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
       className="overflow-hidden rounded-2xl"
       style={cardStyle}
     >
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-semibold text-foreground/95">{fileName}</span>
+      <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-xs font-medium text-foreground/90">{fileName}</span>
           {hasStats && (
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
+            <span className="inline-flex items-center gap-1 font-mono text-[10px] tabular-nums">
               {stats.added > 0 ? <span className="text-emerald-400/70">+{stats.added}</span> : null}
               {stats.removed > 0 ? <span className="text-red-400/70">-{stats.removed}</span> : null}
             </span>
@@ -208,26 +208,26 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
           title="Copy updated content"
           onClick={() => {
             void navigator.clipboard.writeText(diff.modified)
           }}
         >
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="h-3 w-3" />
         </Button>
       </div>
       <div
-        className="h-px"
-        style={{ backgroundColor: 'var(--tool-divider)' }}
-      />
-      <div
-        className={cn('w-full')}
+        className={cn('relative w-full')}
         style={{
           backgroundColor: panelBodySurface,
           height: `${panelHeight}px`,
         }}
       >
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5"
+          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
+        />
         <CodeMirrorMergeViewer
           original={diff.original}
           modified={diff.modified}

@@ -1,3 +1,8 @@
+export interface RetryHintAction {
+  label: string
+  href: string
+}
+
 export interface RetryHint {
   retryable: boolean
   code: 'duplicate_response_item_id' | 'provider_usage_limit' | 'provider_rate_limit' | 'provider_error'
@@ -5,6 +10,13 @@ export interface RetryHint {
   retryAfterSeconds?: number
   resetAt?: number
   shouldResetContinuation?: boolean
+  title?: string
+  message?: string
+  hint?: string
+  action?: RetryHintAction
+  model?: string
+  quotaMetric?: string
+  quotaLimit?: number
 }
 
 export interface AutoRetryDelayInput {
@@ -17,6 +29,32 @@ export interface AutoRetryDelayInput {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+function parseAction(value: unknown): RetryHintAction | undefined {
+  if (!isRecord(value)) return undefined
+  if (typeof value.label !== 'string' || value.label.trim().length === 0) return undefined
+  if (typeof value.href !== 'string' || value.href.trim().length === 0) return undefined
+  return {
+    label: value.label.trim(),
+    href: value.href.trim(),
+  }
+}
+
+function formatDurationCompact(totalSeconds: number): string {
+  if (totalSeconds <= 0) return 'soon'
+
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const parts: string[] = []
+
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0 && parts.length < 2) parts.push(`${minutes}m`)
+  if (parts.length === 0) parts.push(`${Math.max(1, Math.ceil(totalSeconds))}s`)
+
+  return parts.slice(0, 2).join(' ')
+}
 
 export function readLatestRetryHint(
   messages: Array<{ parts: Array<{ type: string } & Record<string, unknown>> }>
@@ -43,6 +81,13 @@ export function readLatestRetryHint(
         resetAt: typeof data.resetAt === 'number' ? data.resetAt : undefined,
         shouldResetContinuation:
           typeof data.shouldResetContinuation === 'boolean' ? data.shouldResetContinuation : undefined,
+        title: typeof data.title === 'string' ? data.title : undefined,
+        message: typeof data.message === 'string' ? data.message : undefined,
+        hint: typeof data.hint === 'string' ? data.hint : undefined,
+        action: parseAction(data.action),
+        model: typeof data.model === 'string' ? data.model : undefined,
+        quotaMetric: typeof data.quotaMetric === 'string' ? data.quotaMetric : undefined,
+        quotaLimit: typeof data.quotaLimit === 'number' ? data.quotaLimit : undefined,
       }
     }
   }
@@ -83,6 +128,10 @@ export function resolveAutoRetryDelayMs({
 export function getRetryHintMessage(hint: RetryHint | null): string | null {
   if (!hint) return null
 
+  if (hint.message) {
+    return hint.message
+  }
+
   if (hint.code === 'duplicate_response_item_id') {
     return 'Provider rejected duplicated response item IDs. Please retry once.'
   }
@@ -91,12 +140,15 @@ export function getRetryHintMessage(hint: RetryHint | null): string | null {
     if (typeof hint.resetAt === 'number') {
       return `Provider usage limit reached. Try again after ${new Date(hint.resetAt).toLocaleTimeString()}.`
     }
+    if (typeof hint.retryAfterSeconds === 'number' && hint.retryAfterSeconds > 0) {
+      return `Provider usage limit reached. Try again in about ${formatDurationCompact(hint.retryAfterSeconds)}.`
+    }
     return 'Provider usage limit reached. Try again later.'
   }
 
   if (hint.code === 'provider_rate_limit') {
     if (typeof hint.retryAfterSeconds === 'number' && hint.retryAfterSeconds > 0) {
-      return `Provider is rate-limiting requests. Retry in about ${Math.ceil(hint.retryAfterSeconds)} seconds.`
+      return `Provider is rate-limiting requests. Retry in about ${formatDurationCompact(hint.retryAfterSeconds)}.`
     }
     return 'Provider is rate-limiting requests. Retry shortly.'
   }

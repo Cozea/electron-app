@@ -12,7 +12,24 @@ export interface ModelApiModel {
   provider: string
   tier: string
   limit?: { context?: number; output?: number }
-  cost?: { input?: number; output?: number }
+  cost?: {
+    input?: number
+    output?: number
+    reasoning?: number
+    cacheRead?: number
+    cacheWrite?: number
+    inputAudio?: number
+    outputAudio?: number
+    contextOver200k?: {
+      input?: number
+      output?: number
+      reasoning?: number
+      cacheRead?: number
+      cacheWrite?: number
+      inputAudio?: number
+      outputAudio?: number
+    }
+  }
   apiBaseUrl?: string
   npmPackage?: string
   capabilities?: RuntimeModelCapabilities

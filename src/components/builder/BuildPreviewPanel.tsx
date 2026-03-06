@@ -1,12 +1,8 @@
-import { memo, useCallback, useRef, useState } from 'react'
+import { memo, useRef } from 'react'
 import {
-  ExternalLink,
-  Loader2,
   AppWindow,
   RefreshCw,
-  Camera,
   AlertCircle,
-  Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -18,9 +14,8 @@ interface BuildPreviewPanelProps {
   url: string | null
   error: string | null
   timeline?: Array<{ id: string; at: number; type: string; message: string }>
+  refreshToken?: number
   onRefresh?: () => void
-  onCapture?: () => Promise<void>
-  onOpenExternal?: () => void
   className?: string
 }
 
@@ -32,102 +27,14 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
   url,
   error,
   timeline,
+  refreshToken = 0,
   onRefresh,
-  onCapture,
-  onOpenExternal,
   className,
 }: BuildPreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [isCapturing, setIsCapturing] = useState(false)
-
-  const handleRefresh = useCallback(() => {
-    setRefreshKey((k) => k + 1)
-    onRefresh?.()
-  }, [onRefresh])
-
-  const handleOpenExternal = useCallback(() => {
-    if (url) {
-      window.electronAPI.shell.openExternal(url)
-    }
-    onOpenExternal?.()
-  }, [url, onOpenExternal])
-
-  const handleCapture = useCallback(async () => {
-    if (!onCapture) return
-    setIsCapturing(true)
-    try {
-      await onCapture()
-    } finally {
-      setIsCapturing(false)
-    }
-  }, [onCapture])
 
   return (
     <div className={cn('flex h-full flex-col bg-background', className)}>
-      {/* Toolbar - matches chat panel header height (h-12) with blur */}
-      <div className="flex items-center gap-3 h-12 px-4 bg-background/50 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <Globe className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Preview</span>
-        </div>
-
-        {/* URL display */}
-        {url && status === 'ready' && (
-          <div className="flex-1 px-2">
-            <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-1.5 text-xs font-mono text-muted-foreground">
-              <span className="truncate">{url}</span>
-            </div>
-          </div>
-        )}
-
-        {!url && <div className="flex-1" />}
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-1">
-          {status === 'ready' && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleRefresh}
-                title="Refresh preview"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-
-              {onCapture && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={handleCapture}
-                  disabled={isCapturing}
-                  title="Capture screenshot"
-                >
-                  {isCapturing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Camera className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleOpenExternal}
-                title="Open in browser"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
       {/* Content area */}
       <div className="relative flex-1 overflow-hidden">
         {/* Idle state - waiting for build */}
@@ -158,7 +65,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
         {status === 'ready' && url && (
           <iframe
             ref={iframeRef}
-            key={refreshKey}
+            key={`${url}-${refreshToken}`}
             src={url}
             className="h-full w-full border-0 bg-white"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-modals"

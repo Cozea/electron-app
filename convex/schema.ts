@@ -301,6 +301,7 @@ export default defineSchema({
       v.object({
         reasoningTokens: v.optional(v.number()),
         cachedInputTokens: v.optional(v.number()),
+        cacheWriteTokens: v.optional(v.number()),
         toolCallTokens: v.optional(v.number()),
       })
     ),

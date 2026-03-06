@@ -99,6 +99,7 @@ import {
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
+import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
 import {
   inferProviderFromModelId,
 } from '@/lib/ai/providerAuth'
@@ -122,6 +123,7 @@ import {
   ContextContentHeader,
 } from '@/components/ai-elements/context'
 import { BillingError } from './BillingError'
+import { AiSurfaceErrorCard } from './AiSurfaceErrorCard'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -157,6 +159,7 @@ interface UsageData {
   totalTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  cacheWriteTokens?: number
   spendCents?: number
   runtime?: 'local' | 'remote'
   durationMs?: number
@@ -1198,9 +1201,19 @@ export function AIConversation({
     if (typeof errorStr === 'string' && errorStr.trim()) return errorStr
     return 'Something went wrong'
   }, [error, billingError, retryHint])
+  const retrySurfaceError = useMemo(() => getRetryHintSurfaceError(retryHint), [retryHint])
+  const retrySurfaceErrorKey = useMemo(() => {
+    if (!retrySurfaceError) return null
+    return [
+      retrySurfaceError.code,
+      retrySurfaceError.title,
+      retrySurfaceError.message,
+      retrySurfaceError.hint ?? '',
+    ].join('|')
+  }, [retrySurfaceError])
 
   const serviceErrorMessage = modelsError || toolsError
-  const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
+  const surfaceErrorMessage = retrySurfaceError ? serviceErrorMessage : (serviceErrorMessage || genericErrorMessage)
   const providerConnectionMessage =
     !hasSelectableModel && providerStatusLoaded && providerAuthAvailable
       ? 'Connect an AI provider'
@@ -1213,19 +1226,23 @@ export function AIConversation({
 
   const genericErrorRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!surfaceBannerMessage) {
+    const currentSurfaceKey = retrySurfaceErrorKey || surfaceBannerMessage
+    if (!currentSurfaceKey) {
       genericErrorRef.current = null
       setDismissedError(null)
       return
     }
-    if (surfaceBannerMessage !== genericErrorRef.current) {
-      genericErrorRef.current = surfaceBannerMessage
+    if (currentSurfaceKey !== genericErrorRef.current) {
+      genericErrorRef.current = currentSurfaceKey
       setDismissedError(null)
     }
-  }, [surfaceBannerMessage])
+  }, [retrySurfaceErrorKey, surfaceBannerMessage])
 
   const showGenericError = Boolean(
     surfaceBannerMessage && dismissedError !== surfaceBannerMessage
+  )
+  const showRetrySurfaceError = Boolean(
+    retrySurfaceError && retrySurfaceErrorKey && dismissedError !== retrySurfaceErrorKey
   )
   const showProviderSettingsCta = surfaceBannerMessage === providerConnectionMessage
 
@@ -1234,8 +1251,10 @@ export function AIConversation({
   const accumulatedUsage = useMemo(() => {
     let inputTokens = 0
     let outputTokens = 0
+    let totalTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    let cacheWriteTokens = 0
     let usageSpendCents = 0
     const runCosts = new Map<string, number>()
 
@@ -1246,8 +1265,10 @@ export function AIConversation({
           if (data) {
             inputTokens += data.promptTokens ?? 0
             outputTokens += data.completionTokens ?? 0
+            totalTokens += data.totalTokens ?? ((data.promptTokens ?? 0) + (data.completionTokens ?? 0))
             reasoningTokens += data.reasoningTokens ?? 0
             cachedInputTokens += data.cachedInputTokens ?? 0
+            cacheWriteTokens += data.cacheWriteTokens ?? 0
             usageSpendCents += Math.max(0, data.spendCents ?? 0)
           }
         }
@@ -1266,7 +1287,6 @@ export function AIConversation({
       }
     }
 
-    const totalTokens = inputTokens + outputTokens
     const totalCostUsd =
       runCosts.size > 0
         ? Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
@@ -1283,12 +1303,12 @@ export function AIConversation({
         reasoningTokens: reasoningTokens || undefined,
         cachedInputTokens: cachedInputTokens || undefined,
         inputTokenDetails: {
-          noCacheTokens: inputTokens - cachedInputTokens,
+          noCacheTokens: Math.max(0, inputTokens - cachedInputTokens - cacheWriteTokens),
           cacheReadTokens: cachedInputTokens || undefined,
-          cacheWriteTokens: undefined,
+          cacheWriteTokens: cacheWriteTokens || undefined,
         },
         outputTokenDetails: {
-          textTokens: outputTokens - reasoningTokens,
+          textTokens: Math.max(0, outputTokens - reasoningTokens),
           reasoningTokens: reasoningTokens || undefined,
         },
       },
@@ -1755,6 +1775,12 @@ export function AIConversation({
             <BillingError
               error={billingError as any}
               className="border-0 border-b rounded-none p-3"
+            />
+          ) : showRetrySurfaceError && retrySurfaceError ? (
+            <AiSurfaceErrorCard
+              error={retrySurfaceError}
+              className="border-0 border-b rounded-none p-3"
+              onDismiss={() => setDismissedError(retrySurfaceErrorKey)}
             />
           ) : showGenericError && surfaceBannerMessage && (
             <div className="flex items-center gap-2 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">

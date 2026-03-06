@@ -4,8 +4,10 @@ import type { UIMessage } from 'ai'
 interface UsageData {
   promptTokens?: number
   completionTokens?: number
+  totalTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  cacheWriteTokens?: number
   spendCents?: number
 }
 
@@ -20,8 +22,10 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
   return useMemo(() => {
     let inputTokens = 0
     let outputTokens = 0
+    let totalTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    let cacheWriteTokens = 0
     let usageSpendCents = 0
     const runCosts = new Map<string, number>()
 
@@ -32,8 +36,10 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
           if (data) {
             inputTokens += data.promptTokens ?? 0
             outputTokens += data.completionTokens ?? 0
+            totalTokens += data.totalTokens ?? ((data.promptTokens ?? 0) + (data.completionTokens ?? 0))
             reasoningTokens += data.reasoningTokens ?? 0
             cachedInputTokens += data.cachedInputTokens ?? 0
+            cacheWriteTokens += data.cacheWriteTokens ?? 0
             usageSpendCents += Math.max(0, data.spendCents ?? 0)
           }
         }
@@ -52,7 +58,6 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
       }
     }
 
-    const totalTokens = inputTokens + outputTokens
     const totalCostUsd =
       runCosts.size > 0
         ? Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
@@ -68,12 +73,12 @@ export function useAccumulatedUsage(messages: UIMessage[]) {
         reasoningTokens: reasoningTokens || undefined,
         cachedInputTokens: cachedInputTokens || undefined,
         inputTokenDetails: {
-          noCacheTokens: inputTokens - cachedInputTokens,
+          noCacheTokens: Math.max(0, inputTokens - cachedInputTokens - cacheWriteTokens),
           cacheReadTokens: cachedInputTokens || undefined,
-          cacheWriteTokens: undefined,
+          cacheWriteTokens: cacheWriteTokens || undefined,
         },
         outputTokenDetails: {
-          textTokens: outputTokens - reasoningTokens,
+          textTokens: Math.max(0, outputTokens - reasoningTokens),
           reasoningTokens: reasoningTokens || undefined,
         },
       },

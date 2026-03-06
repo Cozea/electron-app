@@ -100,13 +100,36 @@ interface ModelInfo {
   cost?: {
     input?: number
     output?: number
+    reasoning?: number
+    cacheRead?: number
+    cacheWrite?: number
+    inputAudio?: number
+    outputAudio?: number
+    contextOver200k?: {
+      input?: number
+      output?: number
+      reasoning?: number
+      cacheRead?: number
+      cacheWrite?: number
+      inputAudio?: number
+      outputAudio?: number
+    }
   }
   capabilities?: Record<string, unknown>
 }
 
-interface RemotePricing {
+interface RemotePricingTier {
   inputPer1m: number
   outputPer1m: number
+  reasoningPer1m?: number
+  cacheReadPer1m?: number
+  cacheWritePer1m?: number
+  inputAudioPer1m?: number
+  outputAudioPer1m?: number
+}
+
+interface RemotePricing extends RemotePricingTier {
+  contextOver200k?: RemotePricingTier
 }
 
 interface RemotePricingResponse {
@@ -116,6 +139,20 @@ interface RemotePricingResponse {
     pricing?: {
       inputPer1m?: unknown
       outputPer1m?: unknown
+      reasoningPer1m?: unknown
+      cacheReadPer1m?: unknown
+      cacheWritePer1m?: unknown
+      inputAudioPer1m?: unknown
+      outputAudioPer1m?: unknown
+      contextOver200k?: {
+        inputPer1m?: unknown
+        outputPer1m?: unknown
+        reasoningPer1m?: unknown
+        cacheReadPer1m?: unknown
+        cacheWritePer1m?: unknown
+        inputAudioPer1m?: unknown
+        outputAudioPer1m?: unknown
+      }
     }
   }>
 }
@@ -234,6 +271,212 @@ function getHeaderValue(req: IncomingMessage, key: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+type BuilderStreamTaskStatus = 'pending' | 'in_progress' | 'completed'
+
+interface BuilderStreamTask {
+  content: string
+  activeForm: string
+  status: BuilderStreamTaskStatus
+  files?: string[]
+}
+
+function extractFirstJsonArray(input: string): string | null {
+  const trimmed = input.trim()
+  const start = trimmed.indexOf('[')
+  const end = trimmed.lastIndexOf(']')
+  if (start === -1 || end === -1 || end <= start) return null
+  return trimmed.slice(start, end + 1)
+}
+
+function removeTrailingCommas(input: string): string {
+  return input.replace(/,(\s*[}\]])/g, '$1')
+}
+
+function quoteUnquotedKeys(input: string): string {
+  return input.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":')
+}
+
+function addMissingColonsAfterQuotedKeys(input: string): string {
+  return input.replace(/"([^"]+)"\s+(?=["[{0-9tfn-])/g, '"$1": ')
+}
+
+function normalizeSingleQuotedStrings(input: string): string {
+  return input
+    .replace(/'([^']+)'\s*:/g, '"$1":')
+    .replace(/:\s*'([^']*)'/g, ': "$1"')
+}
+
+function parseJsonArrayLoose(input: unknown): unknown[] | null {
+  if (Array.isArray(input)) return input
+  if (typeof input !== 'string') return null
+
+  const candidates: string[] = []
+  const raw = input.trim()
+  if (raw) candidates.push(raw)
+
+  const extracted = extractFirstJsonArray(raw)
+  if (extracted && extracted !== raw) candidates.push(extracted)
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // try repaired candidate below
+    }
+
+    const repaired = addMissingColonsAfterQuotedKeys(
+      removeTrailingCommas(
+        quoteUnquotedKeys(
+          normalizeSingleQuotedStrings(candidate)
+        )
+      )
+    )
+
+    try {
+      const parsed = JSON.parse(repaired)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // ignore parse failures
+    }
+  }
+
+  return null
+}
+
+function normalizeBuilderTaskStatus(value: unknown): BuilderStreamTaskStatus | null {
+  if (typeof value !== 'string') return null
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[.\s-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+  if (normalized === 'pending' || normalized === 'todo' || normalized === 'not_started') {
+    return 'pending'
+  }
+  if (
+    normalized === 'in_progress' ||
+    normalized === 'inprogress' ||
+    normalized === 'active' ||
+    normalized === 'working' ||
+    normalized === 'current'
+  ) {
+    return 'in_progress'
+  }
+  if (
+    normalized === 'completed' ||
+    normalized === 'complete' ||
+    normalized === 'done' ||
+    normalized === 'finished'
+  ) {
+    return 'completed'
+  }
+  return null
+}
+
+function normalizeBuilderTaskList(value: unknown): BuilderStreamTask[] | null {
+  if (!Array.isArray(value)) return null
+
+  const tasks: BuilderStreamTask[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+
+    const contentCandidate =
+      entry.content ?? entry.title ?? entry.task ?? entry.text ?? entry.name
+    const content = typeof contentCandidate === 'string' ? contentCandidate.trim() : ''
+    const status = normalizeBuilderTaskStatus(entry.status)
+    if (!content || !status) continue
+
+    const activeFormCandidate =
+      entry.activeForm ??
+      entry.active_form ??
+      entry.inProgressText ??
+      entry.in_progress_text ??
+      entry.progressLabel
+    const activeForm =
+      typeof activeFormCandidate === 'string' && activeFormCandidate.trim().length > 0
+        ? activeFormCandidate.trim()
+        : content
+
+    const files = Array.isArray(entry.files)
+      ? entry.files
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim())
+      : undefined
+
+    tasks.push({
+      content,
+      activeForm,
+      status,
+      ...(files && files.length > 0 ? { files } : {}),
+    })
+  }
+
+  if (tasks.length === 0 && value.length > 0) {
+    return null
+  }
+
+  return tasks
+}
+
+function parseBuilderTaskArrayValue(value: unknown): BuilderStreamTask[] | null {
+  const directTasks = normalizeBuilderTaskList(value)
+  if (directTasks !== null) return directTasks
+
+  const parsedStringArray = parseJsonArrayLoose(value)
+  if (parsedStringArray !== null) {
+    return normalizeBuilderTaskList(parsedStringArray)
+  }
+
+  return null
+}
+
+function parseBuilderTasksPayload(input: Record<string, unknown>): BuilderStreamTask[] | null {
+  for (const key of ['tasks', 'todos', 'steps', 'items', 'taskList', 'task_list']) {
+    const parsedTasks = parseBuilderTaskArrayValue(input[key])
+    if (parsedTasks !== null) return parsedTasks
+  }
+
+  const fromTasksJson = parseBuilderTaskArrayValue(input.tasks_json)
+  if (fromTasksJson !== null) return fromTasksJson
+
+  const fromTasksJsonCamel = parseBuilderTaskArrayValue(input.tasksJson)
+  if (fromTasksJsonCamel !== null) return fromTasksJsonCamel
+
+  return null
+}
+
+function parseBuilderTasksAny(value: unknown, depth = 0): BuilderStreamTask[] | null {
+  if (depth > 2) return null
+
+  const directTasks = parseBuilderTaskArrayValue(value)
+  if (directTasks !== null) return directTasks
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    try {
+      return parseBuilderTasksAny(JSON.parse(trimmed), depth + 1)
+    } catch {
+      return null
+    }
+  }
+
+  if (!isRecord(value)) return null
+
+  const directPayload = parseBuilderTasksPayload(value)
+  if (directPayload !== null) return directPayload
+
+  for (const key of ['input', 'payload', 'args', 'arguments', 'data', 'value', 'result']) {
+    const nestedTasks = parseBuilderTasksAny(value[key], depth + 1)
+    if (nestedTasks !== null) return nestedTasks
+  }
+
+  return null
 }
 
 function isManagedProvider(providerId: string): boolean {
@@ -372,6 +615,46 @@ function normalizePricingNumber(value: unknown): number | null {
   const parsed = toFiniteNumber(value)
   if (parsed === undefined) return null
   return Math.max(0, parsed)
+}
+
+function normalizePricingTier(value: unknown): RemotePricingTier | null {
+  if (!isRecord(value)) return null
+
+  const inputPer1m = normalizePricingNumber(value.inputPer1m)
+  const outputPer1m = normalizePricingNumber(value.outputPer1m)
+  if (inputPer1m === null || outputPer1m === null) {
+    return null
+  }
+
+  const reasoningPer1m = normalizePricingNumber(value.reasoningPer1m)
+  const cacheReadPer1m = normalizePricingNumber(value.cacheReadPer1m)
+  const cacheWritePer1m = normalizePricingNumber(value.cacheWritePer1m)
+  const inputAudioPer1m = normalizePricingNumber(value.inputAudioPer1m)
+  const outputAudioPer1m = normalizePricingNumber(value.outputAudioPer1m)
+
+  return {
+    inputPer1m,
+    outputPer1m,
+    ...(reasoningPer1m !== null ? { reasoningPer1m } : {}),
+    ...(cacheReadPer1m !== null ? { cacheReadPer1m } : {}),
+    ...(cacheWritePer1m !== null ? { cacheWritePer1m } : {}),
+    ...(inputAudioPer1m !== null ? { inputAudioPer1m } : {}),
+    ...(outputAudioPer1m !== null ? { outputAudioPer1m } : {}),
+  }
+}
+
+function normalizeRemotePricing(value: unknown): RemotePricing | null {
+  const base = normalizePricingTier(value)
+  if (!base) return null
+
+  const contextOver200k = isRecord(value)
+    ? normalizePricingTier(value.contextOver200k)
+    : null
+
+  return {
+    ...base,
+    ...(contextOver200k ? { contextOver200k } : {}),
+  }
 }
 
 function normalizeTierRank(tier: ModelInfo['tier']): number {
@@ -873,6 +1156,7 @@ export class LocalAiRuntimeService {
     totalTokens: number
     reasoningTokens?: number
     cachedInputTokens?: number
+    cacheWriteTokens?: number
     requestId?: string
     conversationId?: string
     feature?: string
@@ -904,6 +1188,7 @@ export class LocalAiRuntimeService {
           totalTokens: Math.max(0, Math.floor(args.totalTokens)),
           ...(typeof args.reasoningTokens === 'number' ? { reasoningTokens: args.reasoningTokens } : {}),
           ...(typeof args.cachedInputTokens === 'number' ? { cachedInputTokens: args.cachedInputTokens } : {}),
+          ...(typeof args.cacheWriteTokens === 'number' ? { cacheWriteTokens: args.cacheWriteTokens } : {}),
           ...(args.requestId ? { requestId: args.requestId } : {}),
           ...(args.conversationId ? { conversationId: args.conversationId } : {}),
           ...(args.feature ? { feature: args.feature } : {}),
@@ -984,13 +1269,10 @@ export class LocalAiRuntimeService {
       return null
     }
 
-    const inputPer1m = normalizePricingNumber(row.pricing.inputPer1m)
-    const outputPer1m = normalizePricingNumber(row.pricing.outputPer1m)
-    if (inputPer1m === null || outputPer1m === null) {
+    const pricing = normalizeRemotePricing(row.pricing)
+    if (!pricing) {
       return null
     }
-
-    const pricing = { inputPer1m, outputPer1m }
     this.pricingCache.set(cacheKey, {
       pricing,
       expiresAt: Date.now() + 60_000,
@@ -1005,20 +1287,83 @@ export class LocalAiRuntimeService {
     if (inputPer1m === null || outputPer1m === null) {
       return null
     }
-    return { inputPer1m, outputPer1m }
+
+    const reasoningPer1m = normalizePricingNumber(modelInfo.cost?.reasoning)
+    const cacheReadPer1m = normalizePricingNumber(modelInfo.cost?.cacheRead)
+    const cacheWritePer1m = normalizePricingNumber(modelInfo.cost?.cacheWrite)
+    const inputAudioPer1m = normalizePricingNumber(modelInfo.cost?.inputAudio)
+    const outputAudioPer1m = normalizePricingNumber(modelInfo.cost?.outputAudio)
+    const contextOver200kInputPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.input)
+    const contextOver200kOutputPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.output)
+    const contextOver200kReasoningPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.reasoning)
+    const contextOver200kCacheReadPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.cacheRead)
+    const contextOver200kCacheWritePer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.cacheWrite)
+    const contextOver200kInputAudioPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.inputAudio)
+    const contextOver200kOutputAudioPer1m = normalizePricingNumber(modelInfo.cost?.contextOver200k?.outputAudio)
+
+    return {
+      inputPer1m,
+      outputPer1m,
+      ...(reasoningPer1m !== null ? { reasoningPer1m } : {}),
+      ...(cacheReadPer1m !== null ? { cacheReadPer1m } : {}),
+      ...(cacheWritePer1m !== null ? { cacheWritePer1m } : {}),
+      ...(inputAudioPer1m !== null ? { inputAudioPer1m } : {}),
+      ...(outputAudioPer1m !== null ? { outputAudioPer1m } : {}),
+      ...(contextOver200kInputPer1m !== null && contextOver200kOutputPer1m !== null
+        ? {
+            contextOver200k: {
+              inputPer1m: contextOver200kInputPer1m,
+              outputPer1m: contextOver200kOutputPer1m,
+              ...(contextOver200kReasoningPer1m !== null ? { reasoningPer1m: contextOver200kReasoningPer1m } : {}),
+              ...(contextOver200kCacheReadPer1m !== null ? { cacheReadPer1m: contextOver200kCacheReadPer1m } : {}),
+              ...(contextOver200kCacheWritePer1m !== null ? { cacheWritePer1m: contextOver200kCacheWritePer1m } : {}),
+              ...(contextOver200kInputAudioPer1m !== null ? { inputAudioPer1m: contextOver200kInputAudioPer1m } : {}),
+              ...(contextOver200kOutputAudioPer1m !== null ? { outputAudioPer1m: contextOver200kOutputAudioPer1m } : {}),
+            },
+          }
+        : {}),
+    }
+  }
+
+  private resolveApplicablePricingTier(pricing: RemotePricing, promptTokens: number): RemotePricingTier {
+    if (promptTokens <= 200_000 || !pricing.contextOver200k) {
+      return pricing
+    }
+
+    return {
+      inputPer1m: pricing.contextOver200k.inputPer1m,
+      outputPer1m: pricing.contextOver200k.outputPer1m,
+      reasoningPer1m: pricing.contextOver200k.reasoningPer1m ?? pricing.reasoningPer1m,
+      cacheReadPer1m: pricing.contextOver200k.cacheReadPer1m ?? pricing.cacheReadPer1m,
+      cacheWritePer1m: pricing.contextOver200k.cacheWritePer1m ?? pricing.cacheWritePer1m,
+      inputAudioPer1m: pricing.contextOver200k.inputAudioPer1m ?? pricing.inputAudioPer1m,
+      outputAudioPer1m: pricing.contextOver200k.outputAudioPer1m ?? pricing.outputAudioPer1m,
+    }
   }
 
   private calculateSpendCentsFromPricing(args: {
     promptTokens: number
-    completionTokens: number
-    cachedInputTokens: number
+    noCacheInputTokens: number
+    textOutputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
     pricing: RemotePricing
   }): number {
-    const billableInputTokens = Math.max(0, Math.floor(args.promptTokens) - Math.floor(args.cachedInputTokens))
-    const outputTokens = Math.max(0, Math.floor(args.completionTokens))
-    const inputUsd = (billableInputTokens / 1_000_000) * args.pricing.inputPer1m
-    const outputUsd = (outputTokens / 1_000_000) * args.pricing.outputPer1m
-    const totalUsd = inputUsd + outputUsd
+    const promptTokens = Math.max(0, Math.floor(args.promptTokens))
+    const noCacheInputTokens = Math.max(0, Math.floor(args.noCacheInputTokens))
+    const textOutputTokens = Math.max(0, Math.floor(args.textOutputTokens))
+    const reasoningTokens = Math.max(0, Math.floor(args.reasoningTokens))
+    const cacheReadTokens = Math.max(0, Math.floor(args.cacheReadTokens))
+    const cacheWriteTokens = Math.max(0, Math.floor(args.cacheWriteTokens))
+    const pricing = this.resolveApplicablePricingTier(args.pricing, promptTokens)
+
+    const inputUsd = (noCacheInputTokens / 1_000_000) * pricing.inputPer1m
+    const cacheReadUsd = (cacheReadTokens / 1_000_000) * (pricing.cacheReadPer1m ?? pricing.inputPer1m)
+    const cacheWriteUsd = (cacheWriteTokens / 1_000_000) * (pricing.cacheWritePer1m ?? pricing.inputPer1m)
+    const outputUsd = (textOutputTokens / 1_000_000) * pricing.outputPer1m
+    const reasoningUsd = (reasoningTokens / 1_000_000) * (pricing.reasoningPer1m ?? pricing.outputPer1m)
+    const totalUsd = inputUsd + cacheReadUsd + cacheWriteUsd + outputUsd + reasoningUsd
 
     if (!Number.isFinite(totalUsd) || totalUsd <= 0) {
       return 0
@@ -1345,6 +1690,8 @@ export class LocalAiRuntimeService {
         const shouldLogBuilderGeminiSteps =
           (parsedBody.surface === 'builder' || parsedBody.agentId === 'build') &&
           (modelInfo.provider.trim().toLowerCase() === 'google' || model.toLowerCase().includes('gemini'))
+        const shouldStreamBuilderTasks =
+          parsedBody.surface === 'builder' || parsedBody.agentId === 'build'
         const stream = createUIMessageStream<UIMessage>({
           originalMessages: messages,
           execute: async ({ writer }) => {
@@ -1374,8 +1721,6 @@ export class LocalAiRuntimeService {
                 apiKey: envelope.accessToken,
                 exaWebSearch: undefined,
                 onStepFinish: (event: unknown) => {
-                  if (!shouldLogBuilderGeminiSteps) return
-
                   const eventRecord = isRecord(event) ? event : {}
                   const rawToolCalls = Array.isArray(eventRecord.toolCalls) ? eventRecord.toolCalls : []
                   const rawToolResults = Array.isArray(eventRecord.toolResults) ? eventRecord.toolResults : []
@@ -1419,6 +1764,29 @@ export class LocalAiRuntimeService {
                     }
                   })
 
+                  if (shouldStreamBuilderTasks) {
+                    for (const toolCall of toolCalls) {
+                      if (!isRecord(toolCall) || toolCall.toolName !== 'todowrite') continue
+
+                      const tasks = parseBuilderTasksAny(toolCall.input)
+                      if (tasks === null) continue
+
+                      writer.write({
+                        type: 'data-builder-tasks',
+                        data: {
+                          tasks,
+                          toolCallId:
+                            typeof toolCall.toolCallId === 'string'
+                              ? toolCall.toolCallId
+                              : undefined,
+                          source: 'step_finish',
+                        },
+                      })
+                    }
+                  }
+
+                  if (!shouldLogBuilderGeminiSteps) return
+
                   console.log('[LocalAI][Builder][Gemini][StepFinish]', JSON.stringify({
                     model,
                     finishReason:
@@ -1454,12 +1822,34 @@ export class LocalAiRuntimeService {
                       ?? 0
                     )
                   )
-                  const cachedInputTokens = Math.max(
+                  const cacheReadTokens = Math.max(
                     0,
                     Math.floor(
                       toFiniteNumber(inputTokenDetails.cacheReadTokens)
                       ?? toFiniteNumber(usage.cachedInputTokens)
                       ?? 0
+                    )
+                  )
+                  const cacheWriteTokens = Math.max(
+                    0,
+                    Math.floor(
+                      toFiniteNumber(inputTokenDetails.cacheWriteTokens)
+                      ?? toFiniteNumber(usage.cacheWriteTokens)
+                      ?? 0
+                    )
+                  )
+                  const noCacheInputTokens = Math.max(
+                    0,
+                    Math.floor(
+                      toFiniteNumber(inputTokenDetails.noCacheTokens)
+                      ?? (promptTokens - cacheReadTokens - cacheWriteTokens)
+                    )
+                  )
+                  const textOutputTokens = Math.max(
+                    0,
+                    Math.floor(
+                      toFiniteNumber(outputTokenDetails.textTokens)
+                      ?? (completionTokens - reasoningTokens)
                     )
                   )
                   const finishReason =
@@ -1489,8 +1879,11 @@ export class LocalAiRuntimeService {
                     const finalCents = pricing
                       ? this.calculateSpendCentsFromPricing({
                           promptTokens,
-                          completionTokens,
-                          cachedInputTokens,
+                          noCacheInputTokens,
+                          textOutputTokens,
+                          reasoningTokens,
+                          cacheReadTokens,
+                          cacheWriteTokens,
                           pricing,
                         })
                       : 0
@@ -1555,7 +1948,8 @@ export class LocalAiRuntimeService {
                       completionTokens,
                       totalTokens,
                       reasoningTokens: reasoningTokens || undefined,
-                      cachedInputTokens: cachedInputTokens || undefined,
+                      cachedInputTokens: cacheReadTokens || undefined,
+                      cacheWriteTokens: cacheWriteTokens || undefined,
                       requestId,
                       conversationId: parsedBody.conversationId,
                       feature,
@@ -1585,7 +1979,8 @@ export class LocalAiRuntimeService {
                       completionTokens,
                       totalTokens,
                       reasoningTokens: reasoningTokens || undefined,
-                      cachedInputTokens: cachedInputTokens || undefined,
+                      cachedInputTokens: cacheReadTokens || undefined,
+                      cacheWriteTokens: cacheWriteTokens || undefined,
                       ...(spendCents !== undefined ? { spendCents } : {}),
                       keySource: managedProvider ? 'organization' : 'provider_auth',
                       runtime: 'local',

@@ -19,13 +19,20 @@ import { YjsProjectDoc } from '@/lib/yjs/YjsProjectDoc'
 import {
   Monitor,
   MonitorOff,
+  Globe,
+  RefreshCw,
+  Camera,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react'
 import type { BuildTask } from '@/components/builder/BuildTaskList'
 import { BuilderConversation } from '@/components/builder/BuilderConversation'
 import { BuildPreviewPanel } from '@/components/builder/BuildPreviewPanel'
 import { BuilderControlsPill } from '@/components/builder/BuilderControlsPill'
 import { BillingError, type BillingErrorData } from '@/components/assistant/BillingError'
+import { AiSurfaceErrorCard } from '@/components/assistant/AiSurfaceErrorCard'
 import { useDevServerManager } from '@/hooks/useDevServerManager'
+import type { AiSurfaceErrorData } from '@/lib/ai/surfaceErrors'
 import {
   summarizeLintDiagnostics,
   type PipelineDiagnostic,
@@ -51,6 +58,21 @@ function formatDiagnosticLocation(file: string, line?: number, column?: number):
   if (line) return `${file}:${line}`
   return file
 }
+
+function formatPreviewHeaderUrl(url: string | null): string | null {
+  if (!url) return null
+
+  try {
+    const parsed = new URL(url)
+    const host = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname
+    const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : ''
+    return `${host}${path}`
+  } catch {
+    return url.replace(/^https?:\/\//i, '')
+  }
+}
+
+const MAX_AUTO_PREVIEW_RETRIES = 2
 
 export function ProjectBuild() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -89,12 +111,17 @@ export function ProjectBuild() {
   const [statusMessage, setStatusMessage] = useState('Preparing to build...')
   const [hasError, setHasError] = useState(false)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
+  const [surfaceError, setSurfaceError] = useState<AiSurfaceErrorData | null>(null)
   const [logs, setLogs] = useState<string[]>([])
 
   // Pull state
   const [isPulling, setIsPulling] = useState(false)
   const [pullProgress, setPullProgress] = useState(0)
   const autoPullTriggeredRef = useRef(false)
+  const previewAutoRetryRef = useRef({
+    attempts: 0,
+    exhausted: false,
+  })
 
   // AI Generation state
   const [isAIGenerating, setIsAIGenerating] = useState(false)
@@ -115,6 +142,10 @@ export function ProjectBuild() {
 
   // Preview panel state
   const [showPreview, setShowPreview] = useState(true)
+  const [previewRequestedByAI, setPreviewRequestedByAI] = useState(false)
+  const [builderMutationTick, setBuilderMutationTick] = useState(0)
+  const [previewRefreshToken, setPreviewRefreshToken] = useState(0)
+  const [isCapturingPreview, setIsCapturingPreview] = useState(false)
 
   // Detect when dependency installation completes by checking build tasks.
   const dependencyInstallComplete = useMemo(() => {
@@ -127,11 +158,86 @@ export function ProjectBuild() {
     )
   }, [buildTasks])
 
-  // Dev server manager starts after dependency installation completes.
+  const previewProjectPath =
+    previewRequestedByAI || dependencyInstallComplete
+      ? localPath
+      : null
+
   const devServer = useDevServerManager({
-    projectPath: dependencyInstallComplete ? localPath : null,
-    autoStart: dependencyInstallComplete && isAIGenerating,
+    projectPath: previewProjectPath,
+    autoStart: false,
   })
+
+  const addLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setLogs(prev => [...prev, `[${timestamp}] ${message}`])
+  }, [])
+
+  const resetPreviewAutoRetryBudget = useCallback(() => {
+    previewAutoRetryRef.current.attempts = 0
+    previewAutoRetryRef.current.exhausted = false
+  }, [])
+
+  useEffect(() => {
+    resetPreviewAutoRetryBudget()
+  }, [previewProjectPath, resetPreviewAutoRetryBudget])
+
+  useEffect(() => {
+    if (dependencyInstallComplete) {
+      resetPreviewAutoRetryBudget()
+    }
+  }, [dependencyInstallComplete, resetPreviewAutoRetryBudget])
+
+  useEffect(() => {
+    if (devServer.status === 'ready') {
+      resetPreviewAutoRetryBudget()
+    }
+  }, [devServer.status, resetPreviewAutoRetryBudget])
+
+  useEffect(() => {
+    const shouldKeepPreviewAlive =
+      Boolean(previewProjectPath) &&
+      (previewRequestedByAI || (dependencyInstallComplete && isAIGenerating))
+
+    if (!shouldKeepPreviewAlive) return
+    if (devServer.isRunning) return
+    if (devServer.status !== 'idle' && devServer.status !== 'error' && devServer.status !== 'stopped') {
+      return
+    }
+
+    if (devServer.status !== 'idle' && previewAutoRetryRef.current.attempts >= MAX_AUTO_PREVIEW_RETRIES) {
+      if (!previewAutoRetryRef.current.exhausted) {
+        previewAutoRetryRef.current.exhausted = true
+        addLog('Preview auto-restart paused after repeated crashes. Use refresh or wait for the next preview request.')
+      }
+      return
+    }
+
+    const retryDelayMs = devServer.status === 'idle'
+      ? 0
+      : 1200 * (previewAutoRetryRef.current.attempts + 1)
+    const timeout = window.setTimeout(() => {
+      if (devServer.status !== 'idle') {
+        previewAutoRetryRef.current.attempts += 1
+      }
+      previewAutoRetryRef.current.exhausted = false
+      void devServer.start()
+    }, retryDelayMs)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [
+    builderMutationTick,
+    dependencyInstallComplete,
+    isAIGenerating,
+    previewProjectPath,
+    previewRequestedByAI,
+    addLog,
+    devServer.isRunning,
+    devServer.start,
+    devServer.status,
+  ])
 
   useEffect(() => {
     if (memberLocalPath && memberLocalPath !== localPath) {
@@ -213,11 +319,6 @@ export function ProjectBuild() {
     localStorage.setItem(runStorageKey, JSON.stringify(payload))
   }, [runStorageKey, runId, runStatus, runAttempt, buildTasks, progress, statusMessage, logs])
 
-  const addLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    setLogs(prev => [...prev, `[${timestamp}] ${message}`])
-  }, [])
-
   // Log dev server status changes
   useEffect(() => {
     if (devServer.status === 'ready' && devServer.url) {
@@ -287,9 +388,31 @@ export function ProjectBuild() {
     }
   }, [devServer.url, project?._id, generatePreviewUploadUrl, updatePreviewImage, addLog])
 
+  const handlePreviewRefresh = useCallback(() => {
+    resetPreviewAutoRetryBudget()
+    setPreviewRefreshToken((prev) => prev + 1)
+    void devServer.restart()
+  }, [devServer, resetPreviewAutoRetryBudget])
+
+  const handlePreviewOpenExternal = useCallback(() => {
+    if (!devServer.url) return
+    window.electronAPI.shell.openExternal(devServer.url)
+  }, [devServer.url])
+
+  const handlePreviewCapture = useCallback(async () => {
+    if (isCapturingPreview) return
+    setIsCapturingPreview(true)
+    try {
+      await capturePreviewScreenshot()
+    } finally {
+      setIsCapturingPreview(false)
+    }
+  }, [capturePreviewScreenshot, isCapturingPreview])
+
   // AI Generation handlers
   const handleTasksUpdate = useCallback((tasks: BuildTask[]) => {
     setBuildTasks(tasks)
+    setBuilderMutationTick((prev) => prev + 1)
 
     // Calculate progress from task completion
     const completed = tasks.filter(t => t.status === 'completed').length
@@ -469,7 +592,11 @@ export function ProjectBuild() {
     // Note: setIsAIGenerating is called AFTER startBuilderRun completes
     // to avoid race condition where checkpointBuilderRun is called before the run exists
     setHasError(false)
+    setBillingError(null)
+    setSurfaceError(null)
     setBuildTasks([])
+    setPreviewRequestedByAI(false)
+    setBuilderMutationTick(0)
     setProgress(0)
     createdFilesRef.current = [] // Clear tracked files for fresh build
     addLog(`Starting AI build for project: ${project.name}`)
@@ -616,8 +743,18 @@ export function ProjectBuild() {
     addLog(`Created: ${file.path}`)
     // Track created files for Yjs initialization
     createdFilesRef.current.push(file)
+    setBuilderMutationTick((prev) => prev + 1)
+    resetPreviewAutoRetryBudget()
     void enqueueReplicaSnapshot(`builder-created:${file.path}`, 'agent')
-  }, [addLog, enqueueReplicaSnapshot])
+  }, [addLog, enqueueReplicaSnapshot, resetPreviewAutoRetryBudget])
+
+  const handlePreviewStartRequest = useCallback((reason?: string) => {
+    setShowPreview(true)
+    setPreviewRequestedByAI(true)
+    setBuilderMutationTick((prev) => prev + 1)
+    resetPreviewAutoRetryBudget()
+    addLog(reason ? `AI requested preview start: ${reason}` : 'AI requested preview start')
+  }, [addLog, resetPreviewAutoRetryBudget])
 
   // Pull files from canonical Git replica to local folder
   const pullFilesFromCloud = useCallback(async () => {
@@ -793,7 +930,12 @@ export function ProjectBuild() {
 
   const handleRetry = () => {
     setHasError(false)
+    setBillingError(null)
+    setSurfaceError(null)
     setBuildTasks([])
+    setPreviewRequestedByAI(false)
+    setBuilderMutationTick(0)
+    resetPreviewAutoRetryBudget()
     setProgress(0)
     setLogs([])
     setRunStatus('idle')
@@ -832,6 +974,15 @@ export function ProjectBuild() {
 
   const isProjectLoading = project === undefined
   const isProjectMissing = project === null
+  const compactPreviewUrl = formatPreviewHeaderUrl(devServer.url)
+  const previewHeaderLabel = useMemo(() => {
+    if (devServer.status === 'ready' && compactPreviewUrl) return compactPreviewUrl
+    if (devServer.status === 'starting') return 'Starting preview...'
+    if (devServer.status === 'unhealthy') return 'Preview unhealthy'
+    if (devServer.status === 'error') return 'Preview failed'
+    if (devServer.status === 'stopped') return 'Preview stopped'
+    return 'Preview'
+  }, [compactPreviewUrl, devServer.status])
 
   return (
     <DashboardLayout
@@ -843,24 +994,73 @@ export function ProjectBuild() {
         ...(isProjectLoading || isProjectMissing || !project ? [] : [{ label: 'Build' }]),
       ]}
       header={!isProjectLoading && !isProjectMissing ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowPreview((prev) => !prev)}
-          className="h-8 gap-2 text-xs"
-        >
-          {showPreview ? (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPreview((prev) => !prev)}
+            className="h-8 gap-2 text-xs"
+          >
+            {showPreview ? (
+              <>
+                <MonitorOff className="h-3.5 w-3.5" />
+                Hide Preview
+              </>
+            ) : (
+              <>
+                <Monitor className="h-3.5 w-3.5" />
+                Show Preview
+              </>
+            )}
+          </Button>
+          {showPreview && (
             <>
-              <MonitorOff className="h-3.5 w-3.5" />
-              Hide Preview
-            </>
-          ) : (
-            <>
-              <Monitor className="h-3.5 w-3.5" />
-              Show Preview
+              <div
+                className="flex max-w-[10rem] items-center gap-2 rounded-full bg-muted/70 px-3 py-1.5 text-[11px] text-muted-foreground xl:max-w-[12rem]"
+                title={devServer.url ?? previewHeaderLabel}
+              >
+                <Globe className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-mono">{previewHeaderLabel}</span>
+              </div>
+              <div className="flex items-center gap-1 rounded-full bg-muted/70 p-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-full"
+                  onClick={handlePreviewRefresh}
+                  disabled={devServer.status === 'starting'}
+                  title="Refresh preview"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-full"
+                  onClick={handlePreviewCapture}
+                  disabled={isCapturingPreview || !devServer.url || devServer.status !== 'ready'}
+                  title="Capture screenshot"
+                >
+                  {isCapturingPreview ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-full"
+                  onClick={handlePreviewOpenExternal}
+                  disabled={!devServer.url || devServer.status !== 'ready'}
+                  title="Open in browser"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </>
           )}
-        </Button>
+        </div>
       ) : undefined}
       headerContentInsetClassName="pt-11"
       contentMode="fixed"
@@ -899,12 +1099,16 @@ export function ProjectBuild() {
                     <BuilderConversation
                       project={project}
                       localPath={localPath}
+                      previewUrl={devServer.url}
+                      previewStatus={devServer.status}
                       stopRequestCount={stopRequestCount}
                       onTasksUpdate={handleTasksUpdate}
                       onFileCreated={handleFileCreated}
+                      onPreviewStartRequest={handlePreviewStartRequest}
                       onComplete={handleAIComplete}
                       onError={handleAIError}
                       onBillingError={setBillingError}
+                      onSurfaceError={setSurfaceError}
                       className="h-full"
                     />
                   ) : (
@@ -914,12 +1118,18 @@ export function ProjectBuild() {
                   )}
                   {/* Floating Controls Pill */}
                   <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
-                    {billingError && (
+                    {billingError ? (
                       <BillingError
                         error={billingError}
                         className="mx-auto w-full max-w-2xl"
                       />
-                    )}
+                    ) : surfaceError ? (
+                      <AiSurfaceErrorCard
+                        error={surfaceError}
+                        className="mx-auto w-full max-w-2xl"
+                        onDismiss={() => setSurfaceError(null)}
+                      />
+                    ) : null}
                     <BuilderControlsPill
                       statusMessage={statusMessage}
                       isAIGenerating={isAIGenerating}
@@ -929,7 +1139,6 @@ export function ProjectBuild() {
                       buildTasks={buildTasks}
                       onStop={handleAIStop}
                       onRetry={handleRetry}
-                      onPull={pullFilesFromCloud}
                       onOpenProject={handleOpenProject}
                       onStartBuild={startAIBuild}
                       onCancelProject={handleCancelProject}
@@ -949,9 +1158,9 @@ export function ProjectBuild() {
                     url={devServer.url}
                     error={devServer.error}
                     timeline={devServer.timeline}
+                    refreshToken={previewRefreshToken}
                     onRefresh={devServer.restart}
-                    onCapture={capturePreviewScreenshot}
-                    className="h-full relative panel-fade-border panel-fade-border-left"
+                    className="h-full relative panel-fade-border panel-fade-border-left build-preview-header-bleed [--build-preview-header-bleed:2.75rem]"
                   />
                 </ResizablePanel>
               </>

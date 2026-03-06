@@ -32,8 +32,6 @@ import {
   ExternalLink,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   XCircle,
   Loader2,
 } from 'lucide-react'
@@ -237,14 +235,6 @@ interface SeatWalletView {
   heldCents: number
   availableCents: number
   updatedAt: number | null
-}
-
-interface WalletLedgerView {
-  _id: string
-  kind: string
-  amountCents: number
-  createdAt: number
-  metadata?: Record<string, unknown>
 }
 
 function formatDate(timestamp?: number): string {
@@ -617,8 +607,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [selectedPlanSubtype, setSelectedPlanSubtype] = useState<PlanSubtype>('individual')
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
-  const [walletActivityPage, setWalletActivityPage] = useState(0)
-  const walletActivityPageSize = 5
 
   const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle>('monthly')
   const [checkoutSeatQuantity, setCheckoutSeatQuantity] = useState<number>(STARTUP_MIN_SEATS)
@@ -751,38 +739,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     includedUsagePerCycleCents > 0
       ? Math.max(0, Math.min(100, (includedUsageLeftCents / includedUsagePerCycleCents) * 100))
       : 0
-  const walletLedgerRows = (walletSummary?.ledger ?? []) as WalletLedgerView[]
-  const walletDebitLedgerRows = walletLedgerRows.filter((entry) => entry.kind === 'debit')
-  const pagedWalletLedgerRows = walletDebitLedgerRows.slice(
-    walletActivityPage * walletActivityPageSize,
-    (walletActivityPage + 1) * walletActivityPageSize
-  )
-  const walletActivityTotalPages = Math.max(1, Math.ceil(walletDebitLedgerRows.length / walletActivityPageSize))
-  const getWalletActivityPageNumbers = () => {
-    if (walletActivityTotalPages <= 5) {
-      return Array.from({ length: walletActivityTotalPages }, (_, i) => i + 1)
-    }
-
-    const current = walletActivityPage + 1
-    if (current <= 3) return [1, 2, 3, '...', walletActivityTotalPages]
-    if (current >= walletActivityTotalPages - 2) {
-      return [1, '...', walletActivityTotalPages - 2, walletActivityTotalPages - 1, walletActivityTotalPages]
-    }
-    return [1, '...', current, '...', walletActivityTotalPages]
-  }
-  const activeWalletContextLabel =
-    walletSummary?.walletContexts?.active === 'workspace_seat'
-      ? 'Workspace seat wallet'
-      : walletSummary?.walletContexts?.active === 'personal'
-        ? 'Personal wallet'
-        : 'No active wallet context'
-
-  useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(walletDebitLedgerRows.length / walletActivityPageSize) - 1)
-    if (walletActivityPage > maxPage) {
-      setWalletActivityPage(maxPage)
-    }
-  }, [walletActivityPage, walletDebitLedgerRows.length])
 
   const activeAssignmentsByUserId = useMemo(() => {
     const map = new Set<string>()
@@ -1733,27 +1689,22 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           </CardHeader>
           <CardContent className="pt-0 px-0">
             <div className="rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">Usage left</p>
-                  <p className="text-xs text-muted-foreground">
-                    {includedUsagePerCycleCents > 0
-                      ? hasActiveMaxTrial
-                        ? `${Math.round(includedUsageLeftPercent)}% of your trial allocation remains. Trial usage is capped at ${MAX_TRIAL_INCLUDED_PERCENT}% of the full Max allowance.`
-                        : `${Math.round(includedUsageLeftPercent)}% remaining in this billing cycle.`
-                      : 'Your current plan does not include hosted AI usage.'}
+              <div>
+                <p className="text-sm font-medium">Usage left</p>
+                <p className="text-xs text-muted-foreground">
+                  {includedUsagePerCycleCents > 0
+                    ? hasActiveMaxTrial
+                      ? `${Math.round(includedUsageLeftPercent)}% of your trial allocation remains. Trial usage is capped at ${MAX_TRIAL_INCLUDED_PERCENT}% of the full Max allowance.`
+                      : `${Math.round(includedUsageLeftPercent)}% remaining in this billing cycle.`
+                    : 'Your current plan does not include hosted AI usage.'}
+                </p>
+                {hasActiveMaxTrial ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {maxTrialEndsLabel
+                      ? `Your Max trial ends on ${maxTrialEndsLabel}. Activate paid Max now to unlock the remaining 95% immediately.`
+                      : 'Activate paid Max now to unlock the remaining 95% immediately.'}
                   </p>
-                  {hasActiveMaxTrial ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {maxTrialEndsLabel
-                        ? `Your Max trial ends on ${maxTrialEndsLabel}. Activate paid Max now to unlock the remaining 95% immediately.`
-                        : 'Activate paid Max now to unlock the remaining 95% immediately.'}
-                    </p>
-                  ) : null}
-                </div>
-                <span className="text-sm font-medium tabular-nums">
-                  {Math.round(includedUsageLeftPercent)}%
-                </span>
+                ) : null}
               </div>
               <Progress value={includedUsageLeftPercent} className="mt-3 h-2.5" />
               {hasActiveMaxTrial ? (
@@ -1771,103 +1722,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 </div>
               ) : null}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader className="pt-0 px-0 pb-4">
-            <CardTitle>AI Wallet Activity</CardTitle>
-            <CardDescription>
-              Recent debit wallet events for the currently selected wallet context.
-            </CardDescription>
-            <p className="text-xs text-muted-foreground">{activeWalletContextLabel}</p>
-          </CardHeader>
-          <CardContent className="pt-0 px-0">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-              <Table className="[&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead className="text-right">Details</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {walletDebitLedgerRows.length > 0 ? (
-                    pagedWalletLedgerRows.map((entry) => {
-                      const isDebit = entry.kind === 'debit'
-                      const amountPrefix = isDebit ? '-' : '+'
-                      const modelUsed =
-                        typeof entry.metadata?.model === 'string' && entry.metadata.model.trim().length > 0
-                          ? entry.metadata.model
-                          : typeof entry.metadata?.modelId === 'string' && entry.metadata.modelId.trim().length > 0
-                            ? entry.metadata.modelId
-                            : '-'
-
-                      return (
-                        <TableRow key={entry._id}>
-                          <TableCell>{formatDate(entry.createdAt)}</TableCell>
-                          <TableCell>
-                            {amountPrefix}{formatCurrencyFromCents(entry.amountCents, walletCurrency)}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            <span className="font-mono text-sm">{modelUsed}</span>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
-                        No debit wallet activity yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            {walletDebitLedgerRows.length > walletActivityPageSize && (
-              <div className="mt-4 flex items-center justify-between px-4 py-3">
-                <p className="text-sm text-muted-foreground">
-                  Showing <span className="font-medium">{walletActivityPage * walletActivityPageSize + 1}-{Math.min((walletActivityPage + 1) * walletActivityPageSize, walletDebitLedgerRows.length)}</span> of <span className="font-medium">{walletDebitLedgerRows.length}</span> entries
-                </p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setWalletActivityPage((page) => page - 1)}
-                    disabled={walletActivityPage === 0}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  {getWalletActivityPageNumbers().map((pageNumber, index) => (
-                    typeof pageNumber === 'number' ? (
-                      <Button
-                        key={index}
-                        variant={walletActivityPage + 1 === pageNumber ? 'default' : 'secondary'}
-                        size="icon"
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => setWalletActivityPage(pageNumber - 1)}
-                      >
-                        {pageNumber}
-                      </Button>
-                    ) : (
-                      <span key={index} className="px-2 text-muted-foreground">...</span>
-                    )
-                  ))}
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setWalletActivityPage((page) => page + 1)}
-                    disabled={walletActivityPage + 1 >= walletActivityTotalPages}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 

@@ -53,9 +53,8 @@ export function ContextDisplay({
 }: ContextDisplayProps) {
   const contextWindow = maxTokens ?? getContextWindowSize(modelId);
   const usedTokens =
-    (usage.inputTokens ?? 0) +
-    (usage.outputTokens ?? 0) +
-    (usage.reasoningTokens ?? 0);
+    usage.totalTokens ??
+    ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0));
 
   // Check for cache usage (may be in inputTokenDetails)
   const hasCacheUsage =

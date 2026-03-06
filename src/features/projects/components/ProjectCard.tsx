@@ -287,8 +287,6 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     // Derived state
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
-    const showInlineSyncSpinner = syncState === 'checking' || syncState === 'syncing'
-
     return (
         <div className="h-full">
                 <Card
@@ -360,18 +358,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                             )}
                         </div>
                     )}
-
-                    {/* Sync Badge positioned over preview */}
-                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath && syncState === 'idle' && (
-                        <div onClick={(e) => e.stopPropagation()} className="absolute top-2 right-2 z-10">
-                            <ProjectDiffBadge
-                                projectId={project._id}
-                                projectSlug={project.slug}
-                                localPath={localPath}
-                                lastSyncAt={project.lastSyncAt}
-                            />
-                        </div>
-                    )}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-t-xl border-x border-t border-black/[0.08] dark:border-transparent" />
                 </div>
 
                 {/* Progress bar at the border between preview and content */}
@@ -463,8 +450,16 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                                 <div className="flex items-center gap-1.5">
                                     <Clock className="h-3 w-3" />
                                     <span>{project.updatedAt ? formatRelativeTime(project.updatedAt) : 'now'}</span>
-                                    {showInlineSyncSpinner ? (
-                                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                    {project.status !== 'draft' && shouldHydrateSyncStatus && localPath ? (
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            <ProjectDiffBadge
+                                                projectId={project._id}
+                                                projectSlug={project.slug}
+                                                localPath={localPath}
+                                                lastSyncAt={project.lastSyncAt}
+                                                size="compact"
+                                            />
+                                        </div>
                                     ) : null}
                                 </div>
                             </div>

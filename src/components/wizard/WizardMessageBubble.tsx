@@ -188,11 +188,7 @@ function WizardMessageBubbleComponent({ message, toolsByName, status }: WizardMe
       <MessageContent>
         {message.parts.map((part, index) => {
           if (part.type === 'step-start') {
-            return (
-              <div key={`${message.id}-step-${index}`} className="py-2">
-                <div className="h-px bg-border" />
-              </div>
-            )
+            return null
           }
 
           if (part.type === 'text') {

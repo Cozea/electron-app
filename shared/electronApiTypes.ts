@@ -49,6 +49,29 @@ export interface LocalProject {
   lastModified: number
 }
 
+export interface StorageProjectsPage {
+  items: LocalProject[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export interface StorageSnapshot {
+  projectsDirectory: string
+  usage: StorageUsage
+  projects: StorageProjectsPage
+  updatedAt: number
+  fromCache: boolean
+}
+
+export interface StorageActionResult {
+  success: boolean
+  error?: string
+  clearedBytes?: number
+  deletedCount?: number
+}
+
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
 // Current release supports web target only.
@@ -932,8 +955,14 @@ export interface ElectronAPI {
     showMessageBox: (options: import('electron').MessageBoxOptions) => Promise<import('electron').MessageBoxReturnValue>
   }
   storage: {
+    getSnapshot: (options?: { page?: number; pageSize?: number; forceRefresh?: boolean }) => Promise<StorageSnapshot>
     getUsage: () => Promise<StorageUsage>
     listProjects: () => Promise<LocalProject[]>
+    openProjectsDirectory: () => Promise<StorageActionResult>
+    clearCache: () => Promise<StorageActionResult>
+    clearLogs: () => Promise<StorageActionResult>
+    deleteProject: (options: { projectPath: string }) => Promise<StorageActionResult>
+    clearAll: () => Promise<StorageActionResult>
   }
   window: {
     isFullScreen: () => Promise<boolean>

@@ -36,7 +36,6 @@ interface BuilderControlsPillProps {
   // Actions
   onStop?: () => void
   onRetry?: () => void
-  onPull?: () => void
   onOpenProject?: () => void
   onStartBuild?: () => void
   onCancelProject?: () => void
@@ -52,7 +51,6 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
   buildTasks,
   onStop,
   onRetry,
-  onPull,
   onOpenProject,
   onStartBuild,
   onCancelProject,
@@ -122,7 +120,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
                 {isPulling ? 'Syncing from cloud...' : (inProgressTask?.activeForm || statusMessage)}
               </span>
               {totalCount > 0 && (
-                <span className="text-xs text-muted-foreground shrink-0">
+                <span className="shrink-0 rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
                   {completedCount}/{totalCount}
                 </span>
               )}
@@ -153,17 +151,6 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
 
             {isAIComplete && !isPulling && !isAIGenerating && (
               <>
-                {onPull && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={onPull}
-                    className="h-8 gap-1.5 rounded-full"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Pull
-                  </Button>
-                )}
                 {onOpenProject && (
                   <Button
                     variant="secondary"

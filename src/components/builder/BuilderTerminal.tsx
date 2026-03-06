@@ -5,44 +5,36 @@ import '@xterm/xterm/css/xterm.css'
 import { cn } from '@/lib/utils'
 import { TerminalIcon, CopyIcon, CheckIcon, Square, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { getThemeColorHex, syncTerminalTheme } from '@/lib/xtermTheme'
 
-const colorToHex = (cssColor: string): string => {
-  const canvas = document.createElement('canvas')
-  canvas.width = 1
-  canvas.height = 1
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return '#000000'
+const buildBuilderTerminalTheme = (container: HTMLElement) => {
+  const background = getThemeColorHex(container, '--tool-surface', '#1a1a1a')
+  const foreground = getThemeColorHex(container, '--tool-surface-foreground', '#fafafa')
+  const muted = getThemeColorHex(container, '--muted', '#27272a')
 
-  ctx.fillStyle = cssColor
-  ctx.fillRect(0, 0, 1, 1)
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-}
-
-const resolveThemeColor = (container: HTMLElement, cssVar: string, fallback: string): string => {
-  const localComputed = getComputedStyle(container).getPropertyValue(cssVar).trim()
-  const themeRoot = container.closest('.dark, .navy, .wine, .clay, .forest') || document.documentElement
-  const rootComputed = getComputedStyle(themeRoot).getPropertyValue(cssVar).trim()
-  const computed = localComputed || rootComputed
-
-  if (!computed) return fallback
-
-  const tempDiv = document.createElement('div')
-  tempDiv.style.position = 'absolute'
-  tempDiv.style.visibility = 'hidden'
-  tempDiv.style.backgroundColor = computed
-  document.body.appendChild(tempDiv)
-  const resolvedColor = getComputedStyle(tempDiv).backgroundColor
-  document.body.removeChild(tempDiv)
-
-  if (!resolvedColor || resolvedColor === 'rgba(0, 0, 0, 0)' || resolvedColor === 'transparent') {
-    return fallback
+  return {
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: muted,
+    black: muted,
+    red: '#f87171',
+    green: '#4ade80',
+    yellow: '#facc15',
+    blue: '#60a5fa',
+    magenta: '#c084fc',
+    cyan: '#22d3ee',
+    white: foreground,
+    brightBlack: '#52525b',
+    brightRed: '#fca5a5',
+    brightGreen: '#86efac',
+    brightYellow: '#fde047',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#d8b4fe',
+    brightCyan: '#67e8f9',
+    brightWhite: foreground,
   }
-  return resolvedColor
-}
-
-const getThemeColorHex = (container: HTMLElement, cssVar: string, fallback: string): string => {
-  return colorToHex(resolveThemeColor(container, cssVar, fallback))
 }
 
 export interface BuilderTerminalProps {
@@ -98,34 +90,8 @@ export const BuilderTerminal = memo(function BuilderTerminal({
     const rows = Math.max(10, Math.floor((rect.height - 8) / charHeight))
 
     // Match chat tool surface tokens so builder terminal visualizations stay in parity.
-    const background = getThemeColorHex(container, '--tool-surface', '#1a1a1a')
-    const foreground = getThemeColorHex(container, '--tool-surface-foreground', '#fafafa')
-    const muted = getThemeColorHex(container, '--muted', '#27272a')
-
     const term = new Terminal({
-      theme: {
-        background,
-        foreground,
-        cursor: foreground,
-        cursorAccent: background,
-        selectionBackground: muted,
-        black: muted,
-        red: '#f87171',
-        green: '#4ade80',
-        yellow: '#facc15',
-        blue: '#60a5fa',
-        magenta: '#c084fc',
-        cyan: '#22d3ee',
-        white: foreground,
-        brightBlack: '#52525b',
-        brightRed: '#fca5a5',
-        brightGreen: '#86efac',
-        brightYellow: '#fde047',
-        brightBlue: '#93c5fd',
-        brightMagenta: '#d8b4fe',
-        brightCyan: '#67e8f9',
-        brightWhite: foreground,
-      },
+      theme: buildBuilderTerminalTheme(container),
       cols,
       rows,
       fontSize: 12,
@@ -191,6 +157,14 @@ export const BuilderTerminal = memo(function BuilderTerminal({
     }
   }, [terminalId, command, onComplete])
 
+  useEffect(() => {
+    const container = containerRef.current
+    const term = terminalRef.current
+    if (!container || !term) return
+
+    return syncTerminalTheme(term, () => buildBuilderTerminalTheme(container))
+  }, [terminalId])
+
   // Handle resize
   useEffect(() => {
     const container = containerRef.current
@@ -237,18 +211,18 @@ export const BuilderTerminal = memo(function BuilderTerminal({
   return (
     <div
       className={cn(
-        'rounded-lg bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] overflow-hidden transition-all',
+        'w-full rounded-2xl bg-[var(--tool-surface)] text-[var(--tool-surface-foreground)] overflow-hidden transition-all',
         isExpanded ? 'h-96' : 'h-48',
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[color:var(--tool-divider)] px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <TerminalIcon className="h-4 w-4" />
+      <div className="flex min-h-8 items-center justify-between px-3 py-1">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <TerminalIcon className="h-3.5 w-3.5" />
           <span>Terminal</span>
           {isRunning && (
-            <span className="ml-2 flex items-center gap-1 text-xs text-emerald-600">
+            <span className="ml-1.5 flex items-center gap-1 text-[11px] text-emerald-600">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Running
             </span>
@@ -259,44 +233,52 @@ export const BuilderTerminal = memo(function BuilderTerminal({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-red-500"
+              className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-red-500"
               onClick={handleStop}
               title="Stop process"
             >
               <Square className="h-3 w-3" />
             </Button>
           )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? (
+                <Minimize2 className="h-3 w-3" />
+              ) : (
+                <Maximize2 className="h-3 w-3" />
+              )}
+            </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            {isExpanded ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={handleCopy}
             title="Copy output"
           >
-            {isCopied ? <CheckIcon className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}
+            {isCopied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
           </Button>
         </div>
       </div>
 
       {/* Terminal content */}
       <div
-        ref={containerRef}
-        className="h-[calc(100%-36px)] overflow-hidden"
+        className="relative h-[calc(100%-32px)] overflow-hidden"
         onClick={() => terminalRef.current?.focus()}
-      />
+      >
+        <div
+          ref={containerRef}
+          className="h-full overflow-hidden"
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-5"
+          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
+        />
+      </div>
     </div>
   )
 })

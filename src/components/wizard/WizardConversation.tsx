@@ -110,6 +110,7 @@ import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
 import { PlanSelector, type PlanOption } from './PlanSelector'
 import { BillingError } from '@/components/assistant/BillingError'
+import { AiSurfaceErrorCard } from '@/components/assistant/AiSurfaceErrorCard'
 import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import type { ModelOption } from '@/lib/ai/modelOptions'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
@@ -119,6 +120,7 @@ import {
   type ModelApiResponse,
 } from '@/lib/ai/modelCatalogClient'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
+import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
 import {
   buildEncodedProviderAuthHeader,
   inferProviderFromModelId,
@@ -172,6 +174,7 @@ interface UsageData {
   totalTokens?: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  cacheWriteTokens?: number
   spendCents?: number
   runtime?: 'local' | 'remote'
   durationMs?: number
@@ -746,28 +749,42 @@ export function WizardConversation({
     if (typeof error === 'string' && (error as string).trim()) return error as string
     return 'Something went wrong'
   }, [error, billingError, retryHint])
+  const retrySurfaceError = useMemo(() => getRetryHintSurfaceError(retryHint), [retryHint])
+  const retrySurfaceErrorKey = useMemo(() => {
+    if (!retrySurfaceError) return null
+    return [
+      retrySurfaceError.code,
+      retrySurfaceError.title,
+      retrySurfaceError.message,
+      retrySurfaceError.hint ?? '',
+    ].join('|')
+  }, [retrySurfaceError])
 
   const serviceErrorMessage =
     modelsError ||
     toolsError ||
     (providerRequiresLocalAuth ? providerAuthError : null)
-  const surfaceErrorMessage = serviceErrorMessage || genericErrorMessage
+  const surfaceErrorMessage = retrySurfaceError ? serviceErrorMessage : (serviceErrorMessage || genericErrorMessage)
 
   const genericErrorRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!surfaceErrorMessage) {
+    const currentSurfaceKey = retrySurfaceErrorKey || surfaceErrorMessage
+    if (!currentSurfaceKey) {
       genericErrorRef.current = null
       setDismissedError(null)
       return
     }
-    if (surfaceErrorMessage !== genericErrorRef.current) {
-      genericErrorRef.current = surfaceErrorMessage
+    if (currentSurfaceKey !== genericErrorRef.current) {
+      genericErrorRef.current = currentSurfaceKey
       setDismissedError(null)
     }
-  }, [surfaceErrorMessage])
+  }, [retrySurfaceErrorKey, surfaceErrorMessage])
 
   const showGenericError = Boolean(
     surfaceErrorMessage && dismissedError !== surfaceErrorMessage
+  )
+  const showRetrySurfaceError = Boolean(
+    retrySurfaceError && retrySurfaceErrorKey && dismissedError !== retrySurfaceErrorKey
   )
 
   const canSendMessage = Boolean(
@@ -888,8 +905,10 @@ export function WizardConversation({
   const accumulatedUsage = useMemo(() => {
     let inputTokens = 0
     let outputTokens = 0
+    let totalTokens = 0
     let reasoningTokens = 0
     let cachedInputTokens = 0
+    let cacheWriteTokens = 0
     let usageSpendCents = 0
     const runCosts = new Map<string, number>()
 
@@ -900,8 +919,10 @@ export function WizardConversation({
           if (data) {
             inputTokens += data.promptTokens ?? 0
             outputTokens += data.completionTokens ?? 0
+            totalTokens += data.totalTokens ?? ((data.promptTokens ?? 0) + (data.completionTokens ?? 0))
             reasoningTokens += data.reasoningTokens ?? 0
             cachedInputTokens += data.cachedInputTokens ?? 0
+            cacheWriteTokens += data.cacheWriteTokens ?? 0
             usageSpendCents += Math.max(0, data.spendCents ?? 0)
           }
         }
@@ -919,7 +940,6 @@ export function WizardConversation({
       }
     }
 
-    const totalTokens = inputTokens + outputTokens
     const totalCostUsd =
       runCosts.size > 0
         ? Array.from(runCosts.values()).reduce((sum, value) => sum + value, 0)
@@ -935,12 +955,12 @@ export function WizardConversation({
         reasoningTokens: reasoningTokens || undefined,
         cachedInputTokens: cachedInputTokens || undefined,
         inputTokenDetails: {
-          noCacheTokens: inputTokens - cachedInputTokens,
+          noCacheTokens: Math.max(0, inputTokens - cachedInputTokens - cacheWriteTokens),
           cacheReadTokens: cachedInputTokens || undefined,
-          cacheWriteTokens: undefined,
+          cacheWriteTokens: cacheWriteTokens || undefined,
         },
         outputTokenDetails: {
-          textTokens: outputTokens - reasoningTokens,
+          textTokens: Math.max(0, outputTokens - reasoningTokens),
           reasoningTokens: reasoningTokens || undefined,
         },
       },
@@ -1071,6 +1091,12 @@ export function WizardConversation({
               error={billingError as any}
               onAction={(href) => navigate(href)}
               className="border-0 border-b rounded-none p-3"
+            />
+          ) : showRetrySurfaceError && retrySurfaceError ? (
+            <AiSurfaceErrorCard
+              error={retrySurfaceError}
+              className="border-0 border-b rounded-none p-3"
+              onDismiss={() => setDismissedError(retrySurfaceErrorKey)}
             />
           ) : showGenericError && surfaceErrorMessage && (
             <div className="flex items-start gap-3 bg-destructive/10 text-destructive border-b border-destructive/30 px-3 py-2">

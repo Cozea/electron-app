@@ -14,6 +14,7 @@ interface ProjectDiffBadgeProps {
   projectSlug: string
   localPath: string | null
   lastSyncAt?: number
+  size?: 'default' | 'compact'
   className?: string
 }
 
@@ -22,6 +23,7 @@ export function ProjectDiffBadge({
   projectSlug,
   localPath,
   lastSyncAt,
+  size = 'default',
   className,
 }: ProjectDiffBadgeProps) {
   const diffStatus = useProjectDiffStatus({
@@ -39,9 +41,14 @@ export function ProjectDiffBadge({
     return (
       <Badge
         variant="secondary"
-        className={cn("flex size-5 items-center justify-center rounded-full p-0", className)}
+        className={cn(
+          size === 'compact'
+            ? "flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 py-0 text-[10px]"
+            : "flex size-5 items-center justify-center rounded-full p-0",
+          className
+        )}
       >
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <Loader2 className={cn(size === 'compact' ? 'h-2.5 w-2.5 animate-spin' : 'h-3 w-3 animate-spin')} />
       </Badge>
     )
   }
@@ -61,7 +68,9 @@ export function ProjectDiffBadge({
         <Badge
           variant={variant}
           className={cn(
-            "flex size-6 items-center justify-center rounded-full p-0 text-xs font-medium",
+            size === 'compact'
+              ? "flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 py-0 text-[10px] font-medium"
+              : "flex size-6 items-center justify-center rounded-full p-0 text-xs font-medium",
             !hasConflicts && "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700",
             className
           )}

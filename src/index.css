@@ -201,6 +201,12 @@ body {
   background-repeat: no-repeat;
 }
 
+.build-preview-header-bleed.panel-fade-border::before,
+.build-preview-header-bleed.panel-fade-border::after {
+  top: calc(-1 * var(--build-preview-header-bleed, 2.75rem));
+  z-index: 45;
+}
+
 /* Unified page-action sizing inside shared/universal header slots. */
 .shared-header-action-pills :where([data-slot="button"], button, [role="button"]) {
   height: 1.5rem !important;

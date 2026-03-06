@@ -174,7 +174,12 @@ export function ProjectSidebar({
     className,
     ...props
 }: ProjectSidebarProps) {
-    const applyWindowControlsInset = isMacClient()
+    const isMacPlatform =
+        typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
+            ? true
+            : isMacClient()
+    const [isFullScreen, setIsFullScreen] = React.useState(false)
+    const applyWindowControlsInset = isMacPlatform && !isFullScreen
     const navigate = useViewTransitionNavigate()
     const { slug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const location = useLocation()
@@ -215,6 +220,29 @@ export function ProjectSidebar({
     React.useEffect(() => {
         setActiveTab(routeActiveTab)
     }, [routeActiveTab])
+
+    React.useEffect(() => {
+        if (!isMacPlatform) return
+
+        let isMounted = true
+
+        void window.electronAPI?.window?.isFullScreen?.()
+            .then((fullScreen) => {
+                if (isMounted) setIsFullScreen(Boolean(fullScreen))
+            })
+            .catch(() => {
+                if (isMounted) setIsFullScreen(false)
+            })
+
+        const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullScreen) => {
+            if (isMounted) setIsFullScreen(Boolean(fullScreen))
+        })
+
+        return () => {
+            isMounted = false
+            cleanup?.()
+        }
+    }, [isMacPlatform])
 
     // Track last seen timestamp for sync feed (triggers re-render when updated)
     const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
