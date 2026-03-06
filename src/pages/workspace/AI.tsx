@@ -246,16 +246,6 @@ const formatTokens = (tokens: number): string => {
   return tokens.toString()
 }
 
-const formatCurrencyFromCents = (cents: number, currency: string = 'USD'): string => {
-  const normalized = Number.isFinite(cents) ? cents : 0
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(normalized / 100)
-}
-
 const usageChartConfig: ChartConfig = {
   tokens: {
     label: 'Tokens',
@@ -498,16 +488,7 @@ export function AI({ surface = 'page' }: AIProps) {
   // Get aggregate usage data
   const aggregate = usageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens || 0
-  const walletAvailableCents = walletSummary?.wallet?.availableCents ?? 0
   const walletTotalDebitedCents = walletSummary?.wallet?.totalDebitedCents ?? 0
-  const walletIncludedCents = walletSummary?.includedCentsPerCycle ?? 0
-  const walletCurrency = walletSummary?.wallet?.currency ?? 'USD'
-  const activeWalletContext =
-    walletSummary?.walletContexts?.active === 'workspace_seat'
-      ? 'Workspace seat wallet'
-      : walletSummary?.walletContexts?.active === 'personal'
-        ? 'Personal wallet'
-        : 'No active wallet'
   const now = Date.now()
   const chartData = useMemo<UsagePoint[]>(() => {
     const daysToShow =
@@ -676,19 +657,6 @@ export function AI({ surface = 'page' }: AIProps) {
                 {formatTokens(totalTokens)}
               </p>
             </div>
-
-            <div className="sm:flex-1 px-6 py-2">
-              <p className="text-sm text-muted-foreground mb-1">AI Wallet (Available)</p>
-              <p className="text-2xl font-semibold">
-                {formatCurrencyFromCents(walletAvailableCents, walletCurrency)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">{activeWalletContext}</p>
-              <p className="text-xs text-muted-foreground">
-                {walletIncludedCents > 0
-                  ? `${formatCurrencyFromCents(walletIncludedCents, walletCurrency)} included each cycle`
-                  : 'No included wallet on current context'}
-              </p>
-            </div>
           </div>
         </div>
 
@@ -767,6 +735,103 @@ export function AI({ surface = 'page' }: AIProps) {
               </ChartContainer>
             </div>
 
+          </CardContent>
+        </Card>
+
+        {/* Usage History */}
+        <Card className="border-none shadow-none bg-transparent">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Usage History
+            </CardTitle>
+            <CardDescription>
+              Recent AI usage across your organization
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 py-0 overflow-hidden">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <Table className="w-full [&_th]:px-4 [&_td]:px-4">
+                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[12%]">Date</TableHead>
+                    <TableHead className="w-[18%]">Provider</TableHead>
+                    <TableHead className="w-[44%]">Model</TableHead>
+                    <TableHead className="w-[14%] text-right">Requests</TableHead>
+                    <TableHead className="w-[14%] text-right">Tokens</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
+                  {(recentUsage ?? []).length > 0 ? (
+                    (recentUsage ?? [])
+                      .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
+                      .map((usage) => (
+                        <TableRow key={usage._id}>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <ProviderIcon
+                                provider={usage.provider}
+                                className="h-4 w-4"
+                              />
+                              <span className="capitalize">{usage.provider}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm">{usage.model}</span>
+                          </TableCell>
+                          <TableCell className="text-right">1</TableCell>
+                          <TableCell className="text-right">
+                            {(usage.totalTokens || 0).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
+                        {recentUsage === undefined
+                          ? 'Loading usage history...'
+                          : walletTotalDebitedCents > 0
+                            ? 'Wallet charges exist but usage rows are missing. The AI usage ingestion route may not be deployed on your server yet.'
+                            : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {recentUsage && recentUsage.length > usagePageSize && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
+                <span className="text-sm text-muted-foreground">
+                  {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setUsagePage(p => p - 1)}
+                    disabled={usagePage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setUsagePage(p => p + 1)}
+                    disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -925,103 +990,6 @@ export function AI({ surface = 'page' }: AIProps) {
                     className="h-8 w-8 rounded-full"
                     onClick={() => setProviderPage((p) => p + 1)}
                     disabled={(providerPage + 1) * providerPageSize >= providerRows.length}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Usage History */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Usage History
-            </CardTitle>
-            <CardDescription>
-              Recent AI usage across your organization
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 py-0 overflow-hidden">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
-              <Table className="w-full [&_th]:px-4 [&_td]:px-4">
-                <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[12%]">Date</TableHead>
-                    <TableHead className="w-[18%]">Provider</TableHead>
-                    <TableHead className="w-[44%]">Model</TableHead>
-                    <TableHead className="w-[14%] text-right">Requests</TableHead>
-                    <TableHead className="w-[14%] text-right">Tokens</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {(recentUsage ?? []).length > 0 ? (
-                    (recentUsage ?? [])
-                      .slice(usagePage * usagePageSize, (usagePage + 1) * usagePageSize)
-                      .map((usage) => (
-                        <TableRow key={usage._id}>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(usage.timestamp).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <ProviderIcon
-                                provider={usage.provider}
-                                className="h-4 w-4"
-                              />
-                              <span className="capitalize">{usage.provider}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm">{usage.model}</span>
-                          </TableCell>
-                          <TableCell className="text-right">1</TableCell>
-                          <TableCell className="text-right">
-                            {(usage.totalTokens || 0).toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                        {recentUsage === undefined
-                          ? 'Loading usage history...'
-                          : walletTotalDebitedCents > 0
-                            ? 'Wallet charges exist but usage rows are missing. The AI usage ingestion route may not be deployed on your server yet.'
-                            : 'No usage history yet. AI usage will appear here as your team uses AI features.'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            {recentUsage && recentUsage.length > usagePageSize && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border/60">
-                <span className="text-sm text-muted-foreground">
-                  {usagePage * usagePageSize + 1}-{Math.min((usagePage + 1) * usagePageSize, recentUsage.length)} of {recentUsage.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setUsagePage(p => p - 1)}
-                    disabled={usagePage === 0}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    onClick={() => setUsagePage(p => p + 1)}
-                    disabled={(usagePage + 1) * usagePageSize >= recentUsage.length}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
