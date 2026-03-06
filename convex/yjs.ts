@@ -3,7 +3,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import * as Y from "yjs"
-import { applyStorageDeltas } from "./lib/workspaceLimits"
+import { applyProjectStorageDeltas } from "./lib/workspaceLimits"
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
@@ -107,7 +107,7 @@ async function insertSequencedUpdate(
     timestamp: args.timestamp ?? Date.now(),
   })
 
-  await applyStorageDeltas(ctx, project.organizationId, {
+  await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
     collaborationData: args.update.byteLength,
   })
 
@@ -285,7 +285,7 @@ export const saveSnapshot = mutation({
       createdAt: Date.now(),
     })
 
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
       snapshots: args.snapshot.byteLength,
     })
   },
@@ -318,7 +318,7 @@ export const cleanupOldUpdates = mutation({
     }
 
     if (deletedBytes > 0) {
-      await applyStorageDeltas(ctx, project.organizationId, {
+      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
         collaborationData: -deletedBytes,
       })
     }
@@ -416,7 +416,7 @@ export const maybeCompactProject = mutation({
         0
       )
 
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
       collaborationData: -removedUpdateBytes,
       snapshots: snapshot.byteLength - removedSnapshotBytes,
     })

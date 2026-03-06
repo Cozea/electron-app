@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 import { internalMutation, mutation, query } from "./_generated/server"
 import {
-  applyStorageDeltas,
+  applyProjectStorageDeltas,
   estimateAiConversationBytes,
 } from "./lib/workspaceLimits"
 
@@ -47,7 +47,7 @@ export const create = mutation({
       updatedAt: now,
     })
 
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, projectId, {
       aiHistory: estimateAiConversationBytes({
         title: conversationTitle,
         messages: [],
@@ -159,7 +159,7 @@ export const saveMessages = mutation({
     }
 
     await ctx.db.patch(conversationId, updates)
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, existing.projectId, {
       aiHistory: nextBytes - previousBytes,
     })
   },
@@ -197,7 +197,7 @@ export const updateTitle = mutation({
       title: args.title,
       updatedAt: Date.now(),
     })
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, existing.projectId, {
       aiHistory: nextBytes - previousBytes,
     })
   },
@@ -252,7 +252,7 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.id)
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, existing.projectId, {
       aiHistory: -estimateAiConversationBytes({
         title: existing.title,
         messages: existing.messages,

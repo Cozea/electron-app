@@ -82,6 +82,7 @@ export function WorkspaceSelect() {
                 return (
                   <TableRow
                     key={org.organizationId}
+                    data-interactive="true"
                     data-state={isCurrent ? 'selected' : undefined}
                     tabIndex={0}
                     onClick={() => handleSelectWorkspace(org.organizationId)}

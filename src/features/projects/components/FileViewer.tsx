@@ -15,17 +15,20 @@ import {
 } from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useFileTabsStore } from '@/stores/useFileTabsStore'
+import { isBareProjectSourceReference, resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
 
 interface FileViewerProps {
   path: string
 }
 
 export function FileViewer({ path }: FileViewerProps) {
-  const { project, slugParam } = useAccessibleProject()
-  const [searchParams] = useSearchParams()
+  const { project, slugParam, projectIdParam } = useAccessibleProject()
+  const [searchParams, setSearchParams] = useSearchParams()
   const editorActions = useEditorStore((state) => state.actions)
   const model = useEditorStore((state) => state.models[path])
   const syncContext = useOptionalProjectSyncContext()
+  const fileTabActions = useFileTabsStore((state) => state.actions)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +40,17 @@ export function FileViewer({ path }: FileViewerProps) {
   const [reloadToken, setReloadToken] = useState(0)
   const loadRequestIdRef = useRef(0)
   const displayModel = useEditorStore((state) => state.models[displayPath])
-  const projectSlug = project?.slug ?? slugParam ?? null
+  const projectSlug = project?.slug ?? slugParam ?? projectIdParam ?? null
+
+  const repairBrokenPath = useCallback((resolvedPath: string) => {
+    if (!projectSlug || resolvedPath === path) return
+
+    fileTabActions.replaceFilePath(projectSlug, path, resolvedPath)
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('path', resolvedPath)
+    setSearchParams(nextParams, { replace: true })
+  }, [fileTabActions, path, projectSlug, searchParams, setSearchParams])
 
   // Callback when editor is ready
   const handleEditorReady = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
@@ -133,6 +146,27 @@ export function FileViewer({ path }: FileViewerProps) {
         if (requestId !== loadRequestIdRef.current) return
 
         if (!result.success) {
+          if (isBareProjectSourceReference(path)) {
+            const recoveredPath = await resolveProjectSourcePath(path, localPath)
+            if (requestId !== loadRequestIdRef.current) return
+
+            if (recoveredPath && recoveredPath !== relativePath) {
+              const recoveredResult = await window.electronAPI.project.readFile({
+                projectPath: localPath,
+                filePath: recoveredPath,
+              })
+
+              if (requestId !== loadRequestIdRef.current) return
+
+              if (recoveredResult.success && typeof recoveredResult.content === 'string') {
+                repairBrokenPath(recoveredPath)
+                editorActions.openFile(recoveredPath, recoveredResult.content, localPath)
+                setDisplayPath(recoveredPath)
+                return
+              }
+            }
+          }
+
           setError(result.error || 'Failed to read file')
           return
         }
@@ -160,7 +194,7 @@ export function FileViewer({ path }: FileViewerProps) {
         loadRequestIdRef.current += 1
       }
     }
-  }, [path, projectSlug, syncContext?.projectPath, model, editorActions, reloadToken])
+  }, [path, projectSlug, syncContext?.projectPath, model, editorActions, reloadToken, repairBrokenPath])
 
   const handleRetry = () => {
     setError(null)

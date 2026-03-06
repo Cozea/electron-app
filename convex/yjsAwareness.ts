@@ -1,9 +1,31 @@
+import type { MutationCtx } from "./_generated/server"
 import { internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 
 // Keep awareness reasonably fresh to avoid "ghost cursors".
 // Clients republish periodically to stay active.
 const AWARENESS_TIMEOUT_MS = 45 * 1000
+const AWARENESS_CLEANUP_BATCH_SIZE = 1000
+
+async function deleteExpiredAwarenessBatch(ctx: MutationCtx) {
+  const now = Date.now()
+  const stale = await ctx.db
+    .query("yjsAwareness")
+    .withIndex("by_updated_at", (q) => q.lt("updatedAt", now - 2 * AWARENESS_TIMEOUT_MS))
+    .order("asc")
+    .take(AWARENESS_CLEANUP_BATCH_SIZE)
+
+  let deleted = 0
+  for (const entry of stale) {
+    const expiresAt = entry.expiresAt ?? entry.updatedAt + AWARENESS_TIMEOUT_MS
+    if (expiresAt <= now) {
+      await ctx.db.delete(entry._id)
+      deleted += 1
+    }
+  }
+
+  return { deleted }
+}
 
 /**
  * Upsert the latest awareness update for a client in a project.
@@ -88,44 +110,10 @@ export const getActiveAwareness = query({
 
 export const cleanupExpiredAwareness = mutation({
   args: {},
-  handler: async (ctx) => {
-    const now = Date.now()
-    const stale = await ctx.db
-      .query("yjsAwareness")
-      .withIndex("by_updated_at", (q) => q.lt("updatedAt", now - 2 * AWARENESS_TIMEOUT_MS))
-      .collect()
-
-    let deleted = 0
-    for (const entry of stale) {
-      const expiresAt = entry.expiresAt ?? entry.updatedAt + AWARENESS_TIMEOUT_MS
-      if (expiresAt <= now) {
-        await ctx.db.delete(entry._id)
-        deleted += 1
-      }
-    }
-
-    return { deleted }
-  },
+  handler: async (ctx) => await deleteExpiredAwarenessBatch(ctx),
 })
 
 export const cleanupExpiredAwarenessInternal = internalMutation({
   args: {},
-  handler: async (ctx) => {
-    const now = Date.now()
-    const stale = await ctx.db
-      .query("yjsAwareness")
-      .withIndex("by_updated_at", (q) => q.lt("updatedAt", now - 2 * AWARENESS_TIMEOUT_MS))
-      .collect()
-
-    let deleted = 0
-    for (const entry of stale) {
-      const expiresAt = entry.expiresAt ?? entry.updatedAt + AWARENESS_TIMEOUT_MS
-      if (expiresAt <= now) {
-        await ctx.db.delete(entry._id)
-        deleted += 1
-      }
-    }
-
-    return { deleted }
-  },
+  handler: async (ctx) => await deleteExpiredAwarenessBatch(ctx),
 })

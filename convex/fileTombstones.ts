@@ -166,7 +166,7 @@ export const cleanupAllExpiredTombstones = internalMutation({
     // Get all expired tombstones
     const expired = await ctx.db
       .query("fileTombstones")
-      .filter((q) => q.lt(q.field("expiresAt"), now))
+      .withIndex("by_expires_at", (q) => q.lt("expiresAt", now))
       .collect()
 
     for (const tombstone of expired) {

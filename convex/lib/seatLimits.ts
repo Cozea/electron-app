@@ -88,7 +88,7 @@ export async function checkSeatLimit(
     }
   }
 
-  const plan = org.subscription.plan
+  const plan = org.subscription?.plan ?? "free"
   const limit = getPlanMemberLimit(plan)
 
   // Team plan has unlimited members

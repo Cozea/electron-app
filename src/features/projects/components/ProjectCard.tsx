@@ -288,11 +288,11 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
     return (
-        <div className="h-full">
+        <div className="self-start">
                 <Card
                     ref={cardRef}
                     className={cn(
-                    "group relative flex flex-col h-full shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
+                    "group relative flex flex-col shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
                     syncState !== 'idle' && "pointer-events-none"
                 )}
                 onMouseEnter={preloadProjectDestination}
@@ -378,14 +378,14 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                 </div>
 
                 {/* Content Section - Bottom Half */}
-                <div className="flex flex-col flex-1 bg-[var(--left-sidebar-surface)] rounded-b-xl">
+                <div className="flex flex-col rounded-b-xl bg-secondary/80 dark:bg-secondary/40">
                     <CardHeader className="px-3 pt-3 pb-0">
                         <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1">
                                 <CardTitle className="mb-1 truncate text-base leading-tight font-bold">
                                     {project.name}
                                 </CardTitle>
-                                <CardDescription className="line-clamp-2 text-xs leading-5">
+                                <CardDescription className="line-clamp-2 h-10 overflow-hidden text-xs leading-5">
                                     {project.description || "No description provided."}
                                 </CardDescription>
                             </div>
@@ -434,8 +434,8 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                         </div>
                     </CardHeader>
 
-                    <CardContent className="px-3 pb-3 pt-0 mt-auto">
-                        <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-2">
+                    <CardContent className="px-3 pb-3 pt-0">
+                        <div className="flex items-center justify-between border-t border-border/40 pt-2">
                             {isBuilding ? (
                                 <div className="flex items-center gap-2 text-xs text-blue-500 font-medium animate-pulse">
                                     <Loader2 className="h-3 w-3 animate-spin" /> Building...

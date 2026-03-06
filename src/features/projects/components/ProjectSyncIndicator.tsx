@@ -164,10 +164,11 @@ export function ProjectSyncIndicator({
 
     if (!isConnected) {
       return {
-        icon: CloudOff,
+        icon: Loader2,
         label: "Reconnecting",
         detail: "Trying to reach collaboration server",
         toneClassName: "text-muted-foreground",
+        animate: true,
       }
     }
 

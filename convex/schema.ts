@@ -1041,6 +1041,29 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
 
+  // Per-project storage accounting aggregate used for fast org rollups and repair jobs.
+  projectStorageUsage: defineTable({
+    organizationId: v.id("organizations"),
+    projectId: v.id("projects"),
+    totalBytes: v.number(),
+    lastCalculatedAt: v.number(),
+    breakdown: v.object({
+      sourceAndConfig: v.number(),
+      collaborationData: v.number(),
+      aiHistory: v.number(),
+      buildCache: v.number(),
+      snapshots: v.number(),
+      gitHistory: v.number(),
+      databaseBackups: v.number(),
+      assets: v.number(),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_project", ["organizationId", "projectId"]),
+
   // Project invites for pending team members
   projectInvites: defineTable({
     projectId: v.id("projects"),
@@ -1165,7 +1188,8 @@ export default defineSchema({
     expiresAt: v.number(),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_and_path", ["projectId", "filePath"]),
+    .index("by_project_and_path", ["projectId", "filePath"])
+    .index("by_expires_at", ["expiresAt"]),
 
   // Project conversation messages (for AI planning phase)
   projectMessages: defineTable({
@@ -1588,6 +1612,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_project", ["projectId"])
     .index("by_project_and_user", ["projectId", "userId"])
     .index("by_user_and_status", ["userId", "status"])
     .index("by_project_user_status", ["projectId", "userId", "status"]),

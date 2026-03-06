@@ -847,10 +847,15 @@ export function Projects() {
           </div>
         ) : (
           <div className={cn(featureFlags.contentVisibility && 'perf-contain-auto', 'pb-10')}>
-            <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-              <Table className="w-full table-fixed [&_th]:px-4 [&_td]:px-4">
+            <div
+              className={cn(
+                featureFlags.contentVisibility && 'perf-contain-card',
+                'overflow-hidden rounded-2xl bg-secondary/80 px-2 py-1 dark:bg-secondary/40'
+              )}
+            >
+              <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-                  <TableRow className="hover:bg-transparent">
+                  <TableRow>
                     <TableHead className="w-[45%] sm:w-[38%] md:w-[32%]">Name</TableHead>
                     <TableHead className="w-[13%] text-center">Status</TableHead>
                     <TableHead className="hidden md:table-cell md:w-[24%]">Last modified by</TableHead>

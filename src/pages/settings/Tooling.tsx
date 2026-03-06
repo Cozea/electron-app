@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Download, Loader2, Package, Plus, RefreshCw, Terminal } from 'lucide-react'
+import { FaApple, FaLinux, FaWindows } from 'react-icons/fa6'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
@@ -24,6 +25,102 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   python: 'Python',
   rust: 'Rust (cargo)',
   go: 'Go',
+}
+
+function getRuntimeTargetPresentation(target: string): {
+  label: string
+  icon: React.ReactNode
+} {
+  const normalized = target.trim().toLowerCase()
+
+  if (!normalized) {
+    return {
+      label: 'Unknown platform',
+      icon: <Terminal className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'darwin-arm64') {
+    return {
+      label: 'Apple silicon',
+      icon: <FaApple className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'darwin-x64') {
+    return {
+      label: 'Intel Mac',
+      icon: <FaApple className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'win32-arm64') {
+    return {
+      label: 'Windows on ARM',
+      icon: <FaWindows className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'win32-x64') {
+    return {
+      label: 'Windows (x64)',
+      icon: <FaWindows className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'win32-ia32') {
+    return {
+      label: 'Windows (32-bit)',
+      icon: <FaWindows className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'linux-x64') {
+    return {
+      label: 'Linux (x64)',
+      icon: <FaLinux className="h-3.5 w-3.5" />,
+    }
+  }
+  if (normalized === 'linux-arm64') {
+    return {
+      label: 'Linux ARM64',
+      icon: <FaLinux className="h-3.5 w-3.5" />,
+    }
+  }
+
+  const [platform, arch] = normalized.split('-', 2)
+  if (!platform || !arch) {
+    return {
+      label: target,
+      icon: <Terminal className="h-3.5 w-3.5" />,
+    }
+  }
+
+  const platformLabel =
+    platform === 'darwin'
+      ? 'macOS'
+      : platform === 'win32'
+        ? 'Windows'
+        : platform === 'linux'
+          ? 'Linux'
+          : platform.charAt(0).toUpperCase() + platform.slice(1)
+
+  const archLabel =
+    arch === 'x64'
+      ? 'x64'
+      : arch === 'arm64'
+        ? 'ARM64'
+        : arch === 'ia32'
+        ? '32-bit'
+          : arch.toUpperCase()
+
+  const icon =
+    platform === 'darwin'
+      ? <FaApple className="h-3.5 w-3.5" />
+      : platform === 'win32'
+        ? <FaWindows className="h-3.5 w-3.5" />
+        : platform === 'linux'
+          ? <FaLinux className="h-3.5 w-3.5" />
+          : <Terminal className="h-3.5 w-3.5" />
+
+  return {
+    label: `${platformLabel} (${archLabel})`,
+    icon,
+  }
 }
 
 function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
@@ -88,6 +185,9 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
   const runtimeInstallJobs = useRuntimeInstallStore((state) => state.jobs)
   const ensureRuntimeInstalled = useRuntimeInstallStore((state) => state.ensureRuntimeInstalled)
   const previousStatusesRef = useRef<Partial<Record<RuntimeKind, RuntimeInstallStatus>>>({})
+  const runtimeTargetPresentation = runtimeStatus
+    ? getRuntimeTargetPresentation(runtimeStatus.target)
+    : null
 
   const loadRuntimeStatus = useCallback(async () => {
     setIsLoading(true)
@@ -150,16 +250,6 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
       previousStatusesRef.current[runtime] = job.status
     }
   }, [loadRuntimeStatus, runtimeInstallJobs])
-
-  const installedRuntimes = useMemo(
-    () => (runtimeStatus?.runtimes ?? []).filter((runtime) => runtime.available),
-    [runtimeStatus]
-  )
-
-  const missingRuntimes = useMemo(
-    () => (runtimeStatus?.runtimes ?? []).filter((runtime) => !runtime.available),
-    [runtimeStatus]
-  )
 
   const handlePreviewHeaderCompatibilityChange = useCallback(
     async (checked: boolean) => {
@@ -225,11 +315,12 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
               Refresh
             </Button>
           </div>
-          {runtimeStatus && (
+          {runtimeStatus && runtimeTargetPresentation && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="secondary">Target: {runtimeStatus.target}</Badge>
-              <Badge variant="secondary">Installed runtimes: {installedRuntimes.length}</Badge>
-              <Badge variant="secondary">Missing runtimes: {missingRuntimes.length}</Badge>
+              <Badge variant="secondary" className="gap-1.5">
+                {runtimeTargetPresentation.icon}
+                {runtimeTargetPresentation.label}
+              </Badge>
             </div>
           )}
         </div>
@@ -300,7 +391,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
                         className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background/70">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
                             <RuntimeLogo runtime={runtime.runtime} />
                           </div>
                           <span className="truncate font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>

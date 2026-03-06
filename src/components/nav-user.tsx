@@ -93,7 +93,7 @@ export function NavUser({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-full">
                 <AvatarImage src={userData.avatar} alt={userData.name} />
@@ -141,13 +141,13 @@ export function NavUser({
                 Theme
               </DropdownMenuLabel>
               <div className="px-1 pb-1">
-                <div className="grid grid-cols-3 gap-1 rounded-xl bg-foreground/6 p-1">
+                <div className="grid grid-cols-3 gap-1 rounded-2xl bg-foreground/6 p-1">
                   <button
                     type="button"
                     aria-label="Light theme"
                     onClick={() => setTheme('light')}
                     className={cn(
-                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      "flex h-8 items-center justify-center rounded-xl transition-colors",
                       theme === 'light'
                         ? "bg-foreground/14 text-foreground"
                         : "text-muted-foreground hover:bg-foreground/10"
@@ -160,7 +160,7 @@ export function NavUser({
                     aria-label="Dark theme"
                     onClick={() => setTheme('dark')}
                     className={cn(
-                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      "flex h-8 items-center justify-center rounded-xl transition-colors",
                       theme === 'dark'
                         ? "bg-foreground/14 text-foreground"
                         : "text-muted-foreground hover:bg-foreground/10"
@@ -173,7 +173,7 @@ export function NavUser({
                     aria-label="System theme"
                     onClick={() => setTheme('system')}
                     className={cn(
-                      "flex h-8 items-center justify-center rounded-lg transition-colors",
+                      "flex h-8 items-center justify-center rounded-xl transition-colors",
                       theme === 'system'
                         ? "bg-foreground/14 text-foreground"
                         : "text-muted-foreground hover:bg-foreground/10"

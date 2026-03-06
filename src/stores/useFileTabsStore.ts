@@ -12,6 +12,7 @@ interface FileTabsState {
         openFile: (projectId: string, path: string) => void
         closeFile: (projectId: string, path: string) => void
         setActiveFile: (projectId: string, path: string | null) => void
+        replaceFilePath: (projectId: string, currentPath: string, nextPath: string) => void
         closeAllFiles: (projectId: string) => void
         getProjectTabs: (projectId: string) => ProjectFileTabs
         rebaseProjectPaths: (projectId: string, previousRoot: string | null, nextRoot: string) => void
@@ -105,6 +106,35 @@ export const useFileTabsStore = create<FileTabsState>()(
                                 activeFile: path
                             }
                         }
+                    }
+                }),
+                replaceFilePath: (projectId, currentPath, nextPath) => set((state) => {
+                    const tabs = state.projectTabs[projectId] || defaultTabs
+                    const existingNextPath = tabs.openFiles.find((path) => pathsReferToSameFile(path, nextPath)) ?? nextPath
+
+                    const remappedFiles = tabs.openFiles.map((path) =>
+                        pathsReferToSameFile(path, currentPath) ? existingNextPath : path
+                    )
+
+                    const dedupedFiles: string[] = []
+                    for (const path of remappedFiles) {
+                        if (!dedupedFiles.some((existing) => pathsReferToSameFile(existing, path))) {
+                            dedupedFiles.push(path)
+                        }
+                    }
+
+                    const activeFile = tabs.activeFile && pathsReferToSameFile(tabs.activeFile, currentPath)
+                        ? existingNextPath
+                        : tabs.activeFile
+
+                    return {
+                        projectTabs: {
+                            ...state.projectTabs,
+                            [projectId]: {
+                                openFiles: dedupedFiles,
+                                activeFile,
+                            },
+                        },
                     }
                 }),
                 closeAllFiles: (projectId) => set((state) => ({

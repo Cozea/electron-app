@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
+import { getDefaultFolderIcon } from '../../lib/fileExplorer'
 import { cn } from '../../lib/utils'
 import {
   Table,
@@ -24,7 +25,6 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
-  Folder,
   Trash2,
   FileText,
   Package,
@@ -527,7 +527,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
                 onClick={() => void handleOpenProjectsDirectory()}
                 disabled={Boolean(pendingAction)}
               >
-                <Folder className="h-4 w-4" />
+                {getDefaultFolderIcon(true, { width: 16, height: 16 })}
                 View Folder
               </Button>
             </div>
@@ -543,8 +543,8 @@ export function Storage({ surface = 'page' }: StorageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-              <Folder className="h-8 w-8 text-muted-foreground" />
+            <div className="flex items-center gap-4 rounded-3xl bg-secondary/80 p-4 dark:bg-secondary/40">
+              {getDefaultFolderIcon(true, { width: 32, height: 32 })}
               <div className="flex-1 min-w-0">
                 <p className="font-mono text-sm truncate">{projectsDirectory}</p>
                 <p className="text-xs text-muted-foreground">

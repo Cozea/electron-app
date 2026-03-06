@@ -3,8 +3,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import {
-  estimateProjectStorageBreakdown,
-  syncProjectStorageUsage,
+  applyProjectStorageDeltas,
+  getLegacyFileStorageTotals,
 } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
@@ -54,8 +54,7 @@ export const upsertObjectForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    await assertSyncProjectAccess(ctx, args.projectId)
-    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
+    const { project } = await assertSyncProjectAccess(ctx, args.projectId)
 
     const existing = await ctx.db
       .query("projectReplicaLfsObjects")
@@ -63,6 +62,30 @@ export const upsertObjectForServer = mutation({
         q.eq("projectId", args.projectId).eq("oid", args.oid)
       )
       .first()
+    const firstLfsObject = await ctx.db
+      .query("projectReplicaLfsObjects")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first()
+    const replica = await ctx.db
+      .query("projectReplicaGit")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first()
+
+    const bundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+    const hadLfsObjectsBefore = Boolean(firstLfsObject)
+    const usedReplicaAccountingBefore = bundleBytes > 0 || hadLfsObjectsBefore
+    const previousObjectBytes = Math.max(0, existing?.size ?? 0)
+    const nextObjectBytes = Math.max(0, args.size)
+
+    let sourceAndConfigDelta = 0
+    let gitHistoryDelta = 0
+    if (usedReplicaAccountingBefore) {
+      sourceAndConfigDelta = nextObjectBytes - previousObjectBytes
+    } else {
+      const legacyTotals = await getLegacyFileStorageTotals(ctx, args.projectId)
+      sourceAndConfigDelta = nextObjectBytes - legacyTotals.activeBytes
+      gitHistoryDelta = -legacyTotals.supersededBytes
+    }
 
     if (existing) {
       const previousStorageId = existing.storageId
@@ -77,7 +100,10 @@ export const upsertObjectForServer = mutation({
           // Best effort cleanup; maintenance cron retries stale metadata cleanup.
         }
       }
-      await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
+      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+        sourceAndConfig: sourceAndConfigDelta,
+        gitHistory: gitHistoryDelta,
+      })
       return await ctx.db.get(existing._id)
     }
 
@@ -91,7 +117,10 @@ export const upsertObjectForServer = mutation({
       createdBy: args.userId,
     })
 
-    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      sourceAndConfig: sourceAndConfigDelta,
+      gitHistory: gitHistoryDelta,
+    })
 
     return await ctx.db.get(docId)
   },
@@ -141,7 +170,18 @@ export const cleanupStaleLfsMetadata = internalMutation({
       .collect()
 
     let deleted = 0
-    const affectedProjects = new Map<Id<"projects">, Awaited<ReturnType<typeof estimateProjectStorageBreakdown>>>()
+    const totalEntriesByProject = new Map<string, number>()
+    const affectedProjects = new Map<string, {
+      projectId: Id<"projects">
+      deletedBytes: number
+      deletedEntries: number
+    }>()
+
+    for (const entry of candidates) {
+      const key = String(entry.projectId)
+      totalEntriesByProject.set(key, (totalEntriesByProject.get(key) ?? 0) + 1)
+    }
+
     for (const entry of candidates) {
       if (deleted >= maxDeletes) break
       if (entry.createdAt > cutoff) continue
@@ -149,18 +189,45 @@ export const cleanupStaleLfsMetadata = internalMutation({
       const url = await ctx.storage.getUrl(entry.storageId)
       if (url) continue
 
-      if (!affectedProjects.has(entry.projectId)) {
-        affectedProjects.set(
-          entry.projectId,
-          await estimateProjectStorageBreakdown(ctx, entry.projectId)
-        )
-      }
+      const key = String(entry.projectId)
+      const current =
+        affectedProjects.get(key) ??
+        {
+          projectId: entry.projectId,
+          deletedBytes: 0,
+          deletedEntries: 0,
+        }
+      current.deletedBytes += Math.max(0, entry.size)
+      current.deletedEntries += 1
+      affectedProjects.set(key, current)
       await ctx.db.delete(entry._id)
       deleted += 1
     }
 
-    for (const [projectId, previousBreakdown] of affectedProjects.entries()) {
-      await syncProjectStorageUsage(ctx, projectId, previousBreakdown)
+    for (const state of affectedProjects.values()) {
+      const project = await ctx.db.get(state.projectId)
+      if (!project) continue
+
+      const replica = await ctx.db
+        .query("projectReplicaGit")
+        .withIndex("by_project", (q) => q.eq("projectId", state.projectId))
+        .first()
+      const bundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+      const totalEntriesBefore = totalEntriesByProject.get(String(state.projectId)) ?? 0
+      const remainingEntries = Math.max(0, totalEntriesBefore - state.deletedEntries)
+
+      let sourceAndConfigDelta = -state.deletedBytes
+      let gitHistoryDelta = 0
+      if (bundleBytes <= 0 && remainingEntries === 0) {
+        const legacyTotals = await getLegacyFileStorageTotals(ctx, state.projectId)
+        sourceAndConfigDelta = legacyTotals.activeBytes - state.deletedBytes
+        gitHistoryDelta = legacyTotals.supersededBytes
+      }
+
+      await applyProjectStorageDeltas(ctx, project.organizationId, state.projectId, {
+        sourceAndConfig: sourceAndConfigDelta,
+        gitHistory: gitHistoryDelta,
+      })
     }
 
     return {
