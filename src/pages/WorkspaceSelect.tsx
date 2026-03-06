@@ -61,7 +61,7 @@ export function WorkspaceSelect() {
         </div>
 
         <div className="flex justify-center">
-          <Button variant="outline" onClick={() => navigate('/workspaces/new')} className="gap-2">
+          <Button variant="secondary" onClick={() => navigate('/workspaces/new')} className="gap-2">
             <Plus className="size-4" />
             Create workspace
           </Button>

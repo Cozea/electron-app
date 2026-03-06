@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, Check } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ChatHistoryProps {
@@ -152,9 +152,6 @@ export function ChatHistory({ isOpen, onClose, projectId }: ChatHistoryProps) {
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <span className="min-w-0 flex-1 truncate">{conv.title}</span>
-                  {currentConversationId === conv._id && (
-                    <Check className="h-3.5 w-3.5 text-foreground shrink-0" />
-                  )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
                   {formatRelativeTime(conv.createdAt)}

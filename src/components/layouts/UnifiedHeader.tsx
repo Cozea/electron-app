@@ -175,12 +175,19 @@ function HeaderInboxButton() {
   const pendingCount = incomingInvites?.length ?? 0
 
   const formatInviteTimestamp = useCallback((invitedAt: number) => {
-    return new Date(invitedAt).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    })
+    const now = Date.now()
+    const diff = now - invitedAt
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+    const weeks = Math.floor(diff / 604800000)
+
+    if (minutes < 1) return 'just now'
+    if (minutes < 60) return `${minutes}m`
+    if (hours < 24) return `${hours}h`
+    if (days < 7) return `${days}d`
+    if (weeks < 52) return `${weeks}w`
+    return new Date(invitedAt).toLocaleDateString()
   }, [])
 
   const handleInviteAction = useCallback(
@@ -246,7 +253,7 @@ function HeaderInboxButton() {
           <div className="px-3 py-4 text-xs text-muted-foreground">No pending project invites.</div>
         ) : (
           <div className="max-h-[30rem] space-y-2 overflow-y-auto px-2.5 py-2.5" role="list" aria-labelledby={invitesHeadingId}>
-            {incomingInvites.slice(0, 8).map((invite) => {
+            {incomingInvites.slice(0, 8).map((invite, index, visibleInvites) => {
               const isAccepting =
                 activeInviteAction?.inviteId === invite._id && activeInviteAction.action === "accept"
               const isDeclining =
@@ -257,56 +264,58 @@ function HeaderInboxButton() {
                 <div
                   key={String(invite._id)}
                   role="listitem"
-                  className="rounded-2xl border border-border/60 bg-card/70 px-3 py-2.5 backdrop-blur-sm"
+                  className={`px-1 py-2 ${
+                    index < visibleInvites.length - 1 ? "border-b border-border/60" : ""
+                  }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-full bg-gradient-to-br from-fuchsia-500 via-rose-500 to-amber-400 p-[1.5px]">
-                      <Avatar className="h-8 w-8 rounded-full bg-background">
-                        <AvatarImage
-                          src={invite.ownerUser?.profileImageUrl ?? undefined}
-                          alt={invite.ownerWorkspace?.name ?? "Owner"}
-                        />
-                        <AvatarFallback className="text-xs font-semibold">
-                          {getWorkspaceInitial(invite.ownerWorkspace?.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
+                    <Avatar className="mt-0.5 h-8 w-8 rounded-full bg-background">
+                      <AvatarImage
+                        src={invite.ownerUser?.profileImageUrl ?? undefined}
+                        alt={invite.ownerWorkspace?.name ?? "Owner"}
+                      />
+                      <AvatarFallback className="text-xs font-semibold">
+                        {getWorkspaceInitial(invite.ownerWorkspace?.name)}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <p className="truncate text-sm font-semibold leading-5 text-foreground">
-                        {invite.project?.name ?? "Unknown Project"}
-                      </p>
+                      <div className="flex min-w-0 items-baseline gap-1">
+                        <p className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
+                          {invite.project?.name ?? "Unknown Project"}
+                        </p>
+                        <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                          &middot; {formatInviteTimestamp(invite.invitedAt)}
+                        </span>
+                      </div>
                       <p className="truncate text-xs text-muted-foreground">
                         {invite.ownerWorkspace?.name ?? "Unknown owner"}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Invited {formatInviteTimestamp(invite.invitedAt)}
-                      </p>
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-end gap-1.5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 rounded-full px-3 text-xs"
-                      disabled={isBusy || activeInviteAction !== null}
-                      onClick={() => {
-                        void handleInviteAction(invite._id, "decline")
-                      }}
-                    >
-                      {isDeclining ? "Declining..." : "Decline"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 rounded-full px-3 text-xs"
-                      disabled={isBusy || activeInviteAction !== null}
-                      onClick={() => {
-                        void handleInviteAction(invite._id, "accept")
-                      }}
-                    >
-                      {isAccepting ? "Accepting..." : "Accept"}
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-1.5 self-start">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                        disabled={isBusy || activeInviteAction !== null}
+                        onClick={() => {
+                          void handleInviteAction(invite._id, "decline")
+                        }}
+                      >
+                        {isDeclining ? "Declining..." : "Decline"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        disabled={isBusy || activeInviteAction !== null}
+                        onClick={() => {
+                          void handleInviteAction(invite._id, "accept")
+                        }}
+                      >
+                        {isAccepting ? "Accepting..." : "Accept"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )

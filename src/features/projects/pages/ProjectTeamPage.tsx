@@ -420,20 +420,25 @@ export function ProjectTeamPage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{row.name}</span>
-                            {row.isSelf ? (
-                              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                                you
-                              </span>
-                            ) : null}
                           </div>
                           <div className="text-sm text-muted-foreground">{row.email}</div>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className="border-0 bg-primary/10 text-primary">
-                        {getRoleLabel(row.role)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className="border-0 bg-primary/10 text-primary">
+                          {getRoleLabel(row.role)}
+                        </Badge>
+                        {row.isSelf ? (
+                          <>
+                            <span className="h-4 w-px bg-border/70" aria-hidden="true" />
+                            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                              you
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

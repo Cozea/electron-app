@@ -576,7 +576,6 @@ export function ProjectPagesPage() {
     // Add a log entry
     const addBridgeLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
         setBridgeLogs(prev => [...prev.slice(-9), { time: new Date(), message, type }])
-        console.log(`[Bridge] ${message}`)
     }, [])
 
     const addPreviewTimelineEvent = useCallback((event: {
@@ -743,17 +742,6 @@ export function ProjectPagesPage() {
 
     useEffect(() => {
         if (!isFocusedPreview || !focusedPreviewUrl) return
-        console.log('[PagesPreview] state', {
-            url: focusedPreviewUrl,
-            mode: previewEmbedMode,
-            bridgeReady,
-            reachable: previewReadiness.reachable,
-            blocked: previewEmbedBlocked,
-        })
-    }, [bridgeReady, focusedPreviewUrl, isFocusedPreview, previewEmbedBlocked, previewEmbedMode, previewReadiness.reachable])
-
-    useEffect(() => {
-        if (!isFocusedPreview || !focusedPreviewUrl) return
         if (serverStatus !== 'running') return
         void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
     }, [focusedPreviewUrl, isFocusedPreview, probeFocusedPreviewReachability, serverStatus])
@@ -840,34 +828,6 @@ export function ProjectPagesPage() {
         previewEmbedMode,
         serverStatus,
     ])
-
-    useEffect(() => {
-        if (!isFocusedPreview || !focusedPreviewUrl) return
-        if (!window.crossOriginIsolated) return
-
-        let previewOrigin: string
-        try {
-            previewOrigin = new URL(focusedPreviewUrl).origin
-        } catch {
-            return
-        }
-
-        if (previewOrigin === window.location.origin) return
-        if (previewEmbedMode !== 'standard') return
-
-        addBridgeLog('Cross-origin isolated renderer detected; defaulting preview to credentialless mode', 'info')
-        addPreviewTimelineEvent({
-            type: 'fallback_mode',
-            message: 'Switched to credentialless mode for cross-origin isolation compatibility',
-            details: {
-                from: 'standard',
-                to: 'credentialless',
-                reason: 'cross_origin_isolated',
-            },
-        })
-        setPreviewEmbedMode('credentialless')
-        setPreviewReloadToken((value) => value + 1)
-    }, [addBridgeLog, addPreviewTimelineEvent, focusedPreviewUrl, isFocusedPreview, previewEmbedMode])
 
     // Listen for bridge messages from iframe
     useEffect(() => {
@@ -1417,8 +1377,8 @@ export function ProjectPagesPage() {
                 return false
             }
 
-            setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
-            addBridgeLog(`Injection error: ${msg}`, 'error')
+                setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
+                addBridgeLog(`Injection error: ${msg}`, 'error')
             addPreviewTimelineEvent({
                 type: 'bridge_inject_failed',
                 message: msg,
@@ -1765,9 +1725,14 @@ export function ProjectPagesPage() {
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
-                                variant="secondary"
+                                variant="ghost"
                                 size="sm"
-                                className="h-7 rounded-full px-2 gap-2 bg-sidebar-accent shadow-none"
+                                className={cn(
+                                    "group/zoom-trigger h-7 rounded-full overflow-hidden shadow-none transition-colors duration-200 hover:bg-secondary/70 hover:text-foreground data-[state=open]:bg-secondary data-[state=open]:text-secondary-foreground",
+                                    toolbarDensity === 'compact'
+                                        ? "px-2 gap-2"
+                                        : "min-w-7 px-1.5 gap-0 justify-center"
+                                )}
                             >
                                 {device === 'desktop' ? (
                                     <Monitor className="h-4 w-4" />
@@ -1781,7 +1746,9 @@ export function ProjectPagesPage() {
                                         {zoom}%
                                     </span>
                                 )}
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                <span className="zoom-chevron-slot flex w-0 items-center justify-end overflow-hidden opacity-0 transition-all duration-200 group-hover/zoom-trigger:ml-1 group-hover/zoom-trigger:w-4 group-hover/zoom-trigger:opacity-70 group-data-[state=open]/zoom-trigger:ml-1 group-data-[state=open]/zoom-trigger:w-4 group-data-[state=open]/zoom-trigger:opacity-70">
+                                    <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/zoom-trigger:rotate-180" />
+                                </span>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="center" className="w-56">

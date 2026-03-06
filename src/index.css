@@ -56,6 +56,9 @@
   --tool-diff-added-line-number-fg: #4ade80;
   --tool-diff-deleted-line-number-fg: #f87171;
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
+  --left-sidebar-surface: color-mix(in oklch, var(--secondary) 74%, var(--border) 26%);
+  --left-sidebar-accent: color-mix(in oklch, var(--secondary) 44%, var(--border) 56%);
+  --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
   --app-scrollbar-size: 8px;
   --app-scrollbar-radius: 9999px;
   --app-scrollbar-track: transparent;
@@ -99,7 +102,7 @@ body {
 
 /* Solid treatment for primary left sidebars (no glass). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: var(--main-nav-sidebar-surface) !important;
+  background-color: var(--left-sidebar-surface) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   isolation: auto;
@@ -107,7 +110,7 @@ body {
 
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar-glass [data-slot="sidebar-inner"] {
-    background-color: var(--main-nav-sidebar-surface) !important;
+    background-color: var(--left-sidebar-surface) !important;
   }
 }
 
@@ -291,6 +294,9 @@ body {
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: oklch(0.556 0 0);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
+  --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-accent: oklch(0.19 0.01 258);
+  --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
 
 .navy {
@@ -326,6 +332,9 @@ body {
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(210 78% 62%);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-accent: hsl(222 30% 16%);
+  --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
 
 .wine {
@@ -361,6 +370,9 @@ body {
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(345 72% 50%);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-accent: hsl(340 28% 18%);
+  --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
 
 .clay {
@@ -396,6 +408,9 @@ body {
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(28 65% 52%);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-accent: hsl(25 24% 17%);
+  --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
   --tool-surface-foreground: var(--secondary-foreground);
   --tool-border: color-mix(in oklch, var(--border) 72%, black 28%);
@@ -442,6 +457,9 @@ body {
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(150 42% 34%);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-accent: hsl(150 20% 17%);
+  --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
 
 @layer base {
@@ -694,6 +712,13 @@ body {
 .bg-sidebar {
   /* Override standard bg-sidebar to allow vibrancy to show through */
   background-color: var(--sidebar-surface);
+}
+
+[data-slot="sidebar"][data-side="left"] {
+  --sidebar: var(--left-sidebar-surface);
+  --sidebar-surface: var(--left-sidebar-surface);
+  --sidebar-accent: var(--left-sidebar-accent);
+  --sidebar-border: var(--left-sidebar-border);
 }
 
 .bg-content-surface {

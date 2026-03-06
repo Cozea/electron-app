@@ -88,7 +88,6 @@ export interface InjectBridgeScriptResult {
 export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<InjectBridgeScriptResult> {
   const frameName = iframe.getAttribute('name') || undefined
   const targetUrl = iframe.src || '(no-src)'
-  console.log('[PreviewBridge][Renderer] Injection requested', { frameName, url: targetUrl })
 
   let electronInjectionError: string | null = null
   let electronLikelyBlocked = false
@@ -102,7 +101,6 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
     try {
       const result = await electronInject({ url: iframe.src, frameName })
       if (result.success) {
-        console.log('[PreviewBridge][Renderer] Electron injection succeeded', { frameName, url: targetUrl })
         return {
           success: true,
           reason: result.reason,
@@ -155,7 +153,6 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
     const script = iframeDoc.createElement('script')
     script.textContent = BRIDGE_SCRIPT
     iframeDoc.head.appendChild(script)
-    console.log('[PreviewBridge][Renderer] DOM injection fallback succeeded', { frameName, url: targetUrl })
     return { success: true }
   } catch (err) {
     // Cross-origin iframe
@@ -179,14 +176,6 @@ export function sendBridgeMessage(
   iframe: HTMLIFrameElement,
   message: BridgeMessage
 ): void {
-  const noisyType = message.type === 'host:update-style' || message.type === 'host:update-text'
-  if (!noisyType) {
-    console.log('[PreviewBridge][Renderer] Sending host message', {
-      type: message.type,
-      frameName: iframe.getAttribute('name') || undefined,
-      url: iframe.src || '(no-src)',
-    })
-  }
   try {
     iframe.contentWindow?.postMessage(message, '*')
   } catch (err) {

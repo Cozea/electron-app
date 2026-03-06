@@ -294,6 +294,7 @@ export interface PreviewHeaderDiagnostic {
   compatibilityEnabled: boolean
   rewritten: boolean
   removed: string[]
+  ensured?: string[]
   capturedAt: number
 }
 
