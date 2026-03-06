@@ -4,10 +4,17 @@ export interface AiSurfaceErrorData {
   code: RetryHint['code']
   title: string
   message: string
-  hint?: string
   action?: RetryHintAction
   provider?: RetryHint['provider']
   model?: string
+}
+
+function getSurfaceAction(hint: RetryHint): RetryHintAction | undefined {
+  // Keep 429 surfaces terse; settings CTAs take too much space for this compact card.
+  if (hint.code === 'provider_rate_limit') {
+    return undefined
+  }
+  return hint.action
 }
 
 function formatDurationCompact(totalSeconds: number): string {
@@ -29,12 +36,42 @@ function formatDurationCompact(totalSeconds: number): string {
 function getProviderLabel(provider: RetryHint['provider']): string {
   if (provider === 'google') return 'Gemini'
   if (provider === 'openai') return 'OpenAI'
+  if (provider === 'anthropic') return 'Anthropic'
+  if (provider === 'xai') return 'xAI'
+  if (provider === 'github-copilot') return 'GitHub Copilot'
+  if (provider === 'gitlab') return 'GitLab'
+  if (typeof provider === 'string' && provider.trim().length > 0) {
+    return provider
+      .split(/[-_]/g)
+      .filter((part) => part.length > 0)
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(' ')
+  }
   return 'Provider'
 }
 
 export function getRetryHintSurfaceError(hint: RetryHint | null): AiSurfaceErrorData | null {
   if (!hint) return null
-  if (hint.code !== 'provider_usage_limit' && hint.code !== 'provider_rate_limit') {
+  if (
+    hint.code !== 'provider_usage_limit' &&
+    hint.code !== 'provider_rate_limit' &&
+    hint.code !== 'provider_error'
+  ) {
+    return null
+  }
+
+  if (hint.title && hint.message) {
+    return {
+      code: hint.code,
+      title: hint.title,
+      message: hint.message,
+      action: getSurfaceAction(hint),
+      provider: hint.provider,
+      model: hint.model,
+    }
+  }
+
+  if (hint.code === 'provider_error') {
     return null
   }
 
@@ -51,6 +88,7 @@ export function getRetryHintSurfaceError(hint: RetryHint | null): AiSurfaceError
         typeof hint.retryAfterSeconds === 'number' && hint.retryAfterSeconds > 0
           ? `Try again in about ${formatDurationCompact(hint.retryAfterSeconds)} or switch model.`
           : 'Try again later or switch model.',
+      action: getSurfaceAction(hint),
       provider: hint.provider,
       model: hint.model,
     }
@@ -66,6 +104,7 @@ export function getRetryHintSurfaceError(hint: RetryHint | null): AiSurfaceError
       typeof hint.retryAfterSeconds === 'number' && hint.retryAfterSeconds > 0
         ? `Try again in about ${formatDurationCompact(hint.retryAfterSeconds)} or switch model.`
         : 'Try again shortly or switch model.',
+    action: getSurfaceAction(hint),
     provider: hint.provider,
     model: hint.model,
   }

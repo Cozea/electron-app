@@ -258,15 +258,15 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
       return withFallbackAction(
         {
           ...normalized,
-          title: normalized.title || 'AI wallet funds needed',
+          title: normalized.title || 'AI wallet balance low',
           message:
             normalized.message ||
-            'Your available AI wallet is out of funds for managed providers.',
+            'Not enough AI wallet funds for this request.',
           hint:
             normalized.hint ||
-            'Open Settings > Billing to review included funds, or connect your own provider in Settings > AI.',
+            'Open Billing or use your own provider in AI Settings.',
         },
-        { label: 'Open Billing', href: '/settings/billing' }
+        { label: 'Billing', href: '/settings/billing' }
       )
     default:
       return normalized
@@ -332,13 +332,6 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
       return normalizeBillingError({
         error: 'entitlement_required',
         code: 'ENTITLEMENT_REQUIRED',
-        message: rawMessage,
-      })
-    }
-    if (message.includes('wallet_insufficient_funds')) {
-      return normalizeBillingError({
-        error: 'wallet_insufficient_funds',
-        code: 'WALLET_INSUFFICIENT_FUNDS',
         message: rawMessage,
       })
     }
