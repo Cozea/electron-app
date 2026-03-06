@@ -1,4 +1,8 @@
-import type { AccountBillingCycle, AccountSubscriptionPlan } from "./accountEntitlements"
+import type {
+  AccountBillingCycle,
+  AccountSubscriptionPlan,
+  AccountSubscriptionStatus,
+} from "./accountEntitlements"
 
 interface PlanDefaults {
   // Included wallet value in USD cents per month.
@@ -12,6 +16,8 @@ const PLAN_DEFAULTS: Record<AccountSubscriptionPlan, PlanDefaults> = {
   startup: { monthlyCents: 3000 },
   enterprise: { monthlyCents: 10000 },
 }
+
+export const MAX_TRIAL_INCLUDED_PERCENT = 5
 
 function readEnvInt(key: string): number | undefined {
   const raw = process.env[key]
@@ -82,6 +88,34 @@ export function resolveIncludedWalletCents(args: {
     return Math.max(0, monthlyCents * 12)
   }
   return Math.max(0, monthlyCents)
+}
+
+export function resolveMaxTrialIncludedWalletCents(args: {
+  cycle?: AccountBillingCycle
+}): number {
+  const fullIncludedCents = resolveIncludedWalletCents({
+    plan: "max",
+    cycle: args.cycle,
+  })
+  if (fullIncludedCents <= 0) return 0
+  return Math.max(1, Math.floor((fullIncludedCents * MAX_TRIAL_INCLUDED_PERCENT) / 100))
+}
+
+export function resolveEffectiveIncludedWalletCents(args: {
+  plan: AccountSubscriptionPlan
+  cycle?: AccountBillingCycle
+  status?: AccountSubscriptionStatus
+}): number {
+  if (args.plan === "max" && args.status === "trialing") {
+    return resolveMaxTrialIncludedWalletCents({
+      cycle: args.cycle,
+    })
+  }
+
+  return resolveIncludedWalletCents({
+    plan: args.plan,
+    cycle: args.cycle,
+  })
 }
 
 export function isSeatManagedWalletPlan(plan: AccountSubscriptionPlan): boolean {

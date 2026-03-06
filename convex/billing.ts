@@ -436,11 +436,15 @@ export const upsertAccountSubscriptionForServer = mutation({
     const computedTrialStart =
       args.status === "trialing"
         ? args.trialStart ?? existing?.trialStart ?? now
-        : args.trialStart
+        : args.trialStart ?? existing?.trialStart
     const computedTrialEnd =
       args.status === "trialing"
-        ? args.trialEnd ?? (computedTrialStart !== undefined ? computedTrialStart + ACCOUNT_TRIAL_LENGTH_MS : undefined)
-        : args.trialEnd
+        ? args.trialEnd ??
+          existing?.trialEnd ??
+          (computedTrialStart !== undefined
+            ? computedTrialStart + ACCOUNT_TRIAL_LENGTH_MS
+            : undefined)
+        : args.trialEnd ?? existing?.trialEnd
 
     if (existing) {
       await ctx.db.patch(existing._id, {

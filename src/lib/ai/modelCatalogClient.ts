@@ -7,10 +7,14 @@ import type { RuntimeModelCapabilities } from './runtimeProfiles'
 
 export interface ModelApiModel {
   id: string
+  providerModelId?: string
   displayName: string
   provider: string
   tier: string
   limit?: { context?: number; output?: number }
+  cost?: { input?: number; output?: number }
+  apiBaseUrl?: string
+  npmPackage?: string
   capabilities?: RuntimeModelCapabilities
 }
 

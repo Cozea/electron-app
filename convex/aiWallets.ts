@@ -8,7 +8,11 @@ import {
   type AccountBillingCycle,
   type AccountSubscriptionPlan,
 } from "./lib/accountEntitlements"
-import { isSeatManagedWalletPlan, resolveIncludedWalletCents } from "./lib/walletPolicy"
+import {
+  isSeatManagedWalletPlan,
+  resolveEffectiveIncludedWalletCents,
+  resolveIncludedWalletCents,
+} from "./lib/walletPolicy"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const WALLET_CURRENCY = "USD"
@@ -256,6 +260,7 @@ export async function grantIncludedWalletBalance(
     periodEnd?: number
     source: "subscription_cycle" | "seat_assignment" | "manual"
     grantKey: string
+    includedCentsOverride?: number
     metadata?: unknown
   }
 ): Promise<{
@@ -303,10 +308,13 @@ export async function grantIncludedWalletBalance(
         ownerUserId: args.targetUserId,
       })
 
-  const includedCents = resolveIncludedWalletCents({
-    plan: args.plan,
-    cycle: args.cycle,
-  })
+  const includedCents =
+    typeof args.includedCentsOverride === "number" && Number.isFinite(args.includedCentsOverride)
+      ? Math.max(0, Math.floor(args.includedCentsOverride))
+      : resolveIncludedWalletCents({
+          plan: args.plan,
+          cycle: args.cycle,
+        })
 
   // Reset policy: every funding event restores available funds to the included amount.
   // Keep in-flight holds intact so active requests can still settle safely.
@@ -757,6 +765,7 @@ const grantArgs = {
     v.literal("manual")
   ),
   grantKey: v.string(),
+  includedCentsOverride: v.optional(v.number()),
   metadata: v.optional(v.any()),
 }
 
@@ -896,9 +905,10 @@ export const getWalletForViewer = query({
           ? entitlement.cycle
           : "monthly"
 
-    const includedCentsPerCycle = resolveIncludedWalletCents({
+    const includedCentsPerCycle = resolveEffectiveIncludedWalletCents({
       plan: activePlan,
       cycle: activeCycle,
+      status: entitlement.status,
     })
 
     const ledger = activeWallet
@@ -923,9 +933,10 @@ export const getWalletForViewer = query({
         workspaceSeat: workspaceSeatWallet
           ? {
               ownerUserId: args.userId,
-              includedCentsPerCycle: resolveIncludedWalletCents({
+              includedCentsPerCycle: resolveEffectiveIncludedWalletCents({
                 plan: entitlement.plan,
                 cycle: entitlement.cycle,
+                status: entitlement.status,
               }),
               wallet: toWalletSummary(workspaceSeatWallet),
             }
@@ -934,9 +945,10 @@ export const getWalletForViewer = query({
           ownerUserId: personalOwnerUserId,
           includedCentsPerCycle:
             entitlement.plan === "pro" || entitlement.plan === "max"
-              ? resolveIncludedWalletCents({
+              ? resolveEffectiveIncludedWalletCents({
                   plan: entitlement.plan,
                   cycle: entitlement.cycle,
+                  status: entitlement.status,
                 })
               : 0,
           wallet: personalWallet ? toWalletSummary(personalWallet) : null,
@@ -1021,9 +1033,10 @@ export const getSeatWalletsForViewer = query({
       (id) => id as Id<"users">
     )
 
-    const includedCentsPerCycle = resolveIncludedWalletCents({
+    const includedCentsPerCycle = resolveEffectiveIncludedWalletCents({
       plan: entitlement.plan,
       cycle: entitlement.cycle,
+      status: entitlement.status,
     })
 
     const walletEntries = await Promise.all(

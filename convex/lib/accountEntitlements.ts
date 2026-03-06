@@ -221,17 +221,6 @@ async function countOrganizationMembers(
   return uniqueUsers.size
 }
 
-function computeTrialFromUserCreatedAt(userCreatedAt: number, now: number): {
-  trialActive: boolean
-  trialEnd: number
-} {
-  const trialEnd = userCreatedAt + ACCOUNT_TRIAL_LENGTH_MS
-  return {
-    trialActive: now < trialEnd,
-    trialEnd,
-  }
-}
-
 function resolveSubscriptionTrialState(
   subscription: AccountSubscriptionRecord,
   now: number
@@ -378,10 +367,9 @@ export async function resolveAccountEntitlementForOrganization(
   if (billingAccount) {
     const billingUserId = billingAccount.billingUserId
 
-    const [billingSubscription, assignments, billingUser] = await Promise.all([
+    const [billingSubscription, assignments] = await Promise.all([
       getAccountSubscriptionRecord(ctx, billingUserId),
       listActiveSeatAssignments(ctx, billingUserId, organizationId),
-      ctx.db.get(billingUserId),
     ])
 
     if (billingSubscription) {
@@ -477,24 +465,6 @@ export async function resolveAccountEntitlementForOrganization(
       }
 
       return workspaceEntitlement
-    }
-
-    const billingUserCreatedAt = billingUser?.createdAt ?? now
-    const fallbackTrial = computeTrialFromUserCreatedAt(billingUserCreatedAt, now)
-    if (fallbackTrial.trialActive) {
-      return buildSeatEntitlement({
-        source: "trial",
-        organizationId,
-        userId,
-        billingUserId,
-        plan: "startup",
-        status: "trialing",
-        cycle: "monthly",
-        totalSeats: ACCOUNT_MIN_STARTUP_SEATS,
-        assignments,
-        trialActive: true,
-        trialEndsAt: fallbackTrial.trialEnd,
-      })
     }
 
     return {

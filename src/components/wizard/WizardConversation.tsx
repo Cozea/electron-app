@@ -59,8 +59,19 @@ import {
   useConnectedProviders,
   type ConnectedProvider,
 } from '@/hooks/useConnectedProviders'
+import {
+  buildAttachmentRejectionMessage,
+  chatComposerAttachmentToFilePart,
+  fileListToChatComposerAttachments,
+  getChatAttachmentAccept,
+  hasFilesInDataTransfer,
+  resolveChatAttachmentSupport,
+  type ChatComposerAttachment,
+} from '@/lib/ai/chatAttachments'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
+import { ScreenshotAttachments } from '@/components/assistant/ScreenshotAttachment'
 import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
+import { ChatAttachmentCard } from '@/components/assistant/ChatAttachmentCard'
 import type { Id } from '../../../convex/_generated/dataModel'
 
 // AI Elements components (same as AIConversation)
@@ -94,7 +105,6 @@ import {
   ContextTrigger,
   ContextContent,
   ContextContentHeader,
-  ContextContentFooter,
 } from '@/components/ai-elements/context'
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
@@ -184,6 +194,13 @@ interface SourcePart {
   source?: { url?: string; title?: string }
 }
 
+interface FilePart {
+  type: 'file'
+  mediaType: string
+  filename?: string
+  url: string
+}
+
 type ChatHookResult = ReturnType<typeof useCozeaChat>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -262,6 +279,9 @@ export function WizardConversation({
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [toolsError, setToolsError] = useState<string | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<ChatComposerAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
   const initialConversationIdRef = useRef<string>(
     projectId ? `wizard:${projectId}` : crypto.randomUUID()
   )
@@ -271,6 +291,7 @@ export function WizardConversation({
   const hasSentInitialMessageRef = useRef(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dragDepthRef = useRef(0)
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
@@ -296,10 +317,15 @@ export function WizardConversation({
   )
   const hasSelectableModel = Boolean(selectedModelData)
   const selectedModelCapabilities = useMemo(() => modelCapabilities[model] ?? null, [model, modelCapabilities])
-  const supportsAttachments =
-    !selectedModelCapabilities ||
-    selectedModelCapabilities.supportsImageInput ||
-    selectedModelCapabilities.supportsPdfInput
+  const attachmentSupport = useMemo(
+    () => resolveChatAttachmentSupport(selectedModelCapabilities),
+    [selectedModelCapabilities]
+  )
+  const supportsAttachments = attachmentSupport.images || attachmentSupport.pdf
+  const attachmentAccept = useMemo(
+    () => getChatAttachmentAccept(attachmentSupport),
+    [attachmentSupport]
+  )
   const supportedVariants = useMemo(
     () =>
       getSupportedVariantsForModel({
@@ -331,6 +357,23 @@ export function WizardConversation({
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = false
+
+  const removePendingAttachment = useCallback((index: number) => {
+    setPendingAttachments((current) => current.filter((_, currentIndex) => currentIndex !== index))
+  }, [])
+
+  const clearPendingAttachments = useCallback(() => {
+    setPendingAttachments([])
+  }, [])
+
+  const handleAttachmentSelection = useCallback(async (files: FileList | File[]) => {
+    const { attachments, rejected } = await fileListToChatComposerAttachments(files, attachmentSupport)
+
+    if (attachments.length > 0) {
+      setPendingAttachments((current) => [...current, ...attachments])
+    }
+    setAttachmentError(buildAttachmentRejectionMessage(rejected, attachmentSupport) || null)
+  }, [attachmentSupport])
 
   const modelSettingsRef = useRef(modelSettings)
   useEffect(() => {
@@ -909,14 +952,21 @@ export function WizardConversation({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (!canSendMessage) return
-    if (!input.trim()) return
+    if (!input.trim() && pendingAttachments.length === 0) return
 
-    const messageText = input
+    const messageText = input.trim() || (pendingAttachments.length > 0 ? 'Analyze this attachment' : '')
+    const fileParts = pendingAttachments.map(chatComposerAttachmentToFilePart)
+    const messageOptions = fileParts.length > 0
+      ? { text: messageText, files: fileParts }
+      : { text: messageText }
+
     // Clear input immediately before sending (don't wait for response)
     setInput('')
+    clearPendingAttachments()
+    setAttachmentError(null)
 
     // Send message (don't await - let it stream in the background)
-    void sendMessage({ text: messageText })
+    void sendMessage(messageOptions)
   }
 
   const handleStop = (e: React.MouseEvent) => {
@@ -932,6 +982,41 @@ export function WizardConversation({
       handleSubmit()
     }
   }
+
+  const handleComposerDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    if (!supportsAttachments) return
+    dragDepthRef.current += 1
+    setIsDragActive(true)
+  }, [supportsAttachments])
+
+  const handleComposerDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    if (!supportsAttachments) return
+    e.dataTransfer.dropEffect = 'copy'
+  }, [supportsAttachments])
+
+  const handleComposerDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) {
+      setIsDragActive(false)
+    }
+  }, [])
+
+  const handleComposerDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDataTransfer(e.dataTransfer)) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setIsDragActive(false)
+    if (!supportsAttachments) return
+
+    if (e.dataTransfer.files.length > 0) {
+      void handleAttachmentSelection(e.dataTransfer.files)
+    }
+  }, [handleAttachmentSelection, supportsAttachments])
 
   return (
     <div className={cn('flex flex-col overflow-hidden w-full h-full', className)}>
@@ -971,7 +1056,16 @@ export function WizardConversation({
 
       {/* Input Area */}
       <div className="shrink-0 pt-2 pb-3 px-3 bg-background w-full max-w-2xl mx-auto">
-        <div className="bg-secondary rounded-2xl overflow-hidden">
+        <div
+          className={cn(
+            'bg-secondary rounded-2xl overflow-hidden transition-[background-color,box-shadow] duration-150',
+            isDragActive && 'bg-secondary/90 ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
+          )}
+          onDragEnter={handleComposerDragEnter}
+          onDragOver={handleComposerDragOver}
+          onDragLeave={handleComposerDragLeave}
+          onDrop={handleComposerDrop}
+        >
           {billingError ? (
             <BillingError
               error={billingError as any}
@@ -997,9 +1091,25 @@ export function WizardConversation({
             ref={fileInputRef}
             type="file"
             multiple
+            accept={attachmentAccept}
             className="sr-only"
-            onChange={(e) => console.log(e.target.files)}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                void handleAttachmentSelection(e.target.files)
+              }
+              e.target.value = ''
+            }}
           />
+
+          <ScreenshotAttachments
+            attachments={pendingAttachments}
+            onRemove={removePendingAttachment}
+          />
+          {attachmentError ? (
+            <div className="px-3 pb-2 text-xs text-destructive">
+              {attachmentError}
+            </div>
+          ) : null}
 
           <div className="px-3 pt-3 pb-2 grow">
             <form onSubmit={handleSubmit}>
@@ -1090,7 +1200,7 @@ export function WizardConversation({
 
             <Button
               type="submit"
-              disabled={(!canSendMessage || !input.trim()) && !isLoading}
+              disabled={(!canSendMessage || (!input.trim() && pendingAttachments.length === 0)) && !isLoading}
               className="size-7 p-0 rounded-full bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={(e) => isLoading ? handleStop(e) : handleSubmit(e)}
             >
@@ -1170,11 +1280,6 @@ export function WizardConversation({
               </div>
 
               <div className="flex items-center gap-2">
-                {accumulatedUsage.totalCostUsd > 0 && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    ${accumulatedUsage.totalCostUsd.toFixed(4)}
-                  </span>
-                )}
                 <Context
                   maxTokens={selectedModelData?.limit?.context ?? getContextWindowSize(model)}
                   usedTokens={accumulatedUsage.usedTokens}
@@ -1184,7 +1289,6 @@ export function WizardConversation({
                   <ContextTrigger />
                   <ContextContent>
                     <ContextContentHeader />
-                    <ContextContentFooter />
                   </ContextContent>
                 </Context>
               </div>
@@ -1208,10 +1312,21 @@ interface MessageBubbleProps {
 function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
+  const hasStandaloneAttachments = message.role === 'user' && message.parts.some(isFilePart)
 
   return (
     <Message from={message.role}>
-      <MessageContent>
+      <MessageContent
+        className={cn(
+          hasStandaloneAttachments && [
+            'group-[.is-user]:w-full',
+            'group-[.is-user]:bg-transparent',
+            'group-[.is-user]:rounded-none',
+            'group-[.is-user]:px-0',
+            'group-[.is-user]:py-0',
+          ]
+        )}
+      >
         {message.parts.map((part, index) => {
           if (part.type === 'step-start') {
             return (
@@ -1221,11 +1336,37 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
             )
           }
 
+          if (isFilePart(part)) {
+            return (
+              <div
+                key={`${message.id}-file-${index}`}
+                className={message.role === 'user' ? 'flex justify-end' : 'flex'}
+              >
+                <ChatAttachmentCard
+                  mediaType={part.mediaType}
+                  name={part.filename || defaultAttachmentName(part.mediaType)}
+                  url={part.url}
+                  size="message"
+                />
+              </div>
+            )
+          }
+
           if (part.type === 'text') {
             return (
-              <MessageResponse key={`${message.id}-text-${index}`}>
-                {part.text}
-              </MessageResponse>
+              hasStandaloneAttachments && message.role === 'user'
+                ? (
+                  <div key={`${message.id}-text-${index}`} className="flex justify-end">
+                    <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
+                      <MessageResponse>{part.text}</MessageResponse>
+                    </div>
+                  </div>
+                )
+                : (
+                  <MessageResponse key={`${message.id}-text-${index}`}>
+                    {part.text}
+                  </MessageResponse>
+                )
             )
           }
 
@@ -1358,6 +1499,26 @@ function formatToolPayload(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function defaultAttachmentName(mediaType: string): string {
+  if (mediaType.toLowerCase() === 'application/pdf') {
+    return 'Attachment.pdf'
+  }
+
+  if (mediaType.toLowerCase().startsWith('image/')) {
+    return 'Image attachment'
+  }
+
+  return 'Attachment'
+}
+
+function isFilePart(part: UIMessage['parts'][number]): part is FilePart {
+  return (
+    part.type === 'file' &&
+    typeof (part as FilePart).mediaType === 'string' &&
+    typeof (part as FilePart).url === 'string'
+  )
 }
 
 function extractTasksFromToolOutput(output: unknown): TaskData[] {

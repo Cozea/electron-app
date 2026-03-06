@@ -4,7 +4,6 @@ import {
   Context,
   ContextContent,
   ContextContentBody,
-  ContextContentFooter,
   ContextContentHeader,
   ContextInputUsage,
   ContextOutputUsage,
@@ -20,7 +19,7 @@ export function getContextWindowSize(modelId: string): number | undefined {
 }
 
 export interface ContextDisplayProps {
-  /** Model identifier for context window lookup and cost calculation */
+  /** Model identifier for context window lookup */
   modelId: string;
   /** Token usage from the AI SDK response */
   usage: LanguageModelUsage;
@@ -81,7 +80,6 @@ export function ContextDisplay({
           )}
           {hasCacheUsage && <ContextCacheUsage />}
         </ContextContentBody>
-        <ContextContentFooter />
       </ContextContent>
     </Context>
   );
