@@ -132,8 +132,7 @@ export function PresenceAvatarGroup({
                     title={onUserClick ? "Open this user in Sync Feed" : undefined}
                   >
                     <Avatar
-                      className="h-6 w-6 border-2 border-background"
-                      style={{ borderColor: color }}
+                      className="h-6 w-6 border-2 border-border/70 bg-background"
                     >
                       {user.userAvatarUrl ? (
                         <AvatarImage src={user.userAvatarUrl} alt={user.userName} />

@@ -9,6 +9,10 @@ import {
   pipeUIMessageStreamToResponse,
   type UIMessage,
 } from 'ai'
+import {
+  isManagedProviderInApp,
+  isProviderEnabledInApp,
+} from '../../shared/aiProviderAvailability'
 
 interface LocalAiRuntimeStatus {
   enabled: boolean
@@ -232,17 +236,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const MANAGED_PROVIDER_IDS = new Set([
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'moonshotai',
-  'moonshot',
-])
-
 function isManagedProvider(providerId: string): boolean {
-  return MANAGED_PROVIDER_IDS.has(providerId.trim().toLowerCase())
+  return isManagedProviderInApp(providerId)
 }
 
 function parseScopedModelId(modelId: string): { provider: string; providerModelId: string } | null {
@@ -735,7 +730,7 @@ export class LocalAiRuntimeService {
             slashIndex > 0 && slashIndex < scopedId.length - 1
               ? scopedId.slice(slashIndex + 1).trim()
               : scopedId
-          if (!provider || !providerModelId) return null
+          if (!provider || !providerModelId || !isProviderEnabledInApp(provider)) return null
 
           return {
             scopedId,
@@ -1125,7 +1120,19 @@ export class LocalAiRuntimeService {
           return
         }
 
+        if (!isProviderEnabledInApp(scopedModel.provider)) {
+          sendJson(res, 400, {
+            error: 'provider_disabled',
+            code: 'PROVIDER_DISABLED',
+            message: `Provider "${scopedModel.provider}" is temporarily disabled in this app.`,
+          })
+          return
+        }
+
         let modelInfo = runtimeDeps.getModelInfo(model)
+        if (modelInfo && !isProviderEnabledInApp(modelInfo.provider)) {
+          modelInfo = undefined
+        }
         if (
           authorization &&
           parsedBody.organizationId &&

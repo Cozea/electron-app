@@ -1,4 +1,5 @@
 import { fetchWithAbort } from '@/lib/abort'
+import { isProviderEnabledInApp } from '@shared/aiProviderAvailability'
 
 import { AI_BASE_URL } from './apiEndpoints'
 import { isManagedProvider } from './providerAuth'
@@ -85,7 +86,9 @@ export async function getModelCatalog(args: {
   forceRefresh?: boolean
 }): Promise<ModelApiResponse> {
   const hasProviderFilter = Array.isArray(args.connectedProviders)
-  const providerFilter = normalizeProviderFilter(args.connectedProviders)
+  const providerFilter = normalizeProviderFilter(args.connectedProviders).filter((providerId) =>
+    isProviderEnabledInApp(providerId)
+  )
   const managedProviders = hasProviderFilter
     ? providerFilter.filter((providerId) => isManagedProvider(providerId))
     : []
@@ -158,7 +161,11 @@ export async function getModelCatalog(args: {
     })
     .then((data) => {
       const normalizedData = {
-        models: sortModelsManagedFirst(Array.isArray(data.models) ? data.models : []),
+        models: sortModelsManagedFirst(
+          (Array.isArray(data.models) ? data.models : []).filter((model) =>
+            isProviderEnabledInApp(model.provider)
+          )
+        ),
       }
       modelCatalogCache.set(key, { data: normalizedData })
       return normalizedData

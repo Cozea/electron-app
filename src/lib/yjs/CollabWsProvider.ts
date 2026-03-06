@@ -76,6 +76,8 @@ const RECONNECT_MAX_MS = 10_000
 const RECONNECT_FACTOR = 2
 const INITIAL_CONNECT_FAILURE_LIMIT = 6
 const INITIAL_CONNECT_FAILURE_WINDOW_MS = 2_500
+const SESSION_REFRESH_BUFFER_MS = 2 * 60 * 1000
+const AUTH_RECOVERY_ERROR_CODES = new Set(['INVALID_SESSION_TOKEN', 'SESSION_MISMATCH'])
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -107,14 +109,33 @@ function resolveWsUrl(base: string): string {
   return parsed.toString()
 }
 
+function decodeJwtExpMs(token: string): number | null {
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+
+  try {
+    const base64 = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
+    const payload = JSON.parse(atob(base64)) as { exp?: unknown }
+    return typeof payload.exp === 'number' && Number.isFinite(payload.exp)
+      ? payload.exp * 1000
+      : null
+  } catch {
+    return null
+  }
+}
+
 export class CollabWsProvider {
   private readonly doc: Y.Doc
   private readonly awareness: Awareness
-  private readonly session: CollabSessionDescriptor
+  private session: CollabSessionDescriptor
   private readonly clientType: 'web' | 'electron'
   private readonly clientId: string
   private readonly onStateChange?: (state: ConnectionState, error?: string | null) => void
   private readonly onPermanentFailure?: (reason: string) => void
+  private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
@@ -123,6 +144,9 @@ export class CollabWsProvider {
   private consecutiveInitialFailures = 0
   private knownSeq: number
   private isDestroyed = false
+  private lastServerErrorCode: string | null = null
+  private lastServerErrorMessage: string | null = null
+  private sessionRefreshInFlight: Promise<boolean> | null = null
   private readonly pendingUpdates: Array<{
     updateBinary: string
     idempotencyKey: string
@@ -137,6 +161,7 @@ export class CollabWsProvider {
     initialKnownSeq?: number
     onStateChange?: (state: ConnectionState, error?: string | null) => void
     onPermanentFailure?: (reason: string) => void
+    refreshSession?: () => Promise<CollabSessionDescriptor | null>
   }) {
     this.doc = args.doc
     this.awareness = args.awareness
@@ -149,10 +174,11 @@ export class CollabWsProvider {
         : 0
     this.onStateChange = args.onStateChange
     this.onPermanentFailure = args.onPermanentFailure
+    this.refreshSession = args.refreshSession
   }
 
   start(): void {
-    this.connect()
+    void this.connect()
     this.doc.on('update', this.handleLocalUpdate)
     this.awareness.on('update', this.handleAwarenessUpdate)
   }
@@ -190,6 +216,10 @@ export class CollabWsProvider {
     return 'idle'
   }
 
+  updateSession(session: CollabSessionDescriptor): void {
+    this.session = session
+  }
+
   private clearReconnectTimer(): void {
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer)
@@ -207,16 +237,74 @@ export class CollabWsProvider {
     )
     this.reconnectAttempt += 1
     this.reconnectTimer = window.setTimeout(() => {
-      this.connect()
+      void this.connect()
     }, delay)
   }
 
-  private connect(): void {
+  private shouldRefreshSessionBeforeConnect(): boolean {
+    const expirationMs = decodeJwtExpMs(this.session.token)
+    if (!expirationMs) return false
+    return expirationMs - Date.now() <= SESSION_REFRESH_BUFFER_MS
+  }
+
+  private async maybeRefreshSession(): Promise<boolean> {
+    if (!this.refreshSession) return false
+    if (this.sessionRefreshInFlight) {
+      return await this.sessionRefreshInFlight
+    }
+
+    const refreshPromise = (async () => {
+      try {
+        const nextSession = await this.refreshSession?.()
+        if (!nextSession?.token) return false
+        this.session = nextSession
+        this.reconnectAttempt = 0
+        this.consecutiveInitialFailures = 0
+        return true
+      } catch (error) {
+        console.warn('[CollabWsProvider] Failed to refresh collab session:', error)
+        return false
+      } finally {
+        this.sessionRefreshInFlight = null
+      }
+    })()
+
+    this.sessionRefreshInFlight = refreshPromise
+    return await refreshPromise
+  }
+
+  private async handleAuthRecovery(reason: string): Promise<void> {
+    if (this.isDestroyed) return
+    this.onStateChange?.('reconnecting', reason)
+
+    const refreshed = await this.maybeRefreshSession()
+    if (this.isDestroyed) return
+
+    if (refreshed) {
+      await this.connect()
+      return
+    }
+
+    this.scheduleReconnect(reason)
+  }
+
+  private async connect(): Promise<void> {
     if (this.isDestroyed) return
     if (this.socket && this.socket.readyState === WebSocket.OPEN) return
     if (this.socket && this.socket.readyState === WebSocket.CONNECTING) return
 
+    this.clearReconnectTimer()
+    if (this.shouldRefreshSessionBeforeConnect()) {
+      await this.maybeRefreshSession()
+      if (this.isDestroyed) return
+      if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+        return
+      }
+    }
+
     this.currentConnectStartedAt = Date.now()
+    this.lastServerErrorCode = null
+    this.lastServerErrorMessage = null
     this.onStateChange?.('connecting', null)
 
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
@@ -276,6 +364,17 @@ export class CollabWsProvider {
         this.consecutiveInitialFailures = 0
       }
 
+      const closeDetails =
+        this.lastServerErrorMessage ??
+        (typeof event.code === 'number'
+          ? `Collaboration websocket disconnected (code ${event.code})`
+          : 'Collaboration websocket disconnected')
+
+      if (AUTH_RECOVERY_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {
+        void this.handleAuthRecovery(closeDetails)
+        return
+      }
+
       if (this.consecutiveInitialFailures >= INITIAL_CONNECT_FAILURE_LIMIT) {
         const message =
           'Collaboration websocket is unavailable after repeated failed handshakes. Switching to fallback sync transport.'
@@ -284,10 +383,6 @@ export class CollabWsProvider {
         return
       }
 
-      const closeDetails =
-        typeof event.code === 'number'
-          ? `Collaboration websocket disconnected (code ${event.code})`
-          : 'Collaboration websocket disconnected'
       this.scheduleReconnect(closeDetails)
     }
   }
@@ -416,10 +511,13 @@ export class CollabWsProvider {
     }
 
     if (message.type === 'error') {
+      this.lastServerErrorCode =
+        typeof message.payload?.code === 'string' ? message.payload.code : null
       const messageText =
         typeof message.payload?.message === 'string'
           ? message.payload.message
           : 'Collaboration protocol error'
+      this.lastServerErrorMessage = messageText
       this.onStateChange?.('error', messageText)
     }
   }

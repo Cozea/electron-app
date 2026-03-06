@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  isManagedProviderInApp,
+  isProviderEnabledInApp,
+} from '@shared/aiProviderAvailability'
 import type { ProviderCloudCredentials } from '@shared/electronApiTypes'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
@@ -42,6 +46,11 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '../../components/ui/collapsible'
+import {
   Key,
   AlertCircle,
   CheckCircle2,
@@ -72,8 +81,6 @@ function isBuiltinProvider(providerId: string): providerId is (typeof BUILTIN_PR
 const RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
   RECOMMENDED_PROVIDER_ORDER.map((providerId, index) => [providerId, index])
 )
-const COZEA_MANAGED_PROVIDER_IDS = new Set(['openai', 'anthropic', 'google', 'xai'])
-
 interface LocalProviderStatus {
   provider: string
   connected: boolean
@@ -360,6 +367,7 @@ export function AI({ surface = 'page' }: AIProps) {
   const [availableProviderMethods, setAvailableProviderMethods] = useState<Record<string, ProviderAuthMethod[]>>({})
   const now = Date.now()
   const [providersError, setProvidersError] = useState<string | null>(null)
+  const [isManualProvidersOpen, setIsManualProvidersOpen] = useState(false)
 
   // Usage history pagination
   const [usagePage, setUsagePage] = useState(0)
@@ -561,12 +569,6 @@ export function AI({ surface = 'page' }: AIProps) {
       { tokens: 0, requests: 0 }
     )
   }, [chartData])
-  const usagePeriodLabel =
-    usageTimeRange === '7d'
-      ? 'Last 7 days'
-      : usageTimeRange === '90d'
-        ? 'Last 3 months'
-        : 'Last 30 days'
   const providerRows = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
 
@@ -583,7 +585,10 @@ export function AI({ surface = 'page' }: AIProps) {
       if (bIsRecommended) return 1
 
       return a.name.localeCompare(b.name)
-    }).filter((provider) => !COZEA_MANAGED_PROVIDER_IDS.has(provider.id.trim().toLowerCase()))
+    }).filter((provider) => {
+      if (!isProviderEnabledInApp(provider.id)) return false
+      return !isManagedProviderInApp(provider.id)
+    })
   }, [providerCatalog])
   const selectedProviderInfo = selectedProvider
     ? providerRows.find((provider) => provider.id === selectedProvider)
@@ -629,8 +634,10 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   useEffect(() => {
-    if (selectedProvider && COZEA_MANAGED_PROVIDER_IDS.has(selectedProvider.trim().toLowerCase())) {
+    if (!selectedProvider) return
+    if (!isProviderEnabledInApp(selectedProvider) || isManagedProviderInApp(selectedProvider)) {
       setSelectedProvider(null)
+      setConnectDialogOpen(false)
     }
   }, [selectedProvider])
 
@@ -749,24 +756,21 @@ export function AI({ surface = 'page' }: AIProps) {
               </ChartContainer>
 
               <div className="mt-4 flex justify-end">
-                <div className="flex w-full max-w-md flex-wrap items-end justify-end gap-y-3 text-right">
-                  <p className="w-full text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    {usagePeriodLabel}
-                  </p>
-                  <div className="pr-4">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      Requests
-                    </p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums">
+                <div className="flex w-full max-w-md items-center justify-end text-right">
+                  <div className="flex items-baseline gap-2 pr-4">
+                    <p className="text-xl font-semibold tabular-nums">
                       {usageTotals.requests.toLocaleString()}
                     </p>
-                  </div>
-                  <div className="border-l border-border/60 pl-4">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      Tokens
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Requests
                     </p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums">
+                  </div>
+                  <div className="flex items-baseline gap-2 border-l border-border/60 pl-4">
+                    <p className="text-xl font-semibold tabular-nums">
                       {formatTokens(usageTotals.tokens)}
+                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Tokens
                     </p>
                   </div>
                 </div>
@@ -778,7 +782,7 @@ export function AI({ surface = 'page' }: AIProps) {
 
         {/* Usage History */}
         <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
+          <CardHeader className="px-0">
             <CardTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
               Usage History
@@ -787,7 +791,7 @@ export function AI({ surface = 'page' }: AIProps) {
               Recent AI usage across your organization
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 py-0 overflow-hidden">
+          <CardContent className="px-0 py-0 overflow-hidden">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
@@ -881,22 +885,40 @@ export function AI({ surface = 'page' }: AIProps) {
           </CardContent>
         </Card>
 
-        {/* Provider Credentials */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Manual Provider Connections
-            </CardTitle>
-            <CardDescription>
-              Connect non-managed providers with your own credentials. Cozea-managed providers are handled automatically.
-            </CardDescription>
-            {providersError && (
-              <p className="text-sm text-amber-600 dark:text-amber-400">{providersError}</p>
-            )}
-          </CardHeader>
-          <CardContent className="px-4 py-0 overflow-hidden">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+        {providerRows.length > 0 && (
+        <Collapsible open={isManualProvidersOpen} onOpenChange={setIsManualProvidersOpen}>
+          <Card className="border-none shadow-none bg-transparent">
+            <CardHeader>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="group flex w-full items-start justify-between gap-4 text-left"
+                >
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center gap-2">
+                      <Key className="h-5 w-5" />
+                      Manual Provider Connections
+                    </CardTitle>
+                    <CardDescription className="mt-2">
+                      Connect non-managed providers with your own credentials. Cozea-managed providers are handled automatically.
+                    </CardDescription>
+                    {providersError && (
+                      <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">{providersError}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors group-hover:border-border group-hover:text-foreground">
+                    <span>{isManualProvidersOpen ? 'Hide' : 'Show'}</span>
+                    <span>{providerRows.length}</span>
+                    <ChevronRight
+                      className={`h-3.5 w-3.5 transition-transform duration-200 ${isManualProvidersOpen ? 'rotate-90' : ''}`}
+                    />
+                  </div>
+                </button>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+              <CardContent className="px-4 py-0 overflow-hidden">
+                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
@@ -916,7 +938,7 @@ export function AI({ surface = 'page' }: AIProps) {
                       isConnectable &&
                       (status?.connected ?? false) &&
                       (status?.expiresAt == null || status.expiresAt > now)
-                    const isPolicyManagedProvider = COZEA_MANAGED_PROVIDER_IDS.has(provider.id)
+                    const isPolicyManagedProvider = isManagedProviderInApp(provider.id)
                     const isAllowed =
                       !isPolicyManagedProvider ||
                       (
@@ -1042,8 +1064,11 @@ export function AI({ surface = 'page' }: AIProps) {
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+        )}
 
       </div>
 

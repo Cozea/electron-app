@@ -1,13 +1,8 @@
 import type { ProviderAuthProvider } from '@shared/electronApiTypes'
-
-const COZEA_MANAGED_PROVIDER_IDS = new Set<ProviderAuthProvider>([
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'moonshotai',
-  'moonshot',
-])
+import {
+  isManagedProviderInApp,
+  isProviderEnabledInApp,
+} from '@shared/aiProviderAvailability'
 
 function parseScopedProviderFromModelId(modelId: string): ProviderAuthProvider | null {
   const trimmed = modelId.trim()
@@ -36,8 +31,7 @@ export function inferProviderFromModelId(modelId: string): ProviderAuthProvider 
 }
 
 export function isManagedProvider(provider: ProviderAuthProvider | null | undefined): boolean {
-  if (!provider) return false
-  return COZEA_MANAGED_PROVIDER_IDS.has(provider)
+  return isManagedProviderInApp(provider)
 }
 
 export async function buildEncodedProviderAuthHeader(args: {
@@ -45,6 +39,10 @@ export async function buildEncodedProviderAuthHeader(args: {
   modelId: string
   organizationId: string
 }): Promise<{ header?: string; error?: string; managed?: boolean }> {
+  if (!isProviderEnabledInApp(args.provider)) {
+    return { error: 'This provider is temporarily disabled in the app.' }
+  }
+
   if (isManagedProvider(args.provider)) {
     return { managed: true }
   }
