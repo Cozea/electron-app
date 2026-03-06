@@ -60,6 +60,7 @@ import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
 
 interface ProjectPresenceUser extends CompactPresenceUser {
     id: string
@@ -1533,12 +1534,26 @@ export function ProjectPagesPage() {
         }
     }, [inspectorContextMenu, closeInspectorContextMenu])
 
-    const handleOpenInspectedSource = useCallback(() => {
-        const fileName = inspectorContextMenu?.reactSource?.fileName
-        if (!fileName || !projectBasePath) return
-        navigate(`${projectBasePath}?path=${encodeURIComponent(fileName)}`)
+    const handleOpenInspectedSource = useCallback(async () => {
+        const reactSource = inspectorContextMenu?.reactSource
+        const fileName = reactSource?.fileName
+        if (!fileName || !projectBasePath || !projectPath) return
+
+        const resolvedPath = await resolveProjectSourcePath(fileName, projectPath)
+        if (!resolvedPath) return
+
+        const params = new URLSearchParams()
+        params.set('path', resolvedPath)
+        if (reactSource?.lineNumber) {
+            params.set('line', String(reactSource.lineNumber))
+        }
+        if (reactSource?.columnNumber) {
+            params.set('column', String(reactSource.columnNumber))
+        }
+
+        navigate(`${projectBasePath}?${params.toString()}`)
         closeInspectorContextMenu()
-    }, [inspectorContextMenu, closeInspectorContextMenu, navigate, projectBasePath])
+    }, [closeInspectorContextMenu, inspectorContextMenu, navigate, projectBasePath, projectPath])
 
     const handleOpenCode = (file: string, line?: number, column?: number) => {
         // Use full path when available so Files page can open/select the file in tree and tabs

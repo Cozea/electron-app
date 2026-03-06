@@ -76,7 +76,8 @@ crons.interval(
 crons.cron(
   "recalculate storage usage",
   "0 6 * * 0",
-  internal.organizations.recalculateStorageUsageAll
+  internal.organizations.recalculateStorageUsageAll,
+  {}
 )
 
 export default crons

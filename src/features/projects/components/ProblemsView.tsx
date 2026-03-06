@@ -197,7 +197,7 @@ export function ProblemsView({
                             const fileName = fileLabel.split("/").pop() || fileLabel
                             const groupCount = group.items.length
                             return (
-                                <div key={group.id} className="rounded border border-border/60 bg-background/40">
+                                <div key={group.id} className="overflow-hidden rounded-xl bg-background/25">
                                     <button
                                         type="button"
                                         onClick={() => toggleGroup(group.id)}
@@ -217,7 +217,7 @@ export function ProblemsView({
                                         </span>
                                     </button>
                                     {!isCollapsed && (
-                                        <div className="border-t border-border/60 divide-y divide-border/60">
+                                        <div className="space-y-0.5 p-1">
                                             {group.items.map((error) => (
                                                 <ProblemRow
                                                     key={error.id}
@@ -226,6 +226,9 @@ export function ProblemsView({
                                                     onAskAI={handleAskAI}
                                                     onDismiss={handleDismiss}
                                                     projectPath={projectPath}
+                                                    showFileLabel={false}
+                                                    showLocation={false}
+                                                    showSource={false}
                                                 />
                                             ))}
                                         </div>
@@ -259,13 +262,29 @@ interface ProblemRowProps {
     onAskAI: (error: ProblemItem) => void
     onDismiss: (id: string) => void
     projectPath?: string | null
+    showFileLabel?: boolean
+    showLocation?: boolean
+    showSource?: boolean
 }
 
-function ProblemRow({ error, onOpenFile, onAskAI, onDismiss, projectPath }: ProblemRowProps) {
+function ProblemRow({
+    error,
+    onOpenFile,
+    onAskAI,
+    onDismiss,
+    projectPath,
+    showFileLabel = true,
+    showLocation = true,
+    showSource = true,
+}: ProblemRowProps) {
     const Icon = getSeverityIcon(error.severity)
     const location = formatLocation(error)
     const fileLabel = error.file ? toRelativePath(error.file, projectPath) : null
     const clickable = Boolean(error.file)
+    const hasMeta =
+        (showFileLabel && Boolean(fileLabel)) ||
+        (showLocation && Boolean(location)) ||
+        showSource
 
     return (
         <div
@@ -294,11 +313,13 @@ function ProblemRow({ error, onOpenFile, onAskAI, onDismiss, projectPath }: Prob
             />
             <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="text-foreground/90 truncate">{error.message}</div>
-                <div className="min-w-0 flex items-center gap-2 text-muted-foreground mt-0.5">
-                    {fileLabel && <span className="min-w-0 flex-1 truncate">{fileLabel}</span>}
-                    {location && <span className="shrink-0">{location}</span>}
-                    <span className="shrink-0 uppercase text-[10px]">{error.source}</span>
-                </div>
+                {hasMeta ? (
+                    <div className="min-w-0 flex items-center gap-2 text-muted-foreground mt-0.5">
+                        {showFileLabel && fileLabel ? <span className="min-w-0 flex-1 truncate">{fileLabel}</span> : null}
+                        {showLocation && location ? <span className="shrink-0">{location}</span> : null}
+                        {showSource ? <span className="shrink-0 uppercase text-[10px]">{error.source}</span> : null}
+                    </div>
+                ) : null}
             </div>
             <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip>

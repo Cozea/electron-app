@@ -3,8 +3,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import {
-  estimateProjectStorageBreakdown,
-  syncProjectStorageUsage,
+  applyProjectStorageDeltas,
+  getLegacyFileStorageTotals,
 } from "./lib/workspaceLimits"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
@@ -62,14 +62,41 @@ export const upsertReplicaForServer = mutation({
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
-    await assertSyncProjectAccess(ctx, args.projectId)
-    const previousBreakdown = await estimateProjectStorageBreakdown(ctx, args.projectId)
+    const { project } = await assertSyncProjectAccess(ctx, args.projectId)
     const now = Date.now()
 
     const existing = await ctx.db
       .query("projectReplicaGit")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .first()
+    const firstLfsObject = await ctx.db
+      .query("projectReplicaLfsObjects")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first()
+
+    const previousBundleBytes = Math.max(0, existing?.bundleSizeBytes ?? 0)
+    const nextBundleBytes = Math.max(
+      0,
+      args.bundleSizeBytes !== undefined ? args.bundleSizeBytes : existing?.bundleSizeBytes ?? 0
+    )
+    const hasLfsObjects = Boolean(firstLfsObject)
+    const usedReplicaAccountingBefore = previousBundleBytes > 0 || hasLfsObjects
+    const usedReplicaAccountingAfter = nextBundleBytes > 0 || hasLfsObjects
+
+    let sourceAndConfigDelta = 0
+    let gitHistoryDelta = 0
+    if (usedReplicaAccountingBefore && usedReplicaAccountingAfter) {
+      sourceAndConfigDelta = nextBundleBytes - previousBundleBytes
+    } else if (usedReplicaAccountingBefore !== usedReplicaAccountingAfter) {
+      const legacyTotals = await getLegacyFileStorageTotals(ctx, args.projectId)
+      if (usedReplicaAccountingAfter) {
+        sourceAndConfigDelta = nextBundleBytes - legacyTotals.activeBytes
+        gitHistoryDelta = -legacyTotals.supersededBytes
+      } else {
+        sourceAndConfigDelta = legacyTotals.activeBytes - previousBundleBytes
+        gitHistoryDelta = legacyTotals.supersededBytes
+      }
+    }
 
     if (existing) {
       const previousBundleStorageId = existing.bundleStorageId
@@ -97,7 +124,10 @@ export const upsertReplicaForServer = mutation({
           // Best effort: stale bundle cleanup can retry via maintenance cron.
         }
       }
-      await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
+      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+        sourceAndConfig: sourceAndConfigDelta,
+        gitHistory: gitHistoryDelta,
+      })
       return await ctx.db.get(existing._id)
     }
 
@@ -113,7 +143,10 @@ export const upsertReplicaForServer = mutation({
       updatedBy: args.userId,
     })
 
-    await syncProjectStorageUsage(ctx, args.projectId, previousBreakdown)
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
+      sourceAndConfig: sourceAndConfigDelta,
+      gitHistory: gitHistoryDelta,
+    })
 
     return await ctx.db.get(replicaId)
   },
@@ -271,7 +304,7 @@ export const cleanupReplicaMetadata = internalMutation({
       .query("projectReplicaGitSessions")
       .withIndex("by_updated_at")
       .order("asc")
-      .collect()
+      .take(maxDeletes)
 
     for (const session of staleSessions) {
       if (deletedSessions >= maxDeletes) break
@@ -285,7 +318,7 @@ export const cleanupReplicaMetadata = internalMutation({
       .query("projectReplicaGitLocks")
       .withIndex("by_expires_at")
       .order("asc")
-      .collect()
+      .take(maxDeletes)
 
     for (const lock of expiredLocks) {
       if (deletedLocks >= maxDeletes) break

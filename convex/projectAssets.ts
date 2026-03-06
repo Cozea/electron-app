@@ -2,7 +2,7 @@ import type { MutationCtx } from "./_generated/server"
 import { mutation, query } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
-import { applyStorageDeltas } from "./lib/workspaceLimits"
+import { applyProjectStorageDeltas } from "./lib/workspaceLimits"
 
 async function hasSiblingStorageReference(
   ctx: MutationCtx,
@@ -52,6 +52,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
 
     // Infer category from MIME type if not provided
     let category = args.category
@@ -75,7 +77,7 @@ export const create = mutation({
 
     const assetId = await ctx.db.insert("projectAssets", {
       projectId: args.projectId,
-      organizationId: args.organizationId,
+      organizationId: project.organizationId,
       name: args.name,
       storageId: args.storageId,
       mimeType: args.mimeType,
@@ -90,7 +92,7 @@ export const create = mutation({
     })
 
     if (args.storageId && args.mimeType !== "application/x-directory") {
-      await applyStorageDeltas(ctx, args.organizationId, {
+      await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
         assets: Math.max(0, args.size),
       })
     }
@@ -161,7 +163,7 @@ export const remove = mutation({
     await ctx.db.delete(args.assetId)
 
     if (asset.storageId && asset.mimeType !== "application/x-directory" && !hasSiblingReference) {
-      await applyStorageDeltas(ctx, asset.organizationId, {
+      await applyProjectStorageDeltas(ctx, asset.organizationId, asset.projectId, {
         assets: -Math.max(0, asset.size),
       })
     }
@@ -378,6 +380,7 @@ export const bulkDelete = mutation({
       success: boolean
       error?: string
       freedBytes: number
+      projectId?: Id<"projects">
       organizationId?: Id<"organizations">
     }> = []
 
@@ -421,27 +424,40 @@ export const bulkDelete = mutation({
         assetId,
         success: true,
         freedBytes: shouldDeleteUnderlyingStorage ? Math.max(0, asset.size) : 0,
+        projectId: asset.projectId,
         organizationId: asset.organizationId,
       })
     }
 
-    const freedBytesByOrganization = new Map<string, { organizationId: Id<"organizations">; bytes: number }>()
+    const freedBytesByProject = new Map<string, {
+      organizationId: Id<"organizations">
+      projectId: Id<"projects">
+      bytes: number
+    }>()
     for (const result of results) {
-      if (!result.success || !result.organizationId || result.freedBytes <= 0) continue
-      const key = String(result.organizationId)
-      const existing = freedBytesByOrganization.get(key)
+      if (
+        !result.success ||
+        !result.organizationId ||
+        !result.projectId ||
+        result.freedBytes <= 0
+      ) {
+        continue
+      }
+      const key = String(result.projectId)
+      const existing = freedBytesByProject.get(key)
       if (existing) {
         existing.bytes += result.freedBytes
       } else {
-        freedBytesByOrganization.set(key, {
+        freedBytesByProject.set(key, {
           organizationId: result.organizationId,
+          projectId: result.projectId,
           bytes: result.freedBytes,
         })
       }
     }
 
-    for (const entry of freedBytesByOrganization.values()) {
-      await applyStorageDeltas(ctx, entry.organizationId, {
+    for (const entry of freedBytesByProject.values()) {
+      await applyProjectStorageDeltas(ctx, entry.organizationId, entry.projectId, {
         assets: -entry.bytes,
       })
     }

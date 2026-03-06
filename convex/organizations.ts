@@ -1,4 +1,5 @@
 import { mutation, query, internalMutation } from "./_generated/server"
+import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -6,11 +7,17 @@ import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
 import { checkSeatLimit } from "./lib/seatLimits"
 import { getWorkspacePlanLabel } from "./lib/planNames"
 import {
+  applyProjectStorageDeltas,
   checkProjectLimit,
   checkStorageUsage,
+  calculateStorageTotal,
+  emptyBreakdown,
+  estimateAiConversationBytes,
+  estimateBuilderRunBytes,
   getPlanStorageLimitGB,
   formatBytes,
-  estimateStorageBreakdown,
+  rebuildOrganizationStorageUsageFromProjectAggregates,
+  syncProjectStorageUsageFromSource,
 } from "./lib/workspaceLimits"
 import {
   getUtcDayStartTimestamp,
@@ -20,6 +27,8 @@ import {
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai", "moonshotai"] as const
 const PERSONAL_WORKSPACE_PREFIX = "personal:"
+const STORAGE_RECALC_ORG_BATCH_SIZE = 10
+const STORAGE_RECALC_PROJECT_BATCH_SIZE = 5
 type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
 
 function normalizeEmail(value: string): string {
@@ -146,6 +155,13 @@ function sanitizeAllowedProviders(
     sanitized.push(provider)
   }
   return sanitized.length > 0 ? sanitized : [...DEFAULT_ALLOWED_PROVIDERS]
+}
+
+function estimateSnapshotBytes(snapshot: {
+  byteSize?: number
+  snapshot?: ArrayBuffer
+}): number {
+  return Math.max(0, snapshot.byteSize ?? snapshot.snapshot?.byteLength ?? 0)
 }
 
 // Sync organization from WorkOS
@@ -1065,7 +1081,7 @@ export const getUsageLimits = query({
     const org = await ctx.db.get(args.orgId)
     if (!org) return null
 
-    const plan = org.subscription.plan
+    const plan = org.subscription?.plan ?? "free"
     const planDisplayName = getWorkspacePlanLabel(plan)
 
     // Get all limits
@@ -1122,51 +1138,96 @@ export const getUsageLimits = query({
 export const recalculateStorageUsage = internalMutation({
   args: {
     organizationId: v.id("organizations"),
+    projectCursor: v.optional(v.union(v.string(), v.null())),
+    projectBatchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.organizationId)
     if (!org) return { success: false, reason: "Organization not found" }
 
-    const breakdown = await estimateStorageBreakdown(ctx, args.organizationId)
-    const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
+    const projectBatchSize = Math.max(
+      1,
+      Math.min(args.projectBatchSize ?? STORAGE_RECALC_PROJECT_BATCH_SIZE, 25)
+    )
+    const page = await ctx.db
+      .query("projects")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .paginate({
+        cursor: args.projectCursor ?? null,
+        numItems: projectBatchSize,
+      })
 
-    await ctx.db.patch(args.organizationId, {
-      storageUsage: {
-        totalBytes,
-        lastCalculatedAt: Date.now(),
-        breakdown,
-      },
-      updatedAt: Date.now(),
-    })
+    let reconciledProjects = 0
+    for (const project of page.page) {
+      await syncProjectStorageUsageFromSource(ctx, project._id)
+      reconciledProjects += 1
+    }
 
-    return { success: true, totalBytes, breakdown }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.organizations.recalculateStorageUsage, {
+        organizationId: args.organizationId,
+        projectCursor: page.continueCursor,
+        projectBatchSize,
+      })
+
+      return {
+        success: true,
+        phase: "projects",
+        reconciledProjects,
+        isDone: false,
+        continueCursor: page.continueCursor,
+      }
+    }
+
+    const breakdown =
+      (await rebuildOrganizationStorageUsageFromProjectAggregates(ctx, args.organizationId)) ??
+      emptyBreakdown()
+
+    return {
+      success: true,
+      phase: "rollup",
+      reconciledProjects,
+      isDone: true,
+      totalBytes: calculateStorageTotal(breakdown),
+      breakdown,
+    }
   },
 })
 
 // Recalculate storage for all organizations
 // Called by weekly cron job
 export const recalculateStorageUsageAll = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const organizations = await ctx.db.query("organizations").collect()
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? STORAGE_RECALC_ORG_BATCH_SIZE, 50))
+    const page = await ctx.db.query("organizations").paginate({
+      cursor: args.cursor ?? null,
+      numItems: batchSize,
+    })
 
-    let processed = 0
-    for (const org of organizations) {
-      const breakdown = await estimateStorageBreakdown(ctx, org._id)
-      const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
-
-      await ctx.db.patch(org._id, {
-        storageUsage: {
-          totalBytes,
-          lastCalculatedAt: Date.now(),
-          breakdown,
-        },
-        updatedAt: Date.now(),
+    let scheduled = 0
+    for (const org of page.page) {
+      await ctx.scheduler.runAfter(0, internal.organizations.recalculateStorageUsage, {
+        organizationId: org._id,
       })
-      processed++
+      scheduled++
     }
 
-    return { processed }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.organizations.recalculateStorageUsageAll, {
+        cursor: page.continueCursor,
+        batchSize,
+      })
+    }
+
+    return {
+      scheduled,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    }
   },
 })
 
@@ -1202,6 +1263,7 @@ export const clearStorageCategory = mutation({
     let deletedCount = 0
 
     for (const projectId of projectIds) {
+      let deletedBytes = 0
       switch (args.category) {
         case "collaborationData": {
           // Clear yjsUpdates
@@ -1210,6 +1272,7 @@ export const clearStorageCategory = mutation({
             .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
             .collect()
           for (const update of updates) {
+            deletedBytes += update.update?.byteLength ?? 0
             await ctx.db.delete(update._id)
             deletedCount++
           }
@@ -1219,9 +1282,13 @@ export const clearStorageCategory = mutation({
           // Clear aiConversations
           const conversations = await ctx.db
             .query("aiConversations")
-            .filter((q) => q.eq(q.field("projectId"), projectId))
+            .withIndex("by_project", (q) => q.eq("projectId", projectId))
             .collect()
           for (const conv of conversations) {
+            deletedBytes += estimateAiConversationBytes({
+              title: conv.title,
+              messages: conv.messages,
+            })
             await ctx.db.delete(conv._id)
             deletedCount++
           }
@@ -1234,6 +1301,7 @@ export const clearStorageCategory = mutation({
             .withIndex("by_project", (q) => q.eq("projectId", projectId))
             .collect()
           for (const run of runs) {
+            deletedBytes += estimateBuilderRunBytes(run)
             await ctx.db.delete(run._id)
             deletedCount++
           }
@@ -1246,6 +1314,7 @@ export const clearStorageCategory = mutation({
             .withIndex("by_project", (q) => q.eq("projectId", projectId))
             .collect()
           for (const snapshot of snapshots) {
+            deletedBytes += estimateSnapshotBytes(snapshot)
             await ctx.db.delete(snapshot._id)
             deletedCount++
           }
@@ -1256,20 +1325,12 @@ export const clearStorageCategory = mutation({
           break
         }
       }
+      if (deletedBytes > 0) {
+        await applyProjectStorageDeltas(ctx, args.orgId, projectId, {
+          [args.category]: -deletedBytes,
+        })
+      }
     }
-
-    // Recalculate storage usage after clearing
-    const breakdown = await estimateStorageBreakdown(ctx, args.orgId)
-    const totalBytes = Object.values(breakdown).reduce((sum, val) => sum + val, 0)
-
-    await ctx.db.patch(args.orgId, {
-      storageUsage: {
-        totalBytes,
-        lastCalculatedAt: Date.now(),
-        breakdown,
-      },
-      updatedAt: Date.now(),
-    })
 
     // Audit log
     await ctx.db.insert("auditLogs", {

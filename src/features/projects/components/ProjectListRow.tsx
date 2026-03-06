@@ -288,6 +288,7 @@ export function ProjectListRow({
     return (
             <TableRow
                 ref={rowRef}
+                data-interactive="true"
                 className={cn(
                     "group cursor-pointer",
                     syncState !== 'idle' && "pointer-events-none"

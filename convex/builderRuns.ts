@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import {
-  applyStorageDeltas,
+  applyProjectStorageDeltas,
   estimateBuilderRunBytes,
 } from "./lib/workspaceLimits"
 
@@ -52,7 +52,7 @@ export const startRun = mutation({
       updatedAt: now,
     })
 
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
       buildCache: estimateBuilderRunBytes({
         runId: args.runId,
         status: "running",
@@ -115,7 +115,7 @@ export const checkpointRun = mutation({
       updatedAt: nextRun.updatedAt,
       lastCheckpointAt: nextRun.lastCheckpointAt,
     })
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, run.projectId, {
       buildCache: estimateBuilderRunBytes(nextRun) - previousBytes,
     })
 
@@ -165,7 +165,7 @@ export const updateRunStatus = mutation({
       errorMessage: nextRun.errorMessage,
       updatedAt: nextRun.updatedAt,
     })
-    await applyStorageDeltas(ctx, project.organizationId, {
+    await applyProjectStorageDeltas(ctx, project.organizationId, run.projectId, {
       buildCache: estimateBuilderRunBytes(nextRun) - previousBytes,
     })
 

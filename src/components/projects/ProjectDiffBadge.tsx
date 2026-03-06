@@ -1,5 +1,4 @@
 import type { Id } from '../../../convex/_generated/dataModel'
-import { Badge } from '@/components/ui/badge'
 import { useProjectDiffStatus } from '@/hooks/useProjectDiffStatus'
 import { cn } from '@/lib/utils'
 import {
@@ -33,23 +32,17 @@ export function ProjectDiffBadge({
     lastSyncAt,
   })
 
-  // Don't show anything if no diff status or checking
+  // Don't show anything if the diff status has not been hydrated yet.
   if (!diffStatus) return null
 
   // Show loading indicator if checking
   if (diffStatus.isChecking) {
     return (
-      <Badge
-        variant="secondary"
-        className={cn(
-          size === 'compact'
-            ? "flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 py-0 text-[10px]"
-            : "flex size-5 items-center justify-center rounded-full p-0",
-          className
-        )}
+        <div
+        className={cn("flex items-center justify-center text-muted-foreground/70", className)}
       >
-        <Loader2 className={cn(size === 'compact' ? 'h-2.5 w-2.5 animate-spin' : 'h-3 w-3 animate-spin')} />
-      </Badge>
+        <Loader2 className={cn(size === 'compact' ? 'h-3 w-3 animate-spin' : 'h-3.5 w-3.5 animate-spin')} />
+      </div>
     )
   }
 
@@ -58,25 +51,42 @@ export function ProjectDiffBadge({
   // Don't show if no changes
   if (totalChanges === 0) return null
 
-  // Determine badge variant based on changes
+  const hasDownloads = diffStatus.downloads > 0
+  const hasUploads = diffStatus.uploads > 0
   const hasConflicts = diffStatus.conflicts > 0
-  const variant = hasConflicts ? 'destructive' : 'default'
+  const iconClassName = size === 'compact' ? 'h-3 w-3' : 'h-3.5 w-3.5'
+  const countClassName = size === 'compact' ? 'text-[11px] leading-none' : 'text-xs leading-none'
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Badge
-          variant={variant}
+        <div
           className={cn(
             size === 'compact'
-              ? "flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1.5 py-0 text-[10px] font-medium"
-              : "flex size-6 items-center justify-center rounded-full p-0 text-xs font-medium",
-            !hasConflicts && "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700",
+              ? "flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+              : "flex items-center gap-2 text-sm font-medium text-muted-foreground",
             className
           )}
         >
-          {totalChanges}
-        </Badge>
+          {hasDownloads && (
+            <span className="flex items-center gap-0.5">
+              <ArrowDown className={cn(iconClassName, 'text-blue-500')} />
+              <span className={countClassName}>{diffStatus.downloads}</span>
+            </span>
+          )}
+          {hasUploads && (
+            <span className="flex items-center gap-0.5">
+              <ArrowUp className={cn(iconClassName, 'text-green-500')} />
+              <span className={countClassName}>{diffStatus.uploads}</span>
+            </span>
+          )}
+          {hasConflicts && (
+            <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className={iconClassName} />
+              <span className={countClassName}>{diffStatus.conflicts}</span>
+            </span>
+          )}
+        </div>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="flex flex-col gap-1">
         <p className="font-medium">Pending sync changes</p>

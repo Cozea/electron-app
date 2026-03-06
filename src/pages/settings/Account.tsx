@@ -98,12 +98,6 @@ export function Account({ surface = 'page' }: AccountProps) {
           : 'max-w-2xl space-y-8 px-6 pt-6'
       }
     >
-        {isProfileLoading && (
-          <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
-            Loading account profile...
-          </div>
-        )}
-
         {/* Profile Summary */}
         <div>
           <div className="flex items-center gap-4 p-4 rounded-lg">

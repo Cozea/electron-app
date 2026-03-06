@@ -299,7 +299,10 @@ const formatTokens = (tokens: number): string => {
 const usageChartConfig: ChartConfig = {
   tokens: {
     label: 'Tokens',
-    color: 'var(--chart-1)',
+    theme: {
+      light: 'var(--chart-1)',
+      dark: 'rgba(255, 255, 255, 0.96)',
+    },
   },
 }
 

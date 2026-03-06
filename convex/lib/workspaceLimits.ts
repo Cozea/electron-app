@@ -1,11 +1,10 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server"
-import type { Id } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 
 type StorageCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
 type StorageMutationCtx = Pick<MutationCtx, "db">
 
 const textEncoder = new TextEncoder()
-const STORAGE_USAGE_STALE_MS = 60 * 60 * 1000
 const STORAGE_BREAKDOWN_KEYS: Array<keyof StorageBreakdown> = [
   "sourceAndConfig",
   "collaborationData",
@@ -78,16 +77,48 @@ export async function checkProjectLimit(
     }
   }
 
-  const plan = org.subscription.plan
+  const plan = org.subscription?.plan ?? "free"
   const limit = getPlanProjectLimit(plan)
 
-  // Count non-deleted projects
-  const projects = await ctx.db
-    .query("projects")
-    .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
-    .collect()
-  const activeProjects = projects.filter((p) => p.status !== "deleted")
-  const current = activeProjects.length
+  const [draftProjects, generatingProjects, buildingProjects, activeProjects, archivedProjects] =
+    await Promise.all([
+      ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", orgId).eq("status", "draft")
+        )
+        .collect(),
+      ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", orgId).eq("status", "generating")
+        )
+        .collect(),
+      ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", orgId).eq("status", "building")
+        )
+        .collect(),
+      ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", orgId).eq("status", "active")
+        )
+        .collect(),
+      ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", orgId).eq("status", "archived")
+        )
+        .collect(),
+    ])
+  const current =
+    draftProjects.length +
+    generatingProjects.length +
+    buildingProjects.length +
+    activeProjects.length +
+    archivedProjects.length
 
   // Enterprise has unlimited projects
   if (limit === -1) {
@@ -194,6 +225,17 @@ export interface StorageUsageStatus {
   message?: string
 }
 
+export interface LegacyFileStorageTotals {
+  activeBytes: number
+  supersededBytes: number
+}
+
+export interface ReplicaStorageAccountingState {
+  bundleBytes: number
+  hasLfsObjects: boolean
+  usesReplicaAccounting: boolean
+}
+
 function sizeOfSerialized(value: unknown): number {
   return textEncoder.encode(JSON.stringify(value ?? null)).byteLength
 }
@@ -219,7 +261,15 @@ function createBreakdownDelta(
   return delta
 }
 
-function calculateStorageTotal(breakdown: StorageBreakdown): number {
+function normalizeBreakdown(source: Partial<StorageBreakdown>): StorageBreakdown {
+  const normalized = emptyBreakdown()
+  for (const key of STORAGE_BREAKDOWN_KEYS) {
+    normalized[key] = Math.max(0, source[key] ?? 0)
+  }
+  return normalized
+}
+
+export function calculateStorageTotal(breakdown: StorageBreakdown): number {
   return STORAGE_BREAKDOWN_KEYS.reduce((sum, key) => sum + Math.max(0, breakdown[key]), 0)
 }
 
@@ -281,6 +331,130 @@ export function estimateBuilderRunBytes(run: {
   })
 }
 
+function sumFileBytes<T extends { sizeBytes: number }>(files: T[]): number {
+  return files.reduce((sum, file) => sum + Math.max(0, file.sizeBytes), 0)
+}
+
+export async function getLegacyFileStorageTotals(
+  ctx: StorageCtx,
+  projectId: Id<"projects">
+): Promise<LegacyFileStorageTotals> {
+  const [activeFiles, supersededFiles] = await Promise.all([
+    ctx.db
+      .query("projectFiles")
+      .withIndex("by_project_and_status", (q) =>
+        q.eq("projectId", projectId).eq("status", "active")
+      )
+      .collect(),
+    ctx.db
+      .query("projectFiles")
+      .withIndex("by_project_and_status", (q) =>
+        q.eq("projectId", projectId).eq("status", "superseded")
+      )
+      .collect(),
+  ])
+
+  return {
+    activeBytes: sumFileBytes(activeFiles),
+    supersededBytes: sumFileBytes(supersededFiles),
+  }
+}
+
+export async function getReplicaStorageAccountingState(
+  ctx: StorageCtx,
+  projectId: Id<"projects">
+): Promise<ReplicaStorageAccountingState> {
+  const [replica, firstLfsObject] = await Promise.all([
+    ctx.db
+      .query("projectReplicaGit")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .first(),
+    ctx.db
+      .query("projectReplicaLfsObjects")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .first(),
+  ])
+
+  const bundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+  const hasLfsObjects = Boolean(firstLfsObject)
+
+  return {
+    bundleBytes,
+    hasLfsObjects,
+    usesReplicaAccounting: bundleBytes > 0 || hasLfsObjects,
+  }
+}
+
+async function getProjectStorageUsageDoc(
+  ctx: StorageCtx,
+  projectId: Id<"projects">
+): Promise<Doc<"projectStorageUsage"> | null> {
+  return await ctx.db
+    .query("projectStorageUsage")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .first()
+}
+
+async function writeProjectStorageUsageDoc(
+  ctx: StorageMutationCtx,
+  orgId: Id<"organizations">,
+  projectId: Id<"projects">,
+  breakdown: Partial<StorageBreakdown>
+): Promise<StorageBreakdown> {
+  const existing = await getProjectStorageUsageDoc(ctx, projectId)
+  const normalized = normalizeBreakdown(breakdown)
+  const now = Date.now()
+  const payload = {
+    organizationId: orgId,
+    projectId,
+    totalBytes: calculateStorageTotal(normalized),
+    lastCalculatedAt: now,
+    breakdown: normalized,
+    updatedAt: now,
+  }
+
+  if (existing) {
+    await ctx.db.patch(existing._id, payload)
+    return normalized
+  }
+
+  await ctx.db.insert("projectStorageUsage", {
+    ...payload,
+    createdAt: now,
+  })
+  return normalized
+}
+
+export async function ensureProjectStorageUsage(
+  ctx: StorageMutationCtx,
+  orgId: Id<"organizations">,
+  projectId: Id<"projects">
+): Promise<StorageBreakdown> {
+  const existing = await getProjectStorageUsageDoc(ctx, projectId)
+  if (existing) {
+    return existing.breakdown
+  }
+
+  return await writeProjectStorageUsageDoc(ctx, orgId, projectId, emptyBreakdown())
+}
+
+export async function rollupProjectStorageUsageBreakdown(
+  ctx: StorageCtx,
+  orgId: Id<"organizations">
+): Promise<StorageBreakdown> {
+  const rows = await ctx.db
+    .query("projectStorageUsage")
+    .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
+    .collect()
+
+  const breakdown = emptyBreakdown()
+  for (const row of rows) {
+    addToBreakdown(breakdown, row.breakdown)
+  }
+
+  return breakdown
+}
+
 export async function applyStorageDeltas(
   ctx: StorageMutationCtx,
   orgId: Id<"organizations">,
@@ -296,26 +470,7 @@ export async function applyStorageDeltas(
     return org.storageUsage?.breakdown ?? emptyBreakdown()
   }
 
-  const storageUsage = org.storageUsage
-  const isStorageUsageStale =
-    !storageUsage ||
-    Date.now() - storageUsage.lastCalculatedAt > STORAGE_USAGE_STALE_MS
-
-  if (isStorageUsageStale) {
-    const estimated = await estimateStorageBreakdown(ctx, orgId)
-    const now = Date.now()
-    await ctx.db.patch(orgId, {
-      storageUsage: {
-        totalBytes: calculateStorageTotal(estimated),
-        lastCalculatedAt: now,
-        breakdown: estimated,
-      },
-      updatedAt: now,
-    })
-    return estimated
-  }
-
-  const base = storageUsage.breakdown
+  const base = org.storageUsage?.breakdown ?? (await rollupProjectStorageUsageBreakdown(ctx, orgId))
   const next = emptyBreakdown()
 
   for (const key of STORAGE_BREAKDOWN_KEYS) {
@@ -332,6 +487,44 @@ export async function applyStorageDeltas(
     updatedAt: now,
   })
 
+  return next
+}
+
+export async function applyProjectStorageDeltas(
+  ctx: StorageMutationCtx,
+  _orgId: Id<"organizations">,
+  projectId: Id<"projects">,
+  deltas: Partial<StorageBreakdown>
+): Promise<StorageBreakdown | null> {
+  const project = await ctx.db.get(projectId)
+  if (!project) {
+    return null
+  }
+
+  const resolvedOrgId = project.organizationId
+  const hasAnyDelta = STORAGE_BREAKDOWN_KEYS.some((key) => (deltas[key] ?? 0) !== 0)
+  const existing = await getProjectStorageUsageDoc(ctx, projectId)
+
+  if (!existing) {
+    const currentBreakdown = await estimateProjectStorageBreakdown(ctx, projectId)
+    await writeProjectStorageUsageDoc(ctx, resolvedOrgId, projectId, currentBreakdown)
+    if (hasAnyDelta) {
+      await applyStorageDeltas(ctx, resolvedOrgId, deltas)
+    }
+    return currentBreakdown
+  }
+
+  if (!hasAnyDelta) {
+    return existing.breakdown
+  }
+
+  const next = emptyBreakdown()
+  for (const key of STORAGE_BREAKDOWN_KEYS) {
+    next[key] = Math.max(0, existing.breakdown[key] + (deltas[key] ?? 0))
+  }
+
+  await writeProjectStorageUsageDoc(ctx, resolvedOrgId, projectId, next)
+  await applyStorageDeltas(ctx, resolvedOrgId, deltas)
   return next
 }
 
@@ -421,7 +614,7 @@ export async function estimateProjectStorageBreakdown(
 
   const conversations = await ctx.db
     .query("aiConversations")
-    .filter((q) => q.eq(q.field("projectId"), projectId))
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
     .collect()
   breakdown.aiHistory += conversations.reduce(
     (sum, conversation) =>
@@ -435,10 +628,9 @@ export async function estimateProjectStorageBreakdown(
   return breakdown
 }
 
-export async function syncProjectStorageUsage(
+export async function syncProjectStorageUsageFromSource(
   ctx: StorageMutationCtx,
-  projectId: Id<"projects">,
-  previousBreakdown: StorageBreakdown
+  projectId: Id<"projects">
 ): Promise<StorageBreakdown | null> {
   const project = await ctx.db.get(projectId)
   if (!project) {
@@ -446,8 +638,52 @@ export async function syncProjectStorageUsage(
   }
 
   const nextBreakdown = await estimateProjectStorageBreakdown(ctx, projectId)
-  const deltas = createBreakdownDelta(previousBreakdown, nextBreakdown)
-  await applyStorageDeltas(ctx, project.organizationId, deltas)
+  await writeProjectStorageUsageDoc(ctx, project.organizationId, projectId, nextBreakdown)
+  return nextBreakdown
+}
+
+export async function rebuildOrganizationStorageUsageFromProjectAggregates(
+  ctx: StorageMutationCtx,
+  orgId: Id<"organizations">
+): Promise<StorageBreakdown | null> {
+  const org = await ctx.db.get(orgId)
+  if (!org) {
+    return null
+  }
+
+  const breakdown = await rollupProjectStorageUsageBreakdown(ctx, orgId)
+  const now = Date.now()
+  await ctx.db.patch(orgId, {
+    storageUsage: {
+      totalBytes: calculateStorageTotal(breakdown),
+      lastCalculatedAt: now,
+      breakdown,
+    },
+    updatedAt: now,
+  })
+
+  return breakdown
+}
+
+export async function syncProjectStorageUsage(
+  ctx: StorageMutationCtx,
+  projectId: Id<"projects">,
+  _previousBreakdown: StorageBreakdown
+): Promise<StorageBreakdown | null> {
+  const project = await ctx.db.get(projectId)
+  if (!project) {
+    return null
+  }
+
+  const nextBreakdown = await estimateProjectStorageBreakdown(ctx, projectId)
+  const existing = await getProjectStorageUsageDoc(ctx, projectId)
+  await writeProjectStorageUsageDoc(ctx, project.organizationId, projectId, nextBreakdown)
+  if (existing) {
+    const deltas = createBreakdownDelta(existing.breakdown, nextBreakdown)
+    await applyStorageDeltas(ctx, project.organizationId, deltas)
+  } else {
+    await rebuildOrganizationStorageUsageFromProjectAggregates(ctx, project.organizationId)
+  }
   return nextBreakdown
 }
 
@@ -475,7 +711,7 @@ export async function estimateStorageBreakdown(
 
 /**
  * Check storage usage for organization
- * Returns cached breakdown when available, otherwise estimates current usage on demand.
+ * Uses cached storage accounting. Full estimation is reserved for maintenance flows.
  */
 export async function checkStorageUsage(
   ctx: StorageCtx,
@@ -495,19 +731,11 @@ export async function checkStorageUsage(
     }
   }
 
-  const plan = org.subscription.plan
+  const plan = org.subscription?.plan ?? "free"
   const limitBytes = getPlanStorageLimit(plan)
 
-  const storageUsage = org.storageUsage
-  const isStorageUsageStale =
-    !storageUsage ||
-    Date.now() - storageUsage.lastCalculatedAt > STORAGE_USAGE_STALE_MS
-  const breakdown = isStorageUsageStale
-    ? await estimateStorageBreakdown(ctx, orgId)
-    : storageUsage.breakdown
-  const currentBytes = isStorageUsageStale
-    ? calculateStorageTotal(breakdown)
-    : storageUsage.totalBytes
+  const breakdown = org.storageUsage?.breakdown ?? (await rollupProjectStorageUsageBreakdown(ctx, orgId))
+  const currentBytes = org.storageUsage?.totalBytes ?? calculateStorageTotal(breakdown)
 
   if (limitBytes === -1) {
     return {

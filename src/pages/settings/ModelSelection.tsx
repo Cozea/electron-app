@@ -3,7 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+} from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -13,7 +19,7 @@ import { getProviderDisplayName } from '@/hooks/useConnectedProviders'
 import { getModelCatalog, type ModelApiModel } from '@/lib/ai/modelCatalogClient'
 import { getProviderLogoUrl } from '@/lib/ai/providerLogos'
 import { cn } from '@/lib/utils'
-import { Brain, ChevronDown, Loader2, Star } from 'lucide-react'
+import { Brain, ChevronDown, Loader2, Search, Star, X } from 'lucide-react'
 
 interface ModelSelectionProps {
   surface?: 'page' | 'drawer'
@@ -472,16 +478,34 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
             Filter saved models and provider catalogs by name, ID, or provider.
           </p>
         </div>
-        <div className="rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">
-          <Input
+        <InputGroup className="h-10 bg-secondary/80 dark:bg-secondary/40">
+          <InputGroupAddon>
+            <InputGroupText>
+              <Search className="h-4 w-4" />
+            </InputGroupText>
+          </InputGroupAddon>
+          <InputGroupInput
             id="model-selection-search"
             value={modelSearchQuery}
             onChange={(event) => {
               setModelSearchQuery(event.target.value)
             }}
             placeholder="Search by model or provider..."
+            className="text-sm"
           />
-        </div>
+          {modelSearchQuery ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                aria-label="Clear model search"
+                onClick={() => setModelSearchQuery('')}
+                size="icon-xs"
+                variant="ghost"
+              >
+                <X className="h-3.5 w-3.5" />
+              </InputGroupButton>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
       </section>
 
       <section className="space-y-4">

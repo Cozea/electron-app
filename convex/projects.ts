@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
+import { ensureProjectStorageUsage } from "./lib/workspaceLimits"
 
 const PERSONAL_WORKSPACE_PREFIX = "personal:"
 
@@ -237,6 +238,8 @@ export const create = mutation({
       addedBy: args.userId,
       localPath: memberLocalPath,
     })
+
+    await ensureProjectStorageUsage(ctx, args.organizationId, projectId)
 
     return { projectId, slug }
   },
