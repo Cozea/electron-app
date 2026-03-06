@@ -182,6 +182,18 @@ function toHeaderValues(value: string | string[] | undefined): string[] {
   return []
 }
 
+function setHeaderValue(headers: ResponseHeaderMap, targetName: string, value: string): void {
+  const existingKey = findHeaderKey(headers, targetName)
+  headers[existingKey ?? targetName] = [value]
+}
+
+function hasHeaderValue(headers: ResponseHeaderMap, targetName: string, expectedValues: string[]): boolean {
+  const key = findHeaderKey(headers, targetName)
+  if (!key) return false
+  const normalizedExpected = new Set(expectedValues.map((value) => value.trim().toLowerCase()))
+  return toHeaderValues(headers[key]).some((value) => normalizedExpected.has(value.trim().toLowerCase()))
+}
+
 function isLoopbackPreviewUrl(rawUrl: string): boolean {
   try {
     const parsedUrl = new URL(rawUrl)
@@ -286,6 +298,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
         compatibilityEnabled: false,
         rewritten: false,
         removed: [],
+        ensured: [],
         capturedAt: Date.now(),
       })
       callback({})
@@ -303,6 +316,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
         compatibilityEnabled: true,
         rewritten: false,
         removed: [],
+        ensured: [],
         capturedAt: Date.now(),
       })
       callback({})
@@ -312,6 +326,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
     const responseHeaders: ResponseHeaderMap = { ...details.responseHeaders }
     let removedXFrameOptions = false
     let removedFrameAncestors = false
+    const ensuredHeaderNames: string[] = []
 
     const xFrameOptionsKey = findHeaderKey(responseHeaders, 'x-frame-options')
     if (xFrameOptionsKey) {
@@ -337,13 +352,29 @@ function installPreviewHeaderCompatibilityPolicy(): void {
       }
     }
 
-    if (!removedXFrameOptions && !removedFrameAncestors) {
+    if (resourceType === 'subFrame') {
+      // The renderer dev shell is COEP/COOP isolated in dev. Embedded localhost previews
+      // must advertise compatible policies as well or Chromium blocks the iframe before
+      // the preview bridge can inject.
+      if (!hasHeaderValue(responseHeaders, 'cross-origin-embedder-policy', ['credentialless', 'require-corp'])) {
+        setHeaderValue(responseHeaders, 'Cross-Origin-Embedder-Policy', 'credentialless')
+        ensuredHeaderNames.push('cross-origin-embedder-policy:credentialless')
+      }
+
+      if (!hasHeaderValue(responseHeaders, 'cross-origin-resource-policy', ['cross-origin'])) {
+        setHeaderValue(responseHeaders, 'Cross-Origin-Resource-Policy', 'cross-origin')
+        ensuredHeaderNames.push('cross-origin-resource-policy:cross-origin')
+      }
+    }
+
+    if (!removedXFrameOptions && !removedFrameAncestors && ensuredHeaderNames.length === 0) {
       rememberPreviewHeaderDiagnostic({
         url: details.url,
         resourceType,
         compatibilityEnabled: true,
         rewritten: false,
         removed: [],
+        ensured: [],
         capturedAt: Date.now(),
       })
       callback({})
@@ -360,13 +391,8 @@ function installPreviewHeaderCompatibilityPolicy(): void {
       compatibilityEnabled: true,
       rewritten: true,
       removed: removedHeaderNames,
+      ensured: ensuredHeaderNames,
       capturedAt: Date.now(),
-    })
-
-    console.log('[PreviewHeaders] Rewrote localhost preview response headers', {
-      url: details.url,
-      resourceType: details.resourceType,
-      removed: removedHeaderNames,
     })
 
     callback({
@@ -409,30 +435,6 @@ function isBrowserWindowAlive(windowRef: AppBrowserWindow | null): windowRef is 
 }
 
 function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main'): void {
-  targetWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    const isPreviewLog =
-      message.includes('[PreviewBridge]') ||
-      message.includes('[Bridge]') ||
-      message.includes('[PagesPreview]') ||
-      message.includes('credentialless')
-
-    if (!isPreviewLog) return
-
-    const prefix = `[Renderer:${label}]`
-    const location = sourceId ? `${sourceId}:${line}` : `line:${line}`
-
-    if (level >= 3) {
-      console.error(`${prefix} ${message} (${location})`)
-      return
-    }
-    if (level === 2) {
-      console.warn(`${prefix} ${message} (${location})`)
-      return
-    }
-
-    console.log(`${prefix} ${message} (${location})`)
-  })
-
   targetWindow.webContents.on(
     'did-fail-load',
     (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -655,13 +657,29 @@ async function handleAuthCallback(url: string): Promise<void> {
   await AuthService.getInstance().handleAuthCallback(url, win)
 }
 
-// Register custom protocol
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])])
+function resolveProtocolLaunchArg(): string {
+  const argvEntry = process.argv[1]
+  if (argvEntry && !argvEntry.startsWith('-')) {
+    return path.resolve(argvEntry)
   }
-} else {
-  app.setAsDefaultProtocolClient(PROTOCOL)
+  return app.getAppPath()
+}
+
+function registerProtocolClient(scheme: string): void {
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(scheme)
+    return
+  }
+
+  // In dev, always register with the app entry arg. Without this macOS may launch
+  // plain Electron and show the default splash page on deep-link callbacks.
+  const launchArg = resolveProtocolLaunchArg()
+  app.setAsDefaultProtocolClient(scheme, process.execPath, [launchArg])
+}
+
+// Register custom protocol(s)
+for (const scheme of SUPPORTED_PROTOCOLS) {
+  registerProtocolClient(scheme)
 }
 
 // Handle protocol on macOS

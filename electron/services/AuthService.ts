@@ -1,6 +1,7 @@
 import { app, safeStorage, dialog, shell, ipcMain, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
 
 // Types
 export interface OrganizationMembership {
@@ -24,6 +25,48 @@ export interface Session {
     organizations: OrganizationMembership[]
 }
 
+const DEV_AUTH_CALLBACK_TIMEOUT_MS = 2 * 60 * 1000
+
+function renderDevAuthCallbackPage(options: { title: string; message: string }): string {
+    const title = options.title.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const message = options.message.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .panel {
+        width: min(560px, calc(100vw - 40px));
+        border-radius: 16px;
+        border: 1px solid #dbe2ef;
+        background: #ffffff;
+        padding: 24px;
+      }
+      h1 { margin: 0 0 12px; font-size: 22px; line-height: 1.2; }
+      p { margin: 0; color: #334155; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>${title}</h1>
+      <p>${message}</p>
+    </div>
+  </body>
+</html>`
+}
+
 export class AuthService {
   private static instance: AuthService
   private sessionPath: string | null = null
@@ -31,9 +74,14 @@ export class AuthService {
   private isProduction: boolean
   private protocol: string
   private readonly waitlistMessage = "You're on the waitlist. We'll notify you when access is ready."
+  private activeDevLoginClose: (() => Promise<void>) | null = null
 
     private constructor() {
-        this.authServerUrl = process.env.AUTH_SERVER_URL || 'https://api.cozea.app'
+        this.authServerUrl = (
+            process.env.AUTH_SERVER_URL ||
+            process.env.VITE_AUTH_SERVER_URL ||
+            'https://api.cozea.app'
+        ).replace(/\/+$/, '')
         // In electron-vite dev, ELECTRON_RENDERER_URL is set; VITE_DEV_SERVER_URL may be absent.
         const devServerUrl = process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
         this.isProduction = !devServerUrl
@@ -114,17 +162,211 @@ export class AuthService {
         }
     }
 
+    private emitAuthSuccess(session: Session, win?: BrowserWindow | null): void {
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('auth:success', session)
+            return
+        }
+        for (const browserWindow of BrowserWindow.getAllWindows()) {
+            if (!browserWindow.isDestroyed()) {
+                browserWindow.webContents.send('auth:success', session)
+            }
+        }
+    }
+
+    private emitAuthError(message: string, win?: BrowserWindow | null): void {
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('auth:error', message)
+            return
+        }
+        for (const browserWindow of BrowserWindow.getAllWindows()) {
+            if (!browserWindow.isDestroyed()) {
+                browserWindow.webContents.send('auth:error', message)
+            }
+        }
+    }
+
+    private async exchangeOneTimeToken(token: string): Promise<Session> {
+        const response = await fetch(`${this.authServerUrl}/auth/desktop/exchange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        })
+
+        if (!response.ok) {
+            throw new Error(`Token exchange failed (${response.status})`)
+        }
+
+        return (await response.json()) as Session
+    }
+
+    private async startDevLoopbackAuthBridge(): Promise<{
+        redirectUri: string
+        waitForToken: Promise<string>
+        close: () => Promise<void>
+    }> {
+        let settled = false
+        let timeoutId: NodeJS.Timeout | null = null
+        let server: Server
+        let rejectPending: ((reason?: unknown) => void) | null = null
+
+        const waitForToken = new Promise<string>((resolve, reject) => {
+            rejectPending = reject
+            server = createServer((req, res) => {
+                const requestUrl = req.url || '/'
+                const url = new URL(requestUrl, 'http://localhost')
+
+                if (url.pathname !== '/auth/callback') {
+                    res.statusCode = 404
+                    res.end('Not found')
+                    return
+                }
+
+                const error = url.searchParams.get('error')
+                const errorDescription = url.searchParams.get('error_description')
+                const token = url.searchParams.get('token')
+
+                if (error) {
+                    const message = errorDescription || error
+                    res.statusCode = 400
+                    res.setHeader('content-type', 'text/html')
+                    res.end(
+                        renderDevAuthCallbackPage({
+                            title: 'Sign in failed',
+                            message: `Authentication failed: ${message}. You can close this tab and retry in the app.`,
+                        }),
+                    )
+                    if (!settled) {
+                        settled = true
+                        reject(new Error(message))
+                    }
+                    return
+                }
+
+                if (!token) {
+                    res.statusCode = 400
+                    res.setHeader('content-type', 'text/html')
+                    res.end(
+                        renderDevAuthCallbackPage({
+                            title: 'Missing token',
+                            message: 'No token was returned. You can close this tab and retry in the app.',
+                        }),
+                    )
+                    if (!settled) {
+                        settled = true
+                        reject(new Error('No token received'))
+                    }
+                    return
+                }
+
+                res.statusCode = 200
+                res.setHeader('content-type', 'text/html')
+                res.end(
+                    renderDevAuthCallbackPage({
+                        title: 'Sign in complete',
+                        message: 'You can close this tab and return to Cozea.',
+                    }),
+                )
+                if (!settled) {
+                    settled = true
+                    resolve(token)
+                }
+            })
+        })
+
+        await new Promise<void>((resolve, reject) => {
+            server.listen(0, '127.0.0.1', () => resolve())
+            server.once('error', reject)
+        })
+
+        const address = server.address()
+        const port = typeof address === 'object' && address ? address.port : 0
+        if (!port) {
+            throw new Error('Unable to allocate local auth callback port')
+        }
+
+        timeoutId = setTimeout(() => {
+            if (!settled) {
+                settled = true
+                rejectPending?.(new Error('Authentication timed out. Please try again.'))
+            }
+        }, DEV_AUTH_CALLBACK_TIMEOUT_MS)
+
+        const close = async () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId)
+            }
+            await new Promise<void>((resolve) => {
+                server.close(() => resolve())
+            })
+        }
+
+        const wrappedWaitForToken = waitForToken.then(
+            async (value) => {
+                await close()
+                return value
+            },
+            async (error) => {
+                await close()
+                throw error
+            },
+        )
+
+        return {
+            redirectUri: `http://127.0.0.1:${port}/auth/callback`,
+            waitForToken: wrappedWaitForToken,
+            close,
+        }
+    }
+
+    private async beginDevLoopbackLogin(): Promise<void> {
+        if (this.activeDevLoginClose) {
+            await this.activeDevLoginClose().catch(() => undefined)
+            this.activeDevLoginClose = null
+        }
+
+        const bridge = await this.startDevLoopbackAuthBridge()
+        this.activeDevLoginClose = bridge.close
+
+        try {
+            const loginUrl = new URL('/auth/login', this.authServerUrl)
+            loginUrl.searchParams.set('client', 'web')
+            loginUrl.searchParams.set('redirectUri', bridge.redirectUri)
+            await shell.openExternal(loginUrl.toString())
+        } catch (error) {
+            this.activeDevLoginClose = null
+            await bridge.close().catch(() => undefined)
+            throw error
+        }
+
+        void bridge.waitForToken
+            .then(async (token) => {
+                const session = await this.exchangeOneTimeToken(token)
+                this.saveSession(session)
+                this.emitAuthSuccess(session)
+            })
+            .catch((error) => {
+                console.error('Dev loopback auth error:', error)
+                this.emitAuthError('Authentication failed. Please try again.')
+            })
+            .finally(() => {
+                if (this.activeDevLoginClose === bridge.close) {
+                    this.activeDevLoginClose = null
+                }
+            })
+    }
+
     async handleAuthCallback(url: string, win: BrowserWindow | null): Promise<void> {
         const urlObj = new URL(url)
         const callbackError = urlObj.searchParams.get('error')
 
         if (callbackError === 'waitlisted') {
-            win?.webContents.send('auth:error', this.waitlistMessage)
+            this.emitAuthError(this.waitlistMessage, win)
             return
         }
 
         if (callbackError) {
-            win?.webContents.send('auth:error', 'Authentication failed')
+            this.emitAuthError('Authentication failed', win)
             return
         }
 
@@ -132,33 +374,27 @@ export class AuthService {
 
         if (!token) {
             console.error('No token in callback URL')
-            win?.webContents.send('auth:error', 'No token received')
+            this.emitAuthError('No token received', win)
             return
         }
 
         try {
-            const response = await fetch(`${this.authServerUrl}/auth/desktop/exchange`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token }),
-            })
-
-            if (!response.ok) {
-                throw new Error('Token exchange failed')
-            }
-
-            const session = (await response.json()) as Session
+            const session = await this.exchangeOneTimeToken(token)
             this.saveSession(session)
-
-            win?.webContents.send('auth:success', session)
+            this.emitAuthSuccess(session, win)
         } catch (err) {
             console.error('Auth callback error:', err)
-            win?.webContents.send('auth:error', 'Authentication failed')
+            this.emitAuthError('Authentication failed', win)
         }
     }
 
     registerIpcHandlers(): void {
         ipcMain.handle('auth:login', async () => {
+            if (!this.isProduction) {
+                await this.beginDevLoopbackLogin()
+                return { success: true }
+            }
+
             const loginUrl = new URL('/auth/login', this.authServerUrl)
             loginUrl.searchParams.set('client', 'desktop')
             loginUrl.searchParams.set('redirectUri', `${this.protocol}://auth/callback`)

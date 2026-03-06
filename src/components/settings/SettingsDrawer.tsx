@@ -154,7 +154,7 @@ export function SettingsDrawer() {
         closeClassName="hidden"
       >
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar [--sidebar:var(--main-nav-sidebar-surface)] bg-sidebar text-sidebar-foreground">
+          <aside className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar [--sidebar:var(--left-sidebar-surface)] bg-sidebar text-sidebar-foreground">
             <div className="relative min-h-0 flex-1">
               <div
                 ref={sidebarScrollRef}

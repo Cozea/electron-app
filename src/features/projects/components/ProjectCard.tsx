@@ -14,7 +14,6 @@ import {
     ImageOff
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -75,35 +74,6 @@ function formatRelativeTime(timestamp: number): string {
     if (minutes > 0) return `${minutes}m`
     return 'now'
 }
-
-function formatFrameworkTag(framework?: string): string | null {
-    if (!framework) return null
-
-    const normalized = framework.toLowerCase()
-    switch (normalized) {
-        case 'nextjs':
-            return 'Next.js'
-        case 'vite-react':
-            return 'Vite + React'
-        case 'vite-vue':
-            return 'Vite + Vue'
-        case 'vite-svelte':
-            return 'Vite + Svelte'
-        case 'sveltekit':
-            return 'SvelteKit'
-        case 'solid-start':
-            return 'SolidStart'
-        case 'cra':
-            return 'Create React App'
-        default:
-            return framework
-                .split('-')
-                .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
-                .join(' ')
-    }
-}
-
-
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -317,20 +287,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     // Derived state
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
-
-    const stackBadges = []
-    if (project.stack?.backend) stackBadges.push(project.stack.backend)
-    if (project.stack?.hosting) stackBadges.push(project.stack.hosting)
-
-    // Color tag logic (mimicking the design's "Developer", "Designer" tags)
-    // We'll map the project type or stack to a color
-    const tagColor =
-        project.stack?.backend ? "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300" :
-            project.stack?.hosting ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" :
-                "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-
-    const frameworkTag = formatFrameworkTag(project.frameworkInfo?.framework)
-    const primaryTag = frameworkTag || stackBadges[0] || "Project"
+    const showInlineSyncSpinner = syncState === 'checking' || syncState === 'syncing'
 
     return (
         <div className="h-full">
@@ -434,19 +391,20 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                 </div>
 
                 {/* Content Section - Bottom Half */}
-                <div className="flex flex-col flex-1 bg-[var(--main-nav-sidebar-surface)] rounded-b-xl">
-                    <CardHeader className="px-3 pt-4 pb-0 space-y-0.5">
-                        <div className="flex items-start justify-between">
-                            <Badge
-                                variant="secondary"
-                                className={cn("rounded-md px-2 py-0 text-[10px] font-medium border-0", tagColor)}
-                            >
-                                {primaryTag}
-                            </Badge>
-
+                <div className="flex flex-col flex-1 bg-[var(--left-sidebar-surface)] rounded-b-xl">
+                    <CardHeader className="px-3 pt-3 pb-0">
+                        <div className="flex items-start gap-3">
+                            <div className="min-w-0 flex-1">
+                                <CardTitle className="mb-1 truncate text-base leading-tight font-bold">
+                                    {project.name}
+                                </CardTitle>
+                                <CardDescription className="line-clamp-2 text-xs leading-5">
+                                    {project.description || "No description provided."}
+                                </CardDescription>
+                            </div>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground -mr-1 -mt-1">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground -mr-1 -mt-1">
                                         <MoreHorizontal className="h-3 w-3" />
                                     </Button>
                                 </DropdownMenuTrigger>
@@ -487,15 +445,6 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
-
-                        <div>
-                            <CardTitle className="text-base font-bold leading-tight mb-1 truncate">
-                                {project.name}
-                            </CardTitle>
-                            <CardDescription className="line-clamp-2 text-xs h-8">
-                                {project.description || "No description provided."}
-                            </CardDescription>
-                        </div>
                     </CardHeader>
 
                     <CardContent className="px-3 pb-3 pt-0 mt-auto">
@@ -510,14 +459,13 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                                 </div>
                             )}
 
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <div className="flex items-center gap-1">
+                            <div className="flex items-center text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1.5">
                                     <Clock className="h-3 w-3" />
-                                    {project.updatedAt ? formatRelativeTime(project.updatedAt) : 'now'}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <FileCode className="h-3 w-3" />
-                                    {project.stats?.fileCount ?? 0}
+                                    <span>{project.updatedAt ? formatRelativeTime(project.updatedAt) : 'now'}</span>
+                                    {showInlineSyncSpinner ? (
+                                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                    ) : null}
                                 </div>
                             </div>
                         </div>

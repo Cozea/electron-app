@@ -212,6 +212,7 @@ function Sidebar({
     return (
       <div
         data-slot="sidebar"
+        data-side={side}
         className={cn(
           "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
           sideBoundary,

@@ -577,8 +577,8 @@ export function ProjectSidebar({
                         variant="sidebar"
                         collapsible="none"
                         style={{
-                            "--sidebar": "var(--main-nav-sidebar-surface)",
-                            "--sidebar-surface": "var(--main-nav-sidebar-surface)",
+                            "--sidebar": "var(--left-sidebar-surface)",
+                            "--sidebar-surface": "var(--left-sidebar-surface)",
                         } as React.CSSProperties}
                         className="file-tree-panel-border shrink-0 h-full bg-sidebar flex-1 min-w-0 relative border-l border-border/55"
                     >

@@ -347,14 +347,6 @@ export function AIConversation({
 
   const transportConversationId = currentConversationId ?? ephemeralConversationId
 
-  useEffect(() => {
-    const previousConversationId = previousStoredConversationIdRef.current
-    if (previousConversationId && currentConversationId === null) {
-      setEphemeralConversationId(crypto.randomUUID())
-    }
-    previousStoredConversationIdRef.current = currentConversationId
-  }, [currentConversationId])
-
   const providerScopedModels = useMemo(() => {
     const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
     if (!providerAuthAvailable || !providerStatusLoaded) return supportedModels
@@ -953,6 +945,27 @@ export function AIConversation({
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
 
+  useEffect(() => {
+    const previousConversationId = previousStoredConversationIdRef.current
+    const didSwitchConversation =
+      previousConversationId !== null &&
+      previousConversationId !== currentConversationId
+
+    if (didSwitchConversation) {
+      // Prevent late stream/tool updates from the previous conversation
+      // from leaking into the newly selected thread.
+      stop()
+      void localRuntime.cancelRun(previousConversationId)
+      conversationInitializedRef.current = null
+      setMessages([])
+    }
+
+    if (previousConversationId && currentConversationId === null) {
+      setEphemeralConversationId(crypto.randomUUID())
+    }
+    previousStoredConversationIdRef.current = currentConversationId
+  }, [currentConversationId, localRuntime, setMessages, stop])
+
   const hasPendingToolCalls = useMemo(() => {
     for (const message of uniqueMessages) {
       if (message.role !== 'assistant') continue
@@ -1023,6 +1036,8 @@ export function AIConversation({
   // Load stored messages when conversation changes
   useEffect(() => {
     if (!storedConversation) return
+    if (!currentConversationId) return
+    if (storedConversation._id !== currentConversationId) return
     if (conversationInitializedRef.current === currentConversationId) return
     if (resolvedProjectId && storedConversation.projectId !== resolvedProjectId) return
 
@@ -1104,6 +1119,9 @@ export function AIConversation({
   useEffect(() => {
     if (!resolvedProjectId) return
     if (!currentConversationId) return
+    // Prevent old-thread snapshots from being saved into a newly selected conversation
+    // while that conversation is still loading.
+    if (conversationInitializedRef.current !== currentConversationId) return
     if (uniqueMessages.length === 0) return
     if (isSavingRef.current) return
     if (status === 'streaming' || status === 'submitted') return
