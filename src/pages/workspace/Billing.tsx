@@ -1498,8 +1498,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>Seat Assignments</CardTitle>
             <CardDescription>
-              Assign paid seats explicitly. Members without seats can stay in the workspace but AI and
-              sync are gated.
+              Purchased seats cap workspace access. Assign paid seats explicitly so members can use AI
+              and sync.
             </CardDescription>
           </CardHeader>
           <CardContent className="px-0">

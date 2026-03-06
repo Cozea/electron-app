@@ -26,12 +26,7 @@ createRoot(document.getElementById('root')!).render(
       {featureFlags.dataRouter ? (
         <RouterProvider router={appRouter} />
       ) : (
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+        <BrowserRouter>
           <LegacyRouterApp />
         </BrowserRouter>
       )}

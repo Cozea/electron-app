@@ -21,22 +21,6 @@ interface ConversationListItem {
   createdAt: number
 }
 
-function formatRelativeTime(timestamp: number) {
-  const now = Date.now()
-  const diff = now - timestamp
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  const weeks = Math.floor(diff / 604800000)
-
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
-  if (hours < 24) return `${hours}h`
-  if (days < 7) return `${days}d`
-  if (weeks < 52) return `${weeks}w`
-  return new Date(timestamp).toLocaleDateString()
-}
-
 function getDayBucketKey(timestamp: number) {
   const date = new Date(timestamp)
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
@@ -134,8 +118,8 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
       variant="sidebar"
       collapsible="none"
       style={{
-        '--sidebar': 'var(--main-nav-sidebar-surface)',
-        '--sidebar-surface': 'var(--main-nav-sidebar-surface)',
+        '--sidebar': 'var(--left-sidebar-surface)',
+        '--sidebar-surface': 'var(--left-sidebar-surface)',
       } as React.CSSProperties}
       className="file-tree-panel-border h-full min-w-0 shrink-0 border-l border-border/55 bg-sidebar"
     >
@@ -155,8 +139,8 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
               variant="ghost"
               size="icon"
               className={cn(
-                "h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground",
-                isSearchVisible && "bg-sidebar-accent text-secondary-foreground"
+                "h-6 w-6 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground",
+                isSearchVisible && "bg-sidebar-accent text-sidebar-accent-foreground"
               )}
               onClick={handleToggleSearch}
               aria-label={isSearchVisible ? "Close search" : "Open search"}
@@ -168,7 +152,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground"
+              className="h-6 w-6 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground"
               onClick={startNewConversation}
               aria-label="New chat"
               title="New chat"
@@ -183,18 +167,18 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
         <div
           className={cn(
             "overflow-hidden transition-all duration-200 ease-out",
-            isSearchVisible ? "max-h-14 opacity-100" : "max-h-0 opacity-0"
+            isSearchVisible ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
           )}
         >
-          <div className="px-2 pb-2">
+          <div className="px-2 pt-1 pb-2">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sidebar-foreground/55" />
               <Input
                 type="text"
                 placeholder="Search chats"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                className="h-8 rounded-xl border-0 bg-secondary/80 pl-8 text-sm shadow-none focus-visible:ring-0 dark:bg-secondary/40"
+                className="h-8 rounded-xl border border-sidebar-border/70 bg-background/90 pl-8 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/50 shadow-none focus-visible:ring-sidebar-ring/35 dark:border-sidebar-border/60 dark:bg-secondary/40"
               />
             </div>
           </div>
@@ -220,7 +204,6 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
                         index === 0 ? 'mt-0' : undefined
                       )}
                     >
-                      <span className="h-px flex-1 bg-border/40" />
                       <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                         {group.dayLabel}
                       </span>
@@ -240,9 +223,6 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
                         )}
                       >
                         <span className="min-w-0 flex-1 truncate">{conv.title}</span>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {formatRelativeTime(conv.createdAt)}
-                        </span>
                       </button>
                     ))}
                   </div>

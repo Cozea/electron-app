@@ -158,7 +158,15 @@ export function SettingsDrawer() {
           <SheetDescription>Browse and update account, billing, AI, appearance, storage, and tooling settings.</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar [--sidebar:var(--left-sidebar-surface)] bg-sidebar text-sidebar-foreground">
+          <aside
+            className="relative flex w-56 shrink-0 flex-col bdry-r bdry-sidebar bg-sidebar text-sidebar-foreground"
+            style={{
+              '--sidebar': 'var(--left-sidebar-surface)',
+              '--sidebar-surface': 'var(--left-sidebar-surface)',
+              '--sidebar-accent': 'var(--left-sidebar-accent)',
+              '--sidebar-border': 'var(--left-sidebar-border)',
+            } as React.CSSProperties}
+          >
             <div className="relative min-h-0 flex-1">
               <div
                 ref={sidebarScrollRef}
