@@ -109,6 +109,15 @@ export function ContextSwitcher() {
         : 'skip'
   )
 
+  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
+
+  const personalSeatManagement = useQuery(
+    api.billing.getSeatManagement,
+    isPersonalWorkspace && convexOrg?._id && convexUser?._id
+      ? { organizationId: convexOrg._id, userId: convexUser._id }
+      : 'skip'
+  )
+
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
 
   const normalizedProjects = useMemo(
@@ -145,9 +154,10 @@ export function ContextSwitcher() {
   // Organization info
   const organization = {
     name: currentOrganization?.organizationName || 'My Workspace',
-    plan: getWorkspacePlanLabel(convexOrg?.subscription?.plan),
+    plan: isPersonalWorkspace
+      ? getWorkspacePlanLabel(personalSeatManagement?.entitlement?.plan ?? convexOrg?.subscription?.plan)
+      : getWorkspacePlanLabel(convexOrg?.subscription?.plan),
   }
-  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
 
   const resetSyncState = useCallback(() => {
     setSyncState('idle')

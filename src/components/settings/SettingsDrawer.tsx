@@ -1,4 +1,4 @@
-import { Bot, ChevronLeft, CreditCard, HardDrive, Palette, Terminal, UserCircle2 } from 'lucide-react'
+import { Bot, ChevronLeft, CreditCard, HardDrive, Palette, SlidersHorizontal, Terminal, UserCircle2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -7,6 +7,7 @@ import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
+import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Billing } from '@/pages/workspace/Billing'
 import { AI } from '@/pages/workspace/AI'
 import {
@@ -18,18 +19,37 @@ interface SettingsDrawerItem {
   section: SettingsDrawerSection
   label: string
   icon: typeof UserCircle2
+  route: string
+  isActive?: (routePath: string) => boolean
 }
 
 const SETTINGS_DRAWER_ITEMS: SettingsDrawerItem[] = [
-  { section: 'account', label: 'Account', icon: UserCircle2 },
-  { section: 'billing', label: 'Billing', icon: CreditCard },
-  { section: 'ai', label: 'AI', icon: Bot },
-  { section: 'appearance', label: 'Appearance', icon: Palette },
-  { section: 'storage', label: 'Storage', icon: HardDrive },
-  { section: 'tooling', label: 'Tooling', icon: Terminal },
+  { section: 'account', label: 'Account', icon: UserCircle2, route: '/settings/account' },
+  { section: 'billing', label: 'Billing', icon: CreditCard, route: '/settings/billing' },
+  {
+    section: 'ai',
+    label: 'AI',
+    icon: Bot,
+    route: '/settings/ai',
+    isActive: (routePath) => routePath === '/settings/ai' || routePath === '/workspace/ai',
+  },
+  {
+    section: 'ai',
+    label: 'Model Selection',
+    icon: SlidersHorizontal,
+    route: '/settings/ai/model-selection',
+    isActive: (routePath) =>
+      routePath.startsWith('/settings/ai/model-selection') ||
+      routePath.startsWith('/workspace/ai/model-selection'),
+  },
+  { section: 'appearance', label: 'Appearance', icon: Palette, route: '/settings/appearance' },
+  { section: 'storage', label: 'Storage', icon: HardDrive, route: '/settings/storage' },
+  { section: 'tooling', label: 'Tooling', icon: Terminal, route: '/settings/tooling' },
 ]
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
+  const routePath = route.split('?')[0] || route
+
   if (section === 'account') {
     return <Account surface="drawer" />
   }
@@ -39,6 +59,9 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
   }
 
   if (section === 'ai') {
+    if (routePath.startsWith('/settings/ai/model-selection')) {
+      return <ModelSelection surface="drawer" />
+    }
     return <AI surface="drawer" />
   }
 
@@ -58,7 +81,7 @@ export function SettingsDrawer() {
   const section = useSettingsDrawerStore((state) => state.section)
   const route = useSettingsDrawerStore((state) => state.route)
   const close = useSettingsDrawerStore((state) => state.close)
-  const setSection = useSettingsDrawerStore((state) => state.setSection)
+  const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
   const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
@@ -66,6 +89,7 @@ export function SettingsDrawer() {
   const [showSidebarBottomFade, setShowSidebarBottomFade] = useState(false)
   const [showContentTopFade, setShowContentTopFade] = useState(false)
   const [showContentBottomFade, setShowContentBottomFade] = useState(false)
+  const routePath = route.split('?')[0] || route
 
   useEffect(() => {
     const updateFades = (
@@ -143,14 +167,16 @@ export function SettingsDrawer() {
                 <div className="space-y-1">
                   {SETTINGS_DRAWER_ITEMS.map((item) => {
                     const Icon = item.icon
-                    const isActive = section === item.section
+                    const isActive = item.isActive
+                      ? item.isActive(routePath)
+                      : routePath === item.route || section === item.section
 
                     return (
                       <button
-                        key={item.section}
+                        key={item.route}
                         type="button"
                         data-active={isActive}
-                        onClick={() => setSection(item.section)}
+                        onClick={() => openFromRoute(item.route)}
                         className={cn(
                           'flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-foreground/10 hover:text-sidebar-foreground focus-visible:ring-2 active:bg-foreground/14 active:text-sidebar-foreground data-[active=true]:bg-foreground/14 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
                         )}

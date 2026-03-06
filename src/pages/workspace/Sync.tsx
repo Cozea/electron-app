@@ -38,7 +38,6 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 
 interface StorageCategory {
   id: string
@@ -278,9 +277,6 @@ export function Sync() {
                     <span className="text-lg text-muted-foreground mb-1">
                       / {isUnlimited ? '∞' : totalLimit} GB
                     </span>
-                    <Badge variant="secondary" className="mb-1.5">
-                      {getWorkspacePlanLabel(usageLimits?.plan)}
-                    </Badge>
                   </div>
                   <span className="text-sm text-muted-foreground">
                     {isUnlimited
