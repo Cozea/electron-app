@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { fetchWithAbort } from '@/lib/abort'
 import { featureFlags } from '@/lib/featureFlags'
+import { cn } from '@/lib/utils'
 
 const AUTH_SERVER_URL =
   import.meta.env.VITE_AUTH_SERVER_URL ||
@@ -93,6 +94,23 @@ interface StripeCatalogResponse {
   }>>
 }
 
+interface SegmentedControlOption<Value extends string> {
+  value: Value
+  label: string
+  ariaLabel?: string
+  title?: string
+}
+
+interface SlidingSegmentedControlProps<Value extends string> {
+  value: Value
+  options: SegmentedControlOption<Value>[]
+  onChange: (value: Value) => void
+  ariaLabel: string
+  className?: string
+  indicatorClassName?: string
+  buttonClassName?: string
+}
+
 const FALLBACK_CATALOG_AMOUNTS_CENTS: Record<SelfServePlan, Record<BillingCycle, number>> = {
   pro: { monthly: 2000, yearly: 21100 },
   max: { monthly: 4900, yearly: 51700 },
@@ -102,6 +120,34 @@ const FALLBACK_CATALOG_AMOUNTS_CENTS: Record<SelfServePlan, Record<BillingCycle,
 const FALLBACK_TRIAL_DAYS: Partial<Record<SelfServePlan, number>> = {
   max: 7,
 }
+
+const BILLING_CYCLE_OPTIONS: SegmentedControlOption<BillingCycle>[] = [
+  {
+    value: 'monthly',
+    label: 'M',
+    ariaLabel: 'Monthly billing',
+    title: 'Monthly billing',
+  },
+  {
+    value: 'yearly',
+    label: 'Y',
+    ariaLabel: 'Yearly billing',
+    title: 'Yearly billing',
+  },
+]
+
+const PLAN_SUBTYPE_OPTIONS: SegmentedControlOption<PlanSubtype>[] = [
+  {
+    value: 'individual',
+    label: 'Individual',
+    ariaLabel: 'Individual plans',
+  },
+  {
+    value: 'workspace',
+    label: 'Enterprise',
+    ariaLabel: 'Enterprise plans',
+  },
+]
 
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
@@ -223,6 +269,12 @@ interface StripeInvoice {
   invoicePdf: string | null
 }
 
+interface ScheduledCycleChange {
+  plan: CheckoutPlan
+  cycle: BillingCycle
+  effectiveAt: number
+}
+
 interface SeatWalletView {
   userId: Id<'users'>
   email: string
@@ -244,6 +296,10 @@ function formatDate(timestamp?: number): string {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+function formatBillingCycleLabel(cycle: BillingCycle): string {
+  return cycle === 'yearly' ? 'Yearly' : 'Monthly'
 }
 
 function formatCurrencyFromCents(cents: number, currency: string = 'USD'): string {
@@ -525,6 +581,108 @@ const PLAN_TIER_RANK: Record<PlanTierId, number> = {
   enterprise: 4,
 }
 
+function SlidingSegmentedControl<Value extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  className,
+  indicatorClassName,
+  buttonClassName,
+}: SlidingSegmentedControlProps<Value>) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const indicatorRef = useRef<HTMLDivElement | null>(null)
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const updateIndicator = useCallback(() => {
+    const selectedIndex = options.findIndex((option) => option.value === value)
+    const selectedNode = selectedIndex >= 0 ? itemRefs.current[selectedIndex] : null
+    const indicatorNode = indicatorRef.current
+
+    if (!selectedNode || !indicatorNode) {
+      if (indicatorNode) {
+        indicatorNode.style.opacity = '0'
+      }
+      return
+    }
+
+    indicatorNode.style.width = `${selectedNode.offsetWidth}px`
+    indicatorNode.style.transform = `translateX(${selectedNode.offsetLeft}px)`
+    indicatorNode.style.opacity = '1'
+  }, [options, value])
+
+  useEffect(() => {
+    updateIndicator()
+  }, [updateIndicator])
+
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateIndicator()
+    })
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current)
+    }
+
+    itemRefs.current.forEach((node) => {
+      if (node) {
+        resizeObserver.observe(node)
+      }
+    })
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [options.length, updateIndicator])
+
+  return (
+    <div
+      ref={containerRef}
+      role="group"
+      aria-label={ariaLabel}
+      className={cn(
+        'relative inline-grid grid-flow-col auto-cols-fr items-center gap-1 overflow-hidden rounded-full border border-border/60 bg-muted/70 p-1',
+        className
+      )}
+    >
+      <div
+        ref={indicatorRef}
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute top-1 bottom-1 left-0 rounded-full border border-border/70 bg-background opacity-0 shadow-sm transition-[transform,width,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+          indicatorClassName
+        )}
+      />
+      {options.map((option, index) => {
+        const selected = option.value === value
+
+        return (
+          <button
+            key={option.value}
+            ref={(node) => {
+              itemRefs.current[index] = node
+            }}
+            type="button"
+            className={cn(
+              'relative z-10 flex items-center justify-center whitespace-nowrap rounded-full px-4 text-sm font-medium text-muted-foreground transition-colors duration-200 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0',
+              selected && 'text-foreground',
+              buttonClassName
+            )}
+            onClick={() => onChange(option.value)}
+            aria-label={option.ariaLabel}
+            aria-pressed={selected}
+            title={option.title ?? option.label}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function getPlanCtaLabel(
   targetPlanId: PlanTierId,
   currentPlanId: PlanTierId,
@@ -598,8 +756,11 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [pricingCatalog, setPricingCatalog] = useState<StripeCatalogResponse | null>(null)
+  const [scheduledCycleChange, setScheduledCycleChange] = useState<ScheduledCycleChange | null>(null)
   const [, setIsCatalogLoading] = useState(false)
   const [isCheckoutPending, setIsCheckoutPending] = useState(false)
+  const [isCycleChangePending, setIsCycleChangePending] = useState(false)
+  const [isCancelScheduledCycleChangePending, setIsCancelScheduledCycleChangePending] = useState(false)
   const [isActivatingPaidMax, setIsActivatingPaidMax] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
@@ -631,6 +792,59 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     )
     checkoutDefaultsInitializedRef.current = true
   }, [seatManagement])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+
+    const fetchScheduledCycleChange = async () => {
+      if (!currentOrganization?.organizationId || !accessToken) {
+        if (!cancelled) {
+          setScheduledCycleChange(null)
+        }
+        return
+      }
+
+      try {
+        const response = await fetchWithAbort(
+          `${AUTH_SERVER_URL}/stripe/scheduled-cycle-change?organizationId=${currentOrganization.organizationId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            signal: controller.signal,
+          },
+          { signal: controller.signal, timeoutMs: 15000 }
+        )
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setScheduledCycleChange(null)
+          }
+          return
+        }
+
+        const data = (await response.json()) as {
+          pendingChange?: ScheduledCycleChange | null
+        }
+        if (!cancelled) {
+          setScheduledCycleChange(data.pendingChange ?? null)
+        }
+      } catch (err) {
+        if (isAbortError(err)) return
+        console.error('Failed to fetch scheduled cycle change:', err)
+        if (!cancelled) {
+          setScheduledCycleChange(null)
+        }
+      }
+    }
+
+    void fetchScheduledCycleChange()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [currentOrganization?.organizationId, accessToken])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -761,6 +975,20 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const hasBillingOverviewContent =
     showPaidSeatSummary || (seatManagedEntitlement && Boolean(seatManagement?.billingUser))
   const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
+  const currentSubscriptionCycle =
+    seatManagement?.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
+  const currentSelfServePlan =
+    currentPlanIdForCards === 'pro' ||
+    currentPlanIdForCards === 'max' ||
+    currentPlanIdForCards === 'startup'
+      ? currentPlanIdForCards
+      : null
+  const scheduledCycleChangeForCurrentPlan =
+    currentSelfServePlan && scheduledCycleChange?.plan === currentSelfServePlan
+      ? scheduledCycleChange
+      : null
+  const isPlanActionPending =
+    isCheckoutPending || isCycleChangePending || isCancelScheduledCycleChangePending
   const shouldShowFreeTrialText = currentPlanIdForCards === 'free'
   const hasConsumedMaxTrial = Boolean(
     seatManagement?.accountSubscription?.trialStart &&
@@ -962,6 +1190,105 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     currentOrganization?.organizationId,
   ])
 
+  const handleScheduleCycleChange = useCallback(async (requestedPlan: CheckoutPlan) => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    setIsCycleChangePending(true)
+    try {
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/schedule-cycle-change`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganization.organizationId,
+            plan: requestedPlan,
+            cycle: checkoutCycle,
+          }),
+        },
+        { timeoutMs: 15000 }
+      )
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as {
+          message?: string
+          error?: string
+        } | null
+        if (response.status === 404) {
+          throw new Error(
+            `The billing server at ${AUTH_SERVER_URL} does not support scheduled cycle changes yet. Restart or deploy that auth gateway, then try again.`
+          )
+        }
+        throw new Error(error?.message || error?.error || 'Failed to schedule billing cycle change')
+      }
+
+      const data = (await response.json()) as {
+        pendingChange?: ScheduledCycleChange | null
+      }
+      const pendingChange = data.pendingChange ?? null
+      setScheduledCycleChange(pendingChange)
+
+      const effectiveAt =
+        pendingChange?.effectiveAt ??
+        seatManagement?.accountSubscription?.currentPeriodEnd
+      const effectiveDateLabel = formatDate(effectiveAt)
+      alert(
+        `${getPlanDisplayName(requestedPlan)} will switch to ${formatBillingCycleLabel(checkoutCycle)} billing on ${effectiveDateLabel}.`
+      )
+    } catch (err) {
+      console.error('Schedule cycle change error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to schedule billing cycle change')
+    } finally {
+      setIsCycleChangePending(false)
+    }
+  }, [
+    accessToken,
+    checkoutCycle,
+    currentOrganization?.organizationId,
+    seatManagement?.accountSubscription?.currentPeriodEnd,
+  ])
+
+  const handleCancelScheduledCycleChange = useCallback(async () => {
+    if (!currentOrganization?.organizationId || !accessToken) return
+
+    setIsCancelScheduledCycleChangePending(true)
+    try {
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/cancel-scheduled-cycle-change`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganization.organizationId,
+          }),
+        },
+        { timeoutMs: 15000 }
+      )
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as {
+          message?: string
+          error?: string
+        } | null
+        throw new Error(error?.message || error?.error || 'Failed to cancel scheduled billing cycle change')
+      }
+
+      setScheduledCycleChange(null)
+      alert('Scheduled billing cycle change canceled. Your current plan will continue on its existing cycle.')
+    } catch (err) {
+      console.error('Cancel scheduled cycle change error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to cancel scheduled billing cycle change')
+    } finally {
+      setIsCancelScheduledCycleChangePending(false)
+    }
+  }, [accessToken, currentOrganization?.organizationId])
+
   const handlePlanCardCheckout = useCallback(
     (planId: CheckoutPlan) => {
       void handleCheckout(planId)
@@ -981,9 +1308,25 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         return
       }
 
+      if (
+        (targetPlanId === 'pro' || targetPlanId === 'max' || targetPlanId === 'startup') &&
+        currentSelfServePlan === targetPlanId &&
+        currentSubscriptionCycle !== checkoutCycle
+      ) {
+        void handleScheduleCycleChange(targetPlanId)
+        return
+      }
+
       handlePlanCardCheckout(targetPlanId)
     },
-    [handleManageBilling, handlePlanCardCheckout]
+    [
+      checkoutCycle,
+      currentSelfServePlan,
+      currentSubscriptionCycle,
+      handleManageBilling,
+      handlePlanCardCheckout,
+      handleScheduleCycleChange,
+    ]
   )
 
   const handlePlanCtaClick = useCallback(
@@ -1044,30 +1387,15 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
   const renderCycleToggle = () => (
-    <div className="inline-flex items-center rounded-full border border-border/60 bg-background/70 p-0.5">
-      <Button
-        type="button"
-        size="sm"
-        className="h-6 rounded-full px-2.5 text-[11px] leading-none"
-        variant={checkoutCycle === 'monthly' ? 'default' : 'ghost'}
-        onClick={() => setCheckoutCycle('monthly')}
-        aria-label="Monthly billing"
-        title="Monthly billing"
-      >
-        M
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        className="h-6 rounded-full px-2.5 text-[11px] leading-none"
-        variant={checkoutCycle === 'yearly' ? 'default' : 'ghost'}
-        onClick={() => setCheckoutCycle('yearly')}
-        aria-label="Yearly billing"
-        title="Yearly billing"
-      >
-        Y
-      </Button>
-    </div>
+    <SlidingSegmentedControl
+      value={checkoutCycle}
+      options={BILLING_CYCLE_OPTIONS}
+      onChange={setCheckoutCycle}
+      ariaLabel="Billing cycle"
+      className="border-border/60 bg-background/70 p-0.5"
+      indicatorClassName="top-0.5 bottom-0.5 border-border/60"
+      buttonClassName="h-6 min-w-8 px-2.5 text-[11px] leading-none"
+    />
   )
 
   const content = (
@@ -1107,6 +1435,29 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         </Alert>
       )}
 
+      {scheduledCycleChangeForCurrentPlan && (
+        <Alert className="mb-6 border-sky-500/50 bg-sky-500/10">
+          <AlertTitle className="text-sky-600 dark:text-sky-400">Billing cycle change scheduled</AlertTitle>
+          <AlertDescription>
+            {`${getPlanDisplayName(scheduledCycleChangeForCurrentPlan.plan)} stays on ${formatBillingCycleLabel(currentSubscriptionCycle).toLowerCase()} billing until ${formatDate(scheduledCycleChangeForCurrentPlan.effectiveAt)}, then switches to ${formatBillingCycleLabel(scheduledCycleChangeForCurrentPlan.cycle).toLowerCase()}.`}
+          </AlertDescription>
+          <div className="mt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleCancelScheduledCycleChange()}
+              disabled={isCancelScheduledCycleChangePending || isPortalPending || isCycleChangePending || isCheckoutPending}
+            >
+              {isCancelScheduledCycleChangePending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Cancel scheduled change
+            </Button>
+          </div>
+        </Alert>
+      )}
+
       <div
         className={[
           featureFlags.contentVisibility ? 'perf-contain-auto' : '',
@@ -1140,24 +1491,14 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             </div>
             {showUpgradeOptions ? (
               <div className="mt-3 flex justify-center">
-                <div className="inline-flex h-10 w-fit items-center rounded-full bg-muted p-1">
-                  <Button
-                    type="button"
-                    variant={selectedPlanSubtype === 'individual' ? 'default' : 'ghost'}
-                    className="rounded-full px-4"
-                    onClick={() => setSelectedPlanSubtype('individual')}
-                  >
-                    Individual
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={selectedPlanSubtype === 'workspace' ? 'default' : 'ghost'}
-                    className="rounded-full px-4"
-                    onClick={() => setSelectedPlanSubtype('workspace')}
-                  >
-                    Enterprise
-                  </Button>
-                </div>
+                <SlidingSegmentedControl
+                  value={selectedPlanSubtype}
+                  options={PLAN_SUBTYPE_OPTIONS}
+                  onChange={setSelectedPlanSubtype}
+                  ariaLabel="Billing plan type"
+                  className="h-10 w-fit"
+                  buttonClassName="h-8 px-4"
+                />
               </div>
             ) : null}
           </CardHeader>
@@ -1216,8 +1557,20 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {individualPlanCards.map((planCard, index) => {
                     const isCurrentPlan = currentPlanIdForCards === planCard.id
+                    const isSamePlanCycleSwitch =
+                      currentSelfServePlan === planCard.id &&
+                      currentSubscriptionCycle !== checkoutCycle
+                    const isCycleSwitchScheduled =
+                      scheduledCycleChange?.plan === planCard.id &&
+                      scheduledCycleChange.cycle === checkoutCycle
+                    const isExactCurrentSelection = isCurrentPlan && !isSamePlanCycleSwitch
                     const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
-                    const planCardCtaLabel = getPlanCtaLabel(planCard.id, currentPlanIdForCards, planCard.name)
+                    const planCardCtaLabel =
+                      isSamePlanCycleSwitch
+                        ? isCycleSwitchScheduled
+                          ? `${formatBillingCycleLabel(checkoutCycle)} Scheduled`
+                          : `Switch to ${formatBillingCycleLabel(checkoutCycle)}`
+                        : getPlanCtaLabel(planCard.id, currentPlanIdForCards, planCard.name)
                     const showTrialText = Boolean(planCard.trial) && (
                       planCard.id === 'free'
                         ? shouldShowFreeTrialText
@@ -1284,32 +1637,38 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           <p className="mt-4 text-sm text-muted-foreground">{planCard.conclusion}</p>
                         ) : null}
 
+                        {planCardFooterText ? (
+                          <p className="mt-5 text-center text-xs text-muted-foreground">{planCardFooterText}</p>
+                        ) : null}
+
                         {planCard.id === 'free' ? (
                           <Button
                             className="mt-5 w-full rounded-lg"
                             variant="outline"
                             onClick={() => handlePlanCtaClick('free')}
-                            disabled={!canOpenCheckout || isCurrentPlan || isPortalPending || isCheckoutPending}
+                            disabled={!canOpenCheckout || isCurrentPlan || isPortalPending || isPlanActionPending}
                           >
                             {planCardCtaLabel}
                           </Button>
                         ) : (
                           <Button
                             className="mt-5 w-full rounded-full"
-                            variant={isCurrentPlan ? 'secondary' : 'default'}
+                            variant={isExactCurrentSelection || isCycleSwitchScheduled ? 'secondary' : 'default'}
                             onClick={() => handlePlanCtaClick(planCard.id)}
-                            disabled={!canOpenCheckout || isCurrentPlan || isCheckoutPending || isPortalPending}
+                            disabled={
+                              !canOpenCheckout ||
+                              isExactCurrentSelection ||
+                              isPlanActionPending ||
+                              isPortalPending ||
+                              isCycleSwitchScheduled
+                            }
                           >
-                            {isCheckoutPending ? (
+                            {isPlanActionPending ? (
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : null}
                             {planCardCtaLabel}
                           </Button>
                         )}
-
-                        {planCardFooterText ? (
-                          <p className="mt-2 text-center text-xs text-muted-foreground">{planCardFooterText}</p>
-                        ) : null}
                       </div>
                     )
                   })}
@@ -1397,18 +1756,33 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     {startupPlanCard.conclusion ? (
                       <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
                     ) : null}
+                    {startupPlanCard.footerText ? (
+                      <p className="mt-5 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
+                    ) : null}
                     <Button
                       className="mt-5 w-full rounded-lg"
-                      variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
+                      variant={
+                        (currentPlanIdForCards === 'startup' && currentSubscriptionCycle === checkoutCycle) ||
+                        (scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle)
+                          ? 'secondary'
+                          : 'default'
+                      }
                       onClick={() => handlePlanCtaClick('startup')}
-                      disabled={!canOpenCheckout || currentPlanIdForCards === 'startup' || isCheckoutPending || isPortalPending}
+                      disabled={
+                        !canOpenCheckout ||
+                        isPortalPending ||
+                        isPlanActionPending ||
+                        (currentPlanIdForCards === 'startup' && currentSubscriptionCycle === checkoutCycle) ||
+                        (scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle)
+                      }
                     >
-                      {isCheckoutPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {startupPlanCtaLabel}
+                      {isPlanActionPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {currentSelfServePlan === 'startup' && currentSubscriptionCycle !== checkoutCycle
+                        ? scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle
+                          ? `${formatBillingCycleLabel(checkoutCycle)} Scheduled`
+                          : `Switch to ${formatBillingCycleLabel(checkoutCycle)}`
+                        : startupPlanCtaLabel}
                     </Button>
-                    {startupPlanCard.footerText ? (
-                      <p className="mt-2 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
-                    ) : null}
                   </div>
 
                   <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
@@ -1429,17 +1803,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                         </li>
                       ))}
                     </ul>
+                    {ENTERPRISE_PLAN_CARD.footerText ? (
+                      <p className="mt-6 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
+                    ) : null}
                     <Button
                       className="mt-6 w-full rounded-lg"
                       variant={currentPlanIdForCards === 'enterprise' ? 'secondary' : 'default'}
                       onClick={() => handlePlanCtaClick('enterprise')}
-                      disabled={currentPlanIdForCards === 'enterprise' || isCheckoutPending || isPortalPending}
+                      disabled={currentPlanIdForCards === 'enterprise' || isPlanActionPending || isPortalPending}
                     >
                       {enterprisePlanCtaLabel}
                     </Button>
-                    {ENTERPRISE_PLAN_CARD.footerText ? (
-                      <p className="mt-2 text-center text-xs text-muted-foreground">{ENTERPRISE_PLAN_CARD.footerText}</p>
-                    ) : null}
                   </div>
                 </div>
               )}
@@ -1480,16 +1854,16 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               <Button
                 variant="outline"
                 onClick={() => setPendingDowngradeTargetPlanId(null)}
-                disabled={isCheckoutPending || isPortalPending}
+                disabled={isPlanActionPending || isPortalPending}
               >
                 Cancel
               </Button>
               <Button
                 variant="destructive"
                 onClick={handleConfirmDowngrade}
-                disabled={isCheckoutPending || isPortalPending}
+                disabled={isPlanActionPending || isPortalPending}
               >
-                {isCheckoutPending || isPortalPending ? (
+                {isPlanActionPending || isPortalPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : null}
                 Lose all my benefits
@@ -1711,7 +2085,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Button
                     onClick={() => void handleActivatePaidMax()}
-                    disabled={isActivatingPaidMax || isCheckoutPending || isPortalPending}
+                    disabled={isActivatingPaidMax || isPlanActionPending || isPortalPending}
                   >
                     {isActivatingPaidMax ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     Activate Paid Max

@@ -300,21 +300,25 @@ export function ContextSwitcher() {
     }
   }, [convexUser?._id, executeAutoSyncBeforeOpen, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
-  const handleGoHome = () => {
+  const handleGoHome = useCallback(() => {
+    setOpen(false)
     navigate('/projects')
-  }
+  }, [navigate])
 
-  const handleNewProject = () => {
+  const handleNewProject = useCallback(() => {
+    setOpen(false)
     navigate('/projects/new')
-  }
+  }, [navigate])
 
-  const handleSwitchWorkspace = () => {
+  const handleSwitchWorkspace = useCallback(() => {
+    setOpen(false)
     navigate('/workspaces/select')
-  }
+  }, [navigate])
 
-  const handleCreateWorkspace = () => {
+  const handleCreateWorkspace = useCallback(() => {
+    setOpen(false)
     navigate('/workspaces/new')
-  }
+  }, [navigate])
 
   const isBusy = syncState !== 'idle'
 
@@ -413,7 +417,7 @@ export function ContextSwitcher() {
             )}
             {isInProject && (
               <>
-                <DropdownMenuItem onClick={handleGoHome} className="gap-2 p-2" disabled={isBusy}>
+                <DropdownMenuItem onSelect={handleGoHome} className="w-full cursor-pointer gap-2 p-2" disabled={isBusy}>
                   <div className="flex size-6 items-center justify-center rounded-md">
                     <Home className="size-3.5" />
                   </div>
@@ -430,7 +434,7 @@ export function ContextSwitcher() {
                 <DropdownMenuItem
                   key={project._id}
                   onSelect={(event) => handleProjectSelect(project, event)}
-                  className="gap-2 p-2"
+                  className="w-full cursor-pointer gap-2 p-2"
                   disabled={isBusy}
                 >
                   <div className="flex size-6 items-center justify-center rounded-md">
@@ -443,14 +447,14 @@ export function ContextSwitcher() {
               ))
             ) : null}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleNewProject} className="gap-2 p-2" disabled={isBusy}>
+            <DropdownMenuItem onSelect={handleNewProject} className="w-full cursor-pointer gap-2 p-2" disabled={isBusy}>
               <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
                 <Plus className="size-4" />
               </div>
               <span className="text-muted-foreground font-medium">New Project</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleCreateWorkspace} className="gap-2 p-2" disabled={isBusy}>
+            <DropdownMenuItem onSelect={handleCreateWorkspace} className="w-full cursor-pointer gap-2 p-2" disabled={isBusy}>
               <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
                 <Building2 className="size-4" />
               </div>
@@ -459,7 +463,7 @@ export function ContextSwitcher() {
             {organizations.length > 1 ? (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSwitchWorkspace} className="gap-2 p-2" disabled={isBusy}>
+                <DropdownMenuItem onSelect={handleSwitchWorkspace} className="w-full cursor-pointer gap-2 p-2" disabled={isBusy}>
                   <div className="flex size-6 items-center justify-center rounded-md bg-transparent">
                     <ArrowRightLeft className="size-4" />
                   </div>

@@ -40,14 +40,6 @@ export class IntegrationService {
             return integrationKeys.storeEncryptionKey(options.keyId, options.keyData)
         })
 
-        ipcMain.handle('integrations:getKey', (_event, options: { keyId: string }) => {
-            const result = integrationKeys.getEncryptionKey(options.keyId)
-            if (result.success) {
-                return { success: true, keyId: options.keyId, keyData: result.keyData }
-            }
-            return result
-        })
-
         ipcMain.handle('integrations:deleteKey', (_event, options: { keyId: string }) => {
             return integrationKeys.deleteEncryptionKey(options.keyId)
         })
@@ -63,14 +55,6 @@ export class IntegrationService {
                 return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
             }
             return integrationCrypto.encryptCredentials(options.credentials, keyResult.keyData)
-        })
-
-        ipcMain.handle('integrations:decrypt', async (_event, options: { encrypted: string; keyId: string }) => {
-            const keyResult = integrationKeys.getEncryptionKey(options.keyId)
-            if (!keyResult.success || !keyResult.keyData) {
-                return { success: false, error: keyResult.error || 'Failed to retrieve encryption key' }
-            }
-            return integrationCrypto.decryptCredentials(options.encrypted, keyResult.keyData)
         })
 
         // OAuth

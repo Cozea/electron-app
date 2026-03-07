@@ -105,6 +105,11 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
   const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
   useEffect(() => {
+    setImageLoaded(false)
+    setImageError(false)
+  }, [previewImageUrl, project._id])
+
+  useEffect(() => {
     if (!shouldHydrateSyncStatus) return
 
     let cancelled = false

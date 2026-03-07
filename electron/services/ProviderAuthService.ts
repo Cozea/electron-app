@@ -2911,12 +2911,5 @@ export class ProviderAuthService {
     ipcMain.handle('providerAuth:disconnect', async (_event, provider: ProviderAuthProvider) =>
       this.disconnect(provider)
     )
-    ipcMain.handle(
-      'providerAuth:getRequestAuth',
-      async (
-        _event,
-        options: { provider: ProviderAuthProvider; modelId: string; organizationId: string }
-      ) => this.getRequestAuth(options)
-    )
   }
 }

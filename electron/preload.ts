@@ -17,6 +17,7 @@ import type {
   SyncWriteFile,
   UpdateState,
 } from '../shared/electronApiTypes'
+import type { MessageBoxOptions } from 'electron'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 
@@ -66,11 +67,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('providerAuth:connect', options),
     disconnect: (provider: ProviderAuthProvider) =>
       ipcRenderer.invoke('providerAuth:disconnect', provider),
-    getRequestAuth: (options: {
-      provider: ProviderAuthProvider
-      modelId: string
-      organizationId: string
-    }) => ipcRenderer.invoke('providerAuth:getRequestAuth', options),
     onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -88,16 +84,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),
     storeKey: (options: { keyId: string; keyData: string }) =>
       ipcRenderer.invoke('integrations:storeKey', options),
-    getKey: (options: { keyId: string }) =>
-      ipcRenderer.invoke('integrations:getKey', options),
     deleteKey: (options: { keyId: string }) =>
       ipcRenderer.invoke('integrations:deleteKey', options),
     keyExists: (options: { keyId: string }) =>
       ipcRenderer.invoke('integrations:keyExists', options),
     encrypt: (options: { credentials: Record<string, unknown>; keyId: string }) =>
       ipcRenderer.invoke('integrations:encrypt', options),
-    decrypt: (options: { encrypted: string; keyId: string }) =>
-      ipcRenderer.invoke('integrations:decrypt', options),
     onOAuthSuccess: (callback: (data: {
       provider: string
       accessToken?: string
@@ -192,7 +184,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
-    showMessageBox: (options: any) => ipcRenderer.invoke('dialog:showMessageBox', options),
+    showMessageBox: (options: MessageBoxOptions) =>
+      ipcRenderer.invoke('dialog:showMessageBox', options),
   },
   storage: {
     getSnapshot: (options?: { page?: number; pageSize?: number; forceRefresh?: boolean }) =>
@@ -222,7 +215,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),
-    cloneRepository: (options: { slug: string; repoUrl: string; provider: string; branch?: string; accessToken?: string }) =>
+    cloneRepository: (options: {
+      slug: string
+      repoUrl: string
+      provider: string
+      branch?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
     getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),

@@ -881,11 +881,6 @@ export interface ElectronAPI {
       cloudCredentials?: ProviderCloudCredentials
     }) => Promise<ProviderAuthConnectResult>
     disconnect: (provider: ProviderAuthProvider) => Promise<ProviderAuthDisconnectResult>
-    getRequestAuth: (options: {
-      provider: ProviderAuthProvider
-      modelId: string
-      organizationId: string
-    }) => Promise<ProviderAuthRequestAuthResult>
     onStatusChanged: (callback: (event: ProviderAuthStatusChangedEvent) => void) => () => void
   }
   localAiRuntime: {
@@ -895,11 +890,9 @@ export interface ElectronAPI {
     isEncryptionAvailable: () => Promise<boolean>
     generateKey: () => Promise<IntegrationKeyResult>
     storeKey: (options: { keyId: string; keyData: string }) => Promise<{ success: boolean; error?: string }>
-    getKey: (options: { keyId: string }) => Promise<IntegrationKeyResult>
     deleteKey: (options: { keyId: string }) => Promise<{ success: boolean; error?: string }>
     keyExists: (options: { keyId: string }) => Promise<boolean>
     encrypt: (options: { credentials: Record<string, unknown>; keyId: string }) => Promise<IntegrationEncryptResult>
-    decrypt: (options: { encrypted: string; keyId: string }) => Promise<IntegrationDecryptResult>
     onOAuthSuccess: (callback: (data: {
       provider: string
       accessToken?: string
@@ -996,6 +989,8 @@ export interface ElectronAPI {
       provider: string
       branch?: string
       accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>

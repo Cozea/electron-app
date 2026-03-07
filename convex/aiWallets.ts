@@ -387,6 +387,153 @@ export async function grantIncludedWalletBalance(
   }
 }
 
+async function revokeWalletAvailableBalance(
+  ctx: MutationCtx,
+  args: {
+    wallet: WalletDoc
+    organizationId: Id<"organizations">
+    actorUserId?: Id<"users">
+    payerUserId: Id<"users">
+    reason:
+      | "subscription_canceled"
+      | "subscription_trial_ended"
+    metadata?: unknown
+  }
+): Promise<{
+  walletId: Id<"aiWallets">
+  appliedDeltaCents: number
+  balanceCents: number
+  heldCents: number
+  availableCents: number
+}> {
+  const now = Date.now()
+  const nextBalanceCents = Math.max(args.wallet.heldCents, 0)
+  const appliedDeltaCents = nextBalanceCents - args.wallet.balanceCents
+
+  if (appliedDeltaCents === 0) {
+    return {
+      walletId: args.wallet._id,
+      appliedDeltaCents: 0,
+      balanceCents: args.wallet.balanceCents,
+      heldCents: args.wallet.heldCents,
+      availableCents: getAvailableCents(args.wallet),
+    }
+  }
+
+  await ctx.db.patch(args.wallet._id, {
+    balanceCents: nextBalanceCents,
+    updatedAt: now,
+  })
+
+  await ctx.db.insert("aiWalletLedger", {
+    walletId: args.wallet._id,
+    organizationId: args.organizationId,
+    actorUserId: args.actorUserId,
+    payerUserId: args.payerUserId,
+    kind: appliedDeltaCents > 0 ? "credit" : "adjustment",
+    amountCents: Math.abs(appliedDeltaCents),
+    balanceAfterCents: nextBalanceCents,
+    availableAfterCents: Math.max(0, nextBalanceCents - args.wallet.heldCents),
+    metadata: {
+      reason: args.reason,
+      direction: appliedDeltaCents > 0 ? "increase" : "decrease",
+      ...(normalizeGrantMetadata(args.metadata) ?? {}),
+    },
+    createdAt: now,
+  })
+
+  return {
+    walletId: args.wallet._id,
+    appliedDeltaCents,
+    balanceCents: nextBalanceCents,
+    heldCents: args.wallet.heldCents,
+    availableCents: Math.max(0, nextBalanceCents - args.wallet.heldCents),
+  }
+}
+
+export async function revokeIncludedWalletBalance(
+  ctx: MutationCtx,
+  args: {
+    organizationId: Id<"organizations">
+    billingUserId: Id<"users">
+    plan: AccountSubscriptionPlan
+    actorUserId?: Id<"users">
+    reason:
+      | "subscription_canceled"
+      | "subscription_trial_ended"
+  }
+): Promise<{
+  ok: boolean
+  revokedWalletCount: number
+  revokedAvailableCents: number
+}> {
+  const walletTargets = new Map<string, Promise<WalletDoc | null>>()
+
+  if (isSeatManagedWalletPlan(args.plan)) {
+    const assignments = await ctx.db
+      .query("accountSeatAssignments")
+      .withIndex("by_billing_user_and_organization", (q) =>
+        q.eq("billingUserId", args.billingUserId).eq("organizationId", args.organizationId)
+      )
+      .collect()
+
+    const seatUserIds = new Set<Id<"users">>([args.billingUserId])
+    for (const assignment of assignments) {
+      if (assignment.status === "active") {
+        seatUserIds.add(assignment.assignedUserId)
+      }
+    }
+
+    for (const seatUserId of seatUserIds) {
+      walletTargets.set(
+        `org:${String(args.organizationId)}:user:${String(seatUserId)}`,
+        getWalletForWorkspaceSeatContext(ctx, {
+          organizationId: args.organizationId,
+          ownerUserId: seatUserId,
+        })
+      )
+    }
+  } else if (args.plan === "pro" || args.plan === "max") {
+    walletTargets.set(
+      `user:${String(args.billingUserId)}`,
+      getPersonalWallet(ctx, {
+        ownerUserId: args.billingUserId,
+      })
+    )
+  }
+
+  let revokedWalletCount = 0
+  let revokedAvailableCents = 0
+
+  for (const walletPromise of walletTargets.values()) {
+    const wallet = await walletPromise
+    if (!wallet) continue
+
+    const revokedAvailable = getAvailableCents(wallet)
+    const result = await revokeWalletAvailableBalance(ctx, {
+      wallet,
+      organizationId: args.organizationId,
+      actorUserId: args.actorUserId,
+      payerUserId: args.billingUserId,
+      reason: args.reason,
+      metadata: {
+        plan: args.plan,
+      },
+    })
+
+    if (result.appliedDeltaCents !== 0) {
+      revokedWalletCount += 1
+      revokedAvailableCents += revokedAvailable
+    }
+  }
+
+  return {
+    ok: true,
+    revokedWalletCount,
+    revokedAvailableCents,
+  }
+}
+
 export const reserveForServer = mutation({
   args: {
     organizationId: v.id("organizations"),
@@ -451,6 +598,15 @@ export const reserveForServer = mutation({
         payerUserId: existingHold.payerUserId,
         reason: existingHold.status === "held" ? undefined : "hold_not_active",
         availableCents,
+      }
+    }
+
+    if (!entitlement.canUseAi) {
+      return {
+        ok: false,
+        reason: "insufficient_funds" as const,
+        availableCents: 0,
+        requiredCents: normalizedEstimated,
       }
     }
 
@@ -784,6 +940,27 @@ export const grantIncludedBalanceForServer = mutation({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
     return await grantIncludedWalletBalance(ctx, args)
+  },
+})
+
+export const revokeIncludedBalanceForServer = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    billingUserId: v.id("users"),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("max"),
+      v.literal("startup"),
+      v.literal("enterprise")
+    ),
+    actorUserId: v.optional(v.id("users")),
+    reason: v.union(v.literal("subscription_canceled"), v.literal("subscription_trial_ended")),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+    return await revokeIncludedWalletBalance(ctx, args)
   },
 })
 

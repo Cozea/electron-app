@@ -4,6 +4,8 @@ import {
   isProviderEnabledInApp,
 } from '@shared/aiProviderAvailability'
 
+export const LOCAL_PROVIDER_AUTH_READY_SENTINEL = '__cozea_local_provider_ready__'
+
 function parseScopedProviderFromModelId(modelId: string): ProviderAuthProvider | null {
   const trimmed = modelId.trim()
   const separatorIndex = trimmed.indexOf('/')
@@ -34,6 +36,10 @@ export function isManagedProvider(provider: ProviderAuthProvider | null | undefi
   return isManagedProviderInApp(provider)
 }
 
+export function isLocalProviderAuthReadyHeader(value: string | null | undefined): boolean {
+  return value === LOCAL_PROVIDER_AUTH_READY_SENTINEL
+}
+
 export async function buildEncodedProviderAuthHeader(args: {
   provider: ProviderAuthProvider
   modelId: string
@@ -51,20 +57,20 @@ export async function buildEncodedProviderAuthHeader(args: {
     return { error: 'Local provider auth is unavailable in this environment.' }
   }
 
-  const result = await window.electronAPI.providerAuth.getRequestAuth({
-    provider: args.provider,
-    modelId: args.modelId,
-    organizationId: args.organizationId,
-  })
+  const statuses = await window.electronAPI.providerAuth.getStatus(args.provider)
+  const status =
+    statuses.find((entry) => entry.provider === args.provider) ||
+    statuses[0]
 
-  if (!result.success || !result.envelope) {
-    return { error: result.error || 'Provider is not connected on this device.' }
+  if (!status?.connected) {
+    return { error: status?.lastError || 'Provider is not connected on this device.' }
   }
 
-  try {
-    const encoded = btoa(JSON.stringify(result.envelope))
-    return { header: encoded }
-  } catch {
-    return { error: 'Failed to encode provider auth envelope.' }
+  if (typeof status.expiresAt === 'number' && status.expiresAt <= Date.now() + 5_000) {
+    return { error: 'Provider connection expired. Reconnect to continue.' }
   }
+
+  void args.modelId
+  void args.organizationId
+  return { header: LOCAL_PROVIDER_AUTH_READY_SENTINEL }
 }

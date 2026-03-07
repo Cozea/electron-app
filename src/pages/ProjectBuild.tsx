@@ -39,6 +39,7 @@ import {
   type ToolDiagnosticsSummary,
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
+import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 
 function formatCount(count: number, label: string): string {
@@ -339,48 +340,12 @@ export function ProjectBuild() {
     addLog('Capturing preview screenshot...')
 
     try {
-      // Capture screenshot via Electron IPC
-      const result = await window.electronAPI.preview.captureScreenshot({
-        url: devServer.url,
-        width: 1280,
-        height: 800,
-      })
-
-      if (!result.success || !result.base64) {
-        throw new Error(result.error || 'Screenshot capture failed')
-      }
-
-      addLog('Screenshot captured, uploading...')
-
-      // Convert base64 to blob
-      const byteString = atob(result.base64)
-      const ab = new ArrayBuffer(byteString.length)
-      const ia = new Uint8Array(ab)
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i)
-      }
-      const blob = new Blob([ab], { type: 'image/png' })
-
-      // Upload to Convex
-      const uploadUrl = await generatePreviewUploadUrl({ projectId: project._id })
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'image/png' },
-        body: blob,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload screenshot')
-      }
-
-      const { storageId } = await uploadResponse.json()
-
-      // Update project with preview image
-      await updatePreviewImage({
-        projectId: project._id,
-        storageId,
-      })
-
+      await captureAndUploadProjectPreviewFromUrl(
+        project._id,
+        devServer.url,
+        generatePreviewUploadUrl,
+        updatePreviewImage
+      )
       addLog('Preview screenshot saved!')
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
