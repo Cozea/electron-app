@@ -318,6 +318,11 @@ export class GitReplicaService {
     projectPath: string,
     patch: NonNullable<GitReplicaExecuteResult['workspacePatch']>
   ): Promise<void> {
+    console.log('[GitReplica] Applying workspace patch', {
+      projectId,
+      projectPath,
+      entries: patch.length,
+    })
     for (const entry of patch) {
       const fullPath = resolvePathWithinDirectory(projectPath, entry.path)
       if (entry.deleted) {
@@ -333,6 +338,12 @@ export class GitReplicaService {
 
       let writeBytes = patchBytes
       if (lfsPointer) {
+        console.log('[GitReplica] Resolving LFS object for workspace patch entry', {
+          projectId,
+          path: entry.path,
+          oid: lfsPointer.oid,
+          size: lfsPointer.size,
+        })
         const lfsResult = await this.getLfsObject({
           projectId,
           oid: lfsPointer.oid,
@@ -346,9 +357,14 @@ export class GitReplicaService {
         }
       }
 
-      markInternalFsChange(fullPath)
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true })
-      fs.writeFileSync(fullPath, writeBytes)
+      try {
+        markInternalFsChange(fullPath)
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true })
+        fs.writeFileSync(fullPath, writeBytes)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown write error'
+        throw new Error(`Failed to write restored file ${entry.path}: ${message}`)
+      }
     }
   }
 
@@ -453,6 +469,12 @@ export class GitReplicaService {
       return response
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Execute failed'
+      console.error('[GitReplica] Execute failed', {
+        projectId: options.projectId,
+        projectPath: options.projectPath,
+        sessionId: options.sessionId,
+        error: message,
+      })
       this.updateProjectState(options.projectId, { lastError: message })
       return {
         success: false,

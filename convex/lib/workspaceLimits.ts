@@ -1,10 +1,12 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
+import { internal } from "../_generated/api"
 
 type StorageCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
-type StorageMutationCtx = Pick<MutationCtx, "db">
+type StorageMutationCtx = Pick<MutationCtx, "db" | "scheduler">
 
 const textEncoder = new TextEncoder()
+const STORAGE_SCAN_PAGE_SIZE = 128
 const STORAGE_BREAKDOWN_KEYS: Array<keyof StorageBreakdown> = [
   "sourceAndConfig",
   "collaborationData",
@@ -240,6 +242,30 @@ function sizeOfSerialized(value: unknown): number {
   return textEncoder.encode(JSON.stringify(value ?? null)).byteLength
 }
 
+interface PaginatedResult<T> {
+  page: T[]
+  isDone: boolean
+  continueCursor: string
+}
+
+async function forEachPaginated<T>(
+  fetchPage: (cursor: string | null) => Promise<PaginatedResult<T>>,
+  handler: (item: T) => void
+): Promise<void> {
+  let cursor: string | null = null
+
+  while (true) {
+    const result = await fetchPage(cursor)
+    for (const item of result.page) {
+      handler(item)
+    }
+    if (result.isDone) {
+      break
+    }
+    cursor = result.continueCursor
+  }
+}
+
 function addToBreakdown(target: StorageBreakdown, source: Partial<StorageBreakdown>): StorageBreakdown {
   for (const key of STORAGE_BREAKDOWN_KEYS) {
     target[key] += Math.max(0, source[key] ?? 0)
@@ -331,32 +357,49 @@ export function estimateBuilderRunBytes(run: {
   })
 }
 
-function sumFileBytes<T extends { sizeBytes: number }>(files: T[]): number {
-  return files.reduce((sum, file) => sum + Math.max(0, file.sizeBytes), 0)
-}
-
 export async function getLegacyFileStorageTotals(
   ctx: StorageCtx,
   projectId: Id<"projects">
 ): Promise<LegacyFileStorageTotals> {
-  const [activeFiles, supersededFiles] = await Promise.all([
-    ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "active")
-      )
-      .collect(),
-    ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "superseded")
-      )
-      .collect(),
+  let activeBytes = 0
+  let supersededBytes = 0
+
+  await Promise.all([
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("projectFiles")
+          .withIndex("by_project_and_status", (q) =>
+            q.eq("projectId", projectId).eq("status", "active")
+          )
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ sizeBytes: number }>>,
+      (file) => {
+        activeBytes += Math.max(0, file.sizeBytes)
+      }
+    ),
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("projectFiles")
+          .withIndex("by_project_and_status", (q) =>
+            q.eq("projectId", projectId).eq("status", "superseded")
+          )
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ sizeBytes: number }>>,
+      (file) => {
+        supersededBytes += Math.max(0, file.sizeBytes)
+      }
+    ),
   ])
 
   return {
-    activeBytes: sumFileBytes(activeFiles),
-    supersededBytes: sumFileBytes(supersededFiles),
+    activeBytes,
+    supersededBytes,
   }
 }
 
@@ -506,8 +549,15 @@ export async function applyProjectStorageDeltas(
   const existing = await getProjectStorageUsageDoc(ctx, projectId)
 
   if (!existing) {
-    const currentBreakdown = await estimateProjectStorageBreakdown(ctx, projectId)
+    const currentBreakdown = emptyBreakdown()
+    console.warn("[StorageUsage] Missing projectStorageUsage row during hot-path update; seeding empty row and scheduling repair", {
+      projectId: String(projectId),
+      organizationId: String(resolvedOrgId),
+    })
     await writeProjectStorageUsageDoc(ctx, resolvedOrgId, projectId, currentBreakdown)
+    await ctx.scheduler.runAfter(0, internal.organizations.repairProjectStorageUsage, {
+      projectId,
+    })
     if (hasAnyDelta) {
       await applyStorageDeltas(ctx, resolvedOrgId, deltas)
     }
@@ -539,91 +589,123 @@ export async function estimateProjectStorageBreakdown(
     .withIndex("by_project", (q) => q.eq("projectId", projectId))
     .first()
 
-  const lfsObjects = await ctx.db
-    .query("projectReplicaLfsObjects")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .collect()
-
-  const lfsBytes = lfsObjects.reduce((sum, entry) => sum + Math.max(0, entry.size), 0)
+  let lfsBytes = 0
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("projectReplicaLfsObjects")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<PaginatedResult<{ size: number }>>,
+    (entry) => {
+      lfsBytes += Math.max(0, entry.size)
+    }
+  )
   const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
   const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
 
   if (useReplicaAccounting) {
     breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
   } else {
-    const activeFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "active")
-      )
-      .collect()
-    breakdown.sourceAndConfig += activeFiles.reduce((sum, file) => sum + Math.max(0, file.sizeBytes), 0)
-
-    const supersededFiles = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project_and_status", (q) =>
-        q.eq("projectId", projectId).eq("status", "superseded")
-      )
-      .collect()
-    breakdown.gitHistory += supersededFiles.reduce(
-      (sum, file) => sum + Math.max(0, file.sizeBytes),
-      0
-    )
+    const legacyTotals = await getLegacyFileStorageTotals(ctx, projectId)
+    breakdown.sourceAndConfig += legacyTotals.activeBytes
+    breakdown.gitHistory += legacyTotals.supersededBytes
   }
 
-  const assets = await ctx.db
-    .query("projectAssets")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .collect()
   const seenAssetStorageIds = new Set<string>()
-  for (const asset of assets) {
-    const dedupeKey = asset.storageId ? String(asset.storageId) : `record:${asset._id}`
-    if (seenAssetStorageIds.has(dedupeKey)) {
-      continue
-    }
-    seenAssetStorageIds.add(dedupeKey)
-    breakdown.assets += Math.max(0, asset.size)
-  }
-
-  const updates = await ctx.db
-    .query("yjsUpdates")
-    .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
-    .collect()
-  breakdown.collaborationData += updates.reduce(
-    (sum, update) => sum + (update.update?.byteLength ?? 0),
-    0
-  )
-
-  const snapshots = await ctx.db
-    .query("yjsDocuments")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .collect()
-  breakdown.snapshots += snapshots.reduce(
-    (sum, snapshot) => sum + Math.max(0, snapshot.byteSize ?? snapshot.snapshot?.byteLength ?? 0),
-    0
-  )
-
-  const builderRuns = await ctx.db
-    .query("builderRuns")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .collect()
-  breakdown.buildCache += builderRuns.reduce(
-    (sum, run) => sum + estimateBuilderRunBytes(run),
-    0
-  )
-
-  const conversations = await ctx.db
-    .query("aiConversations")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .collect()
-  breakdown.aiHistory += conversations.reduce(
-    (sum, conversation) =>
-      sum + estimateAiConversationBytes({
-        title: conversation.title,
-        messages: conversation.messages,
-      }),
-    0
-  )
+  await Promise.all([
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("projectAssets")
+          .withIndex("by_project", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ _id: string; storageId?: string; size: number }>>,
+      (asset) => {
+        const dedupeKey = asset.storageId ? String(asset.storageId) : `record:${asset._id}`
+        if (seenAssetStorageIds.has(dedupeKey)) {
+          return
+        }
+        seenAssetStorageIds.add(dedupeKey)
+        breakdown.assets += Math.max(0, asset.size)
+      }
+    ),
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("yjsUpdates")
+          .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
+      (update) => {
+        breakdown.collaborationData += update.update?.byteLength ?? 0
+      }
+    ),
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("yjsDocuments")
+          .withIndex("by_project", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ byteSize?: number; snapshot?: ArrayBuffer }>>,
+      (snapshot) => {
+        breakdown.snapshots += Math.max(0, snapshot.byteSize ?? snapshot.snapshot?.byteLength ?? 0)
+      }
+    ),
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("builderRuns")
+          .withIndex("by_project", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<
+            PaginatedResult<{
+              runId: string
+              status: string
+              attempt: number
+              conversationId?: string
+              localPath?: string
+              tasks?: unknown
+              progress?: number
+              statusMessage?: string
+              errorMessage?: string
+              logs?: unknown
+              createdAt: number
+              updatedAt: number
+              lastCheckpointAt?: number
+            }>
+          >,
+      (run) => {
+        breakdown.buildCache += estimateBuilderRunBytes(run)
+      }
+    ),
+    forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("aiConversations")
+          .withIndex("by_project", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ title: string; messages: unknown }>>,
+      (conversation) => {
+        breakdown.aiHistory += estimateAiConversationBytes({
+          title: conversation.title,
+          messages: conversation.messages,
+        })
+      }
+    ),
+  ])
 
   return breakdown
 }

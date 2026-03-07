@@ -23,6 +23,9 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
+import { runProjectOpenReplicaCheck } from '@/features/projects/lib/projectOpenReplicaCheck'
+import type { ProjectOpenReplicaCheckResult } from '@/features/projects/lib/projectOpenReplicaCheck'
+import { formatReplicaSyncError } from '@/features/projects/lib/replicaErrorPresentation'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
@@ -36,9 +39,12 @@ interface ProjectListItem {
 }
 
 interface ProjectNavigationState {
+  projectId?: string
   projectSlug?: string
   projectName?: string
   projectTemplate?: string
+  gateSyncScreen?: boolean
+  skipInitialSyncCheck?: boolean
 }
 
 export function ContextSwitcher() {
@@ -145,7 +151,9 @@ export function ContextSwitcher() {
     }
     return null
   }, [normalizedProjects, routeProject.projectId, routeProject.slug])
-  const hasMatchingNavigationState = navigationState?.projectSlug === (routeProject.slug ?? selectedProjectFromList?.slug)
+  const hasMatchingNavigationState =
+    (Boolean(routeProject.projectId) && navigationState?.projectId === routeProject.projectId) ||
+    navigationState?.projectSlug === (routeProject.slug ?? selectedProjectFromList?.slug)
   const navigationNameHint =
     hasMatchingNavigationState ? navigationState?.projectName : undefined
   const navigationTemplateHint =
@@ -163,6 +171,32 @@ export function ContextSwitcher() {
     setSyncState('idle')
     setSyncMessage('')
     setActiveProjectName(null)
+  }, [])
+
+  const executeAutoSyncBeforeOpen = useCallback(async (
+    project: ProjectListItem,
+    effectiveLocalPath: string,
+    check: ProjectOpenReplicaCheckResult
+  ): Promise<boolean> => {
+    setSyncState('syncing')
+    setSyncMessage(check.likelyLocalWipe ? 'Downloading cloud files...' : 'Syncing project files...')
+
+    const result = await window.electronAPI.sync.gitReplicaExecute({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      sessionId: check.plan.sessionId,
+    })
+
+    if (result.success && result.applied) {
+      return true
+    }
+
+    throw new Error(
+      formatReplicaSyncError(
+        result.error || 'Failed to sync project files',
+        'Failed to sync project files'
+      ).summary
+    )
   }, [])
 
   const handleProjectSelect = useCallback(async (project: ProjectListItem, event?: Event) => {
@@ -206,30 +240,63 @@ export function ContextSwitcher() {
         })
       }
 
+      let openCheck: ProjectOpenReplicaCheckResult | null = null
+
+      if (effectiveLocalPath) {
+        setSyncMessage('Checking sync status...')
+        const check = await runProjectOpenReplicaCheck({
+          projectId: String(project._id),
+          projectPath: effectiveLocalPath,
+        })
+        openCheck = check
+
+        if (check.totalChanges > 0) {
+          setSyncState('syncing')
+          if (check.hasConflicts) {
+            setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
+          } else if (check.likelyLocalWipe) {
+            setSyncMessage('Downloading cloud files...')
+          } else {
+            setSyncMessage('Syncing project files...')
+          }
+        }
+      }
+
+      if (effectiveLocalPath && openCheck && openCheck.totalChanges > 0 && !openCheck.hasConflicts) {
+        const shouldContinueToOpen = await executeAutoSyncBeforeOpen(project, effectiveLocalPath, openCheck)
+        if (!shouldContinueToOpen) {
+          return
+        }
+      }
+
       setSyncState('ready')
-      setSyncMessage('Opening project...')
+      setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
       setTimeout(() => {
         setOpen(false)
         navigate(buildProjectPath(String(project._id)), {
           state: {
             projectSlug: project.slug,
+            projectId: String(project._id),
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
+            gateSyncScreen: openCheck?.gateSyncScreen ?? false,
+            skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
           } satisfies ProjectNavigationState,
         })
         resetSyncState()
       }, 200)
     } catch (error) {
       console.error('[ContextSwitcher] Project prep failed:', error)
+      const presentedError = formatReplicaSyncError(error, 'Failed to prepare project')
       setSyncState('error')
-      setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
+      setSyncMessage(presentedError.summary)
 
       setTimeout(() => {
         resetSyncState()
       }, 2000)
     }
-  }, [convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convexUser?._id, executeAutoSyncBeforeOpen, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = () => {
     navigate('/projects')
@@ -279,7 +346,6 @@ export function ContextSwitcher() {
                       navigationNameHint ??
                       selectedProjectFromList?.name ??
                       routeProject.slug ??
-                      routeProject.projectId ??
                       'Project'
                     : organization.name}
                 </span>

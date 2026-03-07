@@ -68,6 +68,7 @@ interface YjsProjectProviderProps {
   userId: Id<'users'>
   userName: string
   projectPath: string | null
+  enabled?: boolean
   collabSession?: CollabSessionDescriptor | null
   refreshCollabSession?: () => Promise<CollabSessionDescriptor | null>
   children: ReactNode
@@ -78,6 +79,7 @@ export function YjsProjectProvider({
   userId,
   userName,
   projectPath,
+  enabled = true,
   collabSession = null,
   refreshCollabSession,
   children,
@@ -117,12 +119,12 @@ export function YjsProjectProvider({
     () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
     []
   )
-  const shouldUseWsTransport = collabTransport === 'ws' && !!wsSession && !wsCircuitOpen
-  const shouldUseConvexTail = !shouldUseWsTransport
+  const shouldUseWsTransport = enabled && collabTransport === 'ws' && !!wsSession && !wsCircuitOpen
+  const shouldUseConvexTail = enabled && !shouldUseWsTransport
 
   useEffect(() => {
     setWsCircuitOpen(false)
-  }, [projectId, wsSession?.roomId, wsSession?.collabWsUrl])
+  }, [enabled, projectId, wsSession?.roomId, wsSession?.collabWsUrl])
 
   useEffect(() => {
     if (!wsSession || !wsProviderRef.current) return
@@ -148,6 +150,12 @@ export function YjsProjectProvider({
   useEffect(() => {
     let disposed = false
     let docInstance: YjsProjectDoc | null = null
+
+    if (!enabled) {
+      setIsConnected(false)
+      setYjsDoc(null)
+      return
+    }
 
     const initDoc = async () => {
       const doc = new YjsProjectDoc(projectId)
@@ -191,12 +199,22 @@ export function YjsProjectProvider({
           clientType: 'electron',
           initialKnownSeq,
           refreshSession: refreshCollabSession,
-          onStateChange: (state) => {
+          onStateChange: (state, error) => {
             if (disposed) return
+            if (error) {
+              console.warn('[YjsProjectProvider] Collaboration transport state change', {
+                projectId: String(projectId),
+                state,
+                error,
+              })
+            }
             setIsConnected(state === 'connected')
           },
           onPermanentFailure: () => {
             if (disposed) return
+            console.warn('[YjsProjectProvider] Collaboration websocket permanently failed, falling back to Convex tail', {
+              projectId: String(projectId),
+            })
             setWsCircuitOpen(true)
             setIsConnected(false)
           },
@@ -268,6 +286,7 @@ export function YjsProjectProvider({
     }
   }, [
     convex,
+    enabled,
     projectId,
     projectPath,
     refreshCollabSession,
@@ -280,7 +299,7 @@ export function YjsProjectProvider({
   ])
 
   useEffect(() => {
-    if (!shouldUseConvexTail || !updates || updates.length === 0 || !convexProviderRef.current) return
+    if (!enabled || !shouldUseConvexTail || !updates || updates.length === 0 || !convexProviderRef.current) return
 
     const sorted = [...updates].sort((a, b) => a.timestamp - b.timestamp)
     const toApply: typeof updates = []
@@ -305,15 +324,15 @@ export function YjsProjectProvider({
       seenUpdateIdsAtLastTimestampRef.current = seenIds
       setLastSyncTime(lastTimestamp)
     }
-  }, [shouldUseConvexTail, updates])
+  }, [enabled, shouldUseConvexTail, updates])
 
   useEffect(() => {
-    if (!shouldUseConvexTail || !awarenessEntries || !awarenessProviderRef.current) return
+    if (!enabled || !shouldUseConvexTail || !awarenessEntries || !awarenessProviderRef.current) return
     awarenessProviderRef.current.applyRemoteAwareness(awarenessEntries)
-  }, [awarenessEntries, shouldUseConvexTail])
+  }, [awarenessEntries, enabled, shouldUseConvexTail])
 
   useEffect(() => {
-    if (!yjsDoc) return
+    if (!enabled || !yjsDoc) return
 
     const saveSnapshot = async () => {
       const snapshot = Y.encodeStateAsUpdate(yjsDoc.doc)
@@ -338,7 +357,7 @@ export function YjsProjectProvider({
       window.clearInterval(interval)
       void saveSnapshot().catch(() => undefined)
     }
-  }, [convex, projectId, yjsDoc])
+  }, [convex, enabled, projectId, yjsDoc])
 
   const { deleteConflicts, resolveConflict } = useReconnectionSync(projectId, yjsDoc)
 

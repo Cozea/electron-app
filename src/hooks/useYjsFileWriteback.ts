@@ -49,37 +49,6 @@ export function useYjsFileWriteback(
       return normalized.length > 0 ? normalized : null
     }
 
-    const enqueueRemoteUpsert = async (filePath: string, content: string) => {
-      const bytes = new TextEncoder().encode(content)
-      const hash = await crypto.subtle.digest('SHA-256', bytes)
-      const newHash = Array.from(
-        new Uint8Array(hash),
-        (byte) => byte.toString(16).padStart(2, '0')
-      ).join('')
-      await syncCoordinator.enqueueOp({
-        kind: 'upsert',
-        path: filePath,
-        source: 'remote',
-        actorType: 'system',
-        actorId: 'remote',
-        newHash,
-        isBinary: false,
-        size: bytes.byteLength,
-      })
-    }
-
-    const enqueueRemoteDelete = async (filePath: string) => {
-      await syncCoordinator.enqueueOp({
-        kind: 'delete',
-        path: filePath,
-        source: 'remote',
-        actorType: 'system',
-        actorId: 'remote',
-        isBinary: false,
-        size: 0,
-      })
-    }
-
     // Write a file to disk
     const writeFileToDisk = async (filePath: string, content: string) => {
       const normalizedPath = normalizeFilePath(filePath)
@@ -89,11 +58,11 @@ export function useYjsFileWriteback(
           projectPath,
           filePath: normalizedPath,
           content,
+          origin: 'remote',
         })
         if (!result.success) {
           throw new Error(result.error ?? 'Write failed')
         }
-        await enqueueRemoteUpsert(normalizedPath, content)
         console.log(`[YjsWriteback] Wrote remote change: ${normalizedPath}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to write ${normalizedPath}:`, err)
@@ -125,20 +94,10 @@ export function useYjsFileWriteback(
       if (paths.length === 0) return
 
       try {
-        const result = await window.electronAPI.sync.deleteFiles({
+        await window.electronAPI.sync.deleteFiles({
           projectPath,
           paths,
         })
-        const deletedPaths = result.results
-          .filter((entry) => entry.success)
-          .map((entry) => entry.path)
-        await Promise.all(
-          deletedPaths.map((deletedPath) =>
-            enqueueRemoteDelete(deletedPath).catch((error) => {
-              console.warn(`[YjsWriteback] Failed to enqueue delete for ${deletedPath}:`, error)
-            })
-          )
-        )
         console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
       } catch (err) {
         console.error('[YjsWriteback] Failed to delete remote files:', err)
@@ -276,6 +235,7 @@ export function useYjsFileWriteback(
           projectPath,
           oldPath: normalizedFrom,
           newPath: normalizedTo,
+          origin: 'remote',
         })
         if (!result.success) {
           throw new Error(result.error ?? 'Rename failed')

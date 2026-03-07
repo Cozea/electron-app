@@ -235,6 +235,13 @@ export class CollabWsProvider {
       RECONNECT_MAX_MS,
       RECONNECT_BASE_MS * Math.pow(RECONNECT_FACTOR, this.reconnectAttempt)
     )
+    console.warn('[CollabWsProvider] Scheduling reconnect', {
+      projectId: this.session.projectId,
+      roomId: this.session.roomId,
+      attempt: this.reconnectAttempt + 1,
+      delayMs: delay,
+      reason: errorMessage ?? null,
+    })
     this.reconnectAttempt += 1
     this.reconnectTimer = window.setTimeout(() => {
       void this.connect()
@@ -310,11 +317,21 @@ export class CollabWsProvider {
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
     this.socket = socket
 
+    console.info('[CollabWsProvider] Opening collaboration websocket', {
+      projectId: this.session.projectId,
+      roomId: this.session.roomId,
+      reconnectAttempt: this.reconnectAttempt,
+    })
+
     socket.onopen = () => {
       this.reconnectAttempt = 0
       this.hasConnectedOnce = true
       this.consecutiveInitialFailures = 0
       this.onStateChange?.('connected', null)
+      console.info('[CollabWsProvider] Collaboration websocket connected', {
+        projectId: this.session.projectId,
+        roomId: this.session.roomId,
+      })
       socket.send(
         JSON.stringify({
           type: 'hello',
@@ -345,6 +362,10 @@ export class CollabWsProvider {
     }
 
     socket.onerror = () => {
+      console.warn('[CollabWsProvider] Collaboration websocket transport error', {
+        projectId: this.session.projectId,
+        roomId: this.session.roomId,
+      })
       this.onStateChange?.('error', 'Collaboration websocket error')
     }
 
@@ -369,6 +390,17 @@ export class CollabWsProvider {
         (typeof event.code === 'number'
           ? `Collaboration websocket disconnected (code ${event.code})`
           : 'Collaboration websocket disconnected')
+
+      console.warn('[CollabWsProvider] Collaboration websocket closed', {
+        projectId: this.session.projectId,
+        roomId: this.session.roomId,
+        code: event.code,
+        reason: event.reason || null,
+        serverErrorCode: this.lastServerErrorCode,
+        message: closeDetails,
+        connectLifetimeMs,
+        consecutiveInitialFailures: this.consecutiveInitialFailures,
+      })
 
       if (AUTH_RECOVERY_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {
         void this.handleAuthRecovery(closeDetails)
@@ -518,6 +550,16 @@ export class CollabWsProvider {
           ? message.payload.message
           : 'Collaboration protocol error'
       this.lastServerErrorMessage = messageText
+      console.warn('[CollabWsProvider] Collaboration protocol error', {
+        projectId: this.session.projectId,
+        roomId: this.session.roomId,
+        code: this.lastServerErrorCode,
+        recoverable:
+          typeof message.payload?.recoverable === 'boolean' ? message.payload.recoverable : null,
+        retryAfterMs:
+          typeof message.payload?.retryAfterMs === 'number' ? message.payload.retryAfterMs : null,
+        message: messageText,
+      })
       this.onStateChange?.('error', messageText)
     }
   }

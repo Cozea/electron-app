@@ -23,6 +23,7 @@ import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { formatReplicaSyncError } from "../lib/replicaErrorPresentation"
 import {
   getMeaningfulLocalFileCount,
   isBootstrapOnlyLocalPath,
@@ -324,9 +325,9 @@ export function ProjectSyncProvider({
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
     initialLastSyncAt ?? null
   )
-  // Usually we don't show sync screen initially, but card/row pre-check can
-  // request a gated open when conflicts/recovery are likely.
-  const [showSyncScreen, setShowSyncScreen] = useState(initialGateSyncScreen)
+  const [showSyncScreen, setShowSyncScreen] = useState(
+    initialGateSyncScreen || !skipInitialSyncCheck
+  )
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [requireSyncBeforeContinue, setRequireSyncBeforeContinue] = useState(false)
   const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
@@ -335,7 +336,7 @@ export function ProjectSyncProvider({
   const [hasRunInitialSync, setHasRunInitialSync] = useState(skipInitialSyncCheck)
 
   const [progress, setProgress] = useState<SyncProgress>(() =>
-    initialGateSyncScreen
+    initialGateSyncScreen || !skipInitialSyncCheck
       ? {
         status: "checking",
         message: "Checking project files...",
@@ -364,7 +365,7 @@ export function ProjectSyncProvider({
   } = useCollabSession({
     projectId: String(projectId),
     accessToken,
-    enabled: Boolean(accessToken),
+    enabled: isSynced && Boolean(accessToken),
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =
@@ -745,6 +746,7 @@ export function ProjectSyncProvider({
           // Already synced - no screen needed
           const now = Date.now()
           setLastSyncAt(now)
+          setShowSyncScreen(false)
           setProgress({
             status: "complete",
             message: "Everything up to date!",
@@ -780,16 +782,19 @@ export function ProjectSyncProvider({
           }))
         }
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Unknown error"
+        const presentedError = formatReplicaSyncError(error, "Failed to sync project files")
         console.error("[Sync] Initial sync failed:", error)
         setShowSyncScreen(true)
         setIsSyncRunning(false)
         setProgress({
           status: "error",
-          message: errorMsg,
+          message: presentedError.summary,
           current: 0,
           total: 0,
-          logs: [`Error: ${errorMsg}`],
+          logs: [
+            `Error: ${presentedError.summary}`,
+            ...(presentedError.detail ? [`Detail: ${presentedError.detail}`] : []),
+          ],
         })
       }
     }
@@ -818,11 +823,7 @@ export function ProjectSyncProvider({
   /**
    * Handle continue (skip sync).
    */
-  const handleContinue = () => {
-    setIsSynced(true)
-    setRequireSyncBeforeContinue(false)
-    setShowSyncScreen(false)
-  }
+  const handleContinue = () => {}
 
   const handleCancel = () => {
     setRequireSyncBeforeContinue(false)
@@ -862,7 +863,7 @@ export function ProjectSyncProvider({
     await executeSync(currentLocalPath, resolvedPlan, decisions)
   }
 
-  const isBlockingSyncScreen = showSyncScreen && !isSynced
+  const isBlockingSyncScreen = (showSyncScreen || !isSynced) && !isSynced
 
   return (
     <ProjectSyncContext.Provider
@@ -879,6 +880,7 @@ export function ProjectSyncProvider({
         userId={userId}
         userName={userName}
         projectPath={currentLocalPath}
+        enabled={isSynced}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >
@@ -908,7 +910,7 @@ export function ProjectSyncProvider({
                   onSync={handleSyncResolved}
                   syncActionLabel={requireSyncBeforeContinue ? "Download cloud files" : undefined}
                   syncActionIcon={requireSyncBeforeContinue ? "download" : undefined}
-                  hideContinue={requireSyncBeforeContinue}
+                  hideContinue
                   variant="panel"
                 />
               </>

@@ -403,6 +403,7 @@ export function Projects() {
   const openProjectAfterSyncReview = useCallback((review: PendingSyncReview) => {
     navigate(buildProjectPath(String(review.projectId)), {
       state: {
+        projectId: String(review.projectId),
         projectSlug: review.projectSlug,
         projectName: review.projectName,
         projectTemplate: review.projectTemplate ?? undefined,

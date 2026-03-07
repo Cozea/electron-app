@@ -379,11 +379,13 @@ npm-debug.log*
         filePath,
         content,
         encoding = 'utf8',
+        origin = 'agent',
       }: {
         projectPath: string
         filePath: string
         content: string
         encoding?: 'utf8' | 'base64'
+        origin?: 'agent' | 'remote' | 'sync'
       }
     ): Promise<WriteFileResult> => {
       try {
@@ -405,11 +407,11 @@ npm-debug.log*
         console.log(`[Project] Wrote file: ${fullPath}`)
 
         if (encoding !== 'base64') {
-          notifyFileChanged(fullPath, content, { origin: 'agent' })
+          notifyFileChanged(fullPath, content, { origin })
         }
         notifyFileMetaChanged({
           filePath: fullPath,
-          origin: 'agent',
+          origin,
           isBinary: encoding === 'base64',
           sizeBytes: stats.size,
           content: encoding === 'base64' ? undefined : content,
@@ -547,10 +549,12 @@ npm-debug.log*
         projectPath,
         oldPath,
         newPath,
+        origin,
       }: {
         projectPath: string
         oldPath: string
         newPath: string
+        origin?: 'agent' | 'remote' | 'sync'
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
@@ -566,8 +570,10 @@ npm-debug.log*
           fs.mkdirSync(newDir, { recursive: true })
         }
 
+        markInternalFsChange(fullOldPath)
+        markInternalFsChange(fullNewPath)
         fs.renameSync(fullOldPath, fullNewPath)
-        console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`)
+        console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`, origin ? { origin } : undefined)
 
         return { success: true }
       } catch (error) {
@@ -600,6 +606,7 @@ npm-debug.log*
         }
 
         const stats = fs.statSync(fullPath)
+        markInternalFsChange(fullPath)
         if (stats.isDirectory()) {
           fs.rmSync(fullPath, { recursive: true, force: true })
         } else {

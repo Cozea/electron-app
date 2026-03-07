@@ -11,7 +11,10 @@ export interface AiSurfaceErrorData {
 
 function getSurfaceAction(hint: RetryHint): RetryHintAction | undefined {
   // Keep 429 surfaces terse; settings CTAs take too much space for this compact card.
-  if (hint.code === 'provider_rate_limit') {
+  if (
+    hint.code === 'provider_rate_limit' ||
+    hint.code === 'provider_usage_limit'
+  ) {
     return undefined
   }
   return hint.action

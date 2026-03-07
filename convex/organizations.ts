@@ -17,6 +17,7 @@ import {
   getPlanStorageLimitGB,
   formatBytes,
   rebuildOrganizationStorageUsageFromProjectAggregates,
+  syncProjectStorageUsage,
   syncProjectStorageUsageFromSource,
 } from "./lib/workspaceLimits"
 import {
@@ -1189,6 +1190,21 @@ export const recalculateStorageUsage = internalMutation({
       reconciledProjects,
       isDone: true,
       totalBytes: calculateStorageTotal(breakdown),
+      breakdown,
+    }
+  },
+})
+
+export const repairProjectStorageUsage = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const breakdown = await syncProjectStorageUsage(ctx, args.projectId, emptyBreakdown())
+    return {
+      success: breakdown !== null,
+      projectId: args.projectId,
+      totalBytes: breakdown ? calculateStorageTotal(breakdown) : 0,
       breakdown,
     }
   },
