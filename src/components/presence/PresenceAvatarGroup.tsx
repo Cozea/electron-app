@@ -50,7 +50,7 @@ function formatTabName(tab?: string): string {
   if (!tab) return "Project"
   const names: Record<string, string> = {
     editor: "Editor",
-    pages: "Pages",
+    pages: "Previews",
     backend: "Backend",
     settings: "Settings",
     dependencies: "Dependencies",

@@ -1086,6 +1086,105 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
+  // Shared project tasks created from the task board UI.
+  projectTasks: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    taskKey: v.string(),
+    title: v.string(),
+    description: v.string(),
+    status: v.union(
+      v.literal("planned"),
+      v.literal("active"),
+      v.literal("done")
+    ),
+    deadlineDate: v.optional(v.string()),
+    assignee: v.optional(
+      v.object({
+        userId: v.optional(v.id("users")),
+        name: v.string(),
+        email: v.optional(v.string()),
+        avatarUrl: v.optional(v.string()),
+      })
+    ),
+    context: v.object({
+      kind: v.union(v.literal("file"), v.literal("page")),
+      value: v.string(),
+      label: v.string(),
+      title: v.string(),
+    }),
+    markers: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+      })
+    ),
+    checkedMarkerIds: v.array(v.string()),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_project_and_task_key", ["projectId", "taskKey"]),
+
+  // Shared completion state for synthesized task-board items.
+  projectTaskStates: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    source: v.union(
+      v.literal("page"),
+      v.literal("entity"),
+      v.literal("build"),
+      v.literal("lock")
+    ),
+    storageId: v.string(),
+    status: v.union(
+      v.literal("planned"),
+      v.literal("active"),
+      v.literal("done")
+    ),
+    checkedMarkerIds: v.array(v.string()),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_project_and_source_and_storage", ["projectId", "source", "storageId"]),
+
+  // Inbox items for task assignment and completion events.
+  projectTaskNotifications: defineTable({
+    userId: v.id("users"),
+    organizationId: v.id("organizations"),
+    projectId: v.id("projects"),
+    kind: v.union(v.literal("assigned"), v.literal("completed")),
+    taskSource: v.union(
+      v.literal("manual"),
+      v.literal("page"),
+      v.literal("entity"),
+      v.literal("build"),
+      v.literal("lock")
+    ),
+    taskStorageId: v.string(),
+    taskTitle: v.string(),
+    taskContext: v.object({
+      kind: v.union(v.literal("file"), v.literal("page")),
+      value: v.string(),
+      label: v.string(),
+      title: v.string(),
+    }),
+    actorUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_user_and_created", ["userId", "createdAt"])
+    .index("by_user_and_organization_and_created", ["userId", "organizationId", "createdAt"])
+    .index("by_project_and_created", ["projectId", "createdAt"]),
+
   // Project join links for personal-project collaboration sharing
   projectJoinLinks: defineTable({
     projectId: v.id("projects"),

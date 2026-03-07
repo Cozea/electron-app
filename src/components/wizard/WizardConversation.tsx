@@ -119,6 +119,7 @@ import {
   type ModelApiModel,
   type ModelApiResponse,
 } from '@/lib/ai/modelCatalogClient'
+import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
 import {
@@ -263,12 +264,16 @@ export function WizardConversation({
   const { accessToken, currentOrganization } = useAuth()
   const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const initialModelId = initialGlobalModelSettings.model || promptSettings.model || ''
 
   // State
   const [input, setInput] = useState('')
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
+    const fallback = buildProvisionalModelOption(initialModelId)
+    return fallback ? [fallback] : []
+  })
   const [model, setModel] = useState(
-    initialGlobalModelSettings.model || promptSettings.model || ''
+    initialModelId
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
@@ -281,6 +286,7 @@ export function WizardConversation({
   )
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [pendingAttachments, setPendingAttachments] = useState<ChatComposerAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -419,6 +425,7 @@ export function WizardConversation({
     if (accessToken && currentOrganization?.organizationId) return
     setModelsError(null)
     setToolsError(null)
+    setModelsLoaded(false)
   }, [accessToken, currentOrganization?.organizationId])
 
   useEffect(() => {
@@ -489,13 +496,15 @@ export function WizardConversation({
 
   // Fetch models
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
+    if (!accessToken || !currentOrganization?.organizationId) return
     let cancelled = false
+    setModelsLoaded(false)
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
-      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
+      connectedProviders:
+        providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
     })
       .then((data: ModelApiResponse) => {
         if (cancelled) return
@@ -518,11 +527,13 @@ export function WizardConversation({
         setModelCapabilities(caps)
         setModelsError(null)
         setAvailableModels(mapped)
+        setModelsLoaded(true)
       })
       .catch((err) => {
         if (cancelled) return
         const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
         setModelsError(message)
+        setModelsLoaded(true)
         console.warn('Failed to fetch models:', err)
       })
 
@@ -1239,7 +1250,7 @@ export function WizardConversation({
             </Button>
           </div>
         </div>
-        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
+        {!hasSelectableModel && modelsLoaded && providerStatusLoaded && providerAuthAvailable && (
           <p className="pt-2 text-xs text-amber-600">
             Connect an AI provider in Workspace AI settings to continue planning.
           </p>

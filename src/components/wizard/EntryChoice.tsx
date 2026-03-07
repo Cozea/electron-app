@@ -65,6 +65,7 @@ import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
+import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 
 export interface PromptSettings {
   model: string
@@ -100,6 +101,7 @@ export function EntryChoice({
   const { accessToken, currentOrganization } = useAuth()
   const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const initialModelId = initialGlobalModelSettings.model ?? ''
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Defensive: ensure promptValue is always a string before calling trim
@@ -108,10 +110,14 @@ export function EntryChoice({
   const canSubmitPrompt = trimmedLength > 0
 
   // AI input state
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
-  const [model, setModel] = useState(initialGlobalModelSettings.model ?? '')
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
+    const fallback = buildProvisionalModelOption(initialModelId)
+    return fallback ? [fallback] : []
+  })
+  const [model, setModel] = useState(initialModelId)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
+  const [modelsLoaded, setModelsLoaded] = useState(false)
   const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId)
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
     () => loadModelSettings()
@@ -192,14 +198,21 @@ export function EntryChoice({
   }, [model, variantId, normalizedVariantId])
 
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
+    if (accessToken && currentOrganization?.organizationId) return
+    setModelsLoaded(false)
+  }, [accessToken, currentOrganization?.organizationId])
+
+  useEffect(() => {
+    if (!accessToken || !currentOrganization?.organizationId) return
 
     let cancelled = false
+    setModelsLoaded(false)
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
-      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
+      connectedProviders:
+        providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
     })
       .then((data) => {
         if (cancelled) return
@@ -223,9 +236,11 @@ export function EntryChoice({
           })
         setAvailableModels(mapped)
         setModelCapabilities(nextCapabilities)
+        setModelsLoaded(true)
       })
       .catch((error) => {
         if (cancelled) return
+        setModelsLoaded(true)
         console.warn('Failed to fetch models:', error)
       })
 
@@ -397,7 +412,7 @@ export function EntryChoice({
             </Button>
           </div>
         </div>
-        {!hasSelectableModel && providerStatusLoaded && providerAuthAvailable && (
+        {!hasSelectableModel && modelsLoaded && providerStatusLoaded && providerAuthAvailable && (
           <p className="text-xs text-amber-600">
             Connect an AI provider in Workspace AI settings to select a model.
           </p>

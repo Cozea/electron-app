@@ -75,7 +75,7 @@ interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
 const routeMap: Record<string, string> = {
     "Tasks": "tasks",
     // Platform group (with secondary panels)
-    "Pages": "pages",
+    "Previews": "pages",
     "Files": "",  // Default/index route shows file editor
     "Sync Feed": "changes",
     // Development group
@@ -91,7 +91,7 @@ function getActiveTabFromPathname(pathname: string, base: string | null): string
     if (!base) return null
 
     if (pathname === base || pathname === `${base}/`) return "Files"
-    if (pathname === `${base}/pages` || pathname.startsWith(`${base}/pages/`)) return "Pages"
+    if (pathname === `${base}/pages` || pathname.startsWith(`${base}/pages/`)) return "Previews"
     if (pathname === `${base}/tasks` || pathname.startsWith(`${base}/tasks/`)) return "Tasks"
     if (pathname === `${base}/changes` || pathname.startsWith(`${base}/changes/`)) return "Sync Feed"
     if (pathname === `${base}/dependencies` || pathname.startsWith(`${base}/dependencies/`)) return "Dependencies"
@@ -105,7 +105,7 @@ function getActiveTabFromPathname(pathname: string, base: string | null): string
 
 const projectRoutePreloaders: Record<string, () => Promise<unknown>> = {
     "Tasks": () => import("@/features/projects/pages/TasksPage"),
-    "Pages": () => import("@/features/projects/pages/ProjectPagesPage"),
+    "Previews": () => import("@/features/projects/pages/ProjectPagesPage"),
     "Files": () => import("@/features/projects/pages/ProjectDetailPage"),
     "Sync Feed": () => import("@/features/projects/pages/ChangesPage"),
     "Dependencies": () => import("@/features/projects/pages/ProjectDependenciesPage"),
@@ -130,7 +130,7 @@ const NAV_GROUPS = [
     {
         title: "Platform",
         items: [
-            { title: "Pages", icon: AppWindow },
+            { title: "Previews", icon: AppWindow },
             { title: "Files", icon: Files },
             { title: "Sync Feed", icon: Rss }
         ]
@@ -152,13 +152,6 @@ const NAV_GROUPS = [
     }
 ] as const
 
-function isMacClient(): boolean {
-    if (typeof navigator === 'undefined') return false
-    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
-    const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
-    return /mac/i.test(platformHint)
-}
-
 export function ProjectSidebar({
     user,
     onLogout,
@@ -174,12 +167,6 @@ export function ProjectSidebar({
     className,
     ...props
 }: ProjectSidebarProps) {
-    const isMacPlatform =
-        typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
-            ? true
-            : isMacClient()
-    const [isFullScreen, setIsFullScreen] = React.useState(false)
-    const applyWindowControlsInset = isMacPlatform && !isFullScreen
     const navigate = useViewTransitionNavigate()
     const { slug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const location = useLocation()
@@ -200,7 +187,7 @@ export function ProjectSidebar({
         [location.pathname, routeBasePath]
     )
     const isFilesRoute = routeActiveTab === "Files"
-    const isPagesRoute = routeActiveTab === "Pages"
+    const isPagesRoute = routeActiveTab === "Previews"
 
     const preloadProjectTab = React.useCallback((tabTitle: string) => {
         const preloader = projectRoutePreloaders[tabTitle]
@@ -220,29 +207,6 @@ export function ProjectSidebar({
     React.useEffect(() => {
         setActiveTab(routeActiveTab)
     }, [routeActiveTab])
-
-    React.useEffect(() => {
-        if (!isMacPlatform) return
-
-        let isMounted = true
-
-        void window.electronAPI?.window?.isFullScreen?.()
-            .then((fullScreen) => {
-                if (isMounted) setIsFullScreen(Boolean(fullScreen))
-            })
-            .catch(() => {
-                if (isMounted) setIsFullScreen(false)
-            })
-
-        const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullScreen) => {
-            if (isMounted) setIsFullScreen(Boolean(fullScreen))
-        })
-
-        return () => {
-            isMounted = false
-            cleanup?.()
-        }
-    }, [isMacPlatform])
 
     // Track last seen timestamp for sync feed (triggers re-render when updated)
     const [lastSeenTimestamp, setLastSeenTimestamp] = React.useState(() =>
@@ -477,21 +441,17 @@ export function ProjectSidebar({
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
+                    windowChromeAware
                     className="w-56 shrink-0 z-20 h-screen sidebar-glass"
                     {...props}
                 >
-                    <SidebarHeader className={cn("titlebar-drag-region", applyWindowControlsInset && "mt-9")}>
+                    <SidebarHeader className="titlebar-drag-region">
                         <div className="titlebar-no-drag">
                             <ContextSwitcher />
                         </div>
                     </SidebarHeader>
 
-                    <SidebarContent
-                        className={cn(
-                            "titlebar-no-drag",
-                            applyWindowControlsInset && "group-data-[collapsible=icon]:mt-9"
-                        )}
-                    >
+                    <SidebarContent className="titlebar-no-drag">
                         {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -502,7 +462,7 @@ export function ProjectSidebar({
                                                 return null
                                             }
                                             // Determine interaction type
-                                            const hasSecondaryPanel = ['Files', 'Pages'].includes(item.title)
+                                            const hasSecondaryPanel = ['Files', 'Previews'].includes(item.title)
                                             const isActive = activeTab === item.title
                                             const isSyncFeed = item.title === 'Sync Feed'
                                             const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
@@ -530,8 +490,8 @@ export function ProjectSidebar({
                                                                 setLastSeenTimestamp(Date.now())
                                                             }
 
-                                                            if (item.title === 'Pages') {
-                                                                setActiveTab('Pages')
+                                                            if (item.title === 'Previews') {
+                                                                setActiveTab('Previews')
                                                                 setPagesListOpen(false) // Pages list closed by default when entering page view
                                                             } else if (hasSecondaryPanel) {
                                                                 setActiveTab(isActive ? null : item.title)
@@ -683,7 +643,7 @@ export function ProjectSidebar({
                                         isPagesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
                                     )}
                                 >
-                                    {(activeTab === 'Pages' || isPagesRoute) && <PagesList />}
+                                    {(activeTab === 'Previews' || isPagesRoute) && <PagesList />}
                                 </div>
                             </div>
                         </SidebarContent>

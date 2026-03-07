@@ -405,9 +405,10 @@ export async function getDevServerConfig(
     }
   }
 
+  const info = await detectFramework(projectPath)
   const selectedSuggestion = suggestions.find((suggestion) => suggestion.confidence >= 0.8)
   if (selectedSuggestion) {
-    const fallbackPort = 3000
+    const fallbackPort = info.devPort
     return {
       command: selectedSuggestion.command,
       port: inferPortFromCommand(selectedSuggestion.command, fallbackPort),
@@ -417,7 +418,6 @@ export async function getDevServerConfig(
     }
   }
 
-  const info = await detectFramework(projectPath)
   const fallbackCommand = suggestions[0]?.command ?? info.devCommand
   const fallbackPort = inferPortFromCommand(fallbackCommand, info.devPort)
 

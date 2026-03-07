@@ -39,6 +39,7 @@ import { GripVertical, Loader2 } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
+import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
 
 interface PathRecoveryChoice {
@@ -80,7 +81,7 @@ function getProjectSubpageLabel(pathname: string, basePath: string | null): stri
 
     switch (segment) {
         case "pages":
-            return "Pages"
+            return "Previews"
         case "backend":
             return "Backend Studio"
         case "dependencies":
@@ -207,7 +208,7 @@ export function ProjectLayout({
     const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const shouldGateSyncScreen = locationState?.gateSyncScreen === true
-    const shouldSkipInitialSyncCheck = locationState?.skipInitialSyncCheck === true
+    const shouldSkipInitialSyncCheckFromState = locationState?.skipInitialSyncCheck === true
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -259,6 +260,10 @@ export function ProjectLayout({
         `layout-project-${routeProjectId ?? routeSlug}`,
         freshProject
     )
+    const projectIdForSyncBypass = routeProjectId ?? (project?._id ? String(project._id) : null)
+    const shouldSkipInitialSyncCheck =
+        shouldSkipInitialSyncCheckFromState ||
+        (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false)
     const projectSlug = project?.slug ?? routeSlug ?? null
     const projectBasePath = routeProjectId
         ? buildProjectPath(routeProjectId)

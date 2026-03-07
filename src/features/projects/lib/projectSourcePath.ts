@@ -30,6 +30,14 @@ export function normalizeProjectSourceReference(reference: string): string {
     normalized = normalized.slice(1)
   }
 
+  if (normalized.startsWith('@/')) {
+    normalized = `src/${normalized.slice(2)}`
+  } else if (normalized.startsWith('~/')) {
+    normalized = `src/${normalized.slice(2)}`
+  } else if (normalized.startsWith('/src/')) {
+    normalized = normalized.slice(1)
+  }
+
   if (normalized.length > 1) {
     normalized = normalized.replace(/\/+$/, '')
   }
@@ -73,19 +81,15 @@ export function toProjectRelativeSourcePath(reference: string, projectPath: stri
 export async function resolveProjectSourcePath(reference: string, projectPath: string): Promise<string | null> {
   const directPath = toProjectRelativeSourcePath(reference, projectPath)
 
-  if (!directPath) {
-    return null
-  }
-
-  if (!isBareProjectSourceReference(reference)) {
-    return directPath
-  }
-
   const listResult = await window.electronAPI.project.listFiles({ projectPath })
   if (!listResult.success) {
     return null
   }
   const files = listResult.files ?? []
+
+  if (!directPath) {
+    return null
+  }
 
   const normalizedDirectPath = normalizeProjectSourceReference(directPath)
   const exactPathMatch = files.find(
@@ -93,6 +97,22 @@ export async function resolveProjectSourcePath(reference: string, projectPath: s
   )
   if (exactPathMatch) {
     return normalizeProjectSourceReference(exactPathMatch.path)
+  }
+
+  if (!isBareProjectSourceReference(reference)) {
+    const directWithoutExtension = normalizedDirectPath.replace(/\.(tsx|jsx|ts|js|vue|astro|svelte)$/i, '')
+    const suffixMatches = files.filter((file) => {
+      const normalizedPath = normalizeProjectSourceReference(file.path)
+      return (
+        normalizedPath === normalizedDirectPath ||
+        normalizedPath === directWithoutExtension ||
+        normalizedPath.startsWith(`${directWithoutExtension}.`) ||
+        normalizedPath.startsWith(`${directWithoutExtension}/index.`)
+      )
+    })
+    if (suffixMatches.length === 1) {
+      return normalizeProjectSourceReference(suffixMatches[0].path)
+    }
   }
 
   const requestedFileName = getProjectSourceFileName(reference)

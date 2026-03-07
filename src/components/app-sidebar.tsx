@@ -56,66 +56,26 @@ const PERSONAL_WORKSPACE_ITEMS: NavMainItem[] = WORKSPACE_ITEMS.filter(
   (item) => item.url !== "/workspace/general"
 )
 
-function isMacClient(): boolean {
-  if (typeof navigator === "undefined") return false
-  const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
-  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
-  return /mac/i.test(platformHint)
-}
-
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
-  const isMacPlatform =
-    typeof window !== "undefined" && window.electronAPI?.platform === "darwin"
-      ? true
-      : isMacClient()
-  const [isFullScreen, setIsFullScreen] = React.useState(false)
-  const applyWindowControlsInset = isMacPlatform && !isFullScreen
   const { currentOrganization } = useAuth()
   const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
   const teamItems = personalWorkspaceSelected ? [] : TEAM_ITEMS
   const workspaceItems = personalWorkspaceSelected ? PERSONAL_WORKSPACE_ITEMS : WORKSPACE_ITEMS
 
-  React.useEffect(() => {
-    if (!isMacPlatform) return
-
-    let isMounted = true
-
-    void window.electronAPI?.window?.isFullScreen?.()
-      .then((fullScreen) => {
-        if (isMounted) setIsFullScreen(Boolean(fullScreen))
-      })
-      .catch(() => {
-        if (isMounted) setIsFullScreen(false)
-      })
-
-    const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullScreen) => {
-      if (isMounted) setIsFullScreen(Boolean(fullScreen))
-    })
-
-    return () => {
-      isMounted = false
-      cleanup?.()
-    }
-  }, [isMacPlatform])
-
   return (
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
       <Sidebar
         collapsible="icon"
+        windowChromeAware
         className={cn("w-56 shrink-0 z-20 h-screen sidebar-glass", className)}
         {...props}
       >
-        <SidebarHeader className={cn("titlebar-drag-region", applyWindowControlsInset && "mt-9")}>
+        <SidebarHeader className="titlebar-drag-region">
           <div className="titlebar-no-drag">
             <ContextSwitcher />
           </div>
         </SidebarHeader>
-        <SidebarContent
-          className={cn(
-            "titlebar-no-drag",
-            applyWindowControlsInset && "group-data-[collapsible=icon]:mt-9"
-          )}
-        >
+        <SidebarContent className="titlebar-no-drag">
           <NavMain label="Platform" items={PLATFORM_ITEMS} />
           {teamItems.length > 0 ? <NavMain label="Team" items={teamItems} /> : null}
           <NavMain label="Workspace" items={workspaceItems} />

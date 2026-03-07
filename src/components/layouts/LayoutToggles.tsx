@@ -56,9 +56,11 @@ export function LayoutToggles() {
 
     const location = useLocation()
     const routeProject = parseProjectRoute(location.pathname)
+    const normalizedPath = location.pathname.replace(/\/+$/, '')
     const isProjectContext = Boolean(routeProject.projectId || routeProject.slug)
-    const canToggleTerminal = isProjectContext || hasTerminalSessions
-    const canToggleAssistant = isProjectContext
+    const isProjectBuildRoute = isProjectContext && normalizedPath.endsWith('/build')
+    const canToggleTerminal = !isProjectBuildRoute && (isProjectContext || hasTerminalSessions)
+    const canToggleAssistant = !isProjectBuildRoute && isProjectContext
     const sidebarState = sidebar?.state ?? 'collapsed'
 
     return (

@@ -920,9 +920,18 @@ function createWindow() {
     win.webContents.send('window:fullscreen-change', win.isFullScreen())
   }
 
+  const emitPendingFullScreenChange = (nextValue: boolean) => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('window:fullscreen-change', nextValue)
+  }
+
+  win.on('will-enter-full-screen', () => emitPendingFullScreenChange(true))
   win.on('enter-full-screen', emitFullScreenChange)
+  win.on('will-leave-full-screen', () => emitPendingFullScreenChange(false))
   win.on('leave-full-screen', emitFullScreenChange)
+  win.on('will-enter-html-full-screen', () => emitPendingFullScreenChange(true))
   win.on('enter-html-full-screen', emitFullScreenChange)
+  win.on('will-leave-html-full-screen', () => emitPendingFullScreenChange(false))
   win.on('leave-html-full-screen', emitFullScreenChange)
 
   if (isReleaseBuild) {

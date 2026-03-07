@@ -4,6 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -201,6 +202,7 @@ function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
+  windowChromeAware = false,
   className,
   children,
   ...props
@@ -208,9 +210,23 @@ function Sidebar({
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
+  windowChromeAware?: boolean
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const windowChrome = useWindowChrome()
   const sideBoundary = side === "left" ? "bdry-r bdry-sidebar" : "bdry-l bdry-sidebar"
+  const shouldRenderWindowChromeInset = windowChromeAware && !isMobile && windowChrome.isMac
+  const windowChromeInset = shouldRenderWindowChromeInset ? (
+    <div
+      aria-hidden="true"
+      data-slot="sidebar-window-chrome-inset"
+      className="titlebar-drag-region shrink-0 transition-[height,opacity] duration-200 ease-out"
+      style={{
+        height: windowChrome.topInset,
+        opacity: windowChrome.showMacWindowControls ? 1 : 0,
+      }}
+    />
+  ) : null
 
   if (collapsible === "none") {
     return (
@@ -224,6 +240,7 @@ function Sidebar({
         )}
         {...props}
       >
+        {windowChromeInset}
         {children}
       </div>
     )
@@ -302,6 +319,7 @@ function Sidebar({
             side === "right" && "sidebar-fade-border sidebar-fade-border-left"
           )}
         >
+          {windowChromeInset}
           {children}
         </div>
       </div>

@@ -22,6 +22,104 @@ export interface ScanResult {
   routeConvention: string
 }
 
+const SOURCE_FILE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.astro', '.svelte']
+
+function normalizeRouteScannerPath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+/g, '/')
+}
+
+function resolveRelativeModulePath(importerPath: string, relativeImportPath: string): string {
+  const importerSegments = normalizeRouteScannerPath(importerPath).split('/')
+  importerSegments.pop()
+
+  const importSegments = normalizeRouteScannerPath(relativeImportPath).split('/')
+  for (const segment of importSegments) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (importerSegments.length > 0) importerSegments.pop()
+      continue
+    }
+    importerSegments.push(segment)
+  }
+
+  return importerSegments.join('/')
+}
+
+function buildSourcePathCandidates(reference: string, importerPath?: string): string[] {
+  const normalized = normalizeRouteScannerPath(reference).trim()
+  if (!normalized) return []
+
+  const candidates = new Set<string>()
+  const addCandidate = (value: string) => {
+    const normalizedValue = normalizeRouteScannerPath(value)
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '')
+    if (normalizedValue) candidates.add(normalizedValue)
+  }
+
+  if (normalized.startsWith('./') || normalized.startsWith('../')) {
+    if (importerPath) {
+      addCandidate(resolveRelativeModulePath(importerPath, normalized))
+    }
+  } else if (normalized.startsWith('@/')) {
+    addCandidate(`src/${normalized.slice(2)}`)
+  } else if (normalized.startsWith('~/')) {
+    addCandidate(`src/${normalized.slice(2)}`)
+  } else if (normalized.startsWith('/src/')) {
+    addCandidate(normalized.slice(1))
+  } else if (normalized.startsWith('src/')) {
+    addCandidate(normalized)
+  } else if (normalized.startsWith('/')) {
+    addCandidate(normalized.slice(1))
+  }
+
+  addCandidate(normalized)
+
+  const expanded = new Set<string>()
+  for (const candidate of candidates) {
+    expanded.add(candidate)
+    const hasKnownExtension = SOURCE_FILE_EXTENSIONS.some((ext) => candidate.endsWith(ext))
+    if (!hasKnownExtension) {
+      for (const extension of SOURCE_FILE_EXTENSIONS) {
+        expanded.add(`${candidate}${extension}`)
+      }
+      for (const extension of SOURCE_FILE_EXTENSIONS) {
+        expanded.add(`${candidate}/index${extension}`)
+      }
+    }
+  }
+
+  return Array.from(expanded)
+}
+
+function resolveImportPathFromFiles(
+  importPath: string,
+  importerPath: string,
+  availableFiles: string[]
+): string | null {
+  const normalizedFiles = availableFiles.map((file) => normalizeRouteScannerPath(file))
+  const lowerCaseFileMap = new Map(normalizedFiles.map((file) => [file.toLowerCase(), file]))
+
+  for (const candidate of buildSourcePathCandidates(importPath, importerPath)) {
+    const exactMatch = normalizedFiles.find((file) => file === candidate)
+    if (exactMatch) return exactMatch
+
+    const lowerCaseMatch = lowerCaseFileMap.get(candidate.toLowerCase())
+    if (lowerCaseMatch) return lowerCaseMatch
+  }
+
+  const bareName = importPath.split('/').pop()?.replace(/\.(tsx|jsx|ts|js|vue|astro|svelte)$/, '') ?? null
+  if (!bareName) return null
+
+  const lowerBareName = bareName.toLowerCase()
+  const suffixMatches = normalizedFiles.filter((file) => {
+    const fileName = file.split('/').pop()?.replace(/\.(tsx|jsx|ts|js|vue|astro|svelte)$/, '') ?? ''
+    return fileName.toLowerCase() === lowerBareName
+  })
+
+  return suffixMatches.length === 1 ? suffixMatches[0] : null
+}
+
 /**
  * Scan a project directory for routes based on framework.
  * Uses stored metadata if available, otherwise detects at runtime.
@@ -507,7 +605,11 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
     })
 
     if (appFile) {
-      const parsedRoutes = await parseReactRouterRoutes(projectPath, appFile.path)
+      const parsedRoutes = await parseReactRouterRoutes(
+        projectPath,
+        appFile.path,
+        result.files.map((file) => file.path.replace(/\\/g, '/'))
+      )
       if (parsedRoutes.length > 0) {
         return sortRoutes(parsedRoutes)
       }
@@ -564,7 +666,8 @@ async function scanReactRoutes(projectPath: string): Promise<ScannedRoute[]> {
  */
 async function parseReactRouterRoutes(
   projectPath: string,
-  appFilePath: string
+  appFilePath: string,
+  availableFiles: string[]
 ): Promise<ScannedRoute[]> {
   const routes: ScannedRoute[] = []
 
@@ -582,37 +685,31 @@ async function parseReactRouterRoutes(
     let importMatch
     while ((importMatch = importRegex.exec(content.content)) !== null) {
       const [, componentName, importPath] = importMatch
-      // Normalize path: ./pages/Home -> src/pages/Home.tsx
-      let normalizedPath = importPath
-      if (normalizedPath.startsWith('./')) {
-        normalizedPath = 'src/' + normalizedPath.slice(2)
-      } else if (normalizedPath.startsWith('../')) {
-        // Handle relative paths
-        normalizedPath = importPath
+      const resolvedPath = resolveImportPathFromFiles(importPath, appFilePath, availableFiles)
+      if (resolvedPath) {
+        importMap.set(componentName, resolvedPath)
+        continue
       }
-      // Add extension if missing
-      if (!normalizedPath.match(/\.(tsx|jsx|ts|js)$/)) {
-        normalizedPath += '.tsx'
+
+      const fallbackCandidate = buildSourcePathCandidates(importPath, appFilePath)[0]
+      if (fallbackCandidate) {
+        importMap.set(componentName, fallbackCandidate)
       }
-      importMap.set(componentName, normalizedPath)
     }
 
-    // Match Route definitions with various patterns:
-    // <Route path="/" element={<Home />} />
-    // <Route path="shop" element={<Shop />} />
-    // <Route index element={<Home />} />
-    // Only match self-closing routes (ending with />) to avoid matching wrapper/layout routes
+    const addParsedRoute = (rawPath: string, componentName: string, isIndex = false) => {
+      if (componentName.toLowerCase().includes('layout')) return
 
-    // Pattern for self-closing path-based routes: <Route path="..." element={<Comp />} />
-    // Must end with /> to exclude layout routes that have children
-    const pathRouteRegex = /<Route\s+path=["']([^"']*)["']\s+element=\{<(\w+)\s*\/>\s*\}\s*\/>/g
-    let routeMatch
-    while ((routeMatch = pathRouteRegex.exec(content.content)) !== null) {
-      const [, path, componentName] = routeMatch
-      // Skip Layout components - they're wrappers, not pages
-      if (componentName.toLowerCase().includes('layout')) continue
+      const routePath = isIndex
+        ? '/'
+        : rawPath.startsWith('/')
+          ? rawPath
+          : `/${rawPath}`
 
-      const routePath = path.startsWith('/') ? path : '/' + path
+      if (routePath === '/' && routes.some((route) => route.path === '/')) {
+        return
+      }
+
       const filePath = importMap.get(componentName) || `src/pages/${componentName}.tsx`
       const isDynamic = routePath.includes(':') || routePath.includes('*')
 
@@ -624,21 +721,52 @@ async function parseReactRouterRoutes(
       })
     }
 
-    // Pattern for index routes: <Route index element={<Component />} />
-    const indexRouteRegex = /<Route\s+index\s+element=\{<(\w+)\s*\/>\s*\}\s*\/>/g
-    while ((routeMatch = indexRouteRegex.exec(content.content)) !== null) {
+    // Match self-closing JSX routes regardless of attribute order and with either
+    // element={<Page />} or Component={Page}.
+    const selfClosingRouteRegex = /<Route\b([\s\S]*?)\/>/g
+    let routeMatch
+    while ((routeMatch = selfClosingRouteRegex.exec(content.content)) !== null) {
+      const attributes = routeMatch[1]
+      const componentName = attributes.match(/\belement=\{\s*<(\w+)(?:\s*\/>|>[\s\S]*?<\/\w+>)\s*\}/)?.[1]
+        ?? attributes.match(/\bComponent=\{(\w+)\}/)?.[1]
+
+      if (!componentName) continue
+
+      const pathMatch = attributes.match(/\bpath=["']([^"']*)["']/)
+      if (pathMatch) {
+        addParsedRoute(pathMatch[1], componentName)
+        continue
+      }
+
+      if (/\bindex\b/.test(attributes)) {
+        addParsedRoute('/', componentName, true)
+      }
+    }
+
+    // Match router-object config patterns such as:
+    // { path: "/", element: <Home /> } or { path: "/", Component: Home }
+    const objectPathElementRegex = /\bpath\s*:\s*["']([^"']*)["'][\s\S]{0,240}?\belement\s*:\s*<(\w+)(?:\s*\/>|>[\s\S]*?<\/\w+>)/g
+    while ((routeMatch = objectPathElementRegex.exec(content.content)) !== null) {
+      const [, path, componentName] = routeMatch
+      addParsedRoute(path, componentName)
+    }
+
+    const objectPathComponentRegex = /\bpath\s*:\s*["']([^"']*)["'][\s\S]{0,240}?\bComponent\s*:\s*(\w+)/g
+    while ((routeMatch = objectPathComponentRegex.exec(content.content)) !== null) {
+      const [, path, componentName] = routeMatch
+      addParsedRoute(path, componentName)
+    }
+
+    const objectIndexElementRegex = /\bindex\s*:\s*true[\s\S]{0,240}?\belement\s*:\s*<(\w+)(?:\s*\/>|>[\s\S]*?<\/\w+>)/g
+    while ((routeMatch = objectIndexElementRegex.exec(content.content)) !== null) {
       const [, componentName] = routeMatch
-      // Skip if we already have a "/" route
-      if (routes.some(r => r.path === '/')) continue
+      addParsedRoute('/', componentName, true)
+    }
 
-      const filePath = importMap.get(componentName) || `src/pages/${componentName}.tsx`
-
-      routes.push({
-        name: 'Home',
-        path: '/',
-        file: filePath,
-        type: 'static',
-      })
+    const objectIndexComponentRegex = /\bindex\s*:\s*true[\s\S]{0,240}?\bComponent\s*:\s*(\w+)/g
+    while ((routeMatch = objectIndexComponentRegex.exec(content.content)) !== null) {
+      const [, componentName] = routeMatch
+      addParsedRoute('/', componentName, true)
     }
 
     // Deduplicate routes by path (keep first occurrence)

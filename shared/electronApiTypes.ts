@@ -305,6 +305,7 @@ export type PreviewFailureReason =
   | 'bridge_injection_failed'
   | 'bridge_timeout'
   | 'iframe_load_error'
+  | 'network_quality_degraded'
   | 'server_unreachable'
   | 'invalid_url'
   | 'unsupported_origin'
@@ -838,6 +839,19 @@ export interface DbFirestoreListDocumentsResult {
 
 export type ElectronWindowContext = 'main' | 'settings'
 
+export type AuthRefreshFailureReason = 'expired' | 'retryable' | 'missing_session'
+
+export type AuthRefreshResult =
+  | {
+      ok: true
+      session: Session
+    }
+  | {
+      ok: false
+      reason: AuthRefreshFailureReason
+      statusCode?: number
+    }
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
@@ -845,7 +859,7 @@ export interface ElectronAPI {
     login: () => Promise<{ success: boolean }>
     logout: () => Promise<{ success: boolean }>
     getSession: () => Promise<Session | null>
-    refresh: () => Promise<Session | null>
+    refresh: () => Promise<AuthRefreshResult>
     updateOrganizations: (
       organizations: OrganizationMembership[]
     ) => Promise<{ success: boolean; error?: string }>

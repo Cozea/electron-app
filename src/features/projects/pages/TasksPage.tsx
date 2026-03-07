@@ -1,48 +1,1974 @@
-import tasksComingSoonImage from '@/assets/tasks-coming-soon.png'
-import { Card } from '@/components/ui/card'
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useMutation, useQuery } from 'convex/react'
+import {
+  AppWindow,
+  ArrowUpRight,
+  ChevronDown,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  ListTodo,
+  Loader2,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
+import type { Id } from '../../../../convex/_generated/dataModel'
+
+import { api } from '../../../../convex/_generated/api'
+import { useAuth } from '@/contexts/AuthContext'
+import { useProjectHeader } from '@/hooks/useProjectHeader'
+import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import {
+  type TaskOverlayLocationState,
+  type TaskOverlayPayload,
+} from '@/features/projects/lib/taskFocusOverlay'
+import { scanForRoutes, type ScannedRoute } from '@/utils/routeScanner'
+import { useViewTransitionNavigate } from '@/lib/navigation'
+import { cn } from '@/lib/utils'
+import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
+import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
-  EmptyContent,
+  EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
-export function TasksPage() {
+type BoardStatus = 'planned' | 'active' | 'done'
+type BoardSource = 'manual' | 'page' | 'entity' | 'build' | 'lock'
+
+interface ProjectPlanPageRecord {
+  id: string
+  name: string
+  route: string
+  type: string
+  purpose?: string
+  actions?: string[]
+}
+
+interface ManualTaskMarkerRecord {
+  id: string
+  label: string
+}
+
+interface ManualTaskClaimantRecord {
+  id: string
+  name: string
+  email?: string
+  avatarUrl?: string | null
+}
+
+interface ManualTaskRecord {
+  id: string
+  title: string
+  description: string
+  status: BoardStatus
+  createdAt: number
+  deadlineDate?: string
+  claimants?: ManualTaskClaimantRecord[]
+  markers?: ManualTaskMarkerRecord[]
+  checkedMarkerIds?: string[]
+}
+
+interface ManualTaskAssigneeRecord {
+  userId?: string
+  name: string
+  email?: string
+  avatarUrl?: string | null
+}
+
+interface ManualTaskContextRecord {
+  kind: 'file' | 'page'
+  value: string
+  label: string
+  title: string
+}
+
+interface SharedManualTaskRecord {
+  taskKey: string
+  title: string
+  description: string
+  status: BoardStatus
+  createdAt: number
+  updatedAt: number
+  deadlineDate?: string
+  assignee?: ManualTaskAssigneeRecord
+  context: ManualTaskContextRecord
+  markers: ManualTaskMarkerRecord[]
+  checkedMarkerIds: string[]
+}
+
+interface TaskMarkerDefinition {
+  id: string
+  label: string
+  defaultChecked: boolean
+}
+
+interface TaskMarker {
+  id: string
+  label: string
+  checked: boolean
+}
+
+interface TaskClaimant {
+  id: string
+  name: string
+  avatarUrl?: string | null
+}
+
+interface TaskClaimantCandidate {
+  id: string
+  name: string
+  email: string
+  avatarUrl?: string | null
+  searchText: string
+}
+
+interface ClaimantUserSummary {
+  id?: string
+  email?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  profileImageUrl?: string | null
+}
+
+interface ClaimantMemberSourceRecord {
+  userId: string
+  user: ClaimantUserSummary | null
+}
+
+interface TaskContextAttachment {
+  kind: 'file' | 'page'
+  value: string
+  label: string
+  href: string
+  title: string
+}
+
+interface BoardItem {
+  id: string
+  storageId: string
+  title: string
+  description: string
+  status: BoardStatus
+  source: BoardSource
+  href?: string
+  createdAt?: number
+  deadlineTimestamp?: number | null
+  markers: TaskMarker[]
+  claimants: TaskClaimant[]
+  context: TaskContextAttachment
+  files?: string[]
+}
+
+const HEADER_STATUS_ORDER: BoardStatus[] = ['planned', 'active', 'done']
+const GRID_STATUS_ORDER: BoardStatus[] = ['active', 'planned', 'done']
+const DEFAULT_COLLAPSED_GROUPS: Record<BoardStatus, boolean> = {
+  planned: false,
+  active: false,
+  done: false,
+}
+
+const STATUS_META: Record<
+  BoardStatus,
+  {
+    ariaLabel: string
+    icon: typeof ListTodo
+    iconClassName: string
+    surfaceClassName: string
+  }
+> = {
+  planned: {
+    ariaLabel: 'Backlog',
+    icon: ListTodo,
+    iconClassName: 'text-amber-700 dark:text-amber-900',
+    surfaceClassName: 'bg-amber-200 dark:bg-amber-300',
+  },
+  active: {
+    ariaLabel: 'In progress',
+    icon: Clock3,
+    iconClassName: 'text-sky-700 dark:text-sky-900',
+    surfaceClassName: 'bg-sky-200 dark:bg-sky-300',
+  },
+  done: {
+    ariaLabel: 'Done',
+    icon: CheckCircle2,
+    iconClassName: 'text-emerald-700 dark:text-emerald-900',
+    surfaceClassName: 'bg-emerald-200 dark:bg-emerald-300',
+  },
+}
+
+function getManualTaskStorageKey(projectId: string): string {
+  return `cozea:project-task-board:${projectId}`
+}
+
+function getTaskMigrationFlagStorageKey(projectId: string): string {
+  return `cozea:project-task-board-migrated:${projectId}`
+}
+
+function normalizeSearchValue(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9/]+/g, ' ').trim()
+}
+
+function createTaskId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.round(Math.random() * 1_000_000)}`
+}
+
+function getInitials(name: string): string {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+
+  return initials || '?'
+}
+
+function normalizeManualTaskMarkers(value: unknown): ManualTaskMarkerRecord[] {
+  if (!Array.isArray(value)) return createDefaultManualTaskMarkers()
+
+  const markers = value.flatMap((item, index) => {
+    if (typeof item === 'string') {
+      const label = item.trim()
+      if (!label) return []
+      return [{ id: `marker-${index}`, label }]
+    }
+
+    if (!item || typeof item !== 'object') return []
+
+    const candidate = item as Partial<ManualTaskMarkerRecord>
+    if (typeof candidate.label !== 'string') return []
+
+    const label = candidate.label.trim()
+    if (!label) return []
+
+    return [
+      {
+        id: typeof candidate.id === 'string' && candidate.id.trim().length > 0
+          ? candidate.id
+          : `marker-${index}`,
+        label,
+      },
+    ]
+  })
+
+  return markers.length > 0 ? markers : createDefaultManualTaskMarkers()
+}
+
+function createDefaultManualTaskMarkers(): ManualTaskMarkerRecord[] {
+  return [
+    { id: 'scope', label: 'Scope the work' },
+    { id: 'build', label: 'Implement the task' },
+    { id: 'review', label: 'Review and ship' },
+  ]
+}
+
+function getClaimantIdentityKey(claimant: {
+  id?: string
+  email?: string | null
+  name?: string | null
+}): string {
+  const email = claimant.email?.trim().toLowerCase()
+  if (email) return `email:${email}`
+
+  const id = claimant.id?.trim()
+  if (id) return `id:${id}`
+
+  const name = claimant.name?.trim().toLowerCase()
+  return `name:${name || '?'}`
+}
+
+function formatClaimantName(user: ClaimantUserSummary | null | undefined, fallback: string): string {
+  const first = user?.firstName?.trim() ?? ''
+  const last = user?.lastName?.trim() ?? ''
+  const fullName = [first, last].filter(Boolean).join(' ')
+
+  if (fullName) return fullName
+  if (user?.email?.trim()) return user.email.trim()
+
+  return fallback
+}
+
+function getDisplayFirstName(name: string): string {
+  const normalized = name.trim()
+  if (!normalized) return ''
+
+  const emailPrefix = normalized.split('@')[0]?.trim()
+  if (normalized.includes('@') && emailPrefix) return emailPrefix
+
+  return normalized.split(/\s+/)[0] ?? normalized
+}
+
+function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[] {
+  if (!Array.isArray(value)) return []
+
+  const seen = new Set<string>()
+
+  return value.flatMap((item, index) => {
+    if (typeof item === 'string') {
+      const name = item.trim()
+      if (!name) return []
+
+      const key = getClaimantIdentityKey({ name })
+      if (seen.has(key)) return []
+      seen.add(key)
+
+      return [
+        {
+          id: `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
+          name,
+        },
+      ]
+    }
+
+    if (!item || typeof item !== 'object') return []
+
+    const candidate = item as Partial<ManualTaskClaimantRecord>
+    if (typeof candidate.name !== 'string') return []
+
+    const name = candidate.name.trim()
+    if (!name) return []
+
+    const email =
+      typeof candidate.email === 'string' && candidate.email.trim().length > 0
+        ? candidate.email.trim().toLowerCase()
+        : undefined
+    const key = getClaimantIdentityKey({
+      id: candidate.id,
+      email,
+      name,
+    })
+
+    if (seen.has(key)) return []
+    seen.add(key)
+
+    return [
+      {
+        id:
+          typeof candidate.id === 'string' && candidate.id.trim().length > 0
+            ? candidate.id
+            : `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
+        name,
+        email,
+        avatarUrl:
+          typeof candidate.avatarUrl === 'string' && candidate.avatarUrl.trim().length > 0
+            ? candidate.avatarUrl
+            : null,
+      },
+    ]
+  })
+}
+
+function createDraftMarkerRows(): string[] {
+  return createDefaultManualTaskMarkers().map((marker) => marker.label)
+}
+
+function parseMarkerRowsInput(values: string[]): ManualTaskMarkerRecord[] {
+  const markers = values
+    .map((marker) => marker.trim())
+    .filter(Boolean)
+    .map((label, index) => ({
+      id: `custom-${index}-${normalizeSearchValue(label).replace(/\s+/g, '-') || index}`,
+      label,
+    }))
+
+  return markers.length > 0 ? markers : createDefaultManualTaskMarkers()
+}
+
+function inferBoardStatusFromMarkers(markers: Array<Pick<TaskMarker, 'checked'>>): BoardStatus {
+  if (markers.length === 0) return 'planned'
+
+  const checkedCount = markers.filter((marker) => marker.checked).length
+
+  if (checkedCount === 0) return 'planned'
+  if (checkedCount === markers.length) return 'done'
+
+  return 'active'
+}
+
+function deadlineDateToTimestamp(deadlineDate?: string): number | null {
+  if (!deadlineDate) return null
+  const timestamp = new Date(`${deadlineDate}T12:00:00`).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatAbsoluteDate(timestamp: number): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(timestamp))
+}
+
+function truncatePath(path: string, maxLength = 34): string {
+  if (path.length <= maxLength) return path
+  const parts = path.split('/').filter(Boolean)
+  const fileName = parts[parts.length - 1] ?? path
+  if (fileName.length + 4 >= maxLength) {
+    return `...${fileName.slice(-(maxLength - 3))}`
+  }
+  return `.../${fileName}`
+}
+
+function getFileSelectionPriority(filePath: string): number {
+  const normalized = filePath.replace(/\\/g, '/')
+
+  if (normalized.startsWith('src/pages/')) return 0
+  if (normalized.startsWith('src/')) return 1
+  if (normalized.startsWith('convex/')) return 2
+  if (normalized.startsWith('server/src/')) return 3
+  return 4
+}
+
+function getDeadlineMeta(deadlineTimestamp: number | null | undefined, status: BoardStatus): {
+  label: string
+  className: string
+} {
+  if (!deadlineTimestamp) {
+    return {
+      label: 'No deadline',
+      className: 'text-muted-foreground',
+    }
+  }
+
+  if (status === 'done') {
+    return {
+      label: formatAbsoluteDate(deadlineTimestamp),
+      className: 'text-emerald-700 dark:text-emerald-400',
+    }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((deadlineTimestamp - today.getTime()) / 86_400_000)
+
+  if (diffDays < 0) {
+    return {
+      label: `${formatAbsoluteDate(deadlineTimestamp)} · overdue`,
+      className: 'text-rose-700 dark:text-rose-400',
+    }
+  }
+
+  if (diffDays <= 2) {
+    return {
+      label: `${formatAbsoluteDate(deadlineTimestamp)} · soon`,
+      className: 'text-amber-700 dark:text-amber-400',
+    }
+  }
+
+  return {
+    label: formatAbsoluteDate(deadlineTimestamp),
+    className: 'text-foreground',
+  }
+}
+
+function getCompactDeadlineValue(deadlineTimestamp: number | null | undefined): string {
+  if (!deadlineTimestamp) return '--'
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((deadlineTimestamp - today.getTime()) / 86_400_000)
+
+  return `${diffDays}d`
+}
+
+function createFileContextAttachment(
+  filePath: string,
+  projectBasePath: string,
+): TaskContextAttachment {
+  return {
+    kind: 'file',
+    value: filePath,
+    label: truncatePath(filePath, 26),
+    href: `${projectBasePath}?path=${encodeURIComponent(filePath)}`,
+    title: filePath,
+  }
+}
+
+function createPageContextAttachment(
+  page: Pick<ProjectPlanPageRecord, 'name' | 'route'>,
+  projectPagesPath: string,
+): TaskContextAttachment {
+  const routeLabel = page.route?.trim() || page.name
+  return {
+    kind: 'page',
+    value: page.route?.trim() || '',
+    label: truncatePath(routeLabel, 26),
+    href: page.route
+      ? `${projectPagesPath}?route=${encodeURIComponent(page.route)}`
+      : projectPagesPath,
+    title: page.route ? `${page.name} · ${page.route}` : page.name,
+  }
+}
+
+function createStoredContextAttachment(
+  context: ManualTaskContextRecord,
+  projectBasePath: string,
+  projectPagesPath: string,
+): TaskContextAttachment {
+  if (context.kind === 'page') {
+    const route = context.value.trim()
+    return {
+      kind: 'page',
+      value: route,
+      label: context.label || truncatePath(route || context.title || 'Preview', 26),
+      href: route ? `${projectPagesPath}?route=${encodeURIComponent(route)}` : projectPagesPath,
+      title: context.title || route || 'Preview',
+    }
+  }
+
+  const filePath = context.value.trim()
+  return {
+    kind: 'file',
+    value: filePath,
+    label: context.label || truncatePath(filePath, 26),
+    href: `${projectBasePath}?path=${encodeURIComponent(filePath)}`,
+    title: context.title || filePath,
+  }
+}
+
+function resolveMarkers(
+  definitions: TaskMarkerDefinition[],
+  checkedIdsOverride: string[] | undefined,
+): TaskMarker[] {
+  const checkedIds = new Set(
+    checkedIdsOverride ?? definitions.filter((marker) => marker.defaultChecked).map((marker) => marker.id),
+  )
+
+  return definitions.map((marker) => ({
+    id: marker.id,
+    label: marker.label,
+    checked: checkedIds.has(marker.id),
+  }))
+}
+
+function readStoredManualTasks(projectId: string): ManualTaskRecord[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const raw = window.localStorage.getItem(getManualTaskStorageKey(projectId))
+    if (!raw) return []
+
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+
+      const candidate = item as Partial<ManualTaskRecord>
+      if (
+        typeof candidate.id !== 'string' ||
+        typeof candidate.title !== 'string' ||
+        typeof candidate.description !== 'string' ||
+        typeof candidate.createdAt !== 'number'
+      ) {
+        return []
+      }
+
+      return [
+        {
+          id: candidate.id,
+          title: candidate.title,
+          description: candidate.description,
+          status:
+            candidate.status === 'planned' ||
+            candidate.status === 'active' ||
+            candidate.status === 'done'
+              ? candidate.status
+              : 'planned',
+          createdAt: candidate.createdAt,
+          deadlineDate:
+            typeof candidate.deadlineDate === 'string' && candidate.deadlineDate.length > 0
+              ? candidate.deadlineDate
+              : undefined,
+          claimants: normalizeManualTaskClaimants(candidate.claimants),
+          markers: normalizeManualTaskMarkers(candidate.markers),
+          checkedMarkerIds: Array.isArray(candidate.checkedMarkerIds)
+            ? candidate.checkedMarkerIds.filter((markerId): markerId is string => typeof markerId === 'string' && markerId.length > 0)
+            : [],
+        },
+      ]
+    })
+  } catch {
+    return []
+  }
+}
+
+function getPrimaryAssigneeRecord(
+  claimants: ManualTaskClaimantRecord[],
+): ManualTaskAssigneeRecord | undefined {
+  const primary = claimants[0]
+  if (!primary) return undefined
+
+  return {
+    userId: primary.id,
+    name: primary.name,
+    email: primary.email,
+    avatarUrl: primary.avatarUrl ?? null,
+  }
+}
+
+function buildAssigneeClaimants(
+  assignee: ManualTaskAssigneeRecord | undefined,
+  prefix: string,
+): TaskClaimant[] {
+  if (!assignee) return []
+
+  return [
+    {
+      id:
+        assignee.userId ||
+        `${prefix}-${normalizeSearchValue(assignee.name).replace(/\s+/g, '-') || 'assignee'}`,
+      name: assignee.name,
+      avatarUrl: assignee.avatarUrl ?? null,
+    },
+  ]
+}
+
+function TaskTile({
+  item,
+  projectId,
+  onToggleMarker,
+}: {
+  item: BoardItem
+  projectId: string
+  onToggleMarker: (item: BoardItem, markerId: string) => void
+}) {
+  const navigate = useViewTransitionNavigate()
+  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp, item.status)
+  const compactDeadlineValue = getCompactDeadlineValue(item.deadlineTimestamp)
+  const fileIconName = item.context.title.split('/').filter(Boolean).pop() ?? item.context.title
+  const taskOverlay: TaskOverlayPayload = {
+    projectId,
+    storageId: item.storageId,
+    source: item.source,
+    title: item.title,
+    description: item.description,
+    context: {
+      kind: item.context.kind,
+      value: item.context.value,
+      label: item.context.label,
+      title: item.context.title,
+    },
+    markers: item.markers,
+  }
+  const navigationState: TaskOverlayLocationState = {
+    taskOverlay,
+  }
+
+  function openContext(): void {
+    navigate(item.context.href, { state: navigationState })
+  }
+
+  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.target !== event.currentTarget) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openContext()
+  }
+
   return (
-    <div className="flex flex-col h-full bg-content-surface">
-      {/* Content */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <Card className="max-w-5xl w-full p-12 border-0 bg-content-surface shadow-none">
-          <Empty className="py-0">
-            <EmptyHeader className="gap-0">
-              <img
-                src={tasksComingSoonImage}
-                alt="Tasks coming soon"
-                className="w-[400px] max-w-[72vw] h-auto mb-0 mx-auto"
-              />
-              <EmptyTitle className="text-xl font-semibold mb-1">Integrated Task Board</EmptyTitle>
-              <EmptyDescription className="text-base leading-relaxed">
-                A powerful new way to track your project progress is on the way. The upcoming task system will feature:
-              </EmptyDescription>
-              <EmptyContent className="text-sm text-left px-8 space-y-3">
-                <div className="flex gap-2">
-                  <span className="text-primary">•</span>
-                  <span>Context-aware task lists pinned to specific pages</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-primary">•</span>
-                  <span>One-click claiming by AI or teammates</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-primary">•</span>
-                  <span>Live status updates and ownership tracking</span>
-                </div>
-              </EmptyContent>
-            </EmptyHeader>
-          </Empty>
-        </Card>
+    <div
+      className="h-full cursor-pointer rounded-[28px] bg-secondary/80 p-3 transition-transform duration-200 ease-out hover:scale-[1.015] dark:bg-secondary/40"
+      role="link"
+      tabIndex={0}
+      aria-label={`Open ${item.context.kind}: ${item.context.title}`}
+      onClick={openContext}
+      onKeyDown={handleCardKeyDown}
+    >
+      <div className="flex h-full flex-col rounded-[20px] bg-secondary/45 px-3.5 pt-3.5 pb-3">
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-[15px] font-semibold leading-5 text-foreground">{item.title}</h3>
+            <Button
+              asChild
+              variant="ghost"
+              size="icon-sm"
+              className="-mr-1 -mt-1 shrink-0"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Link
+                to={item.context.href}
+                state={navigationState}
+                aria-label={`Open ${item.context.title}`}
+              >
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+
+          <div className="mt-2 space-y-1">
+            <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+          </div>
+
+          <Link
+            to={item.context.href}
+            state={navigationState}
+            title={item.context.title}
+            aria-label={`Open context: ${item.context.title}`}
+            className="mt-3 inline-flex h-7 max-w-full items-center gap-1.5 self-start rounded-full bg-sidebar-accent/80 px-2.5 text-xs text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/90 dark:bg-sidebar-accent dark:hover:bg-sidebar-accent/80"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {item.context.kind === 'file' ? (
+              getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
+            ) : (
+              <AppWindow className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span className="truncate">{item.context.label}</span>
+          </Link>
+        </div>
+
+        <div className="mt-3 flex flex-1 flex-col">
+          <div className="space-y-1">
+            {item.markers.map((marker) => (
+              <label
+                key={marker.id}
+                className="flex cursor-pointer items-center gap-3 rounded-xl px-1 py-1.5 transition-colors hover:bg-background/40"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Checkbox
+                  checked={marker.checked}
+                  onCheckedChange={() => onToggleMarker(item, marker.id)}
+                  aria-label={marker.label}
+                />
+                <span
+                  className={cn(
+                    'text-sm',
+                    marker.checked
+                      ? 'text-muted-foreground line-through'
+                      : 'text-foreground',
+                  )}
+                >
+                  {marker.label}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-auto flex min-h-6 items-center justify-between border-t border-border/40 pt-1.5">
+            <div
+              className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
+              title={deadlineMeta.label}
+              aria-label={deadlineMeta.label}
+            >
+              <Clock3 className="h-3 w-3 shrink-0" />
+              <span className="truncate">{compactDeadlineValue}</span>
+            </div>
+
+            <div className="flex min-w-0 items-center">
+              <div className="flex -space-x-1.5">
+                {item.claimants.length > 0 ? (
+                  <>
+                    {item.claimants.slice(0, 3).map((claimant) => (
+                      <Avatar
+                        key={claimant.id}
+                        className="h-5 w-5 border border-border/70 bg-background"
+                        title={claimant.name}
+                      >
+                        <AvatarImage src={claimant.avatarUrl ?? undefined} alt={claimant.name} />
+                        <AvatarFallback className="text-[9px] font-medium">
+                          {getInitials(claimant.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                    {item.claimants.length > 3 ? (
+                      <Avatar
+                        className="h-5 w-5 border border-border/70 bg-muted/70"
+                        title={`${item.claimants.length - 3} more claimants`}
+                      >
+                        <AvatarFallback className="text-[8px] font-medium text-muted-foreground">
+                          +{item.claimants.length - 3}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Avatar className="h-5 w-5 border border-border/70 bg-muted/70" aria-hidden="true">
+                      <AvatarFallback className="bg-muted/70" />
+                    </Avatar>
+                    <Avatar className="h-5 w-5 border border-border/70 bg-muted/50" aria-hidden="true">
+                      <AvatarFallback className="bg-muted/50" />
+                    </Avatar>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  )
+}
+
+export function TasksPage() {
+  const { project } = useAccessibleProject()
+  const { currentOrganization, convexUserId } = useAuth()
+  const syncContext = useOptionalProjectSyncContext()
+  const projectPath = syncContext?.projectPath ?? null
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<BoardStatus, boolean>>(
+    DEFAULT_COLLAPSED_GROUPS,
+  )
+  const [draftTitle, setDraftTitle] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
+  const [draftDeadlineDate, setDraftDeadlineDate] = useState('')
+  const [draftContextKind, setDraftContextKind] = useState<'file' | 'page'>('page')
+  const [draftPageContextValue, setDraftPageContextValue] = useState('')
+  const [draftFileContextValue, setDraftFileContextValue] = useState('convex/schema.ts')
+  const [draftContextSearch, setDraftContextSearch] = useState('')
+  const [draftClaimants, setDraftClaimants] = useState<ManualTaskClaimantRecord[]>([])
+  const [draftClaimantSearch, setDraftClaimantSearch] = useState('')
+  const [draftMarkerRows, setDraftMarkerRows] = useState<string[]>(() => createDraftMarkerRows())
+  const [draftProjectFiles, setDraftProjectFiles] = useState<string[]>([])
+  const [draftScannedRoutes, setDraftScannedRoutes] = useState<ScannedRoute[]>([])
+  const [draftContextFilesLoading, setDraftContextFilesLoading] = useState(false)
+  const [draftContextPagesLoading, setDraftContextPagesLoading] = useState(false)
+  const [isCreatingTask, setIsCreatingTask] = useState(false)
+  const [isSyncingLocalTasks, setIsSyncingLocalTasks] = useState(false)
+  const isOrganizationWorkspace = currentOrganization?.workspaceType === 'organization'
+  const currentConvexOrgId = (currentOrganization?.convexOrgId as Id<'organizations'> | undefined) ?? null
+  const createManualTask = useMutation(api.projectTasks.createManualTask)
+  const setManualTaskCheckedMarkers = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
+  const migrateLocalBoardState = useMutation(api.projectTasks.migrateLocalBoardState)
+
+  const projectMembers = useQuery(
+    api.projectMembers.listMembers,
+    !isOrganizationWorkspace && project?._id ? { projectId: project._id } : 'skip',
+  )
+  const workspaceMembers = useQuery(
+    api.organizations.getMembers,
+    isOrganizationWorkspace && currentConvexOrgId ? { orgId: currentConvexOrgId } : 'skip',
+  )
+  const sharedManualTasks = useQuery(
+    api.projectTasks.listForProject,
+    project?._id && convexUserId
+      ? { projectId: project._id, viewerUserId: convexUserId }
+      : 'skip',
+  )
+
+  const projectId = project ? String(project._id) : null
+
+  const projectBasePath = projectId ? buildProjectPath(projectId) : '/projects'
+  const projectPagesPath = projectId ? buildProjectPath(projectId, 'pages') : '/projects'
+  const storedFrameworkInfo = useMemo(() => {
+    if (!project?.frameworkInfo) return null
+    return {
+      framework: project.frameworkInfo.framework,
+      devCommand: project.frameworkInfo.devCommand,
+      devPort: project.frameworkInfo.devPort,
+    }
+  }, [project?.frameworkInfo])
+  const claimantCandidatesLoading = isOrganizationWorkspace
+    ? currentConvexOrgId !== null && workspaceMembers === undefined
+    : Boolean(project?._id) && projectMembers === undefined
+  const claimantCandidates = useMemo(() => {
+    const sourceMembers = (
+      (isOrganizationWorkspace ? workspaceMembers : projectMembers) ?? []
+    ) as ClaimantMemberSourceRecord[]
+    const byIdentity = new Map<string, TaskClaimantCandidate>()
+
+    for (const member of sourceMembers) {
+      const email = member.user?.email?.trim().toLowerCase()
+      if (!email) continue
+
+      const name = formatClaimantName(member.user, email)
+      const candidate: TaskClaimantCandidate = {
+        id: String(member.user?.id ?? member.userId),
+        name,
+        email,
+        avatarUrl: member.user?.profileImageUrl ?? null,
+        searchText: normalizeSearchValue(`${name} ${email}`),
+      }
+
+      byIdentity.set(getClaimantIdentityKey(candidate), candidate)
+    }
+
+    return Array.from(byIdentity.values()).sort((left, right) => {
+      const nameCompare = left.name.localeCompare(right.name)
+      if (nameCompare !== 0) return nameCompare
+      return left.email.localeCompare(right.email)
+    })
+  }, [isOrganizationWorkspace, projectMembers, workspaceMembers])
+  const selectedDraftClaimantKeys = useMemo(
+    () => new Set(draftClaimants.map((claimant) => getClaimantIdentityKey(claimant))),
+    [draftClaimants],
+  )
+  const hasDraftClaimantSearch = draftClaimantSearch.trim().length > 0
+  const filteredClaimantCandidates = useMemo(() => {
+    const searchTerms = normalizeSearchValue(draftClaimantSearch)
+      .split(' ')
+      .filter(Boolean)
+
+    const unselectedCandidates = claimantCandidates.filter(
+      (candidate) => !selectedDraftClaimantKeys.has(getClaimantIdentityKey(candidate)),
+    )
+
+    if (searchTerms.length === 0) return unselectedCandidates
+
+    return unselectedCandidates.filter((candidate) =>
+      searchTerms.every((term) => candidate.searchText.includes(term)),
+    )
+  }, [claimantCandidates, draftClaimantSearch, selectedDraftClaimantKeys])
+  const defaultManualTaskContext = useMemo<TaskContextAttachment | null>(() => {
+    if (!project) return null
+
+    const planPages = (project.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
+
+    if (planPages[0]) {
+      return createPageContextAttachment(planPages[0], projectPagesPath)
+    }
+
+    return createFileContextAttachment('convex/schema.ts', projectBasePath)
+  }, [project, projectBasePath, projectPagesPath])
+  const pageContextOptions = useMemo<TaskContextAttachment[]>(() => {
+    const options: TaskContextAttachment[] = []
+    const seen = new Set<string>()
+
+    for (const route of draftScannedRoutes) {
+      const routePath = route.path?.trim() || ''
+      const key = routePath || route.name.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      options.push(
+        createPageContextAttachment(
+          {
+            name: route.name,
+            route: routePath,
+          },
+          projectPagesPath,
+        ),
+      )
+    }
+
+    const planPages = (project?.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
+    for (const page of planPages) {
+      const routePath = page.route?.trim() || ''
+      const key = routePath || page.name.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      options.push(createPageContextAttachment(page, projectPagesPath))
+    }
+
+    return options
+  }, [draftScannedRoutes, project?.generatedPlan?.pages, projectPagesPath])
+  const fileContextOptions = useMemo<TaskContextAttachment[]>(
+    () =>
+      [...draftProjectFiles]
+        .sort((left, right) => {
+          const priorityDelta = getFileSelectionPriority(left) - getFileSelectionPriority(right)
+          if (priorityDelta !== 0) return priorityDelta
+          return left.localeCompare(right)
+        })
+        .map((filePath) => createFileContextAttachment(filePath, projectBasePath)),
+    [draftProjectFiles, projectBasePath],
+  )
+  const filteredPageContextOptions = useMemo(() => {
+    const searchTerms = normalizeSearchValue(draftContextSearch)
+      .split(' ')
+      .filter(Boolean)
+
+    if (searchTerms.length === 0) {
+      return []
+    }
+
+    return pageContextOptions
+      .filter((option) =>
+        searchTerms.every((term) =>
+          normalizeSearchValue(`${option.label} ${option.title}`).includes(term),
+        ),
+      )
+      .slice(0, 10)
+  }, [draftContextSearch, pageContextOptions])
+  const filteredFileContextOptions = useMemo(() => {
+    const searchTerms = normalizeSearchValue(draftContextSearch)
+      .split(' ')
+      .filter(Boolean)
+
+    if (searchTerms.length === 0) {
+      return []
+    }
+
+    return fileContextOptions
+      .filter((option) =>
+        searchTerms.every((term) =>
+          normalizeSearchValue(`${option.label} ${option.title}`).includes(term),
+        ),
+      )
+      .slice(0, 12)
+  }, [draftContextSearch, fileContextOptions])
+  const selectedDraftContext = useMemo<TaskContextAttachment | null>(() => {
+    if (draftContextKind === 'page') {
+      return (
+        pageContextOptions.find((option) => option.value === draftPageContextValue) ??
+        pageContextOptions[0] ??
+        null
+      )
+    }
+
+    return (
+      fileContextOptions.find((option) => option.value === draftFileContextValue) ??
+      fileContextOptions[0] ??
+      null
+    )
+  }, [
+    draftContextKind,
+    draftFileContextValue,
+    draftPageContextValue,
+    fileContextOptions,
+    pageContextOptions,
+  ])
+  const hasDraftContextSearch = draftContextSearch.trim().length > 0
+  const visibleContextOptions =
+    draftContextKind === 'page' ? filteredPageContextOptions : filteredFileContextOptions
+  const isVisibleContextLoading =
+    draftContextKind === 'page'
+      ? draftContextPagesLoading && pageContextOptions.length === 0
+      : draftContextFilesLoading && fileContextOptions.length === 0
+
+  useEffect(() => {
+    if (!isCreateDialogOpen || !projectPath) return
+
+    let isCancelled = false
+
+    const loadDraftContextOptions = async () => {
+      if (window.electronAPI?.project) {
+        setDraftContextFilesLoading(true)
+      }
+      setDraftContextPagesLoading(true)
+
+      try {
+        const [fileResult, routeResult] = await Promise.all([
+          window.electronAPI?.project
+            ? window.electronAPI.project.listFiles({ projectPath })
+            : Promise.resolve(null),
+          scanForRoutes(projectPath, storedFrameworkInfo).catch((error) => {
+            console.error('Failed to scan task routes:', error)
+            return null
+          }),
+        ])
+
+        if (isCancelled) return
+
+        if (fileResult?.success) {
+          setDraftProjectFiles((fileResult.files ?? []).map((file) => file.path))
+        }
+
+        if (routeResult) {
+          setDraftScannedRoutes(routeResult.routes)
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Failed to load task context options:', error)
+        }
+      } finally {
+        if (!isCancelled) {
+          setDraftContextFilesLoading(false)
+          setDraftContextPagesLoading(false)
+        }
+      }
+    }
+
+    void loadDraftContextOptions()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isCreateDialogOpen, projectPath, storedFrameworkInfo])
+
+  useEffect(() => {
+    if (pageContextOptions.length > 0 && !pageContextOptions.some((option) => option.value === draftPageContextValue)) {
+      setDraftPageContextValue(pageContextOptions[0].value)
+    }
+  }, [draftPageContextValue, pageContextOptions])
+
+  useEffect(() => {
+    if (fileContextOptions.length > 0 && !fileContextOptions.some((option) => option.value === draftFileContextValue)) {
+      setDraftFileContextValue(fileContextOptions[0].value)
+    }
+  }, [draftFileContextValue, fileContextOptions])
+
+  useEffect(() => {
+    if (
+      !project?._id ||
+      !convexUserId ||
+      !projectId ||
+      !defaultManualTaskContext ||
+      typeof window === 'undefined'
+    ) {
+      return
+    }
+
+    const migrationFlagKey = getTaskMigrationFlagStorageKey(projectId)
+    if (window.localStorage.getItem(migrationFlagKey) === 'done') {
+      return
+    }
+
+    const storedManualTasks = readStoredManualTasks(projectId)
+    if (storedManualTasks.length === 0) {
+      window.localStorage.setItem(migrationFlagKey, 'done')
+      return
+    }
+
+    setIsSyncingLocalTasks(true)
+
+    const syncLocalState = async () => {
+      try {
+        await migrateLocalBoardState({
+          projectId: project._id,
+          actorUserId: convexUserId,
+          manualTasks: storedManualTasks.map((task) => {
+            const assignee = getPrimaryAssigneeRecord(task.claimants ?? [])
+
+            return {
+              taskKey: task.id,
+              title: task.title,
+              description: task.description,
+              deadlineDate: task.deadlineDate,
+              assignee: assignee
+                ? {
+                    userId: assignee.userId as Id<'users'> | undefined,
+                    name: assignee.name,
+                    email: assignee.email,
+                    avatarUrl: assignee.avatarUrl ?? undefined,
+                  }
+                : undefined,
+              context: {
+                kind: defaultManualTaskContext.kind,
+                value: defaultManualTaskContext.value,
+                label: defaultManualTaskContext.label,
+                title: defaultManualTaskContext.title,
+              },
+              markers: task.markers ?? createDefaultManualTaskMarkers(),
+              checkedMarkerIds: task.checkedMarkerIds ?? [],
+              createdAt: task.createdAt,
+              updatedAt: task.createdAt,
+            }
+          }),
+          sharedStates: [],
+        })
+
+        window.localStorage.removeItem(getManualTaskStorageKey(projectId))
+        window.localStorage.setItem(migrationFlagKey, 'done')
+      } finally {
+        setIsSyncingLocalTasks(false)
+      }
+    }
+
+    void syncLocalState()
+  }, [
+    convexUserId,
+    defaultManualTaskContext,
+    migrateLocalBoardState,
+    project?._id,
+    projectId,
+  ])
+
+  const boardItems = useMemo<BoardItem[]>(() => {
+    if (!project) return []
+
+    const manualItems: BoardItem[] = ((sharedManualTasks ?? []) as SharedManualTaskRecord[]).map((task) => {
+      const markers = resolveMarkers(
+        (task.markers ?? createDefaultManualTaskMarkers()).map((marker) => ({
+          id: marker.id,
+          label: marker.label,
+          defaultChecked: false,
+        })),
+        task.checkedMarkerIds,
+      )
+
+      return {
+        id: `manual:${task.taskKey}`,
+        storageId: task.taskKey,
+        title: task.title,
+        description: task.description || 'Manually added task.',
+        status: inferBoardStatusFromMarkers(markers),
+        source: 'manual',
+        createdAt: task.createdAt,
+        deadlineTimestamp: deadlineDateToTimestamp(task.deadlineDate),
+        markers,
+        claimants: buildAssigneeClaimants(task.assignee, task.taskKey),
+        context: createStoredContextAttachment(task.context, projectBasePath, projectPagesPath),
+      }
+    })
+
+    return manualItems.sort(
+      (left, right) => {
+        const statusDelta =
+          GRID_STATUS_ORDER.indexOf(left.status) - GRID_STATUS_ORDER.indexOf(right.status)
+        if (statusDelta !== 0) return statusDelta
+
+        const rightTime = right.createdAt ?? 0
+        const leftTime = left.createdAt ?? 0
+        if (rightTime !== leftTime) return rightTime - leftTime
+
+        return left.title.localeCompare(right.title)
+      },
+    )
+  }, [
+    projectBasePath,
+    projectPagesPath,
+    project,
+    sharedManualTasks,
+  ])
+
+  const boardItemsByStatus = useMemo(
+    () =>
+      boardItems.reduce<Record<BoardStatus, BoardItem[]>>(
+        (groups, item) => {
+          groups[item.status].push(item)
+          return groups
+        },
+        {
+          planned: [],
+          active: [],
+          done: [],
+        },
+      ),
+    [boardItems],
+  )
+
+  const statusStats = useMemo(
+    () =>
+      HEADER_STATUS_ORDER.map((status) => ({
+        status,
+        count: boardItemsByStatus[status].length,
+      })),
+    [boardItemsByStatus],
+  )
+
+  const statusSections = useMemo(
+    () =>
+      GRID_STATUS_ORDER.map((status) => ({
+        status,
+        items: boardItemsByStatus[status],
+      })).filter((section) => section.items.length > 0),
+    [boardItemsByStatus],
+  )
+
+  const headerControls = useMemo(
+    () => (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {statusStats.map(({ status, count }) => {
+          const statusMeta = STATUS_META[status]
+          const StatusIcon = statusMeta.icon
+
+          return (
+            <Badge
+              key={status}
+              variant="outline"
+              title={statusMeta.ariaLabel}
+              aria-label={`${statusMeta.ariaLabel}: ${count}`}
+              className={cn(
+                'gap-1.5 rounded-full border-transparent px-2.5 py-1',
+                statusMeta.surfaceClassName,
+              )}
+            >
+              <StatusIcon className={cn('h-3.5 w-3.5', statusMeta.iconClassName)} />
+              <span className="tabular-nums text-foreground">{count}</span>
+              <span className="sr-only">{statusMeta.ariaLabel}</span>
+            </Badge>
+          )
+        })}
+        {boardItems.length > 0 ? (
+          <Button
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks}
+            onClick={() => {
+              resetDraft()
+              setIsCreateDialogOpen(true)
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {isCreatingTask ? 'Adding...' : 'Add Task'}
+          </Button>
+        ) : null}
+      </div>
+    ),
+    [boardItems.length, convexUserId, isCreatingTask, isSyncingLocalTasks, statusStats],
+  )
+
+  useProjectHeader(headerControls)
+
+  function resetDraft(): void {
+    setDraftTitle('')
+    setDraftDescription('')
+    setDraftDeadlineDate('')
+    setDraftContextKind(defaultManualTaskContext?.kind ?? 'page')
+    setDraftPageContextValue(defaultManualTaskContext?.kind === 'page' ? defaultManualTaskContext.value : '')
+    setDraftFileContextValue(
+      defaultManualTaskContext?.kind === 'file'
+        ? defaultManualTaskContext.value
+        : 'convex/schema.ts',
+    )
+    setDraftContextSearch('')
+    setDraftClaimants([])
+    setDraftClaimantSearch('')
+    setDraftMarkerRows(createDraftMarkerRows())
+  }
+
+  function handleToggleDraftClaimant(candidate: TaskClaimantCandidate): void {
+    const candidateKey = getClaimantIdentityKey(candidate)
+
+    setDraftClaimants((current) => {
+      if (current.some((claimant) => getClaimantIdentityKey(claimant) === candidateKey)) {
+        return []
+      }
+
+      return [
+        {
+          id: candidate.id,
+          name: candidate.name,
+          email: candidate.email,
+          avatarUrl: candidate.avatarUrl ?? null,
+        },
+      ]
+    })
+    setDraftClaimantSearch('')
+  }
+
+  function handleRemoveDraftClaimant(identityKey: string): void {
+    setDraftClaimants((current) =>
+      current.filter((claimant) => getClaimantIdentityKey(claimant) !== identityKey),
+    )
+  }
+
+  function handleDraftMarkerRowChange(index: number, value: string): void {
+    setDraftMarkerRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? value : row)),
+    )
+  }
+
+  function handleAddDraftMarkerRow(): void {
+    setDraftMarkerRows((current) => [...current, ''])
+  }
+
+  function handleRemoveDraftMarkerRow(index: number): void {
+    setDraftMarkerRows((current) => {
+      if (current.length === 1) {
+        return ['']
+      }
+
+      return current.filter((_, rowIndex) => rowIndex !== index)
+    })
+  }
+
+  async function handleCreateTask(): Promise<void> {
+    if (!project?._id || !convexUserId || !selectedDraftContext) return
+
+    const title = draftTitle.trim()
+    const description = draftDescription.trim()
+    const markers = parseMarkerRowsInput(draftMarkerRows)
+
+    if (!title) return
+
+    setIsCreatingTask(true)
+
+    try {
+      const assignee = getPrimaryAssigneeRecord(draftClaimants)
+
+      await createManualTask({
+        projectId: project._id,
+        actorUserId: convexUserId,
+        taskKey: createTaskId(),
+        title,
+        description,
+        deadlineDate: draftDeadlineDate || undefined,
+        assignee: assignee
+          ? {
+              userId: assignee.userId as Id<'users'> | undefined,
+              name: assignee.name,
+              email: assignee.email,
+              avatarUrl: assignee.avatarUrl ?? undefined,
+            }
+          : undefined,
+        context: {
+          kind: selectedDraftContext.kind,
+          value: selectedDraftContext.value,
+          label: selectedDraftContext.label,
+          title: selectedDraftContext.title,
+        },
+        markers,
+      })
+
+      resetDraft()
+      setIsCreateDialogOpen(false)
+    } finally {
+      setIsCreatingTask(false)
+    }
+  }
+
+  function handleToggleMarker(item: BoardItem, markerId: string): void {
+    if (!project?._id || !convexUserId) return
+
+    if (item.source !== 'manual') return
+
+    const checkedMarkerIds = item.markers
+      .map((marker) =>
+        marker.id === markerId
+          ? {
+              ...marker,
+              checked: !marker.checked,
+            }
+          : marker,
+      )
+      .filter((marker) => marker.checked)
+      .map((marker) => marker.id)
+
+    void setManualTaskCheckedMarkers({
+      projectId: project._id,
+      actorUserId: convexUserId,
+      taskKey: item.storageId,
+      checkedMarkerIds,
+    })
+  }
+
+  if (!project) {
+    return (
+      <div className="flex h-full items-center justify-center bg-content-surface p-6">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia>
+              <ListTodo className="h-8 w-8" />
+            </EmptyMedia>
+            <EmptyTitle>Project not found</EmptyTitle>
+            <EmptyDescription>
+              The task board needs a valid project before it can show tasks.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex h-full flex-col bg-content-surface">
+        <div className="relative flex-1 min-h-0">
+          <div className="app-scrollbar h-full overflow-auto">
+            <div
+              className={cn(
+                "mx-auto flex w-full max-w-[1600px] flex-col px-6 animate-in fade-in slide-in-from-bottom-2 duration-300",
+                boardItems.length === 0 ? "min-h-full justify-center py-10" : "gap-4 py-6",
+              )}
+            >
+              {boardItems.length === 0 ? (
+                <div className="flex items-center justify-center">
+                  <div className="w-full p-6 md:p-10">
+                    <Empty className="py-6">
+                      <EmptyHeader>
+                        <EmptyMedia>
+                          <ListTodo className="h-8 w-8" />
+                        </EmptyMedia>
+                        <EmptyTitle>No tasks yet</EmptyTitle>
+                        <EmptyDescription>
+                          {isSyncingLocalTasks
+                            ? 'Syncing your existing local tasks into the shared board...'
+                            : 'Create a task to assign work, track objectives, and keep progress shared with the project.'}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      {!isSyncingLocalTasks ? (
+                        <EmptyContent>
+                          <Button
+                            type="button"
+                            className="gap-2"
+                            disabled={!convexUserId || isCreatingTask}
+                            onClick={() => {
+                              resetDraft()
+                              setIsCreateDialogOpen(true)
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                            {isCreatingTask ? 'Adding...' : 'Add Task'}
+                          </Button>
+                        </EmptyContent>
+                      ) : null}
+                    </Empty>
+                  </div>
+                </div>
+              ) : (
+                <div className="mx-auto flex w-full max-w-[1424px] flex-col gap-7">
+                  {statusSections.map(({ status, items }) => {
+                    const statusMeta = STATUS_META[status]
+                    const StatusIcon = statusMeta.icon
+                    const isCollapsed = collapsedGroups[status]
+
+                    return (
+                      <Collapsible
+                        key={status}
+                        open={!isCollapsed}
+                        onOpenChange={(open) =>
+                          setCollapsedGroups((current) => ({
+                            ...current,
+                            [status]: !open,
+                          }))
+                        }
+                        className="space-y-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              title={statusMeta.ariaLabel}
+                              aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${statusMeta.ariaLabel}`}
+                              className="group inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'h-4 w-4 transition-transform duration-200',
+                                  isCollapsed && '-rotate-90',
+                                )}
+                              />
+                              <span className="inline-flex h-7 w-7 items-center justify-center">
+                                <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                              </span>
+                              <span className="font-medium text-foreground">{statusMeta.ariaLabel}</span>
+                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sidebar-accent/80 px-2 text-xs tabular-nums text-sidebar-accent-foreground dark:bg-sidebar-accent">
+                                {items.length}
+                              </span>
+                              <span className="sr-only">{statusMeta.ariaLabel}</span>
+                            </button>
+                          </CollapsibleTrigger>
+
+                          <div className="h-px flex-1 bg-border/70" aria-hidden="true" />
+                        </div>
+
+                        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                          <div className="grid justify-start gap-4 pt-1 grid-cols-[repeat(auto-fit,minmax(min(100%,272px),272px))]">
+                            {items.map((item) => (
+                              <TaskTile
+                                key={item.id}
+                                item={item}
+                                projectId={projectId ?? ''}
+                                onToggleMarker={handleToggleMarker}
+                              />
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )
+                  })}
+                </div>
+              )}
+
+            </div>
+          </div>
+          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-content-surface to-transparent z-10" />
+          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-content-surface to-transparent z-10" />
+        </div>
+      </div>
+
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={(open) => {
+          setIsCreateDialogOpen(open)
+          if (!open) {
+            resetDraft()
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[860px]" showCloseButton={false}>
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent/70 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/85 dark:bg-sidebar-accent/80 dark:hover:bg-sidebar-accent"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </DialogClose>
+          <DialogHeader>
+            <DialogTitle>Add Task</DialogTitle>
+            <DialogDescription>
+              Create a task with a deadline, objectives, an optional assignee, and a linked file or preview.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="task-title">Title</Label>
+                <Input
+                  id="task-title"
+                  value={draftTitle}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  placeholder="Ship billing settings"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-description">Description</Label>
+                <Textarea
+                  id="task-description"
+                  value={draftDescription}
+                  onChange={(event) => setDraftDescription(event.target.value)}
+                  placeholder="Short context for this task"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-deadline">Deadline</Label>
+                <Input
+                  id="task-deadline"
+                  type="date"
+                  value={draftDeadlineDate}
+                  onChange={(event) => setDraftDeadlineDate(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-claimants-search">Assignee</Label>
+
+                <div className="relative">
+                  <Input
+                    id="task-claimants-search"
+                    value={draftClaimantSearch}
+                    onChange={(event) => setDraftClaimantSearch(event.target.value)}
+                    placeholder="Search people..."
+                    disabled={
+                      claimantCandidatesLoading
+                        ? false
+                        : claimantCandidates.length === 0 && !currentConvexOrgId && isOrganizationWorkspace
+                    }
+                  />
+
+                  {hasDraftClaimantSearch ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                      <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
+                        {claimantCandidatesLoading ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            Loading people...
+                          </div>
+                        ) : claimantCandidates.length === 0 ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            {isOrganizationWorkspace && !currentConvexOrgId
+                              ? 'People are unavailable right now.'
+                              : 'No people available.'}
+                          </div>
+                        ) : filteredClaimantCandidates.length === 0 ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            No matching people.
+                          </div>
+                        ) : (
+                          filteredClaimantCandidates.map((candidate) => {
+                            const identityKey = getClaimantIdentityKey(candidate)
+
+                            return (
+                              <button
+                                key={identityKey}
+                                type="button"
+                                className="flex w-full items-center gap-3 rounded-[16px] px-2.5 py-2 text-left transition-colors hover:bg-background/50"
+                                onClick={() => handleToggleDraftClaimant(candidate)}
+                              >
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage
+                                    src={candidate.avatarUrl ?? undefined}
+                                    alt={candidate.name}
+                                  />
+                                  <AvatarFallback className="text-xs">
+                                    {getInitials(candidate.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-foreground">
+                                    {candidate.name}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {candidate.email}
+                                  </span>
+                                </div>
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {draftClaimants.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {draftClaimants.map((claimant) => {
+                      const identityKey = getClaimantIdentityKey(claimant)
+
+                      return (
+                        <div
+                          key={identityKey}
+                          className="inline-flex items-center gap-2 rounded-full bg-secondary px-2 py-1"
+                        >
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage
+                              src={claimant.avatarUrl ?? undefined}
+                              alt={claimant.name}
+                            />
+                            <AvatarFallback className="text-[10px]">
+                              {getInitials(claimant.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span
+                            className="max-w-[160px] truncate text-xs font-medium text-foreground"
+                            title={claimant.name}
+                          >
+                            {getDisplayFirstName(claimant.name)}
+                          </span>
+                          <button
+                            type="button"
+                            className="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                            onClick={() => handleRemoveDraftClaimant(identityKey)}
+                            aria-label={`Remove ${claimant.name}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="hidden self-stretch lg:block">
+              <div className="h-full w-px bg-border/70" aria-hidden="true" />
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Tied to</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Input
+                      className="pr-24"
+                      value={draftContextSearch}
+                      onChange={(event) => setDraftContextSearch(event.target.value)}
+                      placeholder={
+                        draftContextKind === 'page'
+                          ? 'Search previews...'
+                          : 'Search files...'
+                      }
+                    />
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                      <div className="relative inline-flex rounded-full bg-secondary p-1">
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'pointer-events-none absolute left-1 top-1 h-7 w-7 rounded-full bg-black transition-transform duration-200 ease-out',
+                            draftContextKind === 'page' ? 'translate-x-0' : 'translate-x-7',
+                          )}
+                        />
+                      <button
+                        type="button"
+                        className={cn(
+                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                          draftContextKind === 'page'
+                            ? 'text-white'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                        onClick={() => {
+                          setDraftContextKind('page')
+                          setDraftContextSearch('')
+                        }}
+                        aria-label="Choose preview"
+                        title="Choose preview"
+                      >
+                        <AppWindow className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                          draftContextKind === 'file'
+                            ? 'text-white'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                        onClick={() => {
+                          setDraftContextKind('file')
+                          setDraftContextSearch('')
+                        }}
+                        aria-label="Choose file"
+                        title="Choose file"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                      </button>
+                      </div>
+                    </div>
+
+                    {hasDraftContextSearch ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                        <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
+                          {isVisibleContextLoading ? (
+                            <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading {draftContextKind === 'page' ? 'previews' : 'files'}...
+                            </div>
+                          ) : visibleContextOptions.length === 0 ? (
+                            <div className="px-3 py-3 text-sm text-muted-foreground">
+                              No matching {draftContextKind === 'page' ? 'previews' : 'files'}.
+                            </div>
+                          ) : (
+                            visibleContextOptions.map((option) => {
+                              const isSelected =
+                                selectedDraftContext?.kind === option.kind &&
+                                selectedDraftContext.value === option.value
+
+                              return (
+                                <button
+                                  key={`${option.kind}:${option.value || option.title}`}
+                                  type="button"
+                                  className={cn(
+                                    'flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors',
+                                    isSelected
+                                      ? 'bg-background/70 text-foreground'
+                                      : 'hover:bg-background/50',
+                                  )}
+                                  onClick={() => {
+                                    if (option.kind === 'page') {
+                                      setDraftContextKind('page')
+                                      setDraftPageContextValue(option.value)
+                                      setDraftContextSearch('')
+                                      return
+                                    }
+
+                                    setDraftContextKind('file')
+                                    setDraftFileContextValue(option.value)
+                                    setDraftContextSearch('')
+                                  }}
+                                >
+                                  <span className="mt-0.5 shrink-0 text-muted-foreground">
+                                    {option.kind === 'page' ? (
+                                      <AppWindow className="h-4 w-4" />
+                                    ) : (
+                                      getFileIcon(option.title, { className: 'h-4 w-4' })
+                                    )}
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium text-foreground">
+                                      {option.kind === 'page'
+                                        ? option.title.split('·')[0]?.trim() || option.label
+                                        : option.label}
+                                    </span>
+                                    {option.kind === 'file' ? (
+                                      <span className="block truncate text-xs text-muted-foreground">
+                                        {option.title}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {selectedDraftContext ? (
+                    <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-sidebar-accent/80 px-3 py-1.5 text-xs text-sidebar-accent-foreground dark:bg-sidebar-accent">
+                      {selectedDraftContext.kind === 'page' ? (
+                        <AppWindow className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        getFileIcon(selectedDraftContext.title, {
+                          className: 'h-3.5 w-3.5 shrink-0',
+                        })
+                      )}
+                      <span className="truncate">
+                        {selectedDraftContext.kind === 'page'
+                          ? selectedDraftContext.title.split('·')[0]?.trim() ||
+                            selectedDraftContext.label
+                          : selectedDraftContext.title}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Objectives</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-full px-2 text-xs text-muted-foreground"
+                    onClick={handleAddDraftMarkerRow}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add row
+                  </Button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {draftMarkerRows.map((marker, index) => (
+                    <div key={`draft-marker-row-${index}`} className="relative">
+                      <Input
+                        className="pr-10"
+                        value={marker}
+                        onChange={(event) => handleDraftMarkerRowChange(index, event.target.value)}
+                        placeholder={`Objective ${index + 1}`}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full text-muted-foreground"
+                        onClick={() => handleRemoveDraftMarkerRow(index)}
+                        aria-label={`Remove marker ${index + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleCreateTask()
+              }}
+              disabled={draftTitle.trim().length === 0 || isCreatingTask || !selectedDraftContext}
+            >
+              {isCreatingTask ? 'Adding...' : 'Add Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

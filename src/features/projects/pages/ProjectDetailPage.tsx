@@ -1,9 +1,10 @@
-import { useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { FileViewer } from '../components/FileViewer'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
 import { Button } from '@/components/ui/button'
 import { TerminalPanel } from '../components/TerminalPanel'
+import { TaskFocusOverlay } from '../components/TaskFocusOverlay'
 import {
   ArrowLeft,
   Code,
@@ -23,13 +24,25 @@ import {
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 
 export function ProjectDetailPage() {
   const { project, slugParam, projectIdParam } = useAccessibleProject()
+  const location = useLocation()
   const [, setSearchParams] = useSearchParams()
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const projectKey = project?.slug ?? slugParam ?? projectIdParam ?? ''
+  const locationState = (location.state as TaskOverlayLocationState | null) ?? null
+  const [taskOverlay, setTaskOverlay] = useState<TaskOverlayPayload | null>(
+    () => locationState?.taskOverlay ?? null,
+  )
+
+  useEffect(() => {
+    if (locationState?.taskOverlay) {
+      setTaskOverlay(locationState.taskOverlay)
+    }
+  }, [locationState?.taskOverlay])
 
   // File tabs store
   const fileTabsStore = useFileTabsStore()
@@ -97,6 +110,7 @@ export function ProjectDetailPage() {
             </EmptyHeader>
           </Empty>
         )}
+        {taskOverlay?.context.kind === 'file' ? <TaskFocusOverlay task={taskOverlay} /> : null}
       </div>
 
       {projectPath && (

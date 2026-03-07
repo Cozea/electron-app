@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { useMutation, useQuery } from 'convex/react'
+import type { AuthRefreshResult } from '@shared/electronApiTypes'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import type { User, Session, OrganizationMembership } from '../types/electron'
@@ -181,11 +182,13 @@ interface AuthContextType {
   needsOnboarding: boolean
   login: () => Promise<void>
   logout: () => Promise<void>
-  refreshToken: () => Promise<boolean>
+  refreshToken: () => Promise<RefreshTokenStatus>
   createOrganizationWorkspace: (name: string) => Promise<OrganizationMembership>
   setOrganizations: (orgs: OrganizationMembership[]) => void
   setCurrentOrganization: (org: OrganizationMembership | null) => void
 }
+
+export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 
 type ConvexOrganizationShape = {
   _id: Id<"organizations">
@@ -202,7 +205,9 @@ const STORAGE_KEY_ORGS = 'auth_orgs'
 const STORAGE_KEY_CURRENT_ORG_ID = 'auth_current_org_id'
 const LOGIN_FLOW_TIMEOUT_MS = 90_000
 const MIN_TOKEN_REFRESH_INTERVAL_MS = 30_000
+const FOREGROUND_TOKEN_REFRESH_INTERVAL_MS = 5_000
 const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+const TOKEN_REFRESH_RETRY_DELAY_MS = 30_000
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -561,6 +566,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshInFlightRef = useRef<Promise<RefreshTokenStatus> | null>(null)
+  const lastRefreshAttemptAtRef = useRef<number>(0)
+  const nextRefreshDelayOverrideRef = useRef<number | null>(null)
+  const [refreshScheduleNonce, setRefreshScheduleNonce] = useState(0)
+
+  const queueRefreshRetry = useCallback((delayMs = TOKEN_REFRESH_RETRY_DELAY_MS) => {
+    nextRefreshDelayOverrideRef.current = delayMs
+    setRefreshScheduleNonce((value) => value + 1)
+  }, [])
+
+  const commitRefreshSchedule = useCallback((overrideDelayMs: number | null = null) => {
+    nextRefreshDelayOverrideRef.current = overrideDelayMs
+    setRefreshScheduleNonce((value) => value + 1)
+  }, [])
+
+  const resolveRefreshResult = useCallback(async (result: AuthRefreshResult): Promise<RefreshTokenStatus> => {
+    if (result.ok) {
+      setAuthError(null)
+      setAccessToken(result.session.accessToken)
+      localStorage.setItem(STORAGE_KEY_TOKEN, result.session.accessToken)
+      commitRefreshSchedule(null)
+      return 'refreshed'
+    }
+
+    if (result.reason === 'retryable') {
+      console.warn('[Auth] Token refresh failed temporarily; keeping local session active')
+      commitRefreshSchedule(TOKEN_REFRESH_RETRY_DELAY_MS)
+      return 'retryable'
+    }
+
+    await handleSession(null, 'startup')
+    return 'expired'
+  }, [commitRefreshSchedule, handleSession])
+
   useEffect(() => {
     // Load initial session with smart token refresh
     const loadSession = async () => {
@@ -576,10 +616,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Check if token is expired or about to expire (within 60 seconds)
         if (isTokenExpired(session.accessToken, 60)) {
           console.log('[Auth] Token expired or expiring soon, refreshing on startup...')
-          const refreshedSession = await window.electronAPI.auth.refresh()
-          if (refreshedSession) {
+          const refreshResult = await window.electronAPI.auth.refresh()
+          if (refreshResult.ok) {
             console.log('[Auth] Token refreshed successfully on startup')
-            handleSession(refreshedSession, 'startup')
+            handleSession(refreshResult.session, 'startup')
+          } else if (refreshResult.reason === 'retryable') {
+            console.log('[Auth] Token refresh failed temporarily on startup; preserving session')
+            queueRefreshRetry(TOKEN_REFRESH_RETRY_DELAY_MS)
+            handleSession(session, 'startup')
           } else {
             // Refresh failed - session fully expired, need to re-login
             console.log('[Auth] Token refresh failed, session expired')
@@ -674,36 +718,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY_CURRENT_ORG_ID)
   }, [clearLoginTimeout])
 
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const refreshInFlightRef = useRef<Promise<boolean> | null>(null)
-  const lastRefreshAttemptAtRef = useRef<number>(0)
-
   // Refresh the access token using the refresh token
-  const refreshToken = useCallback(async (): Promise<boolean> => {
+  const refreshToken = useCallback(async (): Promise<RefreshTokenStatus> => {
     if (refreshInFlightRef.current) {
       return refreshInFlightRef.current
     }
 
-    const pendingRefresh = (async (): Promise<boolean> => {
+    const pendingRefresh = (async (): Promise<RefreshTokenStatus> => {
       try {
-        const newSession = await window.electronAPI.auth.refresh()
-        if (newSession) {
-          setAccessToken(newSession.accessToken)
-          localStorage.setItem(STORAGE_KEY_TOKEN, newSession.accessToken)
-          return true
-        }
-        // Refresh failed - session expired, need to re-login
-        setUser(null)
-        setConvexUserId(null)
-        setAccessToken(null)
-        localStorage.removeItem(STORAGE_KEY_TOKEN)
-        setOrganizationsState([])
-        setCurrentOrganization(null)
-        setWorkspaceSelectionRequired(false)
-        return false
+        const refreshResult = await window.electronAPI.auth.refresh()
+        return await resolveRefreshResult(refreshResult)
       } catch (err) {
         console.error('Token refresh failed:', err)
-        return false
+        commitRefreshSchedule(TOKEN_REFRESH_RETRY_DELAY_MS)
+        return 'retryable'
       } finally {
         refreshInFlightRef.current = null
       }
@@ -711,7 +739,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     refreshInFlightRef.current = pendingRefresh
     return pendingRefresh
-  }, [])
+  }, [commitRefreshSchedule, resolveRefreshResult])
 
   useEffect(() => {
     if (accessToken && user) {
@@ -728,16 +756,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
           }
           lastRefreshAttemptAtRef.current = Date.now()
-          const success = await refreshToken()
-          if (!success) {
-            console.warn('[Auth] Auto-refresh failed')
+          const status = await refreshToken()
+          if (status === 'retryable') {
+            console.warn('[Auth] Auto-refresh failed temporarily; will retry')
+          } else if (status === 'expired') {
+            console.warn('[Auth] Auto-refresh failed; session expired')
           }
         }, delayMs)
       }
 
       const timeToExpiry = getTokenTimeToExpiry(accessToken)
       let refreshIn: number
-      if (timeToExpiry === null) {
+      const overrideDelayMs = nextRefreshDelayOverrideRef.current
+      nextRefreshDelayOverrideRef.current = null
+
+      if (overrideDelayMs !== null) {
+        refreshIn = overrideDelayMs
+      } else if (timeToExpiry === null) {
         refreshIn = UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS
       } else {
         // Refresh around 80% of lifetime, but no later than 30 seconds pre-expiry.
@@ -757,7 +792,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, [accessToken, user, refreshToken])
+  }, [accessToken, refreshScheduleNonce, user, refreshToken])
+
+  useEffect(() => {
+    if (!user || !accessToken) {
+      return
+    }
+
+    const attemptForegroundRefresh = async (reason: 'focus' | 'visible' | 'online') => {
+      const ttl = getTokenTimeToExpiry(accessToken)
+      const shouldRefresh =
+        nextRefreshDelayOverrideRef.current !== null ||
+        (ttl !== null && ttl <= 2 * 60 * 1000)
+
+      if (!shouldRefresh) {
+        return
+      }
+
+      const elapsed = Date.now() - lastRefreshAttemptAtRef.current
+      if (elapsed < FOREGROUND_TOKEN_REFRESH_INTERVAL_MS) {
+        return
+      }
+
+      lastRefreshAttemptAtRef.current = Date.now()
+      const status = await refreshToken()
+      if (status === 'retryable') {
+        console.warn(`[Auth] Foreground refresh still retryable after ${reason}`)
+      }
+    }
+
+    const handleFocus = () => {
+      void attemptForegroundRefresh('focus')
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void attemptForegroundRefresh('visible')
+      }
+    }
+
+    const handleOnline = () => {
+      void attemptForegroundRefresh('online')
+    }
+
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('online', handleOnline)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('online', handleOnline)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [accessToken, refreshToken, user])
 
   return (
     <AuthContext.Provider

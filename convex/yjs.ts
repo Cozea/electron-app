@@ -15,6 +15,17 @@ type YjsSyncCtx = QueryCtx | MutationCtx
 const SNAPSHOT_BYTE_THRESHOLD = 5 * 1024 * 1024
 const SNAPSHOT_INTERVAL_MS = 3 * 60 * 1000
 const SNAPSHOT_RETAIN_COUNT = 5
+const YJS_UPDATE_PAGE_SIZE = 8
+const YJS_TAIL_READ_PAGE_SIZE = 16
+const YJS_TAIL_READ_LIMIT = 128
+const YJS_CLEANUP_PAGE_SIZE = 2
+const YJS_SNAPSHOT_CLEANUP_PAGE_SIZE = 2
+
+interface PaginatedResult<T> {
+  page: T[]
+  isDone: boolean
+  continueCursor: string
+}
 
 function defaultRoomId(projectId: Id<"projects">): string {
   return `project:${projectId}`
@@ -51,6 +62,24 @@ async function getLatestSeq(ctx: YjsSyncCtx, projectId: Id<"projects">): Promise
     .order("desc")
     .first()
   return latest?.seq ?? 0
+}
+
+async function forEachPaginated<T>(
+  fetchPage: (cursor: string | null) => Promise<PaginatedResult<T>>,
+  handler: (item: T) => Promise<void> | void
+): Promise<void> {
+  let cursor: string | null = null
+
+  while (true) {
+    const result = await fetchPage(cursor)
+    for (const item of result.page) {
+      await handler(item)
+    }
+    if (result.isDone) {
+      break
+    }
+    cursor = result.continueCursor
+  }
 }
 
 async function insertSequencedUpdate(
@@ -114,7 +143,11 @@ async function insertSequencedUpdate(
   return { seq: nextSeq, created: true }
 }
 
-async function loadServerState(ctx: YjsSyncCtx, projectId: Id<"projects">) {
+async function loadServerState(
+  ctx: YjsSyncCtx,
+  projectId: Id<"projects">,
+  options?: { includeUpdatesSinceSnapshot?: boolean }
+) {
   const serverDoc = new Y.Doc()
   const latestSnapshot = await ctx.db
     .query("yjsDocuments")
@@ -124,6 +157,14 @@ async function loadServerState(ctx: YjsSyncCtx, projectId: Id<"projects">) {
 
   let serverTimestamp = 0
   let latestSeq = 0
+  const includeUpdatesSinceSnapshot = options?.includeUpdatesSinceSnapshot !== false
+  const updatesSinceSnapshot: Array<{
+    update: ArrayBuffer
+    clientId: string
+    timestamp: number
+    seq?: number
+    roomId?: string
+  }> = []
   if (latestSnapshot?.snapshot) {
     Y.applyUpdate(serverDoc, new Uint8Array(latestSnapshot.snapshot), "snapshot")
     serverTimestamp = Math.max(serverTimestamp, latestSnapshot.createdAt)
@@ -131,36 +172,98 @@ async function loadServerState(ctx: YjsSyncCtx, projectId: Id<"projects">) {
   }
 
   const seqCutoff = latestSnapshot?.snapshotBaseSeq
-  const updates = typeof seqCutoff === "number"
-    ? await ctx.db
-        .query("yjsUpdates")
-        .withIndex("by_project_and_seq", (q) =>
-          q.eq("projectId", projectId).gt("seq", seqCutoff)
-        )
-        .collect()
-    : latestSnapshot
-      ? await ctx.db
+
+  if (typeof seqCutoff === "number") {
+    await forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("yjsUpdates")
+          .withIndex("by_project_and_seq", (q) =>
+            q.eq("projectId", projectId).gt("seq", seqCutoff)
+          )
+          .paginate({
+            cursor,
+            numItems: YJS_UPDATE_PAGE_SIZE,
+          }) as Promise<
+            PaginatedResult<{
+              update: ArrayBuffer
+              clientId: string
+              timestamp: number
+              seq?: number
+              roomId?: string
+            }>
+          >,
+      async (update) => {
+        Y.applyUpdate(serverDoc, new Uint8Array(update.update), "server")
+        serverTimestamp = Math.max(serverTimestamp, update.timestamp)
+        latestSeq = Math.max(latestSeq, update.seq ?? latestSeq)
+        if (includeUpdatesSinceSnapshot) {
+          updatesSinceSnapshot.push(update)
+        }
+      }
+    )
+  } else if (latestSnapshot) {
+    await forEachPaginated(
+      (cursor) =>
+        ctx.db
           .query("yjsUpdates")
           .withIndex("by_project_and_time", (q) =>
             q.eq("projectId", projectId).gt("timestamp", latestSnapshot.createdAt)
           )
-          .collect()
-      : await ctx.db
+          .paginate({
+            cursor,
+            numItems: YJS_UPDATE_PAGE_SIZE,
+          }) as Promise<
+            PaginatedResult<{
+              update: ArrayBuffer
+              clientId: string
+              timestamp: number
+              seq?: number
+              roomId?: string
+            }>
+          >,
+      async (update) => {
+        Y.applyUpdate(serverDoc, new Uint8Array(update.update), "server")
+        serverTimestamp = Math.max(serverTimestamp, update.timestamp)
+        latestSeq = Math.max(latestSeq, update.seq ?? latestSeq)
+        if (includeUpdatesSinceSnapshot) {
+          updatesSinceSnapshot.push(update)
+        }
+      }
+    )
+  } else {
+    await forEachPaginated(
+      (cursor) =>
+        ctx.db
           .query("yjsUpdates")
           .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
-          .collect()
-
-  updates.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-  for (const update of updates) {
-    Y.applyUpdate(serverDoc, new Uint8Array(update.update), "server")
-    serverTimestamp = Math.max(serverTimestamp, update.timestamp)
-    latestSeq = Math.max(latestSeq, update.seq ?? latestSeq)
+          .paginate({
+            cursor,
+            numItems: YJS_UPDATE_PAGE_SIZE,
+          }) as Promise<
+            PaginatedResult<{
+              update: ArrayBuffer
+              clientId: string
+              timestamp: number
+              seq?: number
+              roomId?: string
+            }>
+          >,
+      async (update) => {
+        Y.applyUpdate(serverDoc, new Uint8Array(update.update), "server")
+        serverTimestamp = Math.max(serverTimestamp, update.timestamp)
+        latestSeq = Math.max(latestSeq, update.seq ?? latestSeq)
+        if (includeUpdatesSinceSnapshot) {
+          updatesSinceSnapshot.push(update)
+        }
+      }
+    )
   }
 
   return {
     serverDoc,
     latestSnapshot,
-    updatesSinceSnapshot: updates,
+    updatesSinceSnapshot,
     serverTimestamp,
     latestSeq,
   }
@@ -208,15 +311,49 @@ export const getUpdatesSince = query({
   args: {
     projectId: v.id("projects"),
     since: v.number(),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
-    return await ctx.db
-      .query("yjsUpdates")
-      .withIndex("by_project_and_time", (q) =>
-        q.eq("projectId", args.projectId).gt("timestamp", args.since)
-      )
-      .collect()
+    const maxItems = Math.min(
+      YJS_TAIL_READ_LIMIT,
+      Math.max(1, Math.floor(args.limit ?? YJS_TAIL_READ_LIMIT))
+    )
+    const updates: Array<{
+      _id: Id<"yjsUpdates">
+      update: ArrayBuffer
+      clientId: string
+      timestamp: number
+      seq?: number
+      roomId?: string
+    }> = []
+    let cursor: string | null = null
+
+    while (updates.length < maxItems) {
+      const batch = (await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) =>
+          q.eq("projectId", args.projectId).gt("timestamp", args.since)
+        )
+        .paginate({
+          cursor,
+          numItems: Math.min(YJS_TAIL_READ_PAGE_SIZE, maxItems - updates.length),
+        })) as PaginatedResult<{
+        _id: Id<"yjsUpdates">
+        update: ArrayBuffer
+        clientId: string
+        timestamp: number
+        seq?: number
+        roomId?: string
+      }>
+
+      updates.push(...batch.page)
+
+      if (batch.isDone) break
+      cursor = batch.continueCursor
+    }
+
+    return updates
   },
 })
 
@@ -228,15 +365,49 @@ export const getUpdatesAfterSeq = query({
   args: {
     projectId: v.id("projects"),
     sinceSeq: v.number(),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
-    return await ctx.db
-      .query("yjsUpdates")
-      .withIndex("by_project_and_seq", (q) =>
-        q.eq("projectId", args.projectId).gt("seq", Math.max(0, Math.floor(args.sinceSeq)))
-      )
-      .collect()
+    const maxItems = Math.min(
+      YJS_TAIL_READ_LIMIT,
+      Math.max(1, Math.floor(args.limit ?? YJS_TAIL_READ_LIMIT))
+    )
+    const updates: Array<{
+      _id: Id<"yjsUpdates">
+      update: ArrayBuffer
+      clientId: string
+      timestamp: number
+      seq?: number
+      roomId?: string
+    }> = []
+    let cursor: string | null = null
+
+    while (updates.length < maxItems) {
+      const batch = (await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_seq", (q) =>
+          q.eq("projectId", args.projectId).gt("seq", Math.max(0, Math.floor(args.sinceSeq)))
+        )
+        .paginate({
+          cursor,
+          numItems: Math.min(YJS_TAIL_READ_PAGE_SIZE, maxItems - updates.length),
+        })) as PaginatedResult<{
+        _id: Id<"yjsUpdates">
+        update: ArrayBuffer
+        clientId: string
+        timestamp: number
+        seq?: number
+        roomId?: string
+      }>
+
+      updates.push(...batch.page)
+
+      if (batch.isDone) break
+      cursor = batch.continueCursor
+    }
+
+    return updates
   },
 })
 
@@ -302,19 +473,29 @@ export const cleanupOldUpdates = mutation({
   },
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectId)
-    const oldUpdates = await ctx.db
-      .query("yjsUpdates")
-      .withIndex("by_project_and_time", (q) =>
-        q.eq("projectId", args.projectId).lt("timestamp", args.olderThan)
-      )
-      .collect()
-    const deletedBytes = oldUpdates.reduce(
-      (sum, update) => sum + (update.update?.byteLength ?? 0),
-      0
-    )
+    let deletedCount = 0
+    let deletedBytes = 0
 
-    for (const update of oldUpdates) {
-      await ctx.db.delete(update._id)
+    while (true) {
+      const batch = await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) =>
+          q.eq("projectId", args.projectId).lt("timestamp", args.olderThan)
+        )
+        .paginate({
+          cursor: null,
+          numItems: YJS_CLEANUP_PAGE_SIZE,
+        }) as PaginatedResult<{ _id: Id<"yjsUpdates">; update?: ArrayBuffer }>
+
+      if (batch.page.length === 0) {
+        break
+      }
+
+      for (const update of batch.page) {
+        deletedBytes += update.update?.byteLength ?? 0
+        deletedCount += 1
+        await ctx.db.delete(update._id)
+      }
     }
 
     if (deletedBytes > 0) {
@@ -323,7 +504,7 @@ export const cleanupOldUpdates = mutation({
       })
     }
 
-    return { deleted: oldUpdates.length }
+    return { deleted: deletedCount }
   },
 })
 
@@ -338,7 +519,7 @@ export const maybeCompactProject = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectId)
 
-    const [latestSnapshot, latestSeqUpdate, recentUpdates] = await Promise.all([
+    const [latestSnapshot, latestSeqUpdate] = await Promise.all([
       ctx.db
         .query("yjsDocuments")
         .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -349,14 +530,59 @@ export const maybeCompactProject = mutation({
         .withIndex("by_project_and_seq", (q) => q.eq("projectId", args.projectId))
         .order("desc")
         .first(),
-      ctx.db
-        .query("yjsUpdates")
-        .withIndex("by_project_and_time", (q) => q.eq("projectId", args.projectId))
-        .collect(),
     ])
 
+    let bytesSinceSnapshot = 0
+    const snapshotSeqCutoff = latestSnapshot?.snapshotBaseSeq
+    if (typeof snapshotSeqCutoff === "number") {
+      await forEachPaginated(
+        (cursor) =>
+          ctx.db
+            .query("yjsUpdates")
+            .withIndex("by_project_and_seq", (q) =>
+              q.eq("projectId", args.projectId).gt("seq", snapshotSeqCutoff)
+            )
+            .paginate({
+              cursor,
+              numItems: YJS_UPDATE_PAGE_SIZE,
+            }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
+        (entry) => {
+          bytesSinceSnapshot += entry.update?.byteLength ?? 0
+        }
+      )
+    } else if (latestSnapshot) {
+      await forEachPaginated(
+        (cursor) =>
+          ctx.db
+            .query("yjsUpdates")
+            .withIndex("by_project_and_time", (q) =>
+              q.eq("projectId", args.projectId).gt("timestamp", latestSnapshot.createdAt)
+            )
+            .paginate({
+              cursor,
+              numItems: YJS_UPDATE_PAGE_SIZE,
+            }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
+        (entry) => {
+          bytesSinceSnapshot += entry.update?.byteLength ?? 0
+        }
+      )
+    } else {
+      await forEachPaginated(
+        (cursor) =>
+          ctx.db
+            .query("yjsUpdates")
+            .withIndex("by_project_and_time", (q) => q.eq("projectId", args.projectId))
+            .paginate({
+              cursor,
+              numItems: YJS_UPDATE_PAGE_SIZE,
+            }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
+        (entry) => {
+          bytesSinceSnapshot += entry.update?.byteLength ?? 0
+        }
+      )
+    }
+
     const force = args.force === true
-    const bytesSinceSnapshot = recentUpdates.reduce((total, entry) => total + entry.update.byteLength, 0)
     const lastSnapshotAt = latestSnapshot?.createdAt ?? 0
     const intervalExceeded = Date.now() - lastSnapshotAt >= SNAPSHOT_INTERVAL_MS
     const byteExceeded = bytesSinceSnapshot >= SNAPSHOT_BYTE_THRESHOLD
@@ -369,7 +595,9 @@ export const maybeCompactProject = mutation({
       }
     }
 
-    const { serverDoc, latestSeq } = await loadServerState(ctx, args.projectId)
+    const { serverDoc, latestSeq } = await loadServerState(ctx, args.projectId, {
+      includeUpdatesSinceSnapshot: false,
+    })
     const snapshot = Y.encodeStateAsUpdate(serverDoc)
     const snapshotBuffer = toArrayBuffer(snapshot)
 
@@ -383,38 +611,73 @@ export const maybeCompactProject = mutation({
       createdAt: Date.now(),
     })
 
-    const oldUpdates = await ctx.db
-      .query("yjsUpdates")
-      .withIndex("by_project_and_seq", (q) =>
-        q.eq("projectId", args.projectId).lte("seq", latestSeq)
-      )
-      .collect()
+    let prunedUpdates = 0
+    let removedUpdateBytes = 0
+    while (true) {
+      const batch = await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_seq", (q) =>
+          q.eq("projectId", args.projectId).lte("seq", latestSeq)
+        )
+        .paginate({
+          cursor: null,
+          numItems: YJS_CLEANUP_PAGE_SIZE,
+        }) as PaginatedResult<{ _id: Id<"yjsUpdates">; update?: ArrayBuffer }>
 
-    for (const update of oldUpdates) {
-      await ctx.db.delete(update._id)
+      if (batch.page.length === 0) {
+        break
+      }
+
+      for (const update of batch.page) {
+        removedUpdateBytes += update.update?.byteLength ?? 0
+        prunedUpdates += 1
+        await ctx.db.delete(update._id)
+      }
     }
 
-    const allSnapshots = await ctx.db
+    const retainedSnapshots = await ctx.db
       .query("yjsDocuments")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc")
-      .collect()
+      .take(SNAPSHOT_RETAIN_COUNT)
+    const retainedSnapshotIds = new Set(retainedSnapshots.map((entry) => entry._id))
 
-    for (let index = SNAPSHOT_RETAIN_COUNT; index < allSnapshots.length; index += 1) {
-      await ctx.db.delete(allSnapshots[index]._id)
+    let retainedSnapshotCount = retainedSnapshots.length
+    let removedSnapshotBytes = 0
+    while (true) {
+      const batch = await ctx.db
+        .query("yjsDocuments")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .paginate({
+          cursor: null,
+          numItems: YJS_SNAPSHOT_CLEANUP_PAGE_SIZE,
+        }) as PaginatedResult<{
+          _id: Id<"yjsDocuments">
+          byteSize?: number
+          snapshot?: ArrayBuffer
+        }>
+
+      if (batch.page.length === 0) {
+        break
+      }
+
+      let deletedInBatch = 0
+      for (const snapshotDoc of batch.page) {
+        if (retainedSnapshotIds.has(snapshotDoc._id)) {
+          continue
+        }
+        removedSnapshotBytes += Math.max(
+          0,
+          snapshotDoc.byteSize ?? snapshotDoc.snapshot?.byteLength ?? 0
+        )
+        deletedInBatch += 1
+        await ctx.db.delete(snapshotDoc._id)
+      }
+
+      if (deletedInBatch === 0) {
+        break
+      }
     }
-
-    const removedUpdateBytes = oldUpdates.reduce(
-      (sum, update) => sum + (update.update?.byteLength ?? 0),
-      0
-    )
-    const removedSnapshotBytes = allSnapshots
-      .slice(SNAPSHOT_RETAIN_COUNT)
-      .reduce(
-        (sum, snapshotDoc) =>
-          sum + Math.max(0, snapshotDoc.byteSize ?? snapshotDoc.snapshot?.byteLength ?? 0),
-        0
-      )
 
     await applyProjectStorageDeltas(ctx, project.organizationId, args.projectId, {
       collaborationData: -removedUpdateBytes,
@@ -423,8 +686,8 @@ export const maybeCompactProject = mutation({
 
     return {
       compacted: true,
-      prunedUpdates: oldUpdates.length,
-      retainedSnapshots: Math.min(allSnapshots.length, SNAPSHOT_RETAIN_COUNT),
+      prunedUpdates,
+      retainedSnapshots: retainedSnapshotCount,
       snapshotSeq: latestSeq,
       snapshotBytes: snapshot.byteLength,
     }
@@ -463,10 +726,11 @@ export const syncWithServer = mutation({
     const {
       serverDoc,
       latestSnapshot,
-      updatesSinceSnapshot,
       serverTimestamp,
       latestSeq,
-    } = await loadServerState(ctx, args.projectId)
+    } = await loadServerState(ctx, args.projectId, {
+      includeUpdatesSinceSnapshot: false,
+    })
 
     let clientStateVector: Uint8Array | undefined
     if (args.clientUpdate) {
@@ -490,13 +754,7 @@ export const syncWithServer = mutation({
       serverSnapshot: latestSnapshot?.snapshot ?? null,
       snapshotVersion: latestSnapshot?.version ?? 0,
       snapshotCreatedAt: latestSnapshot?.createdAt ?? 0,
-      recentUpdates: updatesSinceSnapshot.map((update) => ({
-        update: update.update,
-        clientId: update.clientId,
-        timestamp: update.timestamp,
-        seq: update.seq ?? 0,
-        roomId: update.roomId,
-      })),
+      recentUpdates: [],
       // State-vector-first payload.
       deltaUpdate: toArrayBuffer(deltaUpdate),
       deltaByteLength: deltaUpdate.byteLength,

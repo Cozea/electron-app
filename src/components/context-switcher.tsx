@@ -26,6 +26,7 @@ import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
 import { runProjectOpenReplicaCheck } from '@/features/projects/lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '@/features/projects/lib/projectOpenReplicaCheck'
 import { formatReplicaSyncError } from '@/features/projects/lib/replicaErrorPresentation'
+import { markRecentProjectOpenSync } from '@/features/projects/lib/recentProjectOpenSync'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
@@ -273,6 +274,7 @@ export function ContextSwitcher() {
       setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
       setTimeout(() => {
+        markRecentProjectOpenSync(String(project._id))
         setOpen(false)
         navigate(buildProjectPath(String(project._id)), {
           state: {

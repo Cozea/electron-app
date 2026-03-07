@@ -100,7 +100,7 @@ export function PagesList() {
                 ) : routes.length === 0 ? (
                     <div className="p-4 text-center">
                         <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
-                        <p className="text-xs text-muted-foreground">No pages detected</p>
+                        <p className="text-xs text-muted-foreground">No previews detected</p>
                         <Button
                             variant="ghost"
                             size="sm"
@@ -167,7 +167,7 @@ export function PagesList() {
                                                             'package.json',
                             { className: "h-3.5 w-3.5" }
                         )}
-                        <span>{routes.length} page{routes.length !== 1 ? 's' : ''}</span>
+                        <span>{routes.length} preview{routes.length !== 1 ? 's' : ''}</span>
                     </div>
                     <button
                         onClick={refreshRoutes}

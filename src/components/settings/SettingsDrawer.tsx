@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
@@ -82,9 +83,6 @@ export function SettingsDrawer() {
   const route = useSettingsDrawerStore((state) => state.route)
   const close = useSettingsDrawerStore((state) => state.close)
   const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
-  const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
-  const [isFullScreen, setIsFullScreen] = useState(false)
-  const applyWindowControlsInset = isMacClient && !isFullScreen
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const [showSidebarTopFade, setShowSidebarTopFade] = useState(false)
@@ -92,29 +90,6 @@ export function SettingsDrawer() {
   const [showContentTopFade, setShowContentTopFade] = useState(false)
   const [showContentBottomFade, setShowContentBottomFade] = useState(false)
   const routePath = route.split('?')[0] || route
-
-  useEffect(() => {
-    if (!isMacClient) return
-
-    let isMounted = true
-
-    void window.electronAPI?.window?.isFullScreen?.()
-      .then((fullScreen) => {
-        if (isMounted) setIsFullScreen(Boolean(fullScreen))
-      })
-      .catch(() => {
-        if (isMounted) setIsFullScreen(false)
-      })
-
-    const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullScreen) => {
-      if (isMounted) setIsFullScreen(Boolean(fullScreen))
-    })
-
-    return () => {
-      isMounted = false
-      cleanup?.()
-    }
-  }, [isMacClient])
 
   useEffect(() => {
     const updateFades = (
@@ -192,13 +167,11 @@ export function SettingsDrawer() {
               '--sidebar-border': 'var(--left-sidebar-border)',
             } as React.CSSProperties}
           >
+            <WindowChromeTopInset />
             <div className="relative min-h-0 flex-1">
               <div
                 ref={sidebarScrollRef}
-                className={cn(
-                  'h-full overflow-y-auto scrollbar-hide px-2 py-3',
-                  applyWindowControlsInset && 'pt-9'
-                )}
+                className="h-full overflow-y-auto scrollbar-hide px-2 py-3"
               >
                 <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">Settings</div>
                 <div className="space-y-1">
