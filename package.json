@@ -1,7 +1,7 @@
 {
   "name": "cozea",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.7",
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "node -e \"if(process.platform==='darwin'){const fs=require('fs');const path=require('path');for(const a of ['darwin-arm64','darwin-x64']){const p=path.join('node_modules','node-pty','prebuilds',a,'spawn-helper');try{if(fs.existsSync(p))fs.chmodSync(p,0o755)}catch{}}}\"",
