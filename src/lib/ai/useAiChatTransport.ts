@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DefaultChatTransport } from 'ai'
 
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import { isLocalProviderAuthReadyHeader } from '@/lib/ai/providerAuth'
 import type { AgentId, AISurface, VariantId } from '@/lib/ai/runtimeProfiles'
 import { getAiTimezoneHeaders } from '@/lib/ai/timezoneHeaders'
 
@@ -241,7 +242,7 @@ export function useAiChatTransport({
         if (token) {
           next.Authorization = `Bearer ${token}`
         }
-        if (providerHeader) {
+        if (providerHeader && !isLocalProviderAuthReadyHeader(providerHeader)) {
           next['x-cozea-provider-auth'] = providerHeader
         }
         if (selectedProviderHeader) {

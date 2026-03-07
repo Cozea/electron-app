@@ -13,6 +13,8 @@ import {
   isManagedProviderInApp,
   isProviderEnabledInApp,
 } from '../../shared/aiProviderAvailability'
+import type { ProviderAuthProvider } from '../../shared/electronApiTypes'
+import { ProviderAuthService } from './ProviderAuthService'
 
 interface LocalAiRuntimeStatus {
   enabled: boolean
@@ -520,20 +522,50 @@ function stripChatSuffix(value: string): string {
   return value.replace(/\/chat\/?$/i, '')
 }
 
-function resolveRemoteAiBaseUrl(headerValue?: string): string {
-  const candidate = typeof headerValue === 'string' ? headerValue.trim() : ''
-  if (candidate && isHttpUrl(candidate)) {
-    return stripChatSuffix(candidate).replace(/\/+$/, '')
+function normalizeRemoteAiBaseUrl(value: string | undefined): string | null {
+  const candidate = typeof value === 'string' ? value.trim() : ''
+  if (!candidate || !isHttpUrl(candidate)) {
+    return null
   }
 
-  const configured = (
-    process.env.COZEA_AI_API_URL ||
-    process.env.VITE_AI_API_URL ||
-    process.env.AI_API_URL ||
+  return stripChatSuffix(candidate).replace(/\/+$/, '')
+}
+
+function getConfiguredRemoteAiBaseUrls(): string[] {
+  const authGatewayBaseUrl = (
+    process.env.VITE_AUTH_SERVER_URL ||
+    process.env.AUTH_SERVER_URL ||
     ''
   ).trim()
-  if (configured && isHttpUrl(configured)) {
-    return stripChatSuffix(configured).replace(/\/+$/, '')
+
+  const rawCandidates = [
+    process.env.COZEA_AI_API_URL,
+    process.env.VITE_AI_API_URL,
+    process.env.AI_API_URL,
+    authGatewayBaseUrl ? `${authGatewayBaseUrl.replace(/\/+$/, '')}/ai` : '',
+    app.isPackaged
+      ? 'https://api.cozea.app/ai'
+      : 'http://localhost:3001/ai',
+  ]
+
+  const normalized = rawCandidates
+    .map((candidate) => normalizeRemoteAiBaseUrl(candidate))
+    .filter((candidate): candidate is string => candidate !== null)
+
+  return Array.from(new Set(normalized))
+}
+
+function resolveRemoteAiBaseUrl(headerValue?: string): string {
+  const configuredCandidates = getConfiguredRemoteAiBaseUrls()
+  const requestedOverride = normalizeRemoteAiBaseUrl(headerValue)
+
+  if (requestedOverride && configuredCandidates.includes(requestedOverride)) {
+    return requestedOverride
+  }
+
+  const configured = configuredCandidates[0]
+  if (configured) {
+    return configured
   }
 
   return app.isPackaged
@@ -957,6 +989,43 @@ export class LocalAiRuntimeService {
         errorCode: 'managed_provider_unreachable',
         errorMessage: 'Unable to reach managed provider auth endpoint.',
       }
+    }
+  }
+
+  private async resolveLocalProviderEnvelope(args: {
+    provider: string
+    model: string
+    organizationId: string
+  }): Promise<{
+    envelope: ProviderAuthEnvelope | null
+    errorStatus?: number
+    errorCode?: string
+    errorMessage?: string
+  }> {
+    const result = await ProviderAuthService.getInstance().getRequestAuth({
+      provider: args.provider as ProviderAuthProvider,
+      modelId: args.model,
+      organizationId: args.organizationId,
+    })
+
+    if (result.success && result.envelope) {
+      return {
+        envelope: result.envelope as ProviderAuthEnvelope,
+      }
+    }
+
+    const errorCode = result.code || 'provider_auth_required'
+    const errorMessage = result.error || 'Provider is not connected on this device.'
+    const errorStatus =
+      result.code === 'invalid'
+        ? 400
+        : 402
+
+    return {
+      envelope: null,
+      errorStatus,
+      errorCode,
+      errorMessage,
     }
   }
 
@@ -1552,6 +1621,24 @@ export class LocalAiRuntimeService {
               code: 'unauthorized',
               message: 'Authentication is required to use managed providers.',
             }
+          }
+        }
+
+        if (!envelope && !isManagedProvider(modelInfo.provider)) {
+          const localEnvelope = await this.resolveLocalProviderEnvelope({
+            provider: modelInfo.provider,
+            model,
+            organizationId,
+          })
+          envelope = localEnvelope.envelope
+          if (!envelope && localEnvelope.errorStatus) {
+            sendJson(res, localEnvelope.errorStatus, {
+              error: localEnvelope.errorCode || 'provider_auth_required',
+              message:
+                localEnvelope.errorMessage ||
+                `This model uses the BYOK provider "${modelInfo.provider}". Connect it in Settings > AI and retry.`,
+            })
+            return
           }
         }
 

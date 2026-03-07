@@ -3,6 +3,7 @@ import type {
   AccountSubscriptionPlan,
   AccountSubscriptionStatus,
 } from "./accountEntitlements"
+import { isAccountStatusEntitled } from "./accountEntitlements"
 
 interface PlanDefaults {
   // Included wallet value in USD cents per month.
@@ -106,6 +107,10 @@ export function resolveEffectiveIncludedWalletCents(args: {
   cycle?: AccountBillingCycle
   status?: AccountSubscriptionStatus
 }): number {
+  if (args.status && !isAccountStatusEntitled(args.status)) {
+    return 0
+  }
+
   if (args.plan === "max" && args.status === "trialing") {
     return resolveMaxTrialIncludedWalletCents({
       cycle: args.cycle,

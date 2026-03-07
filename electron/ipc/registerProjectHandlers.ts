@@ -17,6 +17,8 @@ import type {
   WriteFileResult,
 } from '../../shared/electronApiTypes'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
+import * as integrationCrypto from '../integrationCrypto'
+import * as integrationKeys from '../integrationKeys'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
@@ -130,6 +132,78 @@ function buildGitAuthorizationHeader(provider: string, accessToken?: string): st
   const username = provider === 'gitlab' ? 'oauth2' : 'x-access-token'
   const encoded = Buffer.from(`${username}:${accessToken.trim()}`, 'utf8').toString('base64')
   return `AUTHORIZATION: Basic ${encoded}`
+}
+
+function readIntegrationTokenValue(
+  credentials: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = credentials[key]
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function extractRepositoryAccessToken(
+  provider: string,
+  credentials: Record<string, unknown>
+): string | undefined {
+  if (provider === 'gitlab') {
+    return (
+      readIntegrationTokenValue(credentials, 'personalAccessToken') ||
+      readIntegrationTokenValue(credentials, 'accessToken') ||
+      readIntegrationTokenValue(credentials, 'apiToken') ||
+      readIntegrationTokenValue(credentials, 'token')
+    )
+  }
+
+  return (
+    readIntegrationTokenValue(credentials, 'accessToken') ||
+    readIntegrationTokenValue(credentials, 'personalAccessToken') ||
+    readIntegrationTokenValue(credentials, 'apiToken') ||
+    readIntegrationTokenValue(credentials, 'token')
+  )
+}
+
+function resolveCloneAccessToken(args: {
+  provider: string
+  accessToken?: string
+  encryptedCredentials?: string
+  keyId?: string
+}): { accessToken?: string; error?: string } {
+  if (typeof args.accessToken === 'string' && args.accessToken.trim().length > 0) {
+    return { accessToken: args.accessToken.trim() }
+  }
+
+  if (!args.encryptedCredentials || !args.keyId) {
+    return {}
+  }
+
+  const keyResult = integrationKeys.getEncryptionKey(args.keyId)
+  if (!keyResult.success || !keyResult.keyData) {
+    return {
+      error: keyResult.error || 'Failed to retrieve integration encryption key.',
+    }
+  }
+
+  const decryptResult = integrationCrypto.decryptCredentials(
+    args.encryptedCredentials,
+    keyResult.keyData
+  )
+  if (!decryptResult.success || !decryptResult.credentials) {
+    return {
+      error: decryptResult.error || 'Failed to decrypt integration credentials.',
+    }
+  }
+
+  const accessToken = extractRepositoryAccessToken(args.provider, decryptResult.credentials)
+  if (!accessToken) {
+    return {
+      error: 'No repository access token was found in the integration credentials.',
+    }
+  }
+
+  return { accessToken }
 }
 
 function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
@@ -278,23 +352,40 @@ npm-debug.log*
         provider,
         branch,
         accessToken,
+        encryptedCredentials,
+        keyId,
       }: {
         slug: string
         repoUrl: string
         provider: string
         branch?: string
         accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
       }
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
       const projectsDir = settings.projectsDirectory
       const targetPath = path.join(projectsDir, slug)
       const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
+      const resolvedCloneAuth = resolveCloneAccessToken({
+        provider,
+        accessToken,
+        encryptedCredentials,
+        keyId,
+      })
 
       if (!normalizedRepoUrl) {
         return {
           success: false,
           error: 'Invalid repository URL. Use a full URL or owner/repo format.',
+        }
+      }
+
+      if (resolvedCloneAuth.error) {
+        return {
+          success: false,
+          error: resolvedCloneAuth.error,
         }
       }
 
@@ -315,7 +406,7 @@ npm-debug.log*
         }
 
         const cloneArgs: string[] = []
-        const authHeader = buildGitAuthorizationHeader(provider, accessToken)
+        const authHeader = buildGitAuthorizationHeader(provider, resolvedCloneAuth.accessToken)
 
         if (authHeader && /^https?:\/\//i.test(normalizedRepoUrl)) {
           cloneArgs.push('-c', `http.extraheader=${authHeader}`)

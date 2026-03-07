@@ -45,6 +45,12 @@ import { TerminalInstance } from '@/features/projects/components/TerminalInstanc
 import { cn } from '@/lib/utils'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { formatReplicaSyncError } from '@/features/projects/lib/replicaErrorPresentation'
+import {
+  buildImportTerminalCommand,
+  parseImportTerminalCompletionCode,
+  type ImportTerminalPlatform,
+} from '@/lib/importTerminalCommand'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
 
@@ -91,37 +97,6 @@ function isPageFile(pathValue: string): boolean {
 
 function isRepoIntegrationProvider(provider: string): provider is RepoIntegrationProvider {
   return provider === 'github' || provider === 'gitlab'
-}
-
-function readTokenValue(
-  credentials: Record<string, unknown>,
-  key: string
-): string | undefined {
-  const value = credentials[key]
-  if (typeof value !== 'string') return undefined
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-function extractRepoAccessToken(
-  provider: RepoIntegrationProvider,
-  credentials: Record<string, unknown>
-): string | undefined {
-  if (provider === 'gitlab') {
-    return (
-      readTokenValue(credentials, 'personalAccessToken') ||
-      readTokenValue(credentials, 'accessToken') ||
-      readTokenValue(credentials, 'apiToken') ||
-      readTokenValue(credentials, 'token')
-    )
-  }
-
-  return (
-    readTokenValue(credentials, 'accessToken') ||
-    readTokenValue(credentials, 'personalAccessToken') ||
-    readTokenValue(credentials, 'apiToken') ||
-    readTokenValue(credentials, 'token')
-  )
 }
 
 function buildImportPreflightIssueMessage(
@@ -233,9 +208,13 @@ export function NewProject() {
 
   const runTerminalCommand = useCallback(
     async (projectPath: string, command: string): Promise<{ success: boolean; error?: string }> => {
+      const platform: ImportTerminalPlatform = isWindowsClient() ? 'windows' : 'posix'
+      const profiles = await window.electronAPI.terminal.getProfiles().catch(() => [])
+      const commandPlan = buildImportTerminalCommand(command, platform, profiles)
+
       const createResult = await window.electronAPI.terminal.create({
         projectPath,
-        profileId: isWindowsClient() ? 'cmd' : undefined,
+        profileId: commandPlan.profileId,
         cwd: projectPath,
         cols: 100,
         rows: 30,
@@ -265,9 +244,11 @@ export function NewProject() {
       return await new Promise((resolve) => {
         let settled = false
         let commandDispatchTimer: number | null = null
+        let completionBuffer = ''
         const cleanup = () => {
           if (settled) return
           settled = true
+          unsubscribeOutput()
           unsubscribeExit()
           window.clearTimeout(timeoutId)
           if (commandDispatchTimer !== null) {
@@ -290,6 +271,28 @@ export function NewProject() {
           })
         })
 
+        const unsubscribeOutput = window.electronAPI.terminal.onOutput(({ terminalId: outputTerminalId, data }) => {
+          if (outputTerminalId !== terminalId || settled) return
+
+          completionBuffer = `${completionBuffer}${data}`.slice(-512)
+          const exitCode = parseImportTerminalCompletionCode(
+            completionBuffer,
+            commandPlan.completionMarker
+          )
+          if (exitCode === null) return
+
+          updateTerminalStatus(
+            terminalId,
+            exitCode === 0 ? 'exited' : 'error',
+            exitCode
+          )
+          cleanup()
+          resolve({
+            success: exitCode === 0,
+            error: exitCode === 0 ? undefined : `Command exited with code ${exitCode}`,
+          })
+        })
+
         const timeoutId = window.setTimeout(() => {
           if (settled) return
           cleanup()
@@ -301,7 +304,7 @@ export function NewProject() {
         commandDispatchTimer = window.setTimeout(() => {
           window.electronAPI.terminal.input({
             terminalId,
-            data: `${command}\r\nexit\r\n`,
+            data: `${commandPlan.commandLine}\r\n`,
           }).catch((error) => {
             if (settled) return
             updateTerminalStatus(terminalId, 'error')
@@ -696,7 +699,8 @@ export function NewProject() {
       let importPath = repoSource.repoUrl
 
       if (repoSource.provider !== 'local') {
-        let accessToken: string | undefined
+        let encryptedCredentials: string | undefined
+        let keyId: string | undefined
 
         if (isRepoIntegrationProvider(repoSource.provider) && window.electronAPI?.integrations) {
           try {
@@ -709,22 +713,8 @@ export function NewProject() {
             ])
 
             if (integrationCredentials?.encryptedCredentials && keyMetadata?.keyId) {
-              const decryptResult = await window.electronAPI.integrations.decrypt({
-                encrypted: integrationCredentials.encryptedCredentials,
-                keyId: keyMetadata.keyId,
-              })
-
-              if (decryptResult.success && decryptResult.credentials) {
-                accessToken = extractRepoAccessToken(
-                  repoSource.provider,
-                  decryptResult.credentials
-                )
-              } else {
-                console.warn(
-                  `[Import] Failed to decrypt ${repoSource.provider} credentials:`,
-                  decryptResult.error
-                )
-              }
+              encryptedCredentials = integrationCredentials.encryptedCredentials
+              keyId = keyMetadata.keyId
             }
           } catch (credentialError) {
             console.warn(
@@ -748,7 +738,8 @@ export function NewProject() {
           repoUrl: repoSource.repoUrl,
           provider: repoSource.provider,
           branch: repoSource.branch,
-          accessToken,
+          encryptedCredentials,
+          keyId,
         })
 
         if (!cloneResult.success || !cloneResult.localPath) {
@@ -756,7 +747,7 @@ export function NewProject() {
           let cloneMessage = cloneResult.error || 'Failed to clone repository'
           if (
             isRepoIntegrationProvider(repoSource.provider) &&
-            !accessToken
+            !encryptedCredentials
           ) {
             cloneMessage += ` If this repository is private, connect your ${repoSource.provider === 'github' ? 'GitHub' : 'GitLab'} integration and try again.`
           }
@@ -850,37 +841,70 @@ export function NewProject() {
 
         try {
           await preinstallDependencies(importPath)
-          await uploadLocalSnapshotToCloud(result.projectId, importPath)
-          await updateSyncStatus({
-            projectId: result.projectId,
-            userId: convexUserId,
-            status: 'synced',
-          })
-        } catch (bootstrapError) {
-          console.warn('[Import] Pre-open bootstrap failed:', bootstrapError)
-          try {
-            await updateSyncStatus({
-              projectId: result.projectId,
-              userId: convexUserId,
-              status: 'error',
-              errorMessage: bootstrapError instanceof Error ? bootstrapError.message : 'Bootstrap failed',
-            })
-          } catch (syncStatusError) {
-            console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
-          }
-          const message = bootstrapError instanceof Error ? bootstrapError.message : 'Bootstrap failed'
+        } catch (dependencyError) {
+          const message = dependencyError instanceof Error ? dependencyError.message : 'Dependency installation failed'
           setImportError(message)
           setImportSyncState('error')
           setImportSyncMessage('Import failed')
           return
         }
 
+        let replicaSyncWarning: string | null = null
+
+        try {
+          await uploadLocalSnapshotToCloud(result.projectId, importPath)
+          try {
+            await updateSyncStatus({
+              projectId: result.projectId,
+              userId: convexUserId,
+              status: 'synced',
+            })
+          } catch (syncStatusError) {
+            const presentedError = formatReplicaSyncError(
+              syncStatusError,
+              'Cloud sync finished, but sync status could not be recorded.'
+            )
+            replicaSyncWarning = presentedError.detail
+              ? `${presentedError.summary} ${presentedError.detail}`
+              : presentedError.summary
+            console.warn('[Import] Failed to mark synced status; continuing locally:', replicaSyncWarning)
+          }
+        } catch (bootstrapError) {
+          const presentedError = formatReplicaSyncError(
+            bootstrapError,
+            'Cloud sync is unavailable for this import.'
+          )
+          replicaSyncWarning = presentedError.detail
+            ? `${presentedError.summary} ${presentedError.detail}`
+            : presentedError.summary
+          console.warn('[Import] Pre-open bootstrap failed; continuing locally:', replicaSyncWarning)
+          try {
+            await updateSyncStatus({
+              projectId: result.projectId,
+              userId: convexUserId,
+              status: 'error',
+              errorMessage: replicaSyncWarning,
+            })
+          } catch (syncStatusError) {
+            console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
+          }
+        }
+
         setImportSyncState('ready')
-        setImportSyncMessage('Opening project...')
+        setImportSyncMessage(
+          replicaSyncWarning
+            ? 'Opening local project without cloud sync...'
+            : 'Opening project...'
+        )
         setTimeout(() => {
           const targetPath = buildProjectPath(String(result.projectId))
           console.log('[Import] Navigating to:', targetPath)
-          navigate(targetPath)
+          navigate(targetPath, {
+            state: {
+              gateSyncScreen: false,
+              skipInitialSyncCheck: true,
+            },
+          })
           setImportSyncState('idle')
           setImportSyncMessage('')
         }, 200)

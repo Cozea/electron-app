@@ -57,6 +57,7 @@ import {
     PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
@@ -190,7 +191,7 @@ export function ProjectPagesPage() {
     const previewFallbackAttemptRef = useRef(0)
     const nonFocusedEmbedProbeKeyRef = useRef<string | null>(null)
     const embedModeHydratedRunIdRef = useRef<string | null>(null)
-    const previewCaptureScheduledRunIdRef = useRef<string | null>(null)
+    const previewCaptureScheduleKeyRef = useRef<string | null>(null)
     const latestPreviewCaptureStateRef = useRef<{
         serverStatus: ServerStatus
         serverPort: number | null
@@ -482,28 +483,12 @@ export function ProjectPagesPage() {
         const projectId = project?._id
         if (!projectId || !projectPreviewCaptureUrl) return
         try {
-            const result = await window.electronAPI.preview.captureScreenshot({
-                url: projectPreviewCaptureUrl,
-                width: 1280,
-                height: 800,
-            })
-            if (!result.success || !result.base64) return
-            const byteString = atob(result.base64)
-            const ab = new ArrayBuffer(byteString.length)
-            const ia = new Uint8Array(ab)
-            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-            const blob = new Blob([ab], { type: 'image/png' })
-            const uploadUrl = await generatePreviewUploadUrl({ projectId })
-            const uploadResponse = await fetch(uploadUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'image/png' },
-                body: blob,
-            })
-            if (!uploadResponse.ok) return
-            const data = await uploadResponse.json()
-            const storageId = data?.storageId ?? data
-            if (!storageId) return
-            await updatePreviewImage({ projectId, storageId })
+            await captureAndUploadProjectPreviewFromUrl(
+                projectId,
+                projectPreviewCaptureUrl,
+                generatePreviewUploadUrl,
+                updatePreviewImage
+            )
         } catch {
             // Silent: preview capture is best-effort for dashboard
         } finally {
@@ -520,11 +505,12 @@ export function ProjectPagesPage() {
     // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
     useEffect(() => {
         if (serverStatus !== 'running' || !serverPort || !project?._id || !activeServerRunId) {
-            previewCaptureScheduledRunIdRef.current = null
+            previewCaptureScheduleKeyRef.current = null
             return
         }
-        if (previewCaptureScheduledRunIdRef.current === activeServerRunId) return
-        previewCaptureScheduledRunIdRef.current = activeServerRunId
+        const scheduleKey = `${activeServerRunId}:${projectPreviewCapturePath}`
+        if (previewCaptureScheduleKeyRef.current === scheduleKey) return
+        previewCaptureScheduleKeyRef.current = scheduleKey
         const t1 = setTimeout(() => {
             void captureAndUploadProjectPreview()
         }, 6000)
@@ -535,7 +521,14 @@ export function ProjectPagesPage() {
             clearTimeout(t1)
             clearTimeout(t2)
         }
-    }, [activeServerRunId, serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+    }, [
+        activeServerRunId,
+        serverStatus,
+        serverPort,
+        project?._id,
+        projectPreviewCapturePath,
+        captureAndUploadProjectPreview,
+    ])
 
     useEffect(() => {
         latestPreviewCaptureStateRef.current = {
