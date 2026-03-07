@@ -986,11 +986,22 @@ export interface ElectronAPI {
     getLocalPath: (slug: string) => Promise<string | null>
     exists: (slug: string) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
-    writeFile: (options: { projectPath: string; filePath: string; content: string; encoding?: 'utf8' | 'base64' }) => Promise<WriteFileResult>
+    writeFile: (options: {
+      projectPath: string
+      filePath: string
+      content: string
+      encoding?: 'utf8' | 'base64'
+      origin?: 'agent' | 'remote' | 'sync'
+    }) => Promise<WriteFileResult>
     readFile: (options: { projectPath: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { projectPath: string; filePath: string }) => Promise<ReadFileBase64Result>
     listFiles: (options: { projectPath: string }) => Promise<ListFilesResult>
-    renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) => Promise<RenameFileResult>
+    renameFile: (options: {
+      projectPath: string
+      oldPath: string
+      newPath: string
+      origin?: 'agent' | 'remote' | 'sync'
+    }) => Promise<RenameFileResult>
     deletePath: (options: { projectPath: string; targetPath: string }) => Promise<{ success: boolean; error?: string }>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>

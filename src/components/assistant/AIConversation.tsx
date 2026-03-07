@@ -174,6 +174,20 @@ interface AgentLedgerData {
   billedUsd?: number
 }
 
+function buildAssistantPreviewUrl(
+  currentPage: {
+    route: string
+    serverPort?: number
+  } | null | undefined
+): string | null {
+  if (!currentPage?.serverPort || !Number.isFinite(currentPage.serverPort)) return null
+  const route = typeof currentPage.route === 'string' && currentPage.route.trim().length > 0
+    ? currentPage.route.trim()
+    : '/'
+  const normalizedRoute = route.startsWith('/') ? route : `/${route}`
+  return `http://localhost:${currentPage.serverPort}${normalizedRoute}`
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -652,6 +666,7 @@ export function AIConversation({
     if (!projectPath) return null
     const fallbackName = (projectName || projectSlug || 'Active Project').trim() || 'Active Project'
     return {
+      projectId: projectId ? String(projectId) : undefined,
       name: fallbackName,
       slug: normalizedProjectSlug,
       runtime: 'local' as const,
@@ -661,7 +676,17 @@ export function AIConversation({
       // Last inspected element context (invisible to user, sent to AI)
       inspectedElement: inspectedElement ?? undefined,
     }
-  }, [projectPath, projectName, projectSlug, normalizedProjectSlug, currentPage, inspectedElement])
+  }, [projectId, projectPath, projectName, projectSlug, normalizedProjectSlug, currentPage, inspectedElement])
+
+  const assistantPreviewUrl = useMemo(
+    () => buildAssistantPreviewUrl(currentPage),
+    [currentPage]
+  )
+  const assistantPreviewUrlRef = useRef<string | null>(assistantPreviewUrl)
+
+  useEffect(() => {
+    assistantPreviewUrlRef.current = assistantPreviewUrl
+  }, [assistantPreviewUrl])
 
   const shouldRequireLocalApproval = useCallback((toolMeta?: MessageToolMeta) => {
     if (!toolMeta) return false
@@ -867,12 +892,32 @@ export function AIConversation({
       return
     }
 
+    if (toolCall.toolName === 'preview_browser') {
+      const currentPreviewUrl = assistantPreviewUrlRef.current
+      if (!currentPreviewUrl) {
+        void addToolOutput({
+          state: 'output-error',
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          errorText:
+            'Preview is not available yet. Open a project preview page and wait for the local preview to load before using preview_browser.',
+        })
+        return
+      }
+    }
+
     try {
       const toolFilePaths = getMutatingToolFilePaths(toolCall.toolName, toolInput)
       const run = () =>
         localRuntime.requestToolExecution(transportConversationId, {
           toolName: toolCall.toolName,
-          input: toolInput,
+          input:
+            toolCall.toolName === 'preview_browser'
+              ? {
+                  ...toolInput,
+                  currentUrl: assistantPreviewUrlRef.current,
+                }
+              : toolInput,
           toolCallId: toolCall.toolCallId,
           projectPath: projectPath ?? undefined,
         })

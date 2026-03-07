@@ -96,7 +96,7 @@ export async function runProjectOpenReplicaCheck({
 
   const hasConflicts = plan.conflicts.length > 0
   const likelyLocalWipe = isLikelyLocalWorkspaceWipe(plan, meaningfulLocalFileCount)
-  const gateSyncScreen = totalChanges > 0
+  const gateSyncScreen = hasConflicts
 
   if (hasConflicts) {
     console.warn("[ReplicaOpenCheck] Conflict detection triggered", {
@@ -148,8 +148,8 @@ export async function runProjectOpenReplicaCheck({
   })
 
   return {
-    // Gate workspace rendering whenever there are pending replica operations.
-    // This prevents opening project UI first and then failing back into SyncScreen.
+    // Only gate into the manual review UI for real conflicts.
+    // Non-conflict sync should complete inline from the project list/card before navigation.
     gateSyncScreen,
     hasConflicts,
     likelyLocalWipe,

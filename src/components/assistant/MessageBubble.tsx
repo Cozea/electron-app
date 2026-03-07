@@ -30,6 +30,7 @@ import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress
 import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutput'
 import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
 import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
+import { ToolPreviewBrowserOutput } from '@/components/ai-elements/tool-preview-browser-output'
 import { parseInjectedPromptForCompaction } from '@/components/assistant/injectedPromptCompaction'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { cn } from '@/lib/utils'
@@ -391,6 +392,7 @@ function MessageBubbleComponent({
             const isTerminalTool = toolName === 'bash'
             // Special handling for file edit tools (show Monaco diff)
             const isEditTool = isFileEditTool(toolName)
+            const isPreviewBrowserTool = toolName === 'preview_browser'
             // Special handling for web search tools (show only sources)
             const isWebSearchTool = toolName.toLowerCase().includes('search') ||
               toolName.toLowerCase().includes('web') ||
@@ -464,8 +466,17 @@ function MessageBubbleComponent({
                     />
                   )}
 
+                  {isPreviewBrowserTool && toolInput && toolState !== 'output-available' && (
+                    <div className="px-2 pb-2">
+                      <ToolPreviewBrowserOutput
+                        input={toolInput}
+                        state={toolState}
+                      />
+                    </div>
+                  )}
+
                   {/* For non-task/non-terminal/non-edit/non-list/non-web_search tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && !isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
+                  {!isTaskTool && !isTerminalTool && !isEditTool && !isPreviewBrowserTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
                     <ToolInput input={formatToolPayload(toolInput)} />
                   )}
 
@@ -503,6 +514,16 @@ function MessageBubbleComponent({
                               />
                             </div>
                           )
+                          : isPreviewBrowserTool
+                            ? (
+                              <div className="px-2 pb-2">
+                                <ToolPreviewBrowserOutput
+                                  input={toolInput}
+                                  output={toolPart.output}
+                                  state={toolState}
+                                />
+                              </div>
+                            )
                           : isEditTool
                             ? null // Diff viewer already shows the edit, no need to show output
                             : isWebSearchTool

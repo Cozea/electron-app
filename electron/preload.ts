@@ -227,12 +227,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
     exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),
     pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),
-    writeFile: (options: { projectPath: string; filePath: string; content: string; encoding?: 'utf8' | 'base64' }) => ipcRenderer.invoke('project:writeFile', options),
+    writeFile: (options: {
+      projectPath: string
+      filePath: string
+      content: string
+      encoding?: 'utf8' | 'base64'
+      origin?: 'agent' | 'remote' | 'sync'
+    }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { projectPath: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { projectPath: string; filePath: string }) =>
       ipcRenderer.invoke('project:readFileBase64', options),
     listFiles: (options: { projectPath: string }) => ipcRenderer.invoke('project:listFiles', options),
-    renameFile: (options: { projectPath: string; oldPath: string; newPath: string }) =>
+    renameFile: (options: {
+      projectPath: string
+      oldPath: string
+      newPath: string
+      origin?: 'agent' | 'remote' | 'sync'
+    }) =>
       ipcRenderer.invoke('project:renameFile', options),
     deletePath: (options: { projectPath: string; targetPath: string }) =>
       ipcRenderer.invoke('project:deletePath', options),

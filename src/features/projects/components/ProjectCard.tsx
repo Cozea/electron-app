@@ -28,6 +28,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
+import { formatReplicaSyncError } from '../lib/replicaErrorPresentation'
 import { buildProjectPath } from '../lib/projectRoutes'
 
 // Types based on what we saw in the schema and Projects.tsx
@@ -89,6 +90,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
   const [syncMessage, setSyncMessage] = useState('')
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
+  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
     const [localPath, setLocalPath] = useState<string | null>(null)
 
@@ -122,7 +124,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     }
   }, [project.slug, project.status, shouldHydrateSyncStatus])
 
-  const preloadProjectDestination = useCallback(() => {
+    const preloadProjectDestination = useCallback(() => {
     setSyncHydrationRequested(true)
     if (project.status === 'draft') {
       void preloadNewProjectPage()
@@ -130,6 +132,78 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
         }
         void preloadProjectDetailPage()
     }, [project.status])
+
+    const executeAutoSyncBeforeOpen = useCallback(async (
+        effectiveLocalPath: string,
+        check: ProjectOpenReplicaCheckResult
+    ): Promise<boolean> => {
+        setSyncState('syncing')
+        setSyncMessage(check.likelyLocalWipe ? 'Downloading cloud files...' : 'Syncing project files...')
+
+        if (userId) {
+            try {
+                await updateSyncStatus({
+                    projectId: project._id,
+                    userId,
+                    status: 'syncing',
+                })
+            } catch (statusError) {
+                console.error('[ProjectCard] Failed to update syncing status:', statusError)
+            }
+        }
+
+        const result = await window.electronAPI.sync.gitReplicaExecute({
+            projectId: String(project._id),
+            projectPath: effectiveLocalPath,
+            sessionId: check.plan.sessionId,
+        })
+
+        const syncErrorPresentation = formatReplicaSyncError(
+            result.error || 'Failed to sync project files',
+            'Failed to sync project files'
+        )
+        const syncErrorMessage = syncErrorPresentation.summary
+        const syncStatusDetail = syncErrorPresentation.detail
+            ? `${syncErrorPresentation.summary} ${syncErrorPresentation.detail}`
+            : syncErrorPresentation.summary
+
+        if (userId) {
+            try {
+                await updateSyncStatus({
+                    projectId: project._id,
+                    userId,
+                    status: result.success && result.applied ? 'synced' : 'error',
+                    errorMessage: result.success && result.applied ? undefined : syncStatusDetail,
+                })
+            } catch (statusError) {
+                console.error('[ProjectCard] Failed to update final sync status:', statusError)
+            }
+        }
+
+        if (result.success && result.applied) {
+            return true
+        }
+
+        if (result.requiresConflictResolution && onRequireSyncReview) {
+            const refreshedCheck = await runProjectOpenReplicaCheck({
+                projectId: String(project._id),
+                projectPath: effectiveLocalPath,
+            })
+            onRequireSyncReview({
+                projectId: project._id,
+                projectSlug: project.slug,
+                projectName: project.name,
+                projectTemplate: project.template ?? undefined,
+                projectPath: effectiveLocalPath,
+                check: refreshedCheck,
+            })
+            setSyncState('idle')
+            setSyncMessage('')
+            return false
+        }
+
+        throw new Error(syncErrorMessage)
+    }, [onRequireSyncReview, project._id, project.name, project.slug, project.template, updateSyncStatus, userId])
 
     const handleCardClick = useCallback(async () => {
         preloadProjectDestination()
@@ -174,11 +248,10 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                 })
             }
 
-            let gateSyncScreen = false
             let openCheck: ProjectOpenReplicaCheckResult | null = null
 
-            // Pre-open sync plan check so we can gate project UI when conflicts
-            // or local-wipe recovery is needed.
+            // Pre-open sync plan check so real conflicts go through manual review,
+            // while clean sync can finish inline from the card before navigation.
             if (effectiveLocalPath) {
                 setSyncMessage('Checking sync status...')
                 const check = await runProjectOpenReplicaCheck({
@@ -186,26 +259,32 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                     projectPath: effectiveLocalPath,
                 })
                 openCheck = check
-                gateSyncScreen = check.gateSyncScreen
 
                 if (check.totalChanges > 0) {
                     setSyncState('syncing')
                     if (check.hasConflicts) {
                         setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
                     } else if (check.likelyLocalWipe) {
-                        setSyncMessage('Local files missing. Opening recovery...')
+                        setSyncMessage('Downloading cloud files...')
                     } else {
-                        setSyncMessage('Sync changes detected')
+                        setSyncMessage('Syncing project files...')
                     }
                 }
             }
 
+            if (effectiveLocalPath && openCheck && openCheck.totalChanges > 0 && !openCheck.hasConflicts) {
+                const shouldContinueToOpen = await executeAutoSyncBeforeOpen(effectiveLocalPath, openCheck)
+                if (!shouldContinueToOpen) {
+                    return
+                }
+            }
+
             setSyncState('ready')
-            setSyncMessage(gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
+            setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
             // Small delay to show the ready state
             setTimeout(() => {
-                if (gateSyncScreen && effectiveLocalPath && onRequireSyncReview && openCheck) {
+                if (openCheck?.gateSyncScreen && effectiveLocalPath && onRequireSyncReview) {
                     void onRequireSyncReview({
                         projectId: project._id,
                         projectSlug: project.slug,
@@ -221,18 +300,21 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
 
                 navigate(buildProjectPath(String(project._id)), {
                     state: {
+                        projectId: String(project._id),
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
-                        gateSyncScreen,
+                        gateSyncScreen: openCheck?.gateSyncScreen ?? false,
+                        skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
                     },
                 })
             }, 200)
 
         } catch (error) {
             console.error('[ProjectCard] Sync check failed:', error)
+            const presentedError = formatReplicaSyncError(error, 'Failed to prepare project')
             setSyncState('error')
-            setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
+            setSyncMessage(presentedError.summary)
 
             // Reset after showing error
             setTimeout(() => {
@@ -240,7 +322,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                 setSyncMessage('')
             }, 2000)
         }
-    }, [project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
+    }, [executeAutoSyncBeforeOpen, project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
 
     const handleDelete = async () => {
         if (!userId) return

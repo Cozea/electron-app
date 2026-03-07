@@ -201,6 +201,12 @@ export class ProjectFilesPersistence {
             origin,
             userName: this.userName,
           })
+          await this.convex.mutation(api.fileTombstones.createTombstone, {
+            projectId: this.projectId,
+            filePath: path,
+            deletedBy: this.userId,
+            deletedByAgent: origin === 'agent' ? this.userName : undefined,
+          })
         } catch (error) {
           console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
         }
@@ -240,6 +246,10 @@ export class ProjectFilesPersistence {
           totalLines: currentLineCount,
           origin,
           userName: this.userName,
+        })
+        await this.convex.mutation(api.fileTombstones.removeTombstone, {
+          projectId: this.projectId,
+          filePath: path,
         })
 
         // Update previous content for next diff

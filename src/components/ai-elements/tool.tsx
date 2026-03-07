@@ -75,7 +75,7 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   plan_write: { present: "Writing plans", past: "Wrote plans" },
   todowrite: { present: "Updating tasks", past: "Updated tasks" },
   preview_start: { present: "Starting preview", past: "Started preview" },
-  preview_browser: { present: "Inspecting preview", past: "Inspected preview" },
+  preview_browser: { present: "Checking page", past: "Checked page" },
   build_complete: { present: "Finalizing build", past: "Finalized build" },
 };
 
@@ -324,6 +324,14 @@ export const ToolStatic = ({
       );
     }
 
+    if (actionVerb) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-sm">{actionVerb}</span>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-1.5">
         <span className="font-medium text-sm">
@@ -441,6 +449,14 @@ export const ToolHeader = ({
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-sm">{actionVerb}</span>
           <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} />
+        </div>
+      );
+    }
+
+    if (actionVerb) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-sm">{actionVerb}</span>
         </div>
       );
     }

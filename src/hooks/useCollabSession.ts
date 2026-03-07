@@ -91,6 +91,10 @@ export function useCollabSession({
     setStatus('loading')
     setError(null)
 
+    console.info('[CollabSession] Initializing collaboration session', {
+      projectId,
+    })
+
     const authHeaders = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -137,9 +141,18 @@ export function useCollabSession({
       setSession(parsedSession)
       setStatus('ready')
       setError(null)
+      console.info('[CollabSession] Collaboration session ready', {
+        projectId,
+        roomId: parsedSession.roomId,
+        wsUrl: parsedSession.collabWsUrl,
+      })
       return parsedSession
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Failed to initialize collaboration session'
+      console.warn('[CollabSession] Failed to initialize collaboration session', {
+        projectId,
+        error: message,
+      })
       setStatus('error')
       setSession(null)
       setCapabilities(null)
