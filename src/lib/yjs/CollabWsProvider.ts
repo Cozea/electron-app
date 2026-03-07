@@ -147,6 +147,7 @@ export class CollabWsProvider {
   private lastServerErrorCode: string | null = null
   private lastServerErrorMessage: string | null = null
   private sessionRefreshInFlight: Promise<boolean> | null = null
+  private hasHandshakeAcknowledged = false
   private readonly pendingUpdates: Array<{
     updateBinary: string
     idempotencyKey: string
@@ -185,6 +186,7 @@ export class CollabWsProvider {
 
   destroy(): void {
     this.isDestroyed = true
+    this.hasHandshakeAcknowledged = false
     this.doc.off('update', this.handleLocalUpdate)
     this.awareness.off('update', this.handleAwarenessUpdate)
     this.clearReconnectTimer()
@@ -310,6 +312,7 @@ export class CollabWsProvider {
     }
 
     this.currentConnectStartedAt = Date.now()
+    this.hasHandshakeAcknowledged = false
     this.lastServerErrorCode = null
     this.lastServerErrorMessage = null
     this.onStateChange?.('connecting', null)
@@ -324,14 +327,6 @@ export class CollabWsProvider {
     })
 
     socket.onopen = () => {
-      this.reconnectAttempt = 0
-      this.hasConnectedOnce = true
-      this.consecutiveInitialFailures = 0
-      this.onStateChange?.('connected', null)
-      console.info('[CollabWsProvider] Collaboration websocket connected', {
-        projectId: this.session.projectId,
-        roomId: this.session.roomId,
-      })
       socket.send(
         JSON.stringify({
           type: 'hello',
@@ -344,17 +339,6 @@ export class CollabWsProvider {
           },
         })
       )
-      socket.send(
-        JSON.stringify({
-          type: 'sync_request',
-          payload: {
-            roomId: this.session.roomId,
-            knownSeq: this.knownSeq,
-          },
-        })
-      )
-      this.flushPendingUpdates()
-      this.publishLocalAwareness()
     }
 
     socket.onmessage = (event) => {
@@ -374,6 +358,7 @@ export class CollabWsProvider {
       if (this.socket === socket) {
         this.socket = null
       }
+      this.hasHandshakeAcknowledged = false
 
       const connectLifetimeMs = Date.now() - this.currentConnectStartedAt
       const initialHandshakeFailure =
@@ -432,7 +417,7 @@ export class CollabWsProvider {
       },
     }
 
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    if (this.socket?.readyState === WebSocket.OPEN && this.hasHandshakeAcknowledged) {
       this.socket.send(JSON.stringify(payload))
       return
     }
@@ -463,7 +448,7 @@ export class CollabWsProvider {
   }
 
   private publishLocalAwareness(): void {
-    if (this.socket?.readyState !== WebSocket.OPEN) return
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
       this.socket.send(
@@ -480,6 +465,19 @@ export class CollabWsProvider {
     } catch (error) {
       console.warn('[CollabWsProvider] Failed to publish awareness:', error)
     }
+  }
+
+  private requestInitialSync(): void {
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
+    this.socket.send(
+      JSON.stringify({
+        type: 'sync_request',
+        payload: {
+          roomId: this.session.roomId,
+          knownSeq: this.knownSeq,
+        },
+      })
+    )
   }
 
   private handleIncoming(raw: unknown): void {
@@ -538,6 +536,21 @@ export class CollabWsProvider {
       const seq = Number(message.payload?.seq)
       if (Number.isFinite(seq)) {
         this.knownSeq = Math.max(this.knownSeq, seq)
+      }
+
+      if (!this.hasHandshakeAcknowledged) {
+        this.hasHandshakeAcknowledged = true
+        this.reconnectAttempt = 0
+        this.hasConnectedOnce = true
+        this.consecutiveInitialFailures = 0
+        this.onStateChange?.('connected', null)
+        console.info('[CollabWsProvider] Collaboration websocket handshake acknowledged', {
+          projectId: this.session.projectId,
+          roomId: this.session.roomId,
+        })
+        this.requestInitialSync()
+        this.flushPendingUpdates()
+        this.publishLocalAwareness()
       }
       return
     }

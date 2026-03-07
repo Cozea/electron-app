@@ -46,8 +46,6 @@ function formatDaySeparatorLabel(timestamp: number) {
 
 export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
   const { convexUserId } = useAuth()
-  const applyWindowControlsInset =
-    typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
   const {
     currentConversationId,
     setCurrentConversationId,
@@ -117,6 +115,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
       side="right"
       variant="sidebar"
       collapsible="none"
+      windowChromeAware
       style={{
         '--sidebar': 'var(--left-sidebar-surface)',
         '--sidebar-surface': 'var(--left-sidebar-surface)',
@@ -124,10 +123,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
       className="file-tree-panel-border h-full min-w-0 shrink-0 border-l border-border/55 bg-sidebar"
     >
       <SidebarHeader
-        className={cn(
-          'titlebar-drag-region h-9 px-3',
-          applyWindowControlsInset && 'mt-9'
-        )}
+        className="titlebar-drag-region h-9 px-3"
       >
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-muted-foreground">

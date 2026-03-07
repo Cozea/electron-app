@@ -100,6 +100,19 @@ export function getCachedModelContextWindow(modelId: string): number | undefined
   return undefined
 }
 
+export function getCachedModelSummary(modelId: string): ModelApiModel | undefined {
+  const normalizedModelId = modelId.trim()
+  if (!normalizedModelId) return undefined
+
+  for (const entry of modelCatalogCache.values()) {
+    if (!entry.data?.models?.length) continue
+    const model = entry.data.models.find((candidate) => candidate.id === normalizedModelId)
+    if (model) return model
+  }
+
+  return undefined
+}
+
 export async function getModelCatalog(args: {
   organizationId: string
   accessToken: string

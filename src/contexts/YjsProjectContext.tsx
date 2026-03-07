@@ -1,4 +1,5 @@
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -95,7 +96,9 @@ export function YjsProjectProvider({
   const persistenceRef = useRef<ProjectFilesPersistence | null>(null)
   const indexedDBProviderRef = useRef<YjsIndexedDBProvider | null>(null)
   const lastAppliedTimestampRef = useRef(0)
+  const initialKnownSeqRef = useRef(0)
   const seenUpdateIdsAtLastTimestampRef = useRef<Set<string>>(new Set())
+  const wsSessionRef = useRef<CollabSessionDescriptor | null>(null)
   const convex = useConvex()
 
   const wsSession = useMemo<CollabSessionDescriptor | null>(() => {
@@ -107,13 +110,11 @@ export function YjsProjectProvider({
       token: collabSession.token,
       protocolVersion: collabSession.protocolVersion,
     }
-  }, [
-    collabSession?.projectId,
-    collabSession?.roomId,
-    collabSession?.collabWsUrl,
-    collabSession?.token,
-    collabSession?.protocolVersion,
-  ])
+  }, [collabSession])
+
+  useEffect(() => {
+    wsSessionRef.current = wsSession
+  }, [wsSession])
 
   const collabTransport = useMemo(
     () => normalizeCollabTransport(import.meta.env.VITE_COLLAB_TRANSPORT),
@@ -127,8 +128,9 @@ export function YjsProjectProvider({
   }, [enabled, projectId, wsSession?.roomId, wsSession?.collabWsUrl])
 
   useEffect(() => {
-    if (!wsSession || !wsProviderRef.current) return
-    wsProviderRef.current.updateSession(wsSession)
+    const nextSession = wsSessionRef.current
+    if (!nextSession || !wsProviderRef.current) return
+    wsProviderRef.current.updateSession(nextSession)
   }, [
     wsSession?.projectId,
     wsSession?.roomId,
@@ -140,20 +142,35 @@ export function YjsProjectProvider({
   const updatesSince = shouldUseConvexTail && lastSyncTime !== null ? Math.max(0, lastSyncTime - 1) : null
   const updates = useQuery(
     api.yjs.getUpdatesSince,
-    updatesSince === null ? 'skip' : { projectId, since: updatesSince }
+    updatesSince === null ? 'skip' : { projectId, since: updatesSince, limit: 128 }
   )
   const awarenessEntries = useQuery(
     api.yjsAwareness.getActiveAwareness,
     shouldUseConvexTail ? { projectId } : 'skip'
   )
 
+  const destroyTransportProviders = useCallback(() => {
+    wsProviderRef.current?.destroy()
+    wsProviderRef.current = null
+    convexProviderRef.current?.destroy()
+    convexProviderRef.current = null
+    awarenessProviderRef.current?.destroy()
+    awarenessProviderRef.current = null
+  }, [])
+
   useEffect(() => {
     let disposed = false
     let docInstance: YjsProjectDoc | null = null
 
     if (!enabled) {
+      destroyTransportProviders()
+      persistenceRef.current?.destroy()
+      persistenceRef.current = null
+      indexedDBProviderRef.current?.destroy()
+      indexedDBProviderRef.current = null
       setIsConnected(false)
       setYjsDoc(null)
+      setLastSyncTime(null)
       return
     }
 
@@ -167,7 +184,7 @@ export function YjsProjectProvider({
       const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
         projectId,
         clientId: doc.doc.clientID.toString(),
-        roomId: shouldUseWsTransport ? wsSession?.roomId : undefined,
+        roomId: wsSessionRef.current?.roomId,
       })) as InitialSyncResponse
 
       if (initialSync.deltaUpdate && initialSync.deltaUpdate.byteLength > 0) {
@@ -186,51 +203,6 @@ export function YjsProjectProvider({
         color: generateColor(userId),
       })
 
-      if (shouldUseWsTransport && wsSession) {
-        const initialKnownSeq =
-          typeof initialSync.serverSeq === 'number' && Number.isFinite(initialSync.serverSeq)
-            ? Math.max(0, Math.floor(initialSync.serverSeq))
-            : 0
-
-        wsProviderRef.current = new CollabWsProvider({
-          doc: doc.doc,
-          awareness: doc.awareness,
-          session: wsSession,
-          clientType: 'electron',
-          initialKnownSeq,
-          refreshSession: refreshCollabSession,
-          onStateChange: (state, error) => {
-            if (disposed) return
-            if (error) {
-              console.warn('[YjsProjectProvider] Collaboration transport state change', {
-                projectId: String(projectId),
-                state,
-                error,
-              })
-            }
-            setIsConnected(state === 'connected')
-          },
-          onPermanentFailure: () => {
-            if (disposed) return
-            console.warn('[YjsProjectProvider] Collaboration websocket permanently failed, falling back to Convex tail', {
-              projectId: String(projectId),
-            })
-            setWsCircuitOpen(true)
-            setIsConnected(false)
-          },
-        })
-        wsProviderRef.current.start()
-      } else {
-        convexProviderRef.current = new YConvexProvider(doc.doc, projectId, convex)
-        awarenessProviderRef.current = new YConvexAwarenessProvider(
-          doc.doc,
-          doc.awareness,
-          projectId,
-          convex
-        )
-        setIsConnected(true)
-      }
-
       persistenceRef.current = new ProjectFilesPersistence(
         doc.files,
         projectId,
@@ -240,13 +212,13 @@ export function YjsProjectProvider({
         userName
       )
 
+      initialKnownSeqRef.current =
+        typeof initialSync.serverSeq === 'number' && Number.isFinite(initialSync.serverSeq)
+          ? Math.max(0, Math.floor(initialSync.serverSeq))
+          : 0
+
       if (disposed) {
-        wsProviderRef.current?.destroy()
-        wsProviderRef.current = null
-        convexProviderRef.current?.destroy()
-        convexProviderRef.current = null
-        awarenessProviderRef.current?.destroy()
-        awarenessProviderRef.current = null
+        destroyTransportProviders()
         persistenceRef.current?.destroy()
         persistenceRef.current = null
         indexedDBProviderRef.current?.destroy()
@@ -270,32 +242,94 @@ export function YjsProjectProvider({
 
     return () => {
       disposed = true
-      wsProviderRef.current?.destroy()
-      wsProviderRef.current = null
-      convexProviderRef.current?.destroy()
-      convexProviderRef.current = null
-      awarenessProviderRef.current?.destroy()
-      awarenessProviderRef.current = null
+      destroyTransportProviders()
       persistenceRef.current?.destroy()
       persistenceRef.current = null
       indexedDBProviderRef.current?.destroy()
       indexedDBProviderRef.current = null
       setIsConnected(false)
       setYjsDoc(null)
+      setLastSyncTime(null)
       docInstance?.destroy()
     }
   }, [
     convex,
+    destroyTransportProviders,
     enabled,
     projectId,
     projectPath,
-    refreshCollabSession,
-    shouldUseWsTransport,
     userId,
     userName,
+  ])
+
+  useEffect(() => {
+    if (!enabled || !yjsDoc) {
+      destroyTransportProviders()
+      setIsConnected(false)
+      return
+    }
+
+    let disposed = false
+    destroyTransportProviders()
+    const session = wsSessionRef.current
+
+    if (shouldUseWsTransport && session) {
+      wsProviderRef.current = new CollabWsProvider({
+        doc: yjsDoc.doc,
+        awareness: yjsDoc.awareness,
+        session,
+        clientType: 'electron',
+        initialKnownSeq: initialKnownSeqRef.current,
+        refreshSession: refreshCollabSession,
+        onStateChange: (state, error) => {
+          if (disposed) return
+          if (error) {
+            console.warn('[YjsProjectProvider] Collaboration transport state change', {
+              projectId: String(projectId),
+              state,
+              error,
+            })
+          }
+          setIsConnected(state === 'connected')
+        },
+        onPermanentFailure: () => {
+          if (disposed) return
+          console.warn('[YjsProjectProvider] Collaboration websocket permanently failed, falling back to Convex tail', {
+            projectId: String(projectId),
+          })
+          setWsCircuitOpen(true)
+          setIsConnected(false)
+        },
+      })
+      wsProviderRef.current.start()
+    } else {
+      convexProviderRef.current = new YConvexProvider(yjsDoc.doc, projectId, convex)
+      awarenessProviderRef.current = new YConvexAwarenessProvider(
+        yjsDoc.doc,
+        yjsDoc.awareness,
+        projectId,
+        convex
+      )
+      setIsConnected(true)
+    }
+
+    return () => {
+      disposed = true
+      destroyTransportProviders()
+      setIsConnected(false)
+    }
+  }, [
+    convex,
+    destroyTransportProviders,
+    enabled,
+    projectId,
+    refreshCollabSession,
+    shouldUseWsTransport,
     wsSession?.projectId,
     wsSession?.roomId,
     wsSession?.collabWsUrl,
+    wsSession?.protocolVersion,
+    yjsDoc,
   ])
 
   useEffect(() => {

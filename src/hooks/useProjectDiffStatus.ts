@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
-import { useAuth } from "@/contexts/AuthContext"
+import { useAuth, type RefreshTokenStatus } from "@/contexts/AuthContext"
 import { isBootstrapOnlyLocalPath } from "@/features/projects/lib/localWorkspaceState"
 import {
   useProjectDiffStore,
@@ -19,7 +19,7 @@ let replicaAuthBlockedUntil = 0
 let hasLoggedReplicaAuthCooldown = false
 let replicaTransientBlockedUntil = 0
 let hasLoggedReplicaTransientCooldown = false
-let authRecoveryPromise: Promise<"refreshed" | "login_started" | "failed"> | null = null
+let authRecoveryPromise: Promise<"refreshed" | "retryable" | "login_started" | "failed"> | null = null
 let lastInteractiveLoginAt = 0
 
 function hashString(input: string): number {
@@ -50,24 +50,28 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 }
 
 async function recoverReplicaAuth(
-  refreshToken: () => Promise<boolean>,
+  refreshToken: () => Promise<RefreshTokenStatus>,
   login: () => Promise<void>
-): Promise<"refreshed" | "login_started" | "failed"> {
+): Promise<"refreshed" | "retryable" | "login_started" | "failed"> {
   if (authRecoveryPromise) {
     return authRecoveryPromise
   }
 
   authRecoveryPromise = (async () => {
     try {
-      const refreshed = await withTimeout(
+      const refreshStatus = await withTimeout(
         refreshToken(),
         AUTH_RECOVERY_TIMEOUT_MS,
         'Auth refresh timed out'
       )
-      if (refreshed) {
+      if (refreshStatus === "refreshed") {
         replicaAuthBlockedUntil = 0
         hasLoggedReplicaAuthCooldown = false
         return "refreshed"
+      }
+
+      if (refreshStatus === "retryable") {
+        return "retryable"
       }
 
       const now = Date.now()

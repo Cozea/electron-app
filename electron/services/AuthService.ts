@@ -25,6 +25,50 @@ export interface Session {
     organizations: OrganizationMembership[]
 }
 
+type AuthRefreshResult =
+  | {
+      ok: true
+      session: Session
+    }
+  | {
+      ok: false
+      reason: 'expired' | 'retryable' | 'missing_session'
+      statusCode?: number
+    }
+
+interface AuthRefreshErrorPayload {
+    error?: string
+    code?: string
+    requestId?: string
+    retryable?: boolean
+    details?: Record<string, unknown>
+}
+
+async function parseJsonBody(response: Response): Promise<unknown> {
+    const text = await response.text()
+    if (!text) return null
+    try {
+        return JSON.parse(text)
+    } catch {
+        return null
+    }
+}
+
+function getRefreshErrorPayload(payload: unknown): AuthRefreshErrorPayload | null {
+    if (!payload || typeof payload !== 'object') return null
+    const data = payload as Record<string, unknown>
+    return {
+        error: typeof data.error === 'string' ? data.error : undefined,
+        code: typeof data.code === 'string' ? data.code : undefined,
+        requestId: typeof data.requestId === 'string' ? data.requestId : undefined,
+        retryable: typeof data.retryable === 'boolean' ? data.retryable : undefined,
+        details:
+            data.details && typeof data.details === 'object'
+                ? (data.details as Record<string, unknown>)
+                : undefined,
+    }
+}
+
 const DEV_AUTH_CALLBACK_TIMEOUT_MS = 2 * 60 * 1000
 
 function renderDevAuthCallbackPage(options: { title: string; message: string }): string {
@@ -430,8 +474,21 @@ export class AuthService {
         ipcMain.handle('auth:refresh', async () => {
             const session = this.loadSession()
             if (!session?.refreshToken) {
-                return null
+                console.warn('[Auth] Refresh skipped because no stored refresh token is available', {
+                    hasSession: Boolean(session),
+                    hasRefreshToken: Boolean(session?.refreshToken),
+                    userId: session?.user?.id ?? null,
+                })
+                return {
+                    ok: false,
+                    reason: 'missing_session',
+                } satisfies AuthRefreshResult
             }
+
+            console.info('[Auth] Attempting access token refresh', {
+                userId: session.user.id,
+                organizationCount: Array.isArray(session.organizations) ? session.organizations.length : 0,
+            })
 
             try {
                 const response = await fetch(`${this.authServerUrl}/auth/refresh`, {
@@ -441,21 +498,75 @@ export class AuthService {
                 })
 
                 if (!response.ok) {
-                    this.clearSession()
-                    return null
+                    const payload = getRefreshErrorPayload(await parseJsonBody(response))
+                    if (response.status === 401 || response.status === 403) {
+                        console.warn('[Auth] Refresh token was rejected by auth server', {
+                            userId: session.user.id,
+                            statusCode: response.status,
+                            code: payload?.code ?? null,
+                            requestId: payload?.requestId ?? null,
+                            message: payload?.error ?? null,
+                            details: payload?.details ?? null,
+                        })
+                        this.clearSession()
+                        return {
+                            ok: false,
+                            reason: 'expired',
+                            statusCode: response.status,
+                        } satisfies AuthRefreshResult
+                    }
+
+                    console.warn('[Auth] Refresh request failed but session was preserved', {
+                        userId: session.user.id,
+                        statusCode: response.status,
+                        code: payload?.code ?? null,
+                        requestId: payload?.requestId ?? null,
+                        message: payload?.error ?? null,
+                        retryable: payload?.retryable ?? null,
+                        details: payload?.details ?? null,
+                    })
+                    return {
+                        ok: false,
+                        reason: 'retryable',
+                        statusCode: response.status,
+                    } satisfies AuthRefreshResult
                 }
 
-                const data = (await response.json()) as { accessToken: string; refreshToken: string }
+                const data = (await response.json()) as { accessToken: string; refreshToken?: string }
+                const nextRefreshToken =
+                    typeof data.refreshToken === 'string' && data.refreshToken.length > 0
+                        ? data.refreshToken
+                        : session.refreshToken
+
+                if (nextRefreshToken === session.refreshToken && (!data.refreshToken || data.refreshToken.length === 0)) {
+                    console.warn('[Auth] Refresh succeeded without a rotated refresh token; preserving existing refresh token', {
+                        userId: session.user.id,
+                    })
+                }
+
                 const newSession = {
                     ...session,
                     accessToken: data.accessToken,
-                    refreshToken: data.refreshToken,
+                    refreshToken: nextRefreshToken,
                 }
                 this.saveSession(newSession)
-                return newSession
-            } catch {
-                this.clearSession()
-                return null
+                console.info('[Auth] Access token refresh succeeded', {
+                    userId: session.user.id,
+                })
+                return {
+                    ok: true,
+                    session: newSession,
+                } satisfies AuthRefreshResult
+            } catch (error) {
+                console.warn('[Auth] Refresh request threw before completion; preserving session', {
+                    userId: session.user.id,
+                    name: error instanceof Error ? error.name : null,
+                    message: error instanceof Error ? error.message : String(error),
+                })
+                return {
+                    ok: false,
+                    reason: 'retryable',
+                } satisfies AuthRefreshResult
             }
         })
     }

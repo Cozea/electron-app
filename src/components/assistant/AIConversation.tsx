@@ -98,6 +98,7 @@ import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
+import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
 import {
@@ -333,12 +334,16 @@ export function AIConversation({
     currentConversationId && projectSlug ? { id: currentConversationId } : "skip"
   )
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
+  const initialModelId = initialGlobalModelSettings.model ?? ''
 
   // Input State
   const [input, setInput] = useState("")
-  const [availableModels, setAvailableModels] = useState<ModelOption[]>([])
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(() => {
+    const fallback = buildProvisionalModelOption(initialModelId)
+    return fallback ? [fallback] : []
+  })
   const [model, setModel] = useState<string>(
-    initialGlobalModelSettings.model ?? ''
+    initialModelId
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
@@ -351,6 +356,7 @@ export function AIConversation({
   )
   const [modelCapabilities, setModelCapabilities] = useState<Record<string, RuntimeModelCapabilities>>({})
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
   const [toolsError, setToolsError] = useState<string | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -535,6 +541,7 @@ export function AIConversation({
     if (accessToken && currentOrganization?.organizationId) return
     setModelsError(null)
     setToolsError(null)
+    setModelsLoaded(false)
   }, [accessToken, currentOrganization?.organizationId])
 
   const toolsByName = useMemo(() => {
@@ -553,14 +560,16 @@ export function AIConversation({
 
   // Fetch allowed models from AI Gateway
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId || !providerStatusLoaded) return
+    if (!accessToken || !currentOrganization?.organizationId) return
 
     let cancelled = false
+    setModelsLoaded(false)
 
     getModelCatalog({
       organizationId: currentOrganization.organizationId,
       accessToken,
-      connectedProviders: providerAuthAvailable ? connectedProviders : undefined,
+      connectedProviders:
+        providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
     })
       .then((data) => {
         if (cancelled) return
@@ -586,11 +595,13 @@ export function AIConversation({
         setModelCapabilities(caps)
         setModelsError(null)
         setAvailableModels(mapped)
+        setModelsLoaded(true)
       })
       .catch((err) => {
         if (cancelled) return
         const message = err instanceof Error && err.message ? err.message : 'Failed to load models'
         setModelsError(message)
+        setModelsLoaded(true)
         console.warn('Failed to fetch models:', err)
       })
 
@@ -1261,7 +1272,7 @@ export function AIConversation({
   const serviceErrorMessage = modelsError || toolsError
   const surfaceErrorMessage = retrySurfaceError ? serviceErrorMessage : (serviceErrorMessage || genericErrorMessage)
   const providerConnectionMessage =
-    !hasSelectableModel && providerStatusLoaded && providerAuthAvailable
+    !hasSelectableModel && modelsLoaded && providerStatusLoaded && providerAuthAvailable
       ? 'Connect an AI provider'
       : null
   const providerAuthMessage =

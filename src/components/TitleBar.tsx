@@ -1,5 +1,6 @@
-import { type ReactNode, useState, useEffect } from "react"
+import { type ReactNode } from "react"
 import { CommandSearch } from "./CommandSearch"
+import { useWindowChrome } from "@/hooks/useWindowChrome"
 
 interface TitleBarProps {
   title?: string
@@ -9,22 +10,7 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = false, children }: TitleBarProps) {
-  const [isFullScreen, setIsFullScreen] = useState(false)
-
-  useEffect(() => {
-    // Get initial fullscreen state
-    window.electronAPI?.window?.isFullScreen().then((fs) => {
-      console.log('[TitleBar] Initial fullscreen state:', fs)
-      setIsFullScreen(fs)
-    })
-
-    // Subscribe to fullscreen changes
-    const cleanup = window.electronAPI?.window?.onFullScreenChange((fs) => {
-      console.log('[TitleBar] Fullscreen changed:', fs)
-      setIsFullScreen(fs)
-    })
-    return () => cleanup?.()
-  }, [])
+  const windowChrome = useWindowChrome()
 
   return (
     <div
@@ -33,7 +19,7 @@ export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = fals
       {/* Traffic lights take ~70px on the left on macOS, but not in fullscreen */}
       <div
         className="shrink-0 transition-all duration-300 ease-in-out"
-        style={{ width: isFullScreen ? 4 : 70 }}
+        style={{ width: windowChrome.titlebarLeadingSpace }}
       />
 
       {/* Content Area (Breadcrumbs, etc.) - No Drag */}

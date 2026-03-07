@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Play, Square, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { getPreviewFailurePresentation } from "@/features/projects/lib/previewFailurePresentation"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
-import type { DevCommandSuggestion } from "@shared/electronApiTypes"
+import type { DevCommandSuggestion, PreviewFailureReason } from "@shared/electronApiTypes"
 import {
     getDevServerConfig,
     detectPackageManager,
@@ -116,7 +117,11 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         })
     }, [actions])
 
-    const markRunUnhealthy = useCallback((reason: string, runId?: string | null) => {
+    const markRunUnhealthy = useCallback((
+        reason: string,
+        failureReason: PreviewFailureReason = 'server_unreachable',
+        runId?: string | null
+    ) => {
         const currentRunId = runId ?? devServerRunIdRef.current
         actions.setServerStatus('unhealthy')
         actions.setServerLifecycle({
@@ -128,14 +133,14 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             runId: currentRunId ?? null,
             reachable: false,
             lastCheckedAt: Date.now(),
-            lastFailureReason: 'server_unreachable',
+            lastFailureReason: failureReason,
             lastFailureMessage: reason,
         })
         addTimelineEvent({
             runId: currentRunId,
             type: 'probe_failed',
             message: reason,
-            details: { failureReason: 'server_unreachable' },
+            details: { failureReason },
         })
     }, [actions, addTimelineEvent])
 
@@ -200,14 +205,22 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 return
             }
 
-            const reason = probe.error || 'Dev server process started but preview URL is not reachable yet.'
-            markRunUnhealthy(reason, runId)
+            const failure = getPreviewFailurePresentation(
+                probe.reason ?? 'server_unreachable',
+                probe.error || 'Dev server process started but preview URL is not reachable yet.',
+                { context: 'server' }
+            )
+            markRunUnhealthy(failure.message, failure.reason, runId)
         } catch (error) {
             if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) {
                 return
             }
-            const message = error instanceof Error ? error.message : 'Dev server reachability probe failed'
-            markRunUnhealthy(message, runId)
+            const failure = getPreviewFailurePresentation(
+                'server_unreachable',
+                error instanceof Error ? error.message : 'Dev server reachability probe failed',
+                { context: 'server' }
+            )
+            markRunUnhealthy(failure.message, failure.reason, runId)
         } finally {
             if (pendingReadyProbeKeyRef.current === probeKey) {
                 pendingReadyProbeKeyRef.current = null
@@ -629,7 +642,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 const timeoutMessage = 'Startup watchdog elapsed before readiness was confirmed.'
                 console.warn('[DevServer] Timeout without readiness confirmation')
                 actions.addServerOutput(`\n[DevServer] ${timeoutMessage}\n`)
-                markRunUnhealthy(timeoutMessage, runId)
+                markRunUnhealthy(timeoutMessage, 'server_unreachable', runId)
             }
         }, timeout)
     }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, markRunUnhealthy, setPanelOpen])

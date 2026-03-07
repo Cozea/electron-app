@@ -10,6 +10,7 @@ import {
   initialDevServerLifecycle,
   transitionDevServerLifecycle,
 } from '@/features/projects/lib/devServerLifecycle'
+import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
@@ -58,17 +59,19 @@ interface DevServerTimelineEvent {
 
 const MAX_TIMELINE_EVENTS = 80
 
-// Patterns that indicate the dev server is ready
+interface ReadyPattern {
+  regex: RegExp
+}
+
+// Only treat output as "ready" when it exposes a concrete local URL/port.
 const READY_PATTERNS = [
-  /Local:\s+https?:\/\/localhost:(\d+)/i,
-  /ready on.*localhost:(\d+)/i,
-  /ready in \d+/i,
-  /listening on.*:(\d+)/i,
-  /started.*localhost:(\d+)/i,
-  /http:\/\/localhost:(\d+)/,
-  /➜\s+Local:\s+https?:\/\/localhost:(\d+)/i, // Vite format
-  /compiled.*successfully/i,
-]
+  { regex: /Local:\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i },
+  { regex: /ready on.*(?:localhost|127\.0\.0\.1):(\d+)/i },
+  { regex: /listening on.*(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/i },
+  { regex: /started.*(?:localhost|127\.0\.0\.1):(\d+)/i },
+  { regex: /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i },
+  { regex: /➜\s+Local:\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i }, // Vite format
+] satisfies ReadyPattern[]
 
 function stripAnsi(input: string): string {
   // eslint-disable-next-line no-control-regex
@@ -177,15 +180,25 @@ export function useDevServerManager({
         const probe = await window.electronAPI.preview.probeUrl({ url, timeoutMs: 2500 })
         if (isStaleRunEvent(runId)) return
         if (!probe.success || !probe.reachable) {
+          const failure = getPreviewFailurePresentation(
+            probe.reason ?? 'server_unreachable',
+            probe.error ?? 'Dev server did not respond to probe',
+            { context: 'server' },
+          )
           probeReachable = false
-          failureReason = probe.reason ?? 'server_unreachable'
-          failureMessage = probe.error ?? 'Dev server did not respond to probe'
+          failureReason = failure.reason
+          failureMessage = failure.message
         }
       } catch (error) {
         if (isStaleRunEvent(runId)) return
+        const failure = getPreviewFailurePresentation(
+          'server_unreachable',
+          error instanceof Error ? error.message : 'Dev server probe failed',
+          { context: 'server' },
+        )
         probeReachable = false
-        failureReason = 'server_unreachable'
-        failureMessage = error instanceof Error ? error.message : 'Dev server probe failed'
+        failureReason = failure.reason
+        failureMessage = failure.message
       }
     }
 
@@ -395,11 +408,10 @@ export function useDevServerManager({
     (line: string): number | null => {
       const cleaned = stripAnsi(line)
       for (const pattern of READY_PATTERNS) {
-        const match = cleaned.match(pattern)
+        const match = cleaned.match(pattern.regex)
         if (match) {
-          // Try to extract port from capture group or use expected port
-          const port = match[1] ? parseInt(match[1], 10) : expectedPortRef.current
-          return port || null
+          const port = Number.parseInt(match[1] || '', 10)
+          return Number.isFinite(port) ? port : null
         }
       }
       return null

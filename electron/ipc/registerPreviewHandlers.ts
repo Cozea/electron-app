@@ -94,10 +94,12 @@ function classifyPreviewFailure(message: string): {
   if (normalized.includes('frame not found')) {
     return { reason: 'frame_not_found', likelyBlocked: false }
   }
+  if (normalized.includes('err_network_changed')) {
+    return { reason: 'network_quality_degraded', likelyBlocked: false }
+  }
   if (
     normalized.includes('err_connection_refused') ||
     normalized.includes('err_connection_reset') ||
-    normalized.includes('err_network_changed') ||
     normalized.includes('failed to fetch') ||
     normalized.includes('timeout')
   ) {
@@ -204,159 +206,111 @@ export function registerPreviewHandlers(
       _event,
       { url, frameName }: { url: string; frameName?: string }
     ): Promise<PreviewInjectBridgeResult> => {
-      console.log('[PreviewBridge][Main] Injection requested', {
-        url,
-        frameName: frameName || '(none)',
-      })
-
-      const win = deps.getMainWindow()
-      if (!win) {
-        return {
-          success: false,
-          error: 'No window available',
-          reason: 'window_unavailable',
-          likelyBlocked: false,
-          headerDiagnostic: typeof url === 'string' ? getHeaderDiagnostic(deps, url) : null,
-        }
-      }
-      if (!url || typeof url !== 'string') {
-        return {
-          success: false,
-          error: 'Missing url',
-          reason: 'invalid_url',
-          likelyBlocked: false,
-          headerDiagnostic: null,
-        }
-      }
-
-      let parsedUrl: URL
       try {
-        parsedUrl = new URL(url)
-      } catch {
-        return {
-          success: false,
-          error: 'Invalid url',
-          reason: 'invalid_url',
-          likelyBlocked: false,
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
-        }
-      }
+        console.log('[PreviewBridge][Main] Injection requested', {
+          url,
+          frameName: frameName || '(none)',
+        })
 
-      if (!isAllowedPreviewUrl(parsedUrl)) {
-        return {
-          success: false,
-          error: 'Only localhost preview URLs are supported',
-          reason: 'unsupported_origin',
-          likelyBlocked: false,
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
-        }
-      }
-
-      // Avoid injecting into the app's own main frame origin.
-      try {
-        const mainUrl = win.webContents.getURL()
-        const mainOrigin = new URL(mainUrl).origin
-        if (mainOrigin === parsedUrl.origin) {
+        const win = deps.getMainWindow()
+        if (!win) {
           return {
             success: false,
-            error: 'Refusing to inject into main frame origin',
+            error: 'No window available',
+            reason: 'window_unavailable',
+            likelyBlocked: false,
+            headerDiagnostic: typeof url === 'string' ? getHeaderDiagnostic(deps, url) : null,
+          }
+        }
+        if (!url || typeof url !== 'string') {
+          return {
+            success: false,
+            error: 'Missing url',
+            reason: 'invalid_url',
+            likelyBlocked: false,
+            headerDiagnostic: null,
+          }
+        }
+
+        let parsedUrl: URL
+        try {
+          parsedUrl = new URL(url)
+        } catch {
+          return {
+            success: false,
+            error: 'Invalid url',
+            reason: 'invalid_url',
+            likelyBlocked: false,
+            headerDiagnostic: getHeaderDiagnostic(deps, url),
+          }
+        }
+
+        if (!isAllowedPreviewUrl(parsedUrl)) {
+          return {
+            success: false,
+            error: 'Only localhost preview URLs are supported',
             reason: 'unsupported_origin',
             likelyBlocked: false,
             headerDiagnostic: getHeaderDiagnostic(deps, url),
           }
         }
-      } catch {
-        // Ignore parse errors (e.g. about:blank during startup)
-      }
 
-      const frame = await findFrameByUrl(deps.getMainWindow, url, { frameName })
-      if (!frame) {
-        const availableFrames = summarizePreviewFrames(deps.getMainWindow)
-        console.warn('[PreviewBridge][Main] Frame not found for injection', {
-          url,
-          frameName: frameName || '(none)',
-          availableFrames,
-        })
-        return {
-          success: false,
-          error: 'Preview frame not found',
-          reason: 'frame_not_found',
-          likelyBlocked: false,
-          frame: {
-            requestedFrameName: frameName,
+        try {
+          const mainUrl = win.webContents.getURL()
+          const mainOrigin = new URL(mainUrl).origin
+          if (mainOrigin === parsedUrl.origin) {
+            return {
+              success: false,
+              error: 'Refusing to inject into main frame origin',
+              reason: 'unsupported_origin',
+              likelyBlocked: false,
+              headerDiagnostic: getHeaderDiagnostic(deps, url),
+            }
+          }
+        } catch {
+          // Ignore parse errors (e.g. about:blank during startup)
+        }
+
+        const frame = await findFrameByUrl(deps.getMainWindow, url, { frameName })
+        if (!frame) {
+          const availableFrames = summarizePreviewFrames(deps.getMainWindow)
+          console.warn('[PreviewBridge][Main] Frame not found for injection', {
+            url,
+            frameName: frameName || '(none)',
             availableFrames,
-          },
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
+          })
+          return {
+            success: false,
+            error: 'Preview frame not found',
+            reason: 'frame_not_found',
+            likelyBlocked: false,
+            frame: {
+              requestedFrameName: frameName,
+              availableFrames,
+            },
+            headerDiagnostic: getHeaderDiagnostic(deps, url),
+          }
         }
-      }
 
-      const frameHref = await getFrameLocationHref(frame)
-      if (frameHref && isChromiumErrorDocumentUrl(frameHref)) {
-        console.warn('[PreviewBridge][Main] Refusing injection into Chromium error document', {
-          requestedUrl: url,
-          requestedFrameName: frameName || '(none)',
-          matchedFrameName: frame.name || '(unnamed)',
-          matchedFrameUrl: frame.url,
-          frameHref,
-        })
-        return {
-          success: false,
-          error: 'Preview frame resolved to Chromium error document (ERR_BLOCKED_BY_RESPONSE)',
-          reason: 'chrome_error_document',
-          likelyBlocked: true,
-          frame: {
-            requestedFrameName: frameName,
-            matchedFrameName: frame.name || '(unnamed)',
-            matchedFrameUrl: frame.url,
-            frameHref,
-            frameTreeNodeId: frame.frameTreeNodeId,
-            routingId: frame.routingId,
-          },
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
-        }
-      }
-
-      try {
-        console.log('[PreviewBridge][Main] Matched frame', {
-          requestedUrl: url,
-          requestedFrameName: frameName || '(none)',
-          matchedFrameName: frame.name || '(unnamed)',
-          matchedFrameUrl: frame.url,
-          frameTreeNodeId: frame.frameTreeNodeId,
-          routingId: frame.routingId,
-        })
-
-        // Force-refresh bridge instance so style/script updates apply immediately.
-        await frame.executeJavaScript(`
-          try {
-            window.__COZEA_BRIDGE_LOADED__ = false;
-            document.getElementById('cozea-highlight')?.remove();
-            document.getElementById('cozea-selected')?.remove();
-            document.getElementById('cozea-highlight-label')?.remove();
-            document.getElementById('cozea-selected-label')?.remove();
-          } catch {}
-        `)
-        await frame.executeJavaScript(BRIDGE_SCRIPT)
-
-        const postInjectHref = await getFrameLocationHref(frame)
-        if (postInjectHref && isChromiumErrorDocumentUrl(postInjectHref)) {
-          console.warn('[PreviewBridge][Main] Bridge injection landed on Chromium error document', {
+        const frameHref = await getFrameLocationHref(frame)
+        if (frameHref && isChromiumErrorDocumentUrl(frameHref)) {
+          console.warn('[PreviewBridge][Main] Refusing injection into Chromium error document', {
             requestedUrl: url,
             requestedFrameName: frameName || '(none)',
             matchedFrameName: frame.name || '(unnamed)',
             matchedFrameUrl: frame.url,
-            frameHref: postInjectHref,
+            frameHref,
           })
           return {
             success: false,
-            error: 'Preview frame is Chromium error document after injection (ERR_BLOCKED_BY_RESPONSE)',
-            reason: 'blocked_response',
+            error: 'Preview frame resolved to Chromium error document (ERR_BLOCKED_BY_RESPONSE)',
+            reason: 'chrome_error_document',
             likelyBlocked: true,
             frame: {
               requestedFrameName: frameName,
               matchedFrameName: frame.name || '(unnamed)',
               matchedFrameUrl: frame.url,
-              frameHref: postInjectHref,
+              frameHref,
               frameTreeNodeId: frame.frameTreeNodeId,
               routingId: frame.routingId,
             },
@@ -364,31 +318,101 @@ export function registerPreviewHandlers(
           }
         }
 
-        console.log('[PreviewBridge][Main] Bridge script injected successfully', {
-          matchedFrameName: frame.name || '(unnamed)',
-          matchedFrameUrl: frame.url,
-        })
-        return {
-          success: true,
-          reason: 'none',
-          likelyBlocked: false,
-          frame: {
-            requestedFrameName: frameName,
+        try {
+          console.log('[PreviewBridge][Main] Matched frame', {
+            requestedUrl: url,
+            requestedFrameName: frameName || '(none)',
             matchedFrameName: frame.name || '(unnamed)',
             matchedFrameUrl: frame.url,
             frameTreeNodeId: frame.frameTreeNodeId,
             routingId: frame.routingId,
-          },
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
+          })
+
+          await frame.executeJavaScript(`
+            try {
+              window.__COZEA_BRIDGE_LOADED__ = false;
+              document.getElementById('cozea-highlight')?.remove();
+              document.getElementById('cozea-selected')?.remove();
+              document.getElementById('cozea-highlight-label')?.remove();
+              document.getElementById('cozea-selected-label')?.remove();
+            } catch {}
+          `)
+          await frame.executeJavaScript(BRIDGE_SCRIPT)
+
+          const postInjectHref = await getFrameLocationHref(frame)
+          if (postInjectHref && isChromiumErrorDocumentUrl(postInjectHref)) {
+            console.warn('[PreviewBridge][Main] Bridge injection landed on Chromium error document', {
+              requestedUrl: url,
+              requestedFrameName: frameName || '(none)',
+              matchedFrameName: frame.name || '(unnamed)',
+              matchedFrameUrl: frame.url,
+              frameHref: postInjectHref,
+            })
+            return {
+              success: false,
+              error: 'Preview frame is Chromium error document after injection (ERR_BLOCKED_BY_RESPONSE)',
+              reason: 'blocked_response',
+              likelyBlocked: true,
+              frame: {
+                requestedFrameName: frameName,
+                matchedFrameName: frame.name || '(unnamed)',
+                matchedFrameUrl: frame.url,
+                frameHref: postInjectHref,
+                frameTreeNodeId: frame.frameTreeNodeId,
+                routingId: frame.routingId,
+              },
+              headerDiagnostic: getHeaderDiagnostic(deps, url),
+            }
+          }
+
+          console.log('[PreviewBridge][Main] Bridge script injected successfully', {
+            matchedFrameName: frame.name || '(unnamed)',
+            matchedFrameUrl: frame.url,
+          })
+          return {
+            success: true,
+            reason: 'none',
+            likelyBlocked: false,
+            frame: {
+              requestedFrameName: frameName,
+              matchedFrameName: frame.name || '(unnamed)',
+              matchedFrameUrl: frame.url,
+              frameTreeNodeId: frame.frameTreeNodeId,
+              routingId: frame.routingId,
+            },
+            headerDiagnostic: getHeaderDiagnostic(deps, url),
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to inject preview bridge'
+          const classified = classifyPreviewFailure(message)
+          console.error('[PreviewBridge][Main] Bridge script injection failed', {
+            requestedUrl: url,
+            requestedFrameName: frameName || '(none)',
+            matchedFrameName: frame.name || '(unnamed)',
+            matchedFrameUrl: frame.url,
+            error: message,
+          })
+          return {
+            success: false,
+            error: message,
+            reason: classified.reason,
+            likelyBlocked: classified.likelyBlocked,
+            frame: {
+              requestedFrameName: frameName,
+              matchedFrameName: frame.name || '(unnamed)',
+              matchedFrameUrl: frame.url,
+              frameTreeNodeId: frame.frameTreeNodeId,
+              routingId: frame.routingId,
+            },
+            headerDiagnostic: getHeaderDiagnostic(deps, url),
+          }
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to inject preview bridge'
+        const message = error instanceof Error ? error.message : 'Preview bridge injection failed unexpectedly'
         const classified = classifyPreviewFailure(message)
-        console.error('[PreviewBridge][Main] Bridge script injection failed', {
+        console.error('[PreviewBridge][Main] Unexpected injection handler failure', {
           requestedUrl: url,
           requestedFrameName: frameName || '(none)',
-          matchedFrameName: frame.name || '(unnamed)',
-          matchedFrameUrl: frame.url,
           error: message,
         })
         return {
@@ -396,14 +420,7 @@ export function registerPreviewHandlers(
           error: message,
           reason: classified.reason,
           likelyBlocked: classified.likelyBlocked,
-          frame: {
-            requestedFrameName: frameName,
-            matchedFrameName: frame.name || '(unnamed)',
-            matchedFrameUrl: frame.url,
-            frameTreeNodeId: frame.frameTreeNodeId,
-            routingId: frame.routingId,
-          },
-          headerDiagnostic: getHeaderDiagnostic(deps, url),
+          headerDiagnostic: typeof url === 'string' ? getHeaderDiagnostic(deps, url) : null,
         }
       }
     }

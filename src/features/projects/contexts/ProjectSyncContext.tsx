@@ -834,7 +834,13 @@ export function ProjectSyncProvider({
    * Handle retry sync.
    */
   const handleRetry = async () => {
-    if (!currentLocalPath || !plan) return
+    if (!currentLocalPath || !plan) {
+      setReplicaPlan(null)
+      setPlan(null)
+      setRequireSyncBeforeContinue(false)
+      setHasRunInitialSync(false)
+      return
+    }
 
     setProgress((prev) => ({
       ...prev,

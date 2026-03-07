@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { featureFlags } from "@/lib/featureFlags"
+import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 
@@ -103,13 +104,12 @@ function DashboardLayoutContent({
   const location = useLocation()
   const sidebar = useOptionalSidebar()
   const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
+  const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
-  const [isFullScreen, setIsFullScreen] = useState(false)
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
-  const isSettingsWindow =
-    typeof window !== 'undefined' && window.electronAPI?.windowContext === 'settings'
-  const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
-  const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
+  const isSettingsWindow = windowChrome.windowContext === 'settings'
+  const isMacClient = windowChrome.isMac
+  const isWindowsClient = windowChrome.isWindows
   const effectiveBreadcrumbAddon =
     normalizedPath === '/settings/ai' || normalizedPath === '/workspace/ai' ? undefined : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
@@ -122,29 +122,6 @@ function DashboardLayoutContent({
   }, [closeAssistantPanel])
 
   useEffect(() => {
-    if (!isSettingsWindow || !isMacClient) return
-
-    let isMounted = true
-
-    void window.electronAPI?.window?.isFullScreen?.()
-      .then((fullscreen) => {
-        if (isMounted) setIsFullScreen(Boolean(fullscreen))
-      })
-      .catch(() => {
-        if (isMounted) setIsFullScreen(false)
-      })
-
-    const cleanup = window.electronAPI?.window?.onFullScreenChange?.((fullscreen) => {
-      if (isMounted) setIsFullScreen(Boolean(fullscreen))
-    })
-
-    return () => {
-      isMounted = false
-      cleanup?.()
-    }
-  }, [isMacClient, isSettingsWindow])
-
-  useEffect(() => {
     if (!isSettingsWindow) return
     if (normalizedPath.startsWith('/settings/')) return
     navigate('/settings/account', { replace: true })
@@ -154,13 +131,16 @@ function DashboardLayoutContent({
     const activeSettingsPath = SETTINGS_WINDOW_ITEMS.some((item) => item.href === normalizedPath)
       ? normalizedPath
       : '/settings/account'
-    const leftInset = isMacClient ? (isFullScreen ? 8 : 74) : 12
+    const leftInset = isMacClient ? windowChrome.wideLeftInset : 12
     const rightInset = isWindowsClient ? windowsCaptionControlsWidth : 12
 
     return (
       <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
         <header className="titlebar-drag-region bdry-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-          <div className="flex h-11 items-center gap-3" style={{ paddingLeft: leftInset, paddingRight: rightInset }}>
+          <div
+            className="flex h-11 items-center gap-3 transition-[padding] duration-200 ease-out"
+            style={{ paddingLeft: leftInset, paddingRight: rightInset }}
+          >
             <p className="titlebar-no-drag shrink-0 text-sm font-semibold tracking-tight">
               Settings
             </p>

@@ -39,6 +39,7 @@ import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 import { formatReplicaSyncError } from '../lib/replicaErrorPresentation'
+import { markRecentProjectOpenSync } from '../lib/recentProjectOpenSync'
 import { buildProjectPath } from '../lib/projectRoutes'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
@@ -326,6 +327,7 @@ export function ProjectListRow({
 
             // Small delay to show the ready state
             setTimeout(() => {
+                markRecentProjectOpenSync(String(project._id))
                 if (openCheck?.gateSyncScreen && effectiveLocalPath && onRequireSyncReview) {
                     void onRequireSyncReview({
                         projectId: project._id,

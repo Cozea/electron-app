@@ -41,6 +41,7 @@ import type * as projectMessages from "../projectMessages.js";
 import type * as projectPresence from "../projectPresence.js";
 import type * as projectReplicaGit from "../projectReplicaGit.js";
 import type * as projectReplicaLfs from "../projectReplicaLfs.js";
+import type * as projectTasks from "../projectTasks.js";
 import type * as projectTemplates from "../projectTemplates.js";
 import type * as projects from "../projects.js";
 import type * as toolApprovals from "../toolApprovals.js";
@@ -90,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   projectPresence: typeof projectPresence;
   projectReplicaGit: typeof projectReplicaGit;
   projectReplicaLfs: typeof projectReplicaLfs;
+  projectTasks: typeof projectTasks;
   projectTemplates: typeof projectTemplates;
   projects: typeof projects;
   toolApprovals: typeof toolApprovals;

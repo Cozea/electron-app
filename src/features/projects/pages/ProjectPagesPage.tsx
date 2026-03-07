@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -23,6 +23,7 @@ import {
     type ElementContextMenuData,
 } from '@/utils/previewBridge'
 import { ServerControl } from '../components/ServerControl'
+import { TaskFocusOverlay } from '../components/TaskFocusOverlay'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
@@ -59,8 +60,10 @@ import { cn } from '@/lib/utils'
 import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
+import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 
 interface ProjectPresenceUser extends CompactPresenceUser {
     id: string
@@ -120,10 +123,15 @@ function resolvePreviewEmbedModeForRun(
 
 export function ProjectPagesPage() {
     const navigate = useViewTransitionNavigate()
+    const location = useLocation()
     const [searchParams, setSearchParams] = useSearchParams()
     const { project, projectIdParam, slugParam } = useAccessibleProject()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
+    const locationState = (location.state as TaskOverlayLocationState | null) ?? null
+    const [taskOverlay, setTaskOverlay] = useState<TaskOverlayPayload | null>(
+        () => locationState?.taskOverlay ?? null
+    )
 
     // Store state
     const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
@@ -182,10 +190,29 @@ export function ProjectPagesPage() {
     const previewFallbackAttemptRef = useRef(0)
     const nonFocusedEmbedProbeKeyRef = useRef<string | null>(null)
     const embedModeHydratedRunIdRef = useRef<string | null>(null)
+    const previewCaptureScheduledRunIdRef = useRef<string | null>(null)
+    const latestPreviewCaptureStateRef = useRef<{
+        serverStatus: ServerStatus
+        serverPort: number | null
+        projectId: string | null
+        capture: (() => Promise<void>) | null
+    }>({
+        serverStatus,
+        serverPort,
+        projectId: project?._id ?? null,
+        capture: null,
+    })
 
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
     const manualInspectorEnabled = useRef(false)
+
+    useEffect(() => {
+        // Keep task context through same-route search param cleanup after task-driven navigation.
+        if (locationState?.taskOverlay) {
+            setTaskOverlay(locationState.taskOverlay)
+        }
+    }, [locationState?.taskOverlay])
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
@@ -229,6 +256,25 @@ export function ProjectPagesPage() {
             .slice(-6)
             .reverse()
     }, [activeServerRunId, previewTimeline])
+    const hasPreviewFailure = Boolean(bridgeError || previewReadiness.lastFailureMessage || previewReadiness.lastFailureReason)
+    const previewFailurePresentation = useMemo(() => {
+        if (!hasPreviewFailure) return null
+
+        return getPreviewFailurePresentation(
+            previewReadiness.lastFailureReason,
+            bridgeError ?? previewReadiness.lastFailureMessage,
+            { blocked: previewEmbedBlocked, context: 'preview' }
+        )
+    }, [
+        bridgeError,
+        hasPreviewFailure,
+        previewEmbedBlocked,
+        previewReadiness.lastFailureMessage,
+        previewReadiness.lastFailureReason,
+    ])
+    const showPreviewFailureOverlay = serverStatus === 'running' && (
+        previewFailurePresentation?.blocked || previewFailurePresentation?.reason === 'network_quality_degraded'
+    )
     const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
     const shouldElevateInspectorSidebar = isFocusedPreview && visualEditorOpen
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
@@ -473,7 +519,12 @@ export function ProjectPagesPage() {
 
     // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
     useEffect(() => {
-        if (serverStatus !== 'running' || !serverPort || !project?._id) return
+        if (serverStatus !== 'running' || !serverPort || !project?._id || !activeServerRunId) {
+            previewCaptureScheduledRunIdRef.current = null
+            return
+        }
+        if (previewCaptureScheduledRunIdRef.current === activeServerRunId) return
+        previewCaptureScheduledRunIdRef.current = activeServerRunId
         const t1 = setTimeout(() => {
             void captureAndUploadProjectPreview()
         }, 6000)
@@ -484,31 +535,61 @@ export function ProjectPagesPage() {
             clearTimeout(t1)
             clearTimeout(t2)
         }
-    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+    }, [activeServerRunId, serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+
+    useEffect(() => {
+        latestPreviewCaptureStateRef.current = {
+            serverStatus,
+            serverPort,
+            projectId: project?._id ?? null,
+            capture: captureAndUploadProjectPreview,
+        }
+    }, [captureAndUploadProjectPreview, project?._id, serverPort, serverStatus])
 
     // On exit from Pages page: capture latest home page and replace project showcase
     useEffect(() => {
         return () => {
-            if (serverStatus === 'running' && serverPort && project?._id) {
-                void captureAndUploadProjectPreview()
+            const latest = latestPreviewCaptureStateRef.current
+            if (latest.serverStatus === 'running' && latest.serverPort && latest.projectId) {
+                void latest.capture?.()
             }
         }
-    }, [serverStatus, serverPort, project?._id, captureAndUploadProjectPreview])
+    }, [])
 
-    // Handle focus query param from PagesList clicks
+    // Handle route/focus query params from external navigation
     useEffect(() => {
+        const routeParam = searchParams.get('route')
         const focus = searchParams.get('focus')
-        if (focus !== null && routes.length > 0) {
-            const index = parseInt(focus, 10)
-            if (index >= 0 && index < routes.length) {
-                setFocusedPageIndex(index)
+        if (routes.length > 0 && (routeParam !== null || focus !== null)) {
+            let resolvedIndex: number | null = null
+
+            if (routeParam !== null) {
+                const normalizedRoute = normalizePreviewPath(routeParam)
+                const routeIndex = routes.findIndex(
+                    (route) => normalizePreviewPath(route.path) === normalizedRoute
+                )
+                if (routeIndex >= 0) {
+                    resolvedIndex = routeIndex
+                }
             }
-            // Clear the param after setting focus
+
+            if (resolvedIndex === null && focus !== null) {
+                const index = parseInt(focus, 10)
+                if (index >= 0 && index < routes.length) {
+                    resolvedIndex = index
+                }
+            }
+
+            if (resolvedIndex !== null) {
+                setFocusedPageIndex(resolvedIndex)
+            }
+
             const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('route')
             nextParams.delete('focus')
             setSearchParams(nextParams, { replace: true })
         }
-    }, [searchParams, routes.length, setSearchParams])
+    }, [searchParams, routes, setSearchParams])
 
     // When closing the inspector (X, Escape), disable inspector, close sidebar and context menu
     const handleCloseInspectorSidebar = useCallback(() => {
@@ -594,15 +675,16 @@ export function ProjectPagesPage() {
     }, [actions, activeServerRunId])
 
     const setPreviewFailure = useCallback((reason: PreviewFailureReason, message: string, blocked: boolean) => {
-        setBridgeError(message)
-        setPreviewEmbedBlocked(blocked)
+        const failure = getPreviewFailurePresentation(reason, message, { blocked, context: 'preview' })
+        setBridgeError(failure.message)
+        setPreviewEmbedBlocked(failure.blocked)
         actions.setPreviewReadiness({
             runId: activeServerRunId,
             bridgeReady: false,
             embedded: false,
             lastCheckedAt: Date.now(),
-            lastFailureReason: reason,
-            lastFailureMessage: message,
+            lastFailureReason: failure.reason,
+            lastFailureMessage: failure.message,
         })
     }, [actions, activeServerRunId])
 
@@ -651,26 +733,35 @@ export function ProjectPagesPage() {
                 return true
             }
 
-            const message = probe.error || 'Preview URL is unreachable'
-            setPreviewFailure(probe.reason ?? 'server_unreachable', message, false)
+            const failure = getPreviewFailurePresentation(
+                probe.reason ?? 'server_unreachable',
+                probe.error || 'Preview URL is unreachable',
+                { context: 'preview' }
+            )
+            setPreviewFailure(failure.reason, failure.message, failure.blocked)
             addPreviewTimelineEvent({
                 type: 'probe_failed',
-                message,
+                message: failure.message,
                 details: {
                     source,
-                    reason: probe.reason,
+                    reason: failure.reason,
+                    rawError: probe.error ?? undefined,
                 },
             })
             return false
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Preview probe failed'
-            setPreviewFailure('server_unreachable', message, false)
+            const failure = getPreviewFailurePresentation(
+                'server_unreachable',
+                error instanceof Error ? error.message : 'Preview probe failed',
+                { context: 'preview' }
+            )
+            setPreviewFailure(failure.reason, failure.message, failure.blocked)
             addPreviewTimelineEvent({
                 type: 'probe_failed',
-                message,
+                message: failure.message,
                 details: {
                     source,
-                    reason: 'server_unreachable',
+                    reason: failure.reason,
                 },
             })
             return false
@@ -1219,14 +1310,19 @@ export function ProjectPagesPage() {
                 } else {
                     const errorMessage = result.error ?? 'Cannot inject into preview'
                     const reason = result.reason ?? 'bridge_injection_failed'
-                    addBridgeLog(`Injection failed: ${errorMessage}`, 'error')
+                    const failure = getPreviewFailurePresentation(reason, errorMessage, {
+                        blocked: Boolean(result.likelyBlocked ?? (reason === 'blocked_response' || reason === 'chrome_error_document')),
+                        context: 'preview',
+                    })
+                    addBridgeLog(`Injection failed: ${failure.message}`, 'error')
                     addPreviewTimelineEvent({
                         type: 'bridge_inject_failed',
-                        message: errorMessage,
+                        message: failure.message,
                         details: {
-                            reason,
+                            reason: failure.reason,
                             mode: previewEmbedMode,
                             headerDiagnostic: result.headerDiagnostic ?? undefined,
+                            rawError: result.error ?? undefined,
                         },
                     })
 
@@ -1249,17 +1345,21 @@ export function ProjectPagesPage() {
                         return
                     }
 
-                    const isBlocked = Boolean(result.likelyBlocked ?? (reason === 'blocked_response' || reason === 'chrome_error_document'))
-                    setPreviewFailure(reason, errorMessage, isBlocked)
+                    setPreviewFailure(failure.reason, failure.message, failure.blocked)
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : 'Unknown error'
+                const failure = getPreviewFailurePresentation('bridge_injection_failed', `Injection error: ${msg}`, {
+                    blocked: true,
+                    context: 'preview',
+                })
                 addPreviewTimelineEvent({
                     type: 'bridge_inject_failed',
-                    message: msg,
+                    message: failure.message,
                     details: {
-                        reason: 'bridge_injection_failed',
+                        reason: failure.reason,
                         mode: previewEmbedMode,
+                        rawError: msg,
                     },
                 })
 
@@ -1282,8 +1382,8 @@ export function ProjectPagesPage() {
                     return
                 }
 
-                setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
-                addBridgeLog(`Injection error: ${msg}`, 'error')
+                setPreviewFailure(failure.reason, failure.message, failure.blocked)
+                addBridgeLog(`Injection error: ${failure.message}`, 'error')
             }
         }
     }, [actions, activeServerRunId, addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, isFocusedPreview, previewEmbedMode, previewRoute?.path, probeFocusedPreviewReachability, scheduleBridgeReadyTimeout, setPreviewFailure])
@@ -1326,13 +1426,18 @@ export function ProjectPagesPage() {
             } else {
                 const errorMessage = result.error ?? 'Cannot inject into preview'
                 const reason = result.reason ?? 'bridge_injection_failed'
-                addBridgeLog(`Injection failed: ${errorMessage}`, 'error')
+                const failure = getPreviewFailurePresentation(reason, errorMessage, {
+                    blocked: Boolean(result.likelyBlocked ?? true),
+                    context: 'preview',
+                })
+                addBridgeLog(`Injection failed: ${failure.message}`, 'error')
                 addPreviewTimelineEvent({
                     type: 'bridge_inject_failed',
-                    message: errorMessage,
+                    message: failure.message,
                     details: {
                         mode: previewEmbedMode,
-                        reason,
+                        reason: failure.reason,
+                        rawError: result.error ?? undefined,
                     },
                 })
 
@@ -1355,11 +1460,15 @@ export function ProjectPagesPage() {
                     return false
                 }
 
-                setPreviewFailure(reason, errorMessage, Boolean(result.likelyBlocked ?? true))
+                setPreviewFailure(failure.reason, failure.message, failure.blocked)
                 return false
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Unknown error'
+            const failure = getPreviewFailurePresentation('bridge_injection_failed', `Injection error: ${msg}`, {
+                blocked: true,
+                context: 'preview',
+            })
             if (previewEmbedMode === 'standard') {
                 previewFallbackAttemptRef.current += 1
                 addBridgeLog(`Injection error in standard mode: ${msg}. Switching to credentialless mode.`, 'info')
@@ -1379,14 +1488,15 @@ export function ProjectPagesPage() {
                 return false
             }
 
-                setPreviewFailure('bridge_injection_failed', `Injection error: ${msg}`, true)
-                addBridgeLog(`Injection error: ${msg}`, 'error')
+            setPreviewFailure(failure.reason, failure.message, failure.blocked)
+            addBridgeLog(`Injection error: ${failure.message}`, 'error')
             addPreviewTimelineEvent({
                 type: 'bridge_inject_failed',
-                message: msg,
+                message: failure.message,
                 details: {
                     mode: previewEmbedMode,
-                    reason: 'bridge_injection_failed',
+                    reason: failure.reason,
+                    rawError: msg,
                 },
             })
             return false
@@ -1555,23 +1665,28 @@ export function ProjectPagesPage() {
         closeInspectorContextMenu()
     }, [closeInspectorContextMenu, inspectorContextMenu, navigate, projectBasePath, projectPath])
 
-    const handleOpenCode = (file: string, line?: number, column?: number) => {
-        // Use full path when available so Files page can open/select the file in tree and tabs
+    const handleOpenCode = useCallback(async (file: string, line?: number, column?: number) => {
         const normalizedFile = file.replace(/\\/g, '/')
         const normalizedProject = projectPath ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '') : null
         const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
-        const pathForUrl = normalizedProject
-            ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
-                ? normalizedFile
-                : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
-            : normalizedFile
+        const resolvedRelativePath =
+            projectPath
+                ? await resolveProjectSourcePath(normalizedFile, projectPath)
+                : null
+        const pathForUrl = resolvedRelativePath
+            ? (normalizedProject ? `${normalizedProject}/${resolvedRelativePath.replace(/^\/+/, '')}` : resolvedRelativePath)
+            : normalizedProject
+                ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
+                    ? normalizedFile
+                    : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
+                : normalizedFile
         const params = new URLSearchParams()
         params.set('path', pathForUrl)
         if (line) params.set('line', String(line))
         if (column) params.set('column', String(column))
         if (!projectBasePath) return
         navigate(`${projectBasePath}?${params.toString()}`)
-    }
+    }, [navigate, projectBasePath, projectPath])
 
     const reloadFocusedPreview = useCallback((reason: 'manual' | 'fallback' = 'manual') => {
         clearBridgeReadyTimeout()
@@ -2066,7 +2181,7 @@ export function ProjectPagesPage() {
                     )}
                 >
                     {/* Content */}
-                    <div className="flex-1 overflow-hidden flex flex-col">
+                    <div className="relative flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (
                             /* Empty State */
                             <div
@@ -2261,29 +2376,32 @@ export function ProjectPagesPage() {
                                                         </div>
                                                     )}
 
-                                                    {/* Action buttons overlay */}
-                                                    <div className="pointer-events-none absolute bottom-4 right-4 flex translate-y-2 items-center gap-2 opacity-0 transition-all duration-200 ease-out group-hover/focused-preview:pointer-events-auto group-hover/focused-preview:translate-y-0 group-hover/focused-preview:opacity-100">
-                                                        <Button
-                                                            variant="secondary"
-                                                            size="sm"
-                                                            onClick={() => handleOpenCode(previewRoute.file)}
-                                                            className="shadow-md"
-                                                        >
-                                                            <FileText className="h-3.5 w-3.5 mr-1.5" />
-                                                            Edit Code
-                                                        </Button>
-                                                        {serverStatus === 'running' && (
+                                                    {taskOverlay?.context.kind === 'page' ? (
+                                                        <TaskFocusOverlay task={taskOverlay} className="z-30" />
+                                                    ) : (
+                                                        <div className="pointer-events-none absolute bottom-4 right-4 flex translate-y-2 items-center gap-2 opacity-0 transition-all duration-200 ease-out group-hover/focused-preview:pointer-events-auto group-hover/focused-preview:translate-y-0 group-hover/focused-preview:opacity-100">
                                                             <Button
                                                                 variant="secondary"
                                                                 size="sm"
-                                                                onClick={openFocusedPreviewExternally}
+                                                                onClick={() => handleOpenCode(previewRoute.file)}
                                                                 className="shadow-md"
                                                             >
-                                                                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                                                                <FileText className="h-3.5 w-3.5 mr-1.5" />
                                                                 Open
                                                             </Button>
-                                                        )}
-                                                    </div>
+                                                            {serverStatus === 'running' && (
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    size="sm"
+                                                                    onClick={openFocusedPreviewExternally}
+                                                                    className="shadow-md"
+                                                                >
+                                                                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                                                                    Browser
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    )}
 
                                                     {/* Page name pill */}
                                                     <div className="absolute bottom-4 left-4 flex items-center gap-2">
@@ -2292,12 +2410,14 @@ export function ProjectPagesPage() {
                                                         </div>
                                                     </div>
 
-                                                    {serverStatus === 'running' && previewEmbedBlocked && (
+                                                    {showPreviewFailureOverlay && (
                                                         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm">
                                                             <div className="max-w-md rounded-xl border border-border/80 bg-card p-4 shadow-xl">
-                                                                <p className="text-sm font-semibold">Embedded preview unavailable</p>
+                                                                <p className="text-sm font-semibold">
+                                                                    {previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
+                                                                </p>
                                                                 <p className="mt-1 text-xs text-muted-foreground">
-                                                                    {bridgeError ?? 'This page blocks iframe embedding in isolated mode.'}
+                                                                    {previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
                                                                 </p>
                                                                 {recentPreviewTimeline.length > 0 && (
                                                                     <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-2">
@@ -2319,7 +2439,7 @@ export function ProjectPagesPage() {
                                                                     </Button>
                                                                     <Button size="sm" onClick={openFocusedPreviewExternally}>
                                                                         <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                                                                        Open
+                                                                        Browser
                                                                     </Button>
                                                                 </div>
                                                             </div>
@@ -2442,6 +2562,7 @@ export function ProjectPagesPage() {
                                 )}
                             </div>
                         )}
+
                     </div>
 
                     {/* Terminal Panel */}

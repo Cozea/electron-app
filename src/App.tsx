@@ -36,7 +36,7 @@ function AppWithOrganization() {
     <OrganizationProvider
       accessToken={accessToken}
       initialOrganizations={organizations}
-      onTokenExpired={refreshToken}
+      onTokenExpired={async () => (await refreshToken()) === 'refreshed'}
     >
       <Suspense fallback={<FullscreenLoading />}>
         <AppContent />
