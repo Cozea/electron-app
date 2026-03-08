@@ -967,6 +967,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     : null
   const canManageSeats = seatManagement?.canManageSeats ?? false
   const canOpenCheckout = currentOrganization?.role === 'admin'
+  const hasPastDueEntitlement = entitlement?.status === 'past_due'
   const seatManagedEntitlement = isSeatManagedEntitlement({
     source: entitlement?.source,
     plan: entitlement?.plan,
@@ -1432,6 +1433,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         <Alert variant="destructive" className="mb-6">
           <AlertTitle>Seat assignment failed</AlertTitle>
           <AlertDescription>{seatMutationError}</AlertDescription>
+        </Alert>
+      )}
+
+      {hasPastDueEntitlement && (
+        <Alert variant="destructive" className="mb-6">
+          <XCircle className="h-4 w-4" />
+          <AlertTitle>Payment failed</AlertTitle>
+          <AlertDescription>
+            Your latest Stripe payment was declined. Update your payment method in Manage Billing to
+            restore hosted AI access and included usage.
+          </AlertDescription>
         </Alert>
       )}
 
@@ -2066,12 +2078,19 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               <div>
                 <p className="text-sm font-medium">Usage left</p>
                 <p className="text-xs text-muted-foreground">
-                  {includedUsagePerCycleCents > 0
+                  {hasPastDueEntitlement
+                    ? 'Your latest payment failed, so hosted AI usage is locked until Stripe confirms payment.'
+                    : includedUsagePerCycleCents > 0
                     ? hasActiveMaxTrial
                       ? `${Math.round(includedUsageLeftPercent)}% of your trial allocation remains. Trial usage is capped at ${MAX_TRIAL_INCLUDED_PERCENT}% of the full Max allowance.`
                       : `${Math.round(includedUsageLeftPercent)}% remaining in this billing cycle.`
                     : 'Your current plan does not include hosted AI usage.'}
                 </p>
+                {hasPastDueEntitlement ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Update your payment method in Manage Billing to continue using Cozea-hosted AI.
+                  </p>
+                ) : null}
                 {hasActiveMaxTrial ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     {maxTrialEndsLabel

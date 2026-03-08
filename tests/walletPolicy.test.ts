@@ -16,6 +16,16 @@ describe('wallet policy', () => {
     ).toBe(0)
   })
 
+  it('returns zero included usage for past-due subscriptions', () => {
+    expect(
+      resolveEffectiveIncludedWalletCents({
+        plan: 'max',
+        cycle: 'monthly',
+        status: 'past_due',
+      })
+    ).toBe(0)
+  })
+
   it('keeps the limited trial allocation for active max trials', () => {
     expect(
       resolveEffectiveIncludedWalletCents({
