@@ -124,15 +124,11 @@ function isLegacySubscriptionEntitled(
 ): boolean {
   if (!subscription) return false
   if (subscription.plan === "free") return false
-  return (
-    subscription.status === "active" ||
-    subscription.status === "trialing" ||
-    subscription.status === "past_due"
-  )
+  return subscription.status === "active" || subscription.status === "trialing"
 }
 
 export function isAccountStatusEntitled(status: AccountSubscriptionStatus): boolean {
-  return status === "active" || status === "trialing" || status === "past_due"
+  return status === "active" || status === "trialing"
 }
 
 function dedupeActiveAssignments(
@@ -516,10 +512,11 @@ export async function resolveAccountEntitlementForOrganization(
     }
   }
 
-  if (isLegacySubscriptionEntitled(organization.subscription)) {
+  if (organization.subscription && organization.subscription.plan !== "free") {
     const memberCount = await countOrganizationMembers(ctx, organizationId)
     const legacyPlan = normalizeAccountPlan(organization.subscription.plan)
     const legacyStatus = mapLegacyStatus(organization.subscription.status)
+    const legacyEntitled = isLegacySubscriptionEntitled(organization.subscription)
 
     if (isSeatManagedPlan(legacyPlan)) {
       const legacySeatCount =
@@ -536,9 +533,9 @@ export async function resolveAccountEntitlementForOrganization(
         plan: legacyPlan,
         status: legacyStatus,
         trialActive: organization.subscription.status === "trialing",
-        hasPaidSeat: true,
-        canUseAi: true,
-        canUseSync: true,
+        hasPaidSeat: legacyEntitled,
+        canUseAi: legacyEntitled,
+        canUseSync: legacyEntitled,
         seatCounts: {
           total: legacySeatCount,
           assigned: memberCount,
@@ -566,8 +563,8 @@ export async function resolveAccountEntitlementForOrganization(
         cycle: "monthly",
         trialActive: organization.subscription.status === "trialing",
         hasPaidSeat: false,
-        canUseAi: true,
-        canUseSync: true,
+        canUseAi: legacyEntitled,
+        canUseSync: legacyEntitled,
         seatCounts: {
           total: 0,
           assigned: 0,
