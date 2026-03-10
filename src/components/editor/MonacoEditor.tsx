@@ -22,7 +22,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
     const { yjsDoc } = useYjsProject()
-    const theme = useMonacoTheme('sidebar')
+    const { themeName, applyTheme } = useMonacoTheme('sidebar')
 
     useEffect(() => {
         pathRef.current = path
@@ -150,7 +150,8 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
                 path={modelPath}
                 value={model.currentContent}
                 keepCurrentModel
-                theme={theme}
+                beforeMount={() => applyTheme()}
+                theme={themeName}
                 onChange={handleChange}
                 onMount={handleEditorMount}
                 options={{

@@ -103,7 +103,7 @@ export function CodeDiffViewer({
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const modelRef = useRef<monaco.editor.IDiffEditorModel | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const themeName = useMonacoTheme(themeVariant)
+  const { themeName, applyTheme } = useMonacoTheme(themeVariant)
 
   // Detect language from file path or use provided language
   const detectedLanguage = useMemo(() => {
@@ -182,6 +182,7 @@ export function CodeDiffViewer({
       >
         <DiffEditor
           height="100%"
+          beforeMount={() => applyTheme()}
           language={detectedLanguage}
           original={original}
           modified={modified}

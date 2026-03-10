@@ -15,6 +15,43 @@ const COLORS = [
 ]
 
 const ALLOWED_COMMENT_REACTIONS = new Set(["👍", "❤️", "🎉", "😄", "🚀"])
+const EXCLUDED_ACTIVITY_DIRECTORIES = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  ".nuxt",
+  ".output",
+  ".svelte-kit",
+  ".vercel",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  ".turbo",
+  ".cache",
+  ".parcel-cache",
+  ".pnpm-store",
+  ".yarn",
+  "tmp",
+  "temp",
+  "logs",
+  "vendor",
+  "target",
+  "__pycache__",
+])
+const EXCLUDED_ACTIVITY_FILE_SUFFIXES = [
+  ".log",
+  ".tmp",
+  ".temp",
+  ".swp",
+  ".swo",
+  ".pid",
+  "prisma/dev.db",
+  "prisma/dev.db-wal",
+  "prisma/dev.db-shm",
+  ".tsbuildinfo",
+  ".eslintcache",
+]
 
 function generateColor(userId: string): string {
   let hash = 0
@@ -22,6 +59,24 @@ function generateColor(userId: string): string {
     hash = userId.charCodeAt(i) + ((hash << 5) - hash)
   }
   return COLORS[Math.abs(hash) % COLORS.length]
+}
+
+function normalizeActivityPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").replace(/^\/+/, "").trim().toLowerCase()
+}
+
+function shouldExcludeActivityPath(filePath: string): boolean {
+  const normalizedPath = normalizeActivityPath(filePath)
+  if (!normalizedPath) return false
+
+  const parts = normalizedPath.split("/")
+  if (parts.some((segment) => EXCLUDED_ACTIVITY_DIRECTORIES.has(segment))) {
+    return true
+  }
+
+  return EXCLUDED_ACTIVITY_FILE_SUFFIXES.some((suffix) => (
+    normalizedPath.endsWith(suffix) || normalizedPath.endsWith(`/${suffix}`)
+  ))
 }
 
 /**
@@ -56,6 +111,9 @@ export const logFileChange = mutation({
   },
   handler: async (ctx, args) => {
     const { projectId, userId, filePath, changeType, oldContent, newContent, additions, deletions, totalLines, origin, userName, oldPath } = args
+    if (shouldExcludeActivityPath(filePath)) {
+      return null
+    }
 
     // Generate color for user
     const userColor = userId ? generateColor(userId) : "#6b7280"
@@ -95,11 +153,14 @@ export const getRecentActivity = query({
       .query("fileChanges")
       .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
       .order("desc")
-      .take(limit)
+      .take(Math.min(limit * 5, 250))
+    const visibleChanges = changes
+      .filter((change) => !shouldExcludeActivityPath(change.filePath))
+      .slice(0, limit)
 
     // Fetch user images for each change
     const results = await Promise.all(
-      changes.map(async (change) => {
+      visibleChanges.map(async (change) => {
         let userImage: string | undefined = undefined
         if (change.userId) {
           const user = await ctx.db.get(change.userId)
@@ -138,6 +199,7 @@ export const getChangeWithContent = query({
   handler: async (ctx, args) => {
     const change = await ctx.db.get(args.changeId)
     if (!change) return null
+    if (shouldExcludeActivityPath(change.filePath)) return null
 
     // Fetch user image if userId exists
     let userImage: string | undefined = undefined
@@ -424,7 +486,7 @@ export const getUnreadChangesCount = query({
 
     // Count only changes from other users (not the current user)
     const unreadCount = changes.filter(
-      (change) => change.userId !== userId
+      (change) => change.userId !== userId && !shouldExcludeActivityPath(change.filePath)
     ).length
 
     return unreadCount

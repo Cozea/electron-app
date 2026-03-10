@@ -1,5 +1,5 @@
 import { app, dialog, shell, type BrowserWindow, type IpcMain } from 'electron'
-import { exec } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -20,10 +20,27 @@ interface RegisterSettingsStorageHandlersDeps {
 }
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const STORAGE_SNAPSHOT_TTL_MS = 30_000
 const DEFAULT_STORAGE_PAGE_SIZE = 10
 const MAX_STORAGE_PAGE_SIZE = 100
 const STORAGE_BUILD_CACHE_DIR_NAMES = ['dist', 'build', '.next'] as const
+const DARWIN_CAPACITY_PROBE_TIMEOUT_MS = 15_000
+const DARWIN_SWIFT_CAPACITY_SCRIPT = `
+import Foundation
+
+let rawPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : NSHomeDirectory()
+let path = NSString(string: rawPath).expandingTildeInPath
+let url = URL(fileURLWithPath: path)
+let values = try url.resourceValues(forKeys: [
+  .volumeAvailableCapacityForImportantUsageKey,
+  .volumeTotalCapacityKey,
+])
+
+let total = values.volumeTotalCapacity ?? 0
+let free = values.volumeAvailableCapacityForImportantUsage ?? 0
+print("\\(total),\\(free)")
+`.trim()
 
 interface StorageSnapshotCacheEntry {
   projectsDirectory: string
@@ -33,6 +50,7 @@ interface StorageSnapshotCacheEntry {
 }
 
 let storageSnapshotCache: StorageSnapshotCacheEntry | null = null
+let darwinCapacityProbeAvailable: boolean | null = null
 
 function getDefaultSettings(): AppSettings {
   return {
@@ -124,6 +142,52 @@ async function getDirectorySize(dirPath: string): Promise<number> {
   }
 }
 
+async function isDarwinCapacityProbeAvailable(): Promise<boolean> {
+  if (process.platform !== 'darwin') return false
+  if (darwinCapacityProbeAvailable !== null) return darwinCapacityProbeAvailable
+
+  if (!fs.existsSync('/usr/bin/swift') || !fs.existsSync('/usr/bin/xcode-select')) {
+    darwinCapacityProbeAvailable = false
+    return darwinCapacityProbeAvailable
+  }
+
+  try {
+    await execFileAsync('/usr/bin/xcode-select', ['-p'], { timeout: 5_000 })
+    darwinCapacityProbeAvailable = true
+  } catch {
+    darwinCapacityProbeAvailable = false
+  }
+
+  return darwinCapacityProbeAvailable
+}
+
+async function getDarwinDiskSpace(dirPath: string): Promise<{ total: number; free: number } | null> {
+  if (!(await isDarwinCapacityProbeAvailable())) {
+    return null
+  }
+
+  try {
+    // Use Foundation's "important usage" capacity so the value matches Finder/System Settings
+    // more closely than statfs/df on APFS volumes with purgeable space.
+    const { stdout } = await execFileAsync(
+      '/usr/bin/swift',
+      ['-e', DARWIN_SWIFT_CAPACITY_SCRIPT, dirPath],
+      { timeout: DARWIN_CAPACITY_PROBE_TIMEOUT_MS }
+    )
+    const [rawTotal, rawFree] = stdout.trim().split(',', 2)
+    const total = parseInt(rawTotal || '', 10)
+    const free = parseInt(rawFree || '', 10)
+
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(free) || free < 0) {
+      return null
+    }
+
+    return { total, free }
+  } catch {
+    return null
+  }
+}
+
 async function getDiskSpace(dirPath: string): Promise<{ total: number; free: number }> {
   try {
     if (process.platform === 'win32') {
@@ -136,6 +200,13 @@ async function getDiskSpace(dirPath: string): Promise<{ total: number; free: num
       return {
         total: (info.Used || 0) + (info.Free || 0),
         free: info.Free || 0,
+      }
+    }
+
+    if (process.platform === 'darwin') {
+      const darwinDiskSpace = await getDarwinDiskSpace(dirPath)
+      if (darwinDiskSpace) {
+        return darwinDiskSpace
       }
     }
 

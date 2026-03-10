@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 
-export type Theme = 'light' | 'dark' | 'navy' | 'wine' | 'clay' | 'forest' | 'system'
+import { applyThemeClass, getStoredThemePreference, THEME_STORAGE_KEY, type Theme } from '@/lib/theme'
+
+export type { Theme } from '@/lib/theme'
 
 interface ThemeContextType {
   theme: Theme
@@ -9,56 +11,25 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
-const STORAGE_KEY = 'cozea-theme'
-const ALL_THEMES = ['light', 'dark', 'navy', 'wine', 'clay', 'forest'] as const
-
-function getSystemTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'system'
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'sunny') {
-      localStorage.setItem(STORAGE_KEY, 'clay')
-      return 'clay'
-    }
-    if (stored && (stored === 'system' || ALL_THEMES.includes(stored as (typeof ALL_THEMES)[number]))) {
-      return stored as Theme
-    }
-    return 'dark'
-  })
+  const [theme, setThemeState] = useState<Theme>(() => getStoredThemePreference())
 
   const setTheme = (newTheme: Theme) => {
+    applyThemeClass(newTheme)
     setThemeState(newTheme)
-    localStorage.setItem(STORAGE_KEY, newTheme)
+    localStorage.setItem(THEME_STORAGE_KEY, newTheme)
   }
 
-  // Apply the theme class to the document
-  useEffect(() => {
-    const root = document.documentElement
-    // Remove all theme classes
-    root.classList.remove('light', 'dark', 'navy', 'wine', 'clay', 'forest')
-
-    if (theme === 'system') {
-      const systemTheme = getSystemTheme()
-      root.classList.add(systemTheme)
-    } else {
-      root.classList.add(theme)
-    }
+  useLayoutEffect(() => {
+    applyThemeClass(theme)
   }, [theme])
 
-  // Listen for system theme changes
   useEffect(() => {
     if (theme !== 'system') return
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = () => {
-      const root = document.documentElement
-      root.classList.remove('light', 'dark')
-      root.classList.add(getSystemTheme())
+      applyThemeClass('system')
     }
 
     mediaQuery.addEventListener('change', handleChange)

@@ -18,6 +18,59 @@ interface PendingDelete {
   previousLineCount: number
 }
 
+const EXCLUDED_ACTIVITY_DIRECTORIES = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.svelte-kit',
+  '.vercel',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.turbo',
+  '.cache',
+  '.parcel-cache',
+  '.pnpm-store',
+  '.yarn',
+  'tmp',
+  'temp',
+  'logs',
+  'vendor',
+  'target',
+  '__pycache__',
+])
+
+const EXCLUDED_ACTIVITY_FILE_SUFFIXES = [
+  '.log',
+  '.tmp',
+  '.temp',
+  '.swp',
+  '.swo',
+  '.pid',
+  'prisma/dev.db',
+  'prisma/dev.db-wal',
+  'prisma/dev.db-shm',
+  '.tsbuildinfo',
+  '.eslintcache',
+]
+
+function shouldExcludeActivityPath(path: string): boolean {
+  const normalizedPath = path.replace(/\\/g, '/').replace(/^\/+/, '').trim().toLowerCase()
+  if (!normalizedPath) return false
+
+  const parts = normalizedPath.split('/')
+  if (parts.some((segment) => EXCLUDED_ACTIVITY_DIRECTORIES.has(segment))) {
+    return true
+  }
+
+  return EXCLUDED_ACTIVITY_FILE_SUFFIXES.some((suffix) => (
+    normalizedPath.endsWith(suffix) || normalizedPath.endsWith(`/${suffix}`)
+  ))
+}
+
 /**
  * ProjectFilesPersistence - Persists Yjs file changes to activity logs and replica snapshots.
  *
@@ -186,6 +239,11 @@ export class ProjectFilesPersistence {
     // Persist deletions first
     if (deletes.size > 0) {
       for (const [path, info] of deletes) {
+        if (shouldExcludeActivityPath(path)) {
+          this.previousContents.delete(path)
+          continue
+        }
+
         const { previousContent, origin, previousLineCount } = info
         try {
           await this.convex.mutation(api.activity.logFileChange, {
@@ -220,6 +278,10 @@ export class ProjectFilesPersistence {
     for (const [path, change] of changes) {
       // A delete may have happened after we captured `changes`
       if (deletes.has(path)) continue
+      if (shouldExcludeActivityPath(path)) {
+        this.previousContents.set(path, change.content)
+        continue
+      }
 
       const { content, previousContent, origin, previousLineCount } = change
       // Ignore no-op writes to avoid noisy feed events and redundant uploads.

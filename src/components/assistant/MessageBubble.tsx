@@ -48,6 +48,7 @@ export interface MessageBubbleProps {
   message: UIMessage
   toolsByName: Map<string, MessageToolMeta>
   status: 'ready' | 'submitted' | 'streaming' | 'error'
+  showUserErrorIndicator?: boolean
   showTodowriteTools?: boolean
   shouldRequireLocalApproval?: (toolMeta?: MessageToolMeta) => boolean
   onApproveTool?: (toolName: string, toolCallId: string, input: unknown, approvalId?: string) => void
@@ -150,6 +151,7 @@ function MessageBubbleComponent({
   message,
   toolsByName,
   status,
+  showUserErrorIndicator = false,
   showTodowriteTools = false,
   shouldRequireLocalApproval,
   onApproveTool,
@@ -200,18 +202,33 @@ function MessageBubbleComponent({
 
   return (
     <Message from={message.role}>
-      <MessageContent
+      <div
         className={cn(
-          hasStandaloneAttachments && [
-            'group-[.is-user]:w-full',
-            'group-[.is-user]:bg-transparent',
-            'group-[.is-user]:rounded-none',
-            'group-[.is-user]:px-0',
-            'group-[.is-user]:py-0',
-          ]
+          'flex items-start gap-2',
+          message.role === 'user' ? 'justify-end' : 'w-full'
         )}
       >
-        {message.parts.map((part, index) => {
+        {message.role === 'user' && showUserErrorIndicator ? (
+          <div
+            aria-label="Message failed to send"
+            className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive text-[11px] font-semibold text-destructive-foreground"
+            title="Message failed to send"
+          >
+            !
+          </div>
+        ) : null}
+        <MessageContent
+          className={cn(
+            hasStandaloneAttachments && [
+              'group-[.is-user]:w-full',
+              'group-[.is-user]:bg-transparent',
+              'group-[.is-user]:rounded-none',
+              'group-[.is-user]:px-0',
+              'group-[.is-user]:py-0',
+            ]
+          )}
+        >
+          {message.parts.map((part, index) => {
           // Skip step-start separators (no visual divider needed)
           if (part.type === 'step-start') {
             return null
@@ -570,25 +587,26 @@ function MessageBubbleComponent({
           }
 
           return null
-        })}
-        {sourceItems.length > 0 && (
-          <div className="px-2 pb-2">
-            <Sources>
-              <SourcesTrigger count={sourceItems.length} />
-              <SourcesContent>
-                {sourceItems.map((source, idx) => (
-                  <Source
-                    key={`${source.url}-${idx}`}
-                    href={source.url}
-                    title={source.title}
-                    favicon={source.favicon}
-                  />
-                ))}
-              </SourcesContent>
-            </Sources>
-          </div>
-        )}
-      </MessageContent>
+          })}
+          {sourceItems.length > 0 && (
+            <div className="px-2 pb-2">
+              <Sources>
+                <SourcesTrigger count={sourceItems.length} />
+                <SourcesContent>
+                  {sourceItems.map((source, idx) => (
+                    <Source
+                      key={`${source.url}-${idx}`}
+                      href={source.url}
+                      title={source.title}
+                      favicon={source.favicon}
+                    />
+                  ))}
+                </SourcesContent>
+              </Sources>
+            </div>
+          )}
+        </MessageContent>
+      </div>
       {canCopy && (
         <div className="mt-0.5 flex justify-end">
           <Button

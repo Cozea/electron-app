@@ -93,6 +93,14 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function isReplicaAccessDeniedMessage(message: string | undefined): boolean {
+  if (!message) return false
+  return (
+    /not a member of this project/i.test(message) ||
+    (/\b403\b/.test(message) && /member/i.test(message))
+  )
+}
+
 export class GitReplicaService {
   private static instance: GitReplicaService
 
@@ -214,6 +222,12 @@ export class GitReplicaService {
 
     if (!response.ok) {
       const detail = await response.text()
+      console.warn('[GitReplica] Replica API request failed', {
+        route,
+        projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
+        status: response.status,
+        detail: detail || response.statusText,
+      })
       throw new Error(`Replica API ${route} failed (${response.status}): ${detail || response.statusText}`)
     }
 
@@ -382,11 +396,22 @@ export class GitReplicaService {
       if (response.success) {
         this.updateProjectState(options.projectId, { lastError: undefined })
       } else {
+        console.warn('[GitReplica] Bootstrap returned unsuccessful result', {
+          projectId: options.projectId,
+          projectPath: options.projectPath,
+          snapshotCount: localSnapshot.length,
+          error: response.error,
+        })
         this.updateProjectState(options.projectId, { lastError: response.error || 'Bootstrap failed' })
       }
       return response
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bootstrap failed'
+      console.error('[GitReplica] Bootstrap request failed', {
+        projectId: options.projectId,
+        projectPath: options.projectPath,
+        error,
+      })
       this.updateProjectState(options.projectId, { lastError: message })
       return {
         success: false,
@@ -414,11 +439,24 @@ export class GitReplicaService {
       if (response.success) {
         this.updateProjectState(options.projectId, { lastError: undefined })
       } else {
+        console.warn('[GitReplica] Plan returned unsuccessful result', {
+          projectId: options.projectId,
+          projectPath: options.projectPath,
+          sessionId,
+          snapshotCount: localSnapshot.length,
+          error: response.error,
+        })
         this.updateProjectState(options.projectId, { lastError: response.error || 'Plan failed' })
       }
       return response
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Plan failed'
+      console.error('[GitReplica] Plan request failed', {
+        projectId: options.projectId,
+        projectPath: options.projectPath,
+        sessionId,
+        error,
+      })
       this.updateProjectState(options.projectId, { lastError: message })
       return {
         success: false,
@@ -596,6 +634,16 @@ export class GitReplicaService {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Replica flush failed'
       this.updateProjectState(projectId, { lastError: message })
+      if (isReplicaAccessDeniedMessage(message)) {
+        console.warn('[GitReplica] Dropping queued replica sync for inaccessible project', {
+          projectId,
+          error: message,
+        })
+        this.state.queue = this.state.queue.filter((entry) => entry.projectId !== projectId)
+        this.clearRetry(projectId)
+        this.persistState()
+        return
+      }
       this.scheduleRetry(projectId)
     } finally {
       this.inFlightProjects.delete(projectId)

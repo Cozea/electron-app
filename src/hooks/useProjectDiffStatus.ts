@@ -10,17 +10,27 @@ import {
 const MIN_CHECK_INTERVAL = 30 * 1000
 const REPLICA_AUTH_COOLDOWN_MS = 60 * 1000
 const REPLICA_TRANSIENT_COOLDOWN_MS = 90 * 1000
+const REPLICA_ACCESS_DENIED_COOLDOWN_MS = 60 * 1000
 const INTERACTIVE_LOGIN_COOLDOWN_MS = 2 * 60 * 1000
 const REPLICA_CHECK_TIMEOUT_MS = 20 * 1000
 const AUTH_RECOVERY_TIMEOUT_MS = 12 * 1000
 const INITIAL_CHECK_MAX_STAGGER_MS = 1200
 const inFlightBySlug = new Set<string>()
+const replicaAccessDeniedProjects = new Map<string, number>()
 let replicaAuthBlockedUntil = 0
 let hasLoggedReplicaAuthCooldown = false
 let replicaTransientBlockedUntil = 0
 let hasLoggedReplicaTransientCooldown = false
 let authRecoveryPromise: Promise<"refreshed" | "retryable" | "login_started" | "failed"> | null = null
 let lastInteractiveLoginAt = 0
+
+type DiffCheckStage = 'pathExists' | 'bootstrap' | 'plan'
+
+interface ProjectDiffErrorDetails {
+  name: string
+  message: string
+  stack?: string
+}
 
 function hashString(input: string): number {
   let hash = 0
@@ -47,6 +57,50 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       }
     )
   })
+}
+
+function describeProjectDiffError(error: unknown): ProjectDiffErrorDetails {
+  if (error instanceof Error) {
+    return {
+      name: error.name || 'Error',
+      message: error.message || 'Unknown error',
+      stack: error.stack,
+    }
+  }
+
+  return {
+    name: typeof error === 'string' ? 'Error' : 'UnknownError',
+    message: typeof error === 'string' ? error : String(error),
+  }
+}
+
+function isProjectDiffDebugEnabled(): boolean {
+  if (!import.meta.env.DEV) return false
+
+  try {
+    return window.localStorage.getItem('projectDiffDebug') === '1'
+  } catch {
+    return false
+  }
+}
+
+function logProjectDiffDebug(event: string, payload: Record<string, unknown>): void {
+  if (!isProjectDiffDebugEnabled()) return
+  console.info(`[ProjectDiffStatus][Debug] ${event}`, payload)
+}
+
+function getReplicaAccessDeniedUntil(projectSlug: string): number | null {
+  const deniedUntil = replicaAccessDeniedProjects.get(projectSlug)
+  if (!deniedUntil) {
+    return null
+  }
+
+  if (deniedUntil <= Date.now()) {
+    replicaAccessDeniedProjects.delete(projectSlug)
+    return null
+  }
+
+  return deniedUntil
 }
 
 async function recoverReplicaAuth(
@@ -124,14 +178,27 @@ export function useProjectDiffStatus({
 
     const isUnauthorizedError = (message: string): boolean =>
       /\b401\b/.test(message) || /unauthorized/i.test(message)
+    const isAccessDeniedError = (message: string): boolean =>
+      /not a member of this project/i.test(message) ||
+      (/\b403\b/.test(message) && /member/i.test(message))
     const isTransientReplicaError = (message: string): boolean =>
       /\b5\d{2}\b/.test(message) ||
       /unexpected eof while reading/i.test(message) ||
       /varnish/i.test(message) ||
-      /timed out/i.test(message)
+      /timed out/i.test(message) ||
+      /aborterror/i.test(message)
 
     async function checkDiff(force = false) {
       if (!localPath) return
+      const deniedUntil = getReplicaAccessDeniedUntil(projectSlug)
+      if (deniedUntil) {
+        logProjectDiffDebug('check:skipped_access_denied', {
+          projectId: String(projectId),
+          projectSlug,
+          deniedUntil,
+        })
+        return
+      }
 
       if (Date.now() < replicaAuthBlockedUntil) return
       if (Date.now() < replicaTransientBlockedUntil) return
@@ -147,11 +214,25 @@ export function useProjectDiffStatus({
       setChecking(projectSlug, true)
 
       const runDiffCheck = async () => {
+        let stage: DiffCheckStage = 'pathExists'
+        logProjectDiffDebug('check:start', {
+          projectId: String(projectId),
+          projectSlug,
+          localPath,
+          force,
+        })
+
         const exists = await withTimeout(
           window.electronAPI.project.pathExists(localPath),
           REPLICA_CHECK_TIMEOUT_MS,
           'Project path check timed out'
         )
+        logProjectDiffDebug('pathExists:result', {
+          projectId: String(projectId),
+          projectSlug,
+          localPath,
+          exists,
+        })
         if (cancelled) return
 
         if (!exists) {
@@ -163,6 +244,7 @@ export function useProjectDiffStatus({
           return
         }
 
+        stage = 'bootstrap'
         const bootstrap = await withTimeout(
           window.electronAPI.sync.gitReplicaBootstrap({
             projectId: String(projectId),
@@ -171,12 +253,19 @@ export function useProjectDiffStatus({
           REPLICA_CHECK_TIMEOUT_MS,
           'Replica bootstrap timed out'
         )
+        logProjectDiffDebug('bootstrap:result', {
+          projectId: String(projectId),
+          projectSlug,
+          success: bootstrap.success,
+          error: bootstrap.error,
+        })
         if (cancelled) return
 
         if (!bootstrap.success) {
           throw new Error(bootstrap.error || "Failed to bootstrap replica")
         }
 
+        stage = 'plan'
         const plan = await withTimeout(
           window.electronAPI.sync.gitReplicaPlan({
             projectId: String(projectId),
@@ -185,6 +274,17 @@ export function useProjectDiffStatus({
           REPLICA_CHECK_TIMEOUT_MS,
           'Replica plan timed out'
         )
+        logProjectDiffDebug('plan:result', {
+          projectId: String(projectId),
+          projectSlug,
+          success: plan.success,
+          error: plan.error,
+          downloads: plan.downloads.length,
+          uploads: plan.uploads.length,
+          conflicts: plan.conflicts.length,
+          cloudDeletes: plan.cloudDeletes.length,
+          localDeletes: plan.localDeletes.length,
+        })
         if (cancelled) return
 
         if (!plan.success) {
@@ -212,6 +312,11 @@ export function useProjectDiffStatus({
         hasLoggedReplicaAuthCooldown = false
         replicaTransientBlockedUntil = 0
         hasLoggedReplicaTransientCooldown = false
+        logProjectDiffDebug('check:success', {
+          projectId: String(projectId),
+          projectSlug,
+          stage,
+        })
       }
 
       try {
@@ -219,7 +324,8 @@ export function useProjectDiffStatus({
       } catch (error) {
         if (cancelled) return
 
-        let message = error instanceof Error ? error.message : "Unknown error"
+        const errorDetails = describeProjectDiffError(error)
+        let message = errorDetails.message
         if (isUnauthorizedError(message)) {
           const recoveryResult = await recoverReplicaAuth(refreshToken, login)
           if (cancelled) return
@@ -249,6 +355,23 @@ export function useProjectDiffStatus({
           return
         }
 
+        if (isAccessDeniedError(message)) {
+          const deniedUntil = Date.now() + REPLICA_ACCESS_DENIED_COOLDOWN_MS
+          replicaAccessDeniedProjects.set(projectSlug, deniedUntil)
+          console.warn(
+            `[ProjectDiffStatus] Replica access denied for ${projectSlug}; pausing checks for ${Math.round(
+              REPLICA_ACCESS_DENIED_COOLDOWN_MS / 1000
+            )}s.`
+          )
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
+            error: message,
+          })
+          return
+        }
+
         if (isTransientReplicaError(message)) {
           replicaTransientBlockedUntil = Date.now() + REPLICA_TRANSIENT_COOLDOWN_MS
           if (!hasLoggedReplicaTransientCooldown) {
@@ -268,7 +391,12 @@ export function useProjectDiffStatus({
           return
         }
 
-        console.error(`[ProjectDiffStatus] Error checking ${projectSlug}:`, error)
+        console.error(`[ProjectDiffStatus] Error checking ${projectSlug}:`, {
+          projectId: String(projectId),
+          projectSlug,
+          localPath,
+          error: errorDetails,
+        })
         setDiffStatus(projectSlug, {
           error: message,
         })

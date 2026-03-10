@@ -29,6 +29,7 @@ import {
 } from '@/lib/ai/providerAuth'
 import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
 import { getModelCatalog } from '@/lib/ai/modelCatalogClient'
+import { resolveModelIdFromCatalog } from '@/lib/ai/modelIdResolution'
 import { validateWebOnlyBuildContract } from '@/lib/plan'
 import {
   attachToolDiagnosticsToOutput,
@@ -515,12 +516,13 @@ export function BuilderConversation({
   const promptSettings = project.promptSettings
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
   const [catalogFallbackModel, setCatalogFallbackModel] = useState<string>('')
+  const [resolvedRequestedModel, setResolvedRequestedModel] = useState<string>('')
   const [modelResolutionAttempted, setModelResolutionAttempted] = useState(false)
   const requestedModel =
     typeof promptSettings?.model === 'string' && promptSettings.model.trim().length > 0
       ? promptSettings.model
       : (initialGlobalModelSettings.model ?? '')
-  const model = requestedModel || catalogFallbackModel
+  const model = resolvedRequestedModel || requestedModel || catalogFallbackModel
   const hasModel = model.trim().length > 0
   const isGeminiModel = useMemo(() => {
     const normalizedModel = model.trim().toLowerCase()
@@ -565,14 +567,9 @@ export function BuilderConversation({
     let cancelled = false
     const organizationId = currentOrganization?.organizationId
 
-    if (requestedModel) {
-      setCatalogFallbackModel('')
-      setModelResolutionAttempted(true)
-      return
-    }
-
     if (!accessToken || !organizationId) {
       setCatalogFallbackModel('')
+      setResolvedRequestedModel('')
       setModelResolutionAttempted(false)
       return
     }
@@ -584,6 +581,13 @@ export function BuilderConversation({
     })
       .then((data) => {
         if (cancelled) return
+        const resolvedModelId = resolveModelIdFromCatalog(requestedModel, data.models)
+        setResolvedRequestedModel(resolvedModelId ?? '')
+        if (requestedModel) {
+          setCatalogFallbackModel('')
+          setModelResolutionAttempted(true)
+          return
+        }
         const fallback =
           data.models.find((candidate) => isManagedProvider(candidate.provider) && candidate.id.trim().length > 0)?.id
           ?? data.models.find((candidate) => candidate.id.trim().length > 0)?.id
@@ -594,6 +598,7 @@ export function BuilderConversation({
       .catch((error) => {
         if (cancelled) return
         setCatalogFallbackModel('')
+        setResolvedRequestedModel('')
         setModelResolutionAttempted(true)
         console.warn('Failed to resolve builder model from catalog:', error)
       })

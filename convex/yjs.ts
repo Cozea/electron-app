@@ -18,7 +18,7 @@ const SNAPSHOT_RETAIN_COUNT = 5
 const YJS_UPDATE_PAGE_SIZE = 8
 const YJS_TAIL_READ_PAGE_SIZE = 16
 const YJS_TAIL_READ_LIMIT = 128
-const YJS_CLEANUP_PAGE_SIZE = 2
+const YJS_CLEANUP_PAGE_SIZE = 64
 const YJS_SNAPSHOT_CLEANUP_PAGE_SIZE = 2
 
 interface PaginatedResult<T> {
@@ -476,26 +476,20 @@ export const cleanupOldUpdates = mutation({
     let deletedCount = 0
     let deletedBytes = 0
 
-    while (true) {
-      const batch = await ctx.db
-        .query("yjsUpdates")
-        .withIndex("by_project_and_time", (q) =>
-          q.eq("projectId", args.projectId).lt("timestamp", args.olderThan)
-        )
-        .paginate({
-          cursor: null,
-          numItems: YJS_CLEANUP_PAGE_SIZE,
-        }) as PaginatedResult<{ _id: Id<"yjsUpdates">; update?: ArrayBuffer }>
+    const batch = await ctx.db
+      .query("yjsUpdates")
+      .withIndex("by_project_and_time", (q) =>
+        q.eq("projectId", args.projectId).lt("timestamp", args.olderThan)
+      )
+      .paginate({
+        cursor: null,
+        numItems: YJS_CLEANUP_PAGE_SIZE,
+      }) as PaginatedResult<{ _id: Id<"yjsUpdates">; update?: ArrayBuffer }>
 
-      if (batch.page.length === 0) {
-        break
-      }
-
-      for (const update of batch.page) {
-        deletedBytes += update.update?.byteLength ?? 0
-        deletedCount += 1
-        await ctx.db.delete(update._id)
-      }
+    for (const update of batch.page) {
+      deletedBytes += update.update?.byteLength ?? 0
+      deletedCount += 1
+      await ctx.db.delete(update._id)
     }
 
     if (deletedBytes > 0) {
@@ -504,7 +498,10 @@ export const cleanupOldUpdates = mutation({
       })
     }
 
-    return { deleted: deletedCount }
+    return {
+      deleted: deletedCount,
+      hasMore: !batch.isDone,
+    }
   },
 })
 

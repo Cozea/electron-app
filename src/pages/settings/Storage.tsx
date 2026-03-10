@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip'
 import type { LocalProject, StorageProjectsPage, StorageSnapshot, StorageUsage } from '../../types/electron'
 
 interface StorageProps {
@@ -40,18 +41,27 @@ interface StorageProps {
 const PROJECTS_PAGE_SIZE = 10
 let cachedStorageSnapshot: StorageSnapshot | null = null
 
+interface StorageUsageSegment {
+  label: string
+  bytes: number
+  colorClassName: string
+}
+
 // Format bytes to human readable size
 function formatBytes(bytes: number): string {
   if (bytes <= 0 || !Number.isFinite(bytes)) return '0 B'
-  const k = 1024
+  // Use decimal disk units so values line up with macOS Storage/Finder.
+  const k = 1000
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-// Convert bytes to GB for display
-function bytesToGB(bytes: number): number {
-  return bytes / (1024 * 1024 * 1024)
+function formatPercentage(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  if (value >= 99.95) return '100%'
+  if (value >= 10) return `${value.toFixed(0)}%`
+  return `${value.toFixed(1)}%`
 }
 
 // Format relative time
@@ -346,18 +356,56 @@ export function Storage({ surface = 'page' }: StorageProps) {
   const projectsPage: StorageProjectsPage | null = storageSnapshot?.projects ?? null
   const localProjects = projectsPage?.items ?? []
 
-  // Calculate segments from real data
-  const segments = storageUsage ? [
-    { label: 'Projects', value: bytesToGB(storageUsage.projects), bytes: storageUsage.projects, color: 'bg-blue-500' },
-    { label: 'Dependencies', value: bytesToGB(storageUsage.dependencies), bytes: storageUsage.dependencies, color: 'bg-emerald-500' },
-    { label: 'Build Cache', value: bytesToGB(storageUsage.buildCache), bytes: storageUsage.buildCache, color: 'bg-amber-500' },
-    { label: 'Logs', value: bytesToGB(storageUsage.logs), bytes: storageUsage.logs, color: 'bg-purple-500' },
-  ] : []
-
   // Use actual disk total, fallback to dynamic if disk info unavailable
   const diskTotal = storageUsage?.diskTotal || 0
   const diskFree = storageUsage?.diskFree || 0
-  const total = diskTotal > 0 ? bytesToGB(diskTotal) : 100 // Use actual disk size or default to 100 GB
+  const cozeaTotal = storageUsage?.total ?? 0
+  const systemDataBytes =
+    diskTotal > 0 ? Math.max(0, diskTotal - diskFree - cozeaTotal) : 0
+  const segments: StorageUsageSegment[] = storageUsage
+    ? [
+        {
+          label: 'Projects',
+          bytes: storageUsage.projects,
+          colorClassName: 'bg-blue-500',
+        },
+        {
+          label: 'Dependencies',
+          bytes: storageUsage.dependencies,
+          colorClassName: 'bg-emerald-500',
+        },
+        {
+          label: 'Build Cache',
+          bytes: storageUsage.buildCache,
+          colorClassName: 'bg-amber-500',
+        },
+        {
+          label: 'Logs',
+          bytes: storageUsage.logs,
+          colorClassName: 'bg-purple-500',
+        },
+        ...(systemDataBytes > 0
+          ? [
+              {
+                label: 'System Data',
+                bytes: systemDataBytes,
+                colorClassName: 'bg-border',
+              } satisfies StorageUsageSegment,
+            ]
+          : []),
+        ...(diskTotal > 0
+          ? [
+              {
+                label: 'Free',
+                bytes: diskFree,
+                colorClassName: 'bg-muted',
+              } satisfies StorageUsageSegment,
+            ]
+          : []),
+      ]
+    : []
+  const total = diskTotal > 0 ? diskTotal : Math.max(cozeaTotal, 1)
+  const barSegments = segments.filter((segment) => segment.bytes > 0)
   const projectPageNumbers = getPageNumbers(projectsPage?.page ?? 1, projectsPage?.totalPages ?? 1)
   const showingStart =
     projectsPage && projectsPage.total > 0
@@ -396,7 +444,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
             )}
 
             <p className="text-sm text-muted-foreground">
-              Using{' '}
+              Cozea is using{' '}
               <span className="font-semibold tabular-nums text-foreground">
                 {storageUsage ? formatBytes(storageUsage.total) : '0 B'}
               </span>
@@ -405,20 +453,32 @@ export function Storage({ surface = 'page' }: StorageProps) {
               )}
             </p>
 
-            <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-              {segments.map((segment) => {
-                const percentage = (segment.value / total) * 100
+            <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-muted/50">
+              {barSegments.map((segment) => {
+                const percentage = total > 0 ? (segment.bytes / total) * 100 : 0
+                const percentLabel = formatPercentage(percentage)
                 return (
-                  <div
-                    aria-label={segment.label}
-                    aria-valuemax={total}
-                    aria-valuemin={0}
-                    aria-valuenow={segment.value}
-                    className={cn('h-full transition-all', segment.color)}
-                    key={segment.label}
-                    role="progressbar"
-                    style={{ width: `${percentage}%` }}
-                  />
+                  <Tooltip key={segment.label}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`${segment.label}: ${formatBytes(segment.bytes)} (${percentLabel})`}
+                        aria-valuemax={total}
+                        aria-valuemin={0}
+                        aria-valuenow={segment.bytes}
+                        className={cn(
+                          'h-full shrink-0 cursor-default border-0 p-0 transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                          segment.colorClassName
+                        )}
+                        role="progressbar"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="flex flex-col gap-0.5">
+                      <span className="font-medium">{segment.label}</span>
+                      <span>{formatBytes(segment.bytes)}</span>
+                    </TooltipContent>
+                  </Tooltip>
                 )
               })}
             </div>
@@ -428,7 +488,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
                 <div className="flex items-center gap-2" key={segment.label}>
                   <span
                     aria-hidden="true"
-                    className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', segment.color)}
+                    className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', segment.colorClassName)}
                   />
                   <span className="text-sm text-muted-foreground">{segment.label}</span>
                   <span className="text-sm tabular-nums text-foreground">
@@ -436,18 +496,6 @@ export function Storage({ surface = 'page' }: StorageProps) {
                   </span>
                 </div>
               ))}
-              {diskFree > 0 && (
-                <div className="flex items-center gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted"
-                  />
-                  <span className="text-sm text-muted-foreground">Free</span>
-                  <span className="text-sm tabular-nums text-foreground">
-                    {formatBytes(diskFree)}
-                  </span>
-                </div>
-              )}
             </div>
 
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -2,8 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, RouterProvider } from 'react-router-dom'
 
+import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
+import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { featureFlags } from './lib/featureFlags'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { appRouter } from './router/createRouter'
@@ -19,6 +21,8 @@ if (platform) {
   document.documentElement.dataset.platform = platform
   document.documentElement.classList.add(`platform-${platform}`)
 }
+
+applyThemeClass(getStoredThemePreference())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

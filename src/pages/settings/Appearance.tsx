@@ -4,7 +4,8 @@ import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTheme, type Theme } from '../../contexts/ThemeContext'
+import { useTheme } from '../../contexts/ThemeContext'
+import type { Theme } from '@/lib/theme'
 import { cn } from '../../lib/utils'
 
 interface AppearanceProps {

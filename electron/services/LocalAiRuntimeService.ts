@@ -509,6 +509,33 @@ function parseScopedModelId(modelId: string): { provider: string; providerModelI
   }
 }
 
+function resolveModelInfoFromCatalogAlias(
+  modelId: string,
+  catalog: Record<string, ModelInfo>
+): ModelInfo | undefined {
+  const scopedId = modelId.trim()
+  if (!scopedId) {
+    return undefined
+  }
+
+  const exactMatch = catalog[scopedId]
+  if (exactMatch) {
+    return exactMatch
+  }
+
+  const requested = parseScopedModelId(scopedId)
+  if (!requested) {
+    return undefined
+  }
+
+  const providerModelMatch = Object.values(catalog).find((info) => (
+    info.provider.trim().toLowerCase() === requested.provider &&
+    info.providerModelId.trim() === requested.providerModelId
+  ))
+
+  return providerModelMatch
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
@@ -543,9 +570,7 @@ function getConfiguredRemoteAiBaseUrls(): string[] {
     process.env.VITE_AI_API_URL,
     process.env.AI_API_URL,
     authGatewayBaseUrl ? `${authGatewayBaseUrl.replace(/\/+$/, '')}/ai` : '',
-    app.isPackaged
-      ? 'https://api.cozea.app/ai'
-      : 'http://localhost:3001/ai',
+    'https://api.cozea.app/ai',
   ]
 
   const normalized = rawCandidates
@@ -568,9 +593,7 @@ function resolveRemoteAiBaseUrl(headerValue?: string): string {
     return configured
   }
 
-  return app.isPackaged
-    ? 'https://api.cozea.app/ai'
-    : 'http://localhost:3001/ai'
+  return 'https://api.cozea.app/ai'
 }
 
 function parseProviderAuthEnvelope(encodedHeader: string | undefined): ProviderAuthEnvelope | null {
@@ -1047,6 +1070,12 @@ export class LocalAiRuntimeService {
     const endpoint = `${baseUrl.replace(/\/+$/, '')}/models?${query.toString()}`
 
     try {
+      console.info('[LocalAI][ModelLookup] Fetching remote model catalog', {
+        model: args.model,
+        organizationId: args.organizationId,
+        preferredProvider: preferredProvider || undefined,
+        endpoint,
+      })
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
@@ -1054,11 +1083,24 @@ export class LocalAiRuntimeService {
         },
       })
       if (!response.ok) {
+        console.warn('[LocalAI][ModelLookup] Remote model catalog request failed', {
+          model: args.model,
+          organizationId: args.organizationId,
+          preferredProvider: preferredProvider || undefined,
+          endpoint,
+          status: response.status,
+        })
         return null
       }
 
       const parsed = await response.json() as { models?: unknown }
       if (!parsed || !Array.isArray(parsed.models)) {
+        console.warn('[LocalAI][ModelLookup] Remote model catalog payload was invalid', {
+          model: args.model,
+          organizationId: args.organizationId,
+          preferredProvider: preferredProvider || undefined,
+          endpoint,
+        })
         return null
       }
 
@@ -1084,9 +1126,13 @@ export class LocalAiRuntimeService {
             providerFromField ||
             (slashIndex > 0 ? scopedId.slice(0, slashIndex).trim().toLowerCase() : '')
           const providerModelId =
-            slashIndex > 0 && slashIndex < scopedId.length - 1
-              ? scopedId.slice(slashIndex + 1).trim()
-              : scopedId
+            typeof entry.providerModelId === 'string' && entry.providerModelId.trim().length > 0
+              ? entry.providerModelId.trim()
+              : (
+                slashIndex > 0 && slashIndex < scopedId.length - 1
+                  ? scopedId.slice(slashIndex + 1).trim()
+                  : scopedId
+              )
           if (!provider || !providerModelId || !isProviderEnabledInApp(provider)) return null
 
           return {
@@ -1103,22 +1149,49 @@ export class LocalAiRuntimeService {
           capabilities?: Record<string, unknown>
         } => entry !== null)
 
-      const exactMatch = normalizedRows.find((row) => {
+      const exactScopedMatch = normalizedRows.find((row) => {
         if (row.scopedId !== requestedScoped) return false
+        if (row.provider !== requested.provider) return false
+        if (preferredProvider && row.provider !== preferredProvider) return false
+        return true
+      })
+      const providerModelMatch = normalizedRows.find((row) => {
         if (row.provider !== requested.provider) return false
         if (row.providerModelId !== requested.providerModelId) return false
         if (preferredProvider && row.provider !== preferredProvider) return false
         return true
       })
-      if (exactMatch) {
+      const resolvedMatch = exactScopedMatch ?? providerModelMatch
+      if (resolvedMatch) {
+        console.info('[LocalAI][ModelLookup] Resolved model from remote catalog', {
+          requestedModel: args.model,
+          resolvedScopedModel: resolvedMatch.scopedId,
+          provider: resolvedMatch.provider,
+          providerModelId: resolvedMatch.providerModelId,
+          availableCount: normalizedRows.length,
+        })
         return {
-          provider: exactMatch.provider,
-          providerModelId: exactMatch.providerModelId,
-          ...(exactMatch.capabilities ? { capabilities: exactMatch.capabilities } : {}),
+          provider: resolvedMatch.provider,
+          providerModelId: resolvedMatch.providerModelId,
+          ...(resolvedMatch.capabilities ? { capabilities: resolvedMatch.capabilities } : {}),
         }
       }
+      console.warn('[LocalAI][ModelLookup] Requested model was not present in remote catalog', {
+        requestedModel: args.model,
+        organizationId: args.organizationId,
+        preferredProvider: preferredProvider || undefined,
+        availableCount: normalizedRows.length,
+        sampleScopedModels: normalizedRows.slice(0, 10).map((row) => row.scopedId),
+      })
       return null
-    } catch {
+    } catch (error) {
+      console.warn('[LocalAI][ModelLookup] Remote model catalog lookup failed', {
+        model: args.model,
+        organizationId: args.organizationId,
+        preferredProvider: preferredProvider || undefined,
+        endpoint,
+        error,
+      })
       return null
     }
   }
@@ -1528,6 +1601,7 @@ export class LocalAiRuntimeService {
         const aiBaseUrlHeader = getHeaderValue(req, 'x-cozea-ai-base-url')
         const authorization = getHeaderValue(req, 'authorization')
         const selectedProviderHint = getHeaderValue(req, 'x-cozea-selected-provider')?.trim().toLowerCase()
+        const localCatalog = runtimeDeps.getAllModels()
 
         if (selectedProviderHint && selectedProviderHint !== scopedModel.provider) {
           sendJson(res, 400, {
@@ -1548,15 +1622,31 @@ export class LocalAiRuntimeService {
           return
         }
 
-        let modelInfo = runtimeDeps.getModelInfo(model)
+        let modelInfo = resolveModelInfoFromCatalogAlias(model, localCatalog)
+        let modelResolutionSource: 'local' | 'remote' | 'unresolved' = modelInfo ? 'local' : 'unresolved'
+        console.info('[LocalAI][ModelLookup] Resolving runtime model', {
+          model,
+          organizationId,
+          provider: scopedModel.provider,
+          selectedProviderHint: selectedProviderHint || undefined,
+          localCatalogSize: Object.keys(localCatalog).length,
+          localCatalogHit: Boolean(modelInfo),
+          hasAuthorization: Boolean(authorization),
+        })
         if (modelInfo && !isProviderEnabledInApp(modelInfo.provider)) {
           modelInfo = undefined
+          modelResolutionSource = 'unresolved'
         }
         if (
           authorization &&
           parsedBody.organizationId &&
           !modelInfo
         ) {
+          console.warn('[LocalAI][ModelLookup] Local catalog miss, attempting remote resolution', {
+            model,
+            organizationId,
+            provider: scopedModel.provider,
+          })
           modelInfo = await this.fetchModelInfoFromRemoteCatalog({
             authorization,
             organizationId: parsedBody.organizationId,
@@ -1564,11 +1654,29 @@ export class LocalAiRuntimeService {
             preferredProvider: scopedModel.provider,
             aiBaseUrlHeader,
           })
+          if (modelInfo) {
+            modelResolutionSource = 'remote'
+          }
         }
         if (!modelInfo) {
+          console.error('[LocalAI][ModelLookup] Unsupported model for local runtime', {
+            model,
+            organizationId,
+            provider: scopedModel.provider,
+            selectedProviderHint: selectedProviderHint || undefined,
+            localCatalogSize: Object.keys(localCatalog).length,
+            sampleScopedModels: Object.keys(localCatalog).slice(0, 10),
+            hasAuthorization: Boolean(authorization),
+          })
           sendJson(res, 400, { error: 'Unsupported model for local runtime' })
           return
         }
+        console.info('[LocalAI][ModelLookup] Resolved runtime model', {
+          requestedModel: model,
+          provider: modelInfo.provider,
+          providerModelId: modelInfo.providerModelId,
+          source: modelResolutionSource,
+        })
 
         if (modelInfo.provider.trim().toLowerCase() !== scopedModel.provider) {
           sendJson(res, 400, {

@@ -1,10 +1,8 @@
 // AI Gateway base endpoint:
-// - In development, default to local server for easy testing.
-// - In production builds, default to hosted gateway if not explicitly configured.
+// - Default to the hosted gateway unless explicitly overridden.
+// - Localhost should only be used for services intentionally run locally.
 // Compatibility: if VITE_AI_API_URL ends with /chat, normalize it to /ai base.
-const DEFAULT_AI_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:3001/ai'
-  : 'https://api.cozea.app/ai'
+const DEFAULT_AI_BASE_URL = 'https://api.cozea.app/ai'
 
 const RAW_AI_API_URL = import.meta.env.VITE_AI_API_URL || DEFAULT_AI_BASE_URL
 
