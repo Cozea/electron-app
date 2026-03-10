@@ -118,7 +118,6 @@ export const listIncomingForUser = query({
       invites.map(async (invite) => {
         const project = await ctx.db.get(invite.projectId)
         if (!project || project.status === "deleted") return null
-
         const ownerWorkspace = await ctx.db.get(project.organizationId)
         if (
           !ownerWorkspace ||

@@ -41,6 +41,10 @@ import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import {
+    logProjectSourceDebug,
+    summarizeProjectForDebug,
+} from "@/features/projects/lib/projectSourceDebug"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -158,6 +162,7 @@ interface ProjectLayoutLocationState {
     gateSyncScreen?: boolean
     skipInitialSyncCheck?: boolean
     syncAccessBlocked?: boolean
+    syncMode?: 'replica' | 'git'
 }
 
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
@@ -211,6 +216,7 @@ export function ProjectLayout({
     const shouldGateSyncScreen = locationState?.gateSyncScreen === true
     const shouldSkipInitialSyncCheckFromState = locationState?.skipInitialSyncCheck === true
     const shouldStartInLocalOnlyMode = locationState?.syncAccessBlocked === true
+    const initialSyncMode = locationState?.syncMode ?? null
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -262,8 +268,34 @@ export function ProjectLayout({
         `layout-project-${routeProjectId ?? routeSlug}`,
         freshProject
     )
+    useEffect(() => {
+        logProjectSourceDebug('project_layout:resolution', {
+            authWorkosUserId: user?.id ?? null,
+            routeProjectId: routeProjectId ?? null,
+            routeSlug: routeSlug ?? null,
+            convexOrganizationId: convexOrg?._id ?? null,
+            convexUserId: convexUser?._id ?? null,
+            freshProjectById: summarizeProjectForDebug(freshProjectById),
+            freshProjectBySlug:
+                freshProjectBySlug?.status === "ok"
+                    ? summarizeProjectForDebug(freshProjectBySlug.project)
+                    : freshProjectBySlug?.status ?? null,
+            cachedProject: summarizeProjectForDebug(project),
+        })
+    }, [
+        convexOrg?._id,
+        convexUser?._id,
+        freshProjectById,
+        freshProjectBySlug,
+        project,
+        routeProjectId,
+        routeSlug,
+        user?.id,
+    ])
     const projectIdForSyncBypass = routeProjectId ?? (project?._id ? String(project._id) : null)
     const shouldSkipInitialSyncCheck =
+        initialSyncMode === 'git' ||
+        project?.syncMode === 'git' ||
         shouldSkipInitialSyncCheckFromState ||
         (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false)
     const projectSlug = project?.slug ?? routeSlug ?? null

@@ -5,8 +5,38 @@ import type { Doc, Id } from "./_generated/dataModel"
 import { ensureProjectStorageUsage } from "./lib/workspaceLimits"
 
 const PERSONAL_WORKSPACE_PREFIX = "personal:"
+const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
 type OrganizationRole = "admin" | "member" | "viewer"
+type ProjectSyncMode = "replica" | "git"
+type GitAccessState = "unknown" | "pending" | "granted" | "missing" | "error"
+
+interface GitRepositoryMetadata {
+  provider: string
+  owner: string
+  name: string
+  url: string
+  defaultBranch: string
+}
+
+interface GitSyncStateMetadata {
+  accessState: GitAccessState
+  lastFetchedCommit?: string
+  lastPushedCommit?: string
+  lastFetchAt?: number
+  lastPushAt?: number
+  errorMessage?: string
+  migratedFromReplicaAt?: number
+}
+
+function assertGatewaySecret(secret: string | undefined) {
+  if (!AI_GATEWAY_SECRET) {
+    throw new Error("AI_GATEWAY_SECRET is not configured")
+  }
+  if (secret !== AI_GATEWAY_SECRET) {
+    throw new Error("Unauthorized")
+  }
+}
 
 function organizationRolePriority(role: OrganizationRole): number {
   switch (role) {
@@ -41,6 +71,65 @@ function generateSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .substring(0, 50)
+}
+
+function normalizeRepoUrl(repoUrl: string): string {
+  return repoUrl.trim().replace(/\/+$/, "")
+}
+
+function stripDotGitSuffix(value: string): string {
+  return value.endsWith(".git") ? value.slice(0, -4) : value
+}
+
+function parseRepositoryPathFromUrl(repoUrl: string): { owner: string; name: string } | null {
+  const normalized = normalizeRepoUrl(repoUrl)
+
+  const sshMatch = normalized.match(/^(?:git@|ssh:\/\/git@)([^:/]+)[:/]([^/]+)\/(.+?)(?:\.git)?$/i)
+  if (sshMatch) {
+    return {
+      owner: sshMatch[2],
+      name: stripDotGitSuffix(sshMatch[3]),
+    }
+  }
+
+  try {
+    const url = new URL(normalized)
+    const segments = url.pathname.split("/").filter(Boolean)
+    if (segments.length < 2) return null
+
+    return {
+      owner: segments[segments.length - 2],
+      name: stripDotGitSuffix(segments[segments.length - 1]),
+    }
+  } catch {
+    return null
+  }
+}
+
+function buildGitRepositoryMetadata(args: {
+  provider?: string
+  repoUrl?: string
+  defaultBranch?: string
+}): GitRepositoryMetadata | undefined {
+  const provider = args.provider?.trim()
+  const repoUrl = args.repoUrl?.trim()
+
+  if (!provider || !repoUrl || provider === "local") {
+    return undefined
+  }
+
+  const parsed = parseRepositoryPathFromUrl(repoUrl)
+  if (!parsed) {
+    return undefined
+  }
+
+  return {
+    provider,
+    owner: parsed.owner,
+    name: parsed.name,
+    url: normalizeRepoUrl(repoUrl),
+    defaultBranch: args.defaultBranch?.trim() || "main",
+  }
 }
 
 // Helper to ensure unique slug within organization
@@ -195,6 +284,14 @@ export const create = mutation({
     const initialStatus = args.creationPath === 'repo' ? 'active' : 'draft'
 
     // Create project with all fields
+    const gitRepository = buildGitRepositoryMetadata({
+      provider: args.repoSource?.provider ?? args.sourceControl?.provider,
+      repoUrl: args.repoSource?.repoUrl ?? args.sourceControl?.repoUrl,
+      defaultBranch: args.repoSource?.branch,
+    })
+
+    const syncMode: ProjectSyncMode = "git"
+
     const projectId = await ctx.db.insert("projects", {
       organizationId: args.organizationId,
       name: args.name,
@@ -210,6 +307,11 @@ export const create = mutation({
       },
       stack: args.stack,
       sourceControl: args.sourceControl,
+      syncMode,
+      gitRepository,
+      gitSyncState: {
+        accessState: "granted",
+      },
       visuals: args.visuals,
       creationPath: args.creationPath,
       status: initialStatus,
@@ -1117,6 +1219,208 @@ export const updateSyncStatus = mutation({
     await ctx.db.patch(args.projectId, updates)
 
     return { success: true }
+  },
+})
+
+// ============================================
+// GIT SYNC METADATA
+// ============================================
+
+export const getGitSyncMetadata = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership) {
+      return null
+    }
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status === "deleted") {
+      return null
+    }
+
+    return {
+      projectId: project._id,
+      organizationId: project.organizationId,
+      syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
+      gitRepository: project.gitRepository ?? null,
+      gitSyncState: project.gitSyncState ?? null,
+      sourceControl: project.sourceControl ?? null,
+      updatedAt: project.updatedAt,
+    }
+  },
+})
+
+export const updateGitSyncMetadata = mutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    syncMode: v.optional(v.union(v.literal("replica"), v.literal("git"))),
+    gitRepository: v.optional(
+      v.object({
+        provider: v.string(),
+        owner: v.string(),
+        name: v.string(),
+        url: v.string(),
+        defaultBranch: v.string(),
+      })
+    ),
+    gitSyncState: v.optional(
+      v.object({
+        accessState: v.union(
+          v.literal("unknown"),
+          v.literal("pending"),
+          v.literal("granted"),
+          v.literal("missing"),
+          v.literal("error")
+        ),
+        lastFetchedCommit: v.optional(v.string()),
+        lastPushedCommit: v.optional(v.string()),
+        lastFetchAt: v.optional(v.number()),
+        lastPushAt: v.optional(v.number()),
+        errorMessage: v.optional(v.string()),
+        migratedFromReplicaAt: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    const membership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      )
+      .first()
+
+    if (!membership || membership.role !== "project_manager") {
+      throw new Error("Only project managers can update git sync metadata")
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    }
+
+    if (args.syncMode !== undefined) {
+      updates.syncMode = args.syncMode
+    }
+
+    if (args.gitRepository !== undefined) {
+      updates.gitRepository = args.gitRepository
+    }
+
+    if (args.gitSyncState !== undefined) {
+      const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
+      const nextState: GitSyncStateMetadata = {
+        ...previousState,
+        ...args.gitSyncState,
+      }
+      updates.gitSyncState = nextState
+    }
+
+    await ctx.db.patch(args.projectId, updates)
+
+    return await ctx.db.get(args.projectId)
+  },
+})
+
+export const listLegacyReplicaProjectsForServer = query({
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const limit = Math.max(1, Math.min(args.limit ?? 1000, 5000))
+    const projects = await ctx.db.query("projects").collect()
+
+    return projects
+      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") !== "git")
+      .sort((left, right) => left.updatedAt - right.updatedAt)
+      .slice(0, limit)
+      .map((project) => ({
+        _id: project._id,
+        slug: project.slug,
+        name: project.name,
+        organizationId: project.organizationId,
+        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
+        gitRepository: project.gitRepository ?? null,
+        gitSyncState: project.gitSyncState ?? null,
+        updatedAt: project.updatedAt,
+      }))
+  },
+})
+
+export const setGitSyncMetadataForServer = mutation({
+  args: {
+    projectId: v.id("projects"),
+    syncMode: v.union(v.literal("replica"), v.literal("git")),
+    gitRepository: v.optional(
+      v.object({
+        provider: v.string(),
+        owner: v.string(),
+        name: v.string(),
+        url: v.string(),
+        defaultBranch: v.string(),
+      })
+    ),
+    gitSyncState: v.optional(
+      v.object({
+        accessState: v.union(
+          v.literal("unknown"),
+          v.literal("pending"),
+          v.literal("granted"),
+          v.literal("missing"),
+          v.literal("error")
+        ),
+        lastFetchedCommit: v.optional(v.string()),
+        lastPushedCommit: v.optional(v.string()),
+        lastFetchAt: v.optional(v.number()),
+        lastPushAt: v.optional(v.number()),
+        errorMessage: v.optional(v.string()),
+        migratedFromReplicaAt: v.optional(v.number()),
+      })
+    ),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
+    const updates: Record<string, unknown> = {
+      syncMode: args.syncMode,
+      updatedAt: Date.now(),
+    }
+
+    if (args.gitRepository !== undefined) {
+      updates.gitRepository = args.gitRepository
+    }
+
+    if (args.gitSyncState !== undefined) {
+      const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
+      updates.gitSyncState = {
+        ...previousState,
+        ...args.gitSyncState,
+      } satisfies GitSyncStateMetadata
+    }
+
+    await ctx.db.patch(args.projectId, updates)
+    return await ctx.db.get(args.projectId)
   },
 })
 

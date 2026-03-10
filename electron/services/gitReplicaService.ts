@@ -48,9 +48,25 @@ const MAX_SNAPSHOT_TOTAL_BYTES = 60 * 1024 * 1024
 const LFS_POINTER_VERSION = 'version https://git-lfs.github.com/spec/v1'
 const REPLICA_LOCK_TIMEOUT_ERROR = 'Timed out waiting for replica lock'
 const LOCK_TIMEOUT_RETRY_DELAYS_MS = [400, 1_200, 2_400]
+const BOOTSTRAP_FILE_NAMES = new Set([
+  '.gitignore',
+  '.gitattributes',
+  '.gitmodules',
+  '.DS_Store',
+  'Thumbs.db',
+])
 
 function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').trim()
+}
+
+function isBootstrapOnlyLocalPath(input: string): boolean {
+  const normalizedPath = normalizePath(input).replace(/^\.\/+/, '')
+  if (!normalizedPath) return true
+  if (normalizedPath.startsWith('.git/')) return true
+  const segments = normalizedPath.split('/').filter(Boolean)
+  const fileName = segments[segments.length - 1] ?? normalizedPath
+  return BOOTSTRAP_FILE_NAMES.has(fileName)
 }
 
 function sha256Hex(bytes: Buffer): string {
@@ -334,6 +350,14 @@ export class GitReplicaService {
 
     walk(projectPath)
     files.sort((a, b) => a.path.localeCompare(b.path))
+    if (files.length > 0 && files.every((file) => isBootstrapOnlyLocalPath(file.path))) {
+      console.log('[GitReplica] Treating bootstrap-only local workspace as empty snapshot', {
+        projectPath,
+        snapshotCount: files.length,
+        paths: files.map((file) => file.path),
+      })
+      return []
+    }
     return files
   }
 

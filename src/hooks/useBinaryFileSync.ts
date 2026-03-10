@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { useConvex } from 'convex/react'
 import type { Id } from '../../convex/_generated/dataModel'
 import { BinaryFileSync, isBinaryFile } from '@/lib/sync/BinaryFileSync'
 
@@ -21,6 +22,7 @@ export function useBinaryFileSync(
   projectPath: string | null,
   userId: Id<'users'> | null
 ): { pendingUploads: number } {
+  const convex = useConvex()
   const binarySyncRef = useRef<BinaryFileSync | null>(null)
 
   // Initialize BinaryFileSync
@@ -30,14 +32,16 @@ export function useBinaryFileSync(
       return
     }
 
-    binarySyncRef.current = new BinaryFileSync(
-      projectId,
-      projectPath
-    )
+    binarySyncRef.current = new BinaryFileSync(projectId, projectPath, convex, userId)
 
     // Process any queued uploads from previous sessions
-    binarySyncRef.current.processQueue()
-  }, [projectId, projectPath, userId])
+    void binarySyncRef.current.processQueue()
+
+    return () => {
+      binarySyncRef.current?.destroy()
+      binarySyncRef.current = null
+    }
+  }, [convex, projectId, projectPath, userId])
 
   // Handle local binary file changes
   useEffect(() => {

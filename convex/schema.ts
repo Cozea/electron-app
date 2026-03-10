@@ -855,6 +855,41 @@ export default defineSchema({
       })
     ),
 
+    // Sync backend selection. Existing projects continue to use replica until migrated.
+    syncMode: v.optional(
+      v.union(v.literal("replica"), v.literal("git"))
+    ),
+
+    // Canonical Git repository metadata for Git-backed sync.
+    gitRepository: v.optional(
+      v.object({
+        provider: v.string(), // github, gitlab, bitbucket
+        owner: v.string(),
+        name: v.string(),
+        url: v.string(),
+        defaultBranch: v.string(), // currently always main
+      })
+    ),
+
+    // Git sync state tracked by Cozea. This is product metadata, not user-facing history.
+    gitSyncState: v.optional(
+      v.object({
+        accessState: v.union(
+          v.literal("unknown"),
+          v.literal("pending"),
+          v.literal("granted"),
+          v.literal("missing"),
+          v.literal("error")
+        ),
+        lastFetchedCommit: v.optional(v.string()),
+        lastPushedCommit: v.optional(v.string()),
+        lastFetchAt: v.optional(v.number()),
+        lastPushAt: v.optional(v.number()),
+        errorMessage: v.optional(v.string()),
+        migratedFromReplicaAt: v.optional(v.number()),
+      })
+    ),
+
     // Visuals
     visuals: v.optional(
       v.object({
@@ -1017,7 +1052,8 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_slug", ["organizationId", "slug"])
     .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_created_by", ["createdBy"]),
+    .index("by_created_by", ["createdBy"])
+    .index("by_sync_mode", ["syncMode"]),
 
   // Project members with expanded roles
   projectMembers: defineTable({
