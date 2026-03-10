@@ -70,6 +70,24 @@ function sortModelsManagedFirst(models: ModelApiModel[]): ModelApiModel[] {
   })
 }
 
+function mergeModelCatalogResponses(responses: ModelApiResponse[]): ModelApiResponse {
+  const byId = new Map<string, ModelApiModel>()
+
+  for (const response of responses) {
+    for (const model of Array.isArray(response.models) ? response.models : []) {
+      if (!byId.has(model.id)) {
+        byId.set(model.id, model)
+      }
+    }
+  }
+
+  return {
+    models: sortModelsManagedFirst(
+      Array.from(byId.values()).filter((model) => isProviderEnabledInApp(model.provider))
+    ),
+  }
+}
+
 export function clearModelCatalogCache(organizationId?: string): void {
   if (!organizationId) {
     modelCatalogCache.clear()
@@ -130,7 +148,9 @@ export async function getModelCatalog(args: {
     hasProviderFilter && managedProviders.length > 0 ? managedProviders : providerFilter
   const hasSecondaryProviderFilter =
     hasProviderFilter && managedProviders.length > 0 && managedProviders.length < providerFilter.length
-  const secondaryProviderFilter = hasSecondaryProviderFilter ? providerFilter : null
+  const secondaryProviderFilter = hasSecondaryProviderFilter
+    ? providerFilter.filter((providerId) => !managedProviders.includes(providerId))
+    : null
 
   if (hasProviderFilter && providerFilter.length === 0) {
     return { models: [] }
@@ -184,23 +204,15 @@ export async function getModelCatalog(args: {
 
   const nextPromise = requestCatalog(hasProviderFilter ? primaryProviderFilter : null)
     .then(async (primaryData) => {
-      if (
-        secondaryProviderFilter &&
-        Array.isArray(primaryData.models) &&
-        primaryData.models.length === 0
-      ) {
-        return await requestCatalog(secondaryProviderFilter)
+      if (!secondaryProviderFilter) {
+        return primaryData
       }
-      return primaryData
+
+      const secondaryData = await requestCatalog(secondaryProviderFilter)
+      return mergeModelCatalogResponses([primaryData, secondaryData])
     })
     .then((data) => {
-      const normalizedData = {
-        models: sortModelsManagedFirst(
-          (Array.isArray(data.models) ? data.models : []).filter((model) =>
-            isProviderEnabledInApp(model.provider)
-          )
-        ),
-      }
+      const normalizedData = mergeModelCatalogResponses([data])
       modelCatalogCache.set(key, { data: normalizedData })
       return normalizedData
     })

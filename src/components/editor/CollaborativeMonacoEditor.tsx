@@ -49,6 +49,7 @@ export function CollaborativeMonacoEditor({
 }: CollaborativeMonacoEditorProps) {
   const { yjsDoc, awareness } = useYjsProject()
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const themeSyncFrameRef = useRef<number | null>(null)
   const activePathRef = useRef(path)
   const onSaveRef = useRef(onSave)
   const [showBottomFade, setShowBottomFade] = useState(false)
@@ -70,6 +71,15 @@ export function CollaborativeMonacoEditor({
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
+
+  useEffect(() => {
+    return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
+    }
+  }, [])
 
   const teardownBinding = useCallback(() => {
     bindingRef.current?.destroy()
@@ -154,6 +164,14 @@ export function CollaborativeMonacoEditor({
   const handleMount: OnMount = useCallback(
     (editor, monacoInstance) => {
       configureMonacoTypeScriptValidation(monacoInstance)
+      applyTheme()
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+      }
+      themeSyncFrameRef.current = window.requestAnimationFrame(() => {
+        applyTheme()
+        themeSyncFrameRef.current = null
+      })
 
       // Defensive cleanup in case Monaco remounts this editor instance.
       teardownBinding()
@@ -269,7 +287,7 @@ export function CollaborativeMonacoEditor({
 
       bindCurrentModel()
     },
-    [actions, awareness, bindCurrentModel, getCurrentCursorPath, onEditorReady, pingMonacoTyping, teardownBinding]
+    [actions, applyTheme, awareness, bindCurrentModel, getCurrentCursorPath, onEditorReady, pingMonacoTyping, teardownBinding]
   )
 
   // If the target file model is unavailable, ensure old bindings are fully torn down.
@@ -311,6 +329,10 @@ export function CollaborativeMonacoEditor({
   // Cleanup editor bindings/listeners on unmount.
   useEffect(() => {
     return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
       teardownBinding()
 
       for (const disposable of cursorDisposablesRef.current) {

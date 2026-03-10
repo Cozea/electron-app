@@ -1387,6 +1387,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const urlParams = new URLSearchParams(search)
   const successType = urlParams.get('success')
   const wasCanceled = urlParams.get('canceled')
+  const shouldExpandPlansFromUrl = urlParams.get('plans') === '1'
+
+  useEffect(() => {
+    if (!shouldExpandPlansFromUrl) return
+    setShowUpgradeOptions(true)
+  }, [shouldExpandPlansFromUrl])
+
   const renderCycleToggle = () => (
     <SlidingSegmentedControl
       value={checkoutCycle}

@@ -611,10 +611,13 @@ export class GitReplicaService {
     this.inFlightProjects.add(projectId)
 
     try {
-      await this.bootstrap({
+      const bootstrap = await this.bootstrap({
         projectId,
         projectPath: latest.projectPath,
       })
+      if (!bootstrap.success) {
+        throw new Error(bootstrap.error || 'Replica bootstrap failed')
+      }
       const plan = await this.plan({
         projectId,
         projectPath: latest.projectPath,

@@ -23,12 +23,13 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
-import { formatReplicaSyncError } from '../lib/replicaErrorPresentation'
+import { formatReplicaSyncError, isReplicaSyncEntitlementError } from '../lib/replicaErrorPresentation'
 import { markRecentProjectOpenSync } from '../lib/recentProjectOpenSync'
 import { buildProjectPath } from '../lib/projectRoutes'
 
@@ -84,11 +85,13 @@ const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCardProps) {
   const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const isInViewport = useInViewportOnce(cardRef)
     const [isDeleting, setIsDeleting] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
+  const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
@@ -212,6 +215,10 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
     }, [onRequireSyncReview, project._id, project.name, project.slug, project.template, updateSyncStatus, userId])
 
     const handleCardClick = useCallback(async () => {
+        if (syncState !== 'idle') {
+            return
+        }
+
         preloadProjectDestination()
 
         // Draft projects go straight to wizard
@@ -223,6 +230,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
         // Start sync check
         setSyncState('checking')
         setSyncMessage('Preparing project...')
+        setSyncErrorActionHref(null)
 
         try {
             // Determine the real local path for this machine (project.localPath is not per-user).
@@ -287,6 +295,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
 
             setSyncState('ready')
             setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
+            setSyncErrorActionHref(null)
 
             // Small delay to show the ready state
             setTimeout(() => {
@@ -325,14 +334,18 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
             const presentedError = formatReplicaSyncError(error, 'Failed to prepare project')
             setSyncState('error')
             setSyncMessage(presentedError.summary)
+            setSyncErrorActionHref(
+                isReplicaSyncEntitlementError(error) ? '/settings/billing' : null
+            )
 
-            // Reset after showing error
-            setTimeout(() => {
-                setSyncState('idle')
-                setSyncMessage('')
-            }, 2000)
+            if (!isReplicaSyncEntitlementError(error)) {
+                setTimeout(() => {
+                    setSyncState('idle')
+                    setSyncMessage('')
+                }, 2000)
+            }
         }
-    }, [executeAutoSyncBeforeOpen, project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
+    }, [executeAutoSyncBeforeOpen, project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview, syncState])
 
     const handleDelete = async () => {
         if (!userId) return
@@ -385,7 +398,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                     ref={cardRef}
                     className={cn(
                     "group relative flex flex-col shadow-none hover:shadow-none transition-all duration-200 border-border/50 bg-card/50 hover:bg-card overflow-visible p-0 gap-0",
-                    syncState !== 'idle' && "pointer-events-none"
+                    syncState !== 'idle' && !(syncState === 'error' && syncErrorActionHref) && "pointer-events-none"
                 )}
                 onMouseEnter={preloadProjectDestination}
                 onFocus={preloadProjectDestination}
@@ -425,12 +438,26 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
 
                     {/* Sync Loader Overlay - only on preview section */}
                     {syncState !== 'idle' && (
-                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm rounded-t-xl flex flex-col items-center justify-center gap-2">
+                        <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm rounded-t-xl flex flex-col items-center justify-center gap-2 pointer-events-auto">
                             {syncState === 'error' ? (
                                 <>
-                                    <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
-                                        <Cloud className="h-5 w-5 text-destructive" />
-                                    </div>
+                                    {syncErrorActionHref ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            className="h-8 px-3"
+                                            onClick={(event) => {
+                                                event.stopPropagation()
+                                                openSettingsDrawer(syncErrorActionHref)
+                                            }}
+                                        >
+                                            Open Billing
+                                        </Button>
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                                            <Cloud className="h-5 w-5 text-destructive" />
+                                        </div>
+                                    )}
                                     <p className="text-xs text-destructive font-medium text-center px-4">{syncMessage}</p>
                                 </>
                             ) : syncState === 'ready' ? (
