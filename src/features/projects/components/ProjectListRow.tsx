@@ -35,8 +35,10 @@ import {
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
+import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -85,11 +87,14 @@ export function ProjectListRow({
 }: ProjectListRowProps) {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const rowRef = useRef<HTMLTableRowElement | null>(null)
   const isInViewport = useInViewportOnce(rowRef)
     const [isDeleting, setIsDeleting] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
+  const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
+  const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
     const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
@@ -179,6 +184,8 @@ export function ProjectListRow({
         // Start sync check
         setSyncState('checking')
         setSyncMessage('Preparing project...')
+        setSyncErrorActionHref(null)
+        setSyncErrorActionLabel(null)
 
         try {
             const gitOpenResult = await prepareGitProjectForOpen({
@@ -195,6 +202,8 @@ export function ProjectListRow({
             setLocalPath(gitOpenResult.localPath)
             setSyncState('ready')
             setSyncMessage('Opening project...')
+            setSyncErrorActionHref(null)
+            setSyncErrorActionLabel(null)
 
             setTimeout(() => {
                 navigate(buildProjectPath(String(project._id)), {
@@ -210,14 +219,19 @@ export function ProjectListRow({
 
         } catch (error) {
             console.error('[ProjectListRow] Sync check failed:', error)
+            const presentation = formatProjectCloudAccessError(error)
             setSyncState('error')
-            setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
-
-            // Reset after showing error
-            setTimeout(() => {
-                setSyncState('idle')
-                setSyncMessage('')
-            }, 2000)
+            setSyncMessage(presentation.detail ?? presentation.summary)
+            setSyncErrorActionHref(presentation.actionHref)
+            setSyncErrorActionLabel(presentation.actionLabel)
+            if (!presentation.isAccessError) {
+                setTimeout(() => {
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    setSyncErrorActionHref(null)
+                    setSyncErrorActionLabel(null)
+                }, 2000)
+            }
         }
     }, [convex, localPath, navigate, preloadProjectDestination, project, updateMemberLocalPath, userId])
 
@@ -247,6 +261,20 @@ export function ProjectListRow({
                                     <>
                                         <Cloud className="h-3.5 w-3.5 text-destructive" />
                                         <span className="truncate text-destructive">{syncMessage}</span>
+                                        {syncErrorActionHref ? (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-6 px-2 text-[10px]"
+                                                onClick={(event) => {
+                                                    event.stopPropagation()
+                                                    openSettingsDrawer(syncErrorActionHref)
+                                                }}
+                                            >
+                                                {syncErrorActionLabel ?? 'Billing'}
+                                            </Button>
+                                        ) : null}
                                     </>
                                 ) : syncState === 'ready' ? (
                                     <>

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
+import { useConvex } from 'convex/react'
 import * as Y from 'yjs'
 import type { Id } from '../../convex/_generated/dataModel'
 import { SyncCoordinator } from '@/lib/sync/SyncCoordinator'
+import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 import type { YjsProjectDoc, RenameEntry } from '@/lib/yjs/YjsProjectDoc'
 import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
 
@@ -22,8 +24,10 @@ import { normalizeProjectFilePath } from '@/lib/sync/pathNormalization'
 export function useYjsFileWriteback(
   yjsDoc: YjsProjectDoc | null,
   projectPath: string | null,
-  projectId: Id<'projects'> | null
+  projectId: Id<'projects'> | null,
+  userId: Id<'users'> | null
 ): void {
+  const convex = useConvex()
   const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const hasHydratedInitialFilesRef = useRef(false)
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
@@ -38,6 +42,14 @@ export function useYjsFileWriteback(
       actorType: 'system',
       source: 'remote',
     })
+    const gitDurabilityCoordinator = userId
+      ? GitDurabilityCoordinator.acquireShared({
+          projectId,
+          projectPath,
+          convex,
+          userId,
+        })
+      : null
 
     // Track which files we're observing
     const observedFiles = new Map<string, () => void>()
@@ -63,6 +75,7 @@ export function useYjsFileWriteback(
         if (!result.success) {
           throw new Error(result.error ?? 'Write failed')
         }
+        gitDurabilityCoordinator?.scheduleSync(`remote-write:${normalizedPath}`)
         console.log(`[YjsWriteback] Wrote remote change: ${normalizedPath}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to write ${normalizedPath}:`, err)
@@ -98,6 +111,7 @@ export function useYjsFileWriteback(
           projectPath,
           paths,
         })
+        gitDurabilityCoordinator?.scheduleSync(`remote-delete:${paths.join(',')}`)
         console.log(`[YjsWriteback] Deleted remote files: ${paths.join(', ')}`)
       } catch (err) {
         console.error('[YjsWriteback] Failed to delete remote files:', err)
@@ -150,6 +164,7 @@ export function useYjsFileWriteback(
           projectPath,
           files: filesToWrite,
         })
+        gitDurabilityCoordinator?.scheduleSync(`remote-hydrate:${filesToWrite.length}`)
 
         if (!cancelled) {
           console.log(`[YjsWriteback] Hydrated ${filesToWrite.length} files from Yjs snapshot`)
@@ -250,6 +265,7 @@ export function useYjsFileWriteback(
           size: 0,
           idempotencyKey: `remote:rename:${normalizedFrom}:${normalizedTo}`,
         })
+        gitDurabilityCoordinator?.scheduleSync(`remote-rename:${normalizedFrom}:${normalizedTo}`)
         console.log(`[YjsWriteback] Renamed: ${normalizedFrom} -> ${normalizedTo}`)
       } catch (err) {
         console.error(`[YjsWriteback] Failed to rename ${normalizedFrom} -> ${normalizedTo}:`, err)
@@ -307,6 +323,7 @@ export function useYjsFileWriteback(
       // Cleanup: cancel pending deletes
       if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
       pendingDeletes.clear()
+      gitDurabilityCoordinator?.release()
 
       // Unobserve files map
       yjsDoc.files.unobserve(filesMapHandler)
@@ -314,5 +331,5 @@ export function useYjsFileWriteback(
       // Unobserve renames map
       yjsDoc.renames.unobserve(renamesMapHandler)
     }
-  }, [yjsDoc, projectPath, projectId])
+  }, [convex, projectId, projectPath, userId, yjsDoc])
 }

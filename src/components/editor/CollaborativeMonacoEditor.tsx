@@ -121,18 +121,23 @@ export function CollaborativeMonacoEditor({
     }
 
     const wasDeleted = yjsDoc.isDeleted(currentYjsPath)
-    const yText = yjsDoc.getFileText(currentYjsPath)
+    let yText = yjsDoc.getExistingFileText(currentYjsPath)
+    const localFileContent = currentModel.currentContent
+
+    if (!yText || yText.toString() !== localFileContent) {
+      if (wasDeleted) {
+        yjsDoc.clearDeletedStatus(currentYjsPath)
+      }
+      yjsDoc.initializeFile(currentYjsPath, localFileContent)
+      yText = yjsDoc.getExistingFileText(currentYjsPath)
+    }
+
     if (!yText) {
       if (wasDeleted) {
         console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', currentYjsPath)
       }
       teardownBinding()
       return
-    }
-
-    // Initialize Y.Text content if empty and we have content from EditorStore
-    if (yText.length === 0) {
-      yjsDoc.initializeFile(currentYjsPath, currentModel.currentContent)
     }
 
     teardownBinding()

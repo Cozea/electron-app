@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -23,8 +24,10 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
+import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
+import { formatProjectCloudAccessError } from '@/features/projects/lib/projectCloudAccessPresentation'
 import {
   logProjectSourceDebug,
   summarizeProjectForDebug,
@@ -50,12 +53,15 @@ export function ContextSwitcher() {
   const convex = useConvex()
   const { isMobile } = useSidebar()
   const navigate = useViewTransitionNavigate()
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const location = useLocation()
   const { currentOrganization, user, organizations } = useAuth()
 
   const [open, setOpen] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
+  const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
+  const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
 
   // Get Convex organization
@@ -196,6 +202,8 @@ export function ContextSwitcher() {
   const resetSyncState = useCallback(() => {
     setSyncState('idle')
     setSyncMessage('')
+    setSyncErrorActionHref(null)
+    setSyncErrorActionLabel(null)
     setActiveProjectName(null)
   }, [])
 
@@ -219,6 +227,8 @@ export function ContextSwitcher() {
     setActiveProjectName(project.name ?? null)
     setSyncState('checking')
     setSyncMessage('Preparing project...')
+    setSyncErrorActionHref(null)
+    setSyncErrorActionLabel(null)
     setOpen(true)
 
     try {
@@ -251,12 +261,17 @@ export function ContextSwitcher() {
       }, 200)
     } catch (error) {
       console.error('[ContextSwitcher] Project prep failed:', error)
+      const presentation = formatProjectCloudAccessError(error)
       setSyncState('error')
-      setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
+      setSyncMessage(presentation.detail ?? presentation.summary)
+      setSyncErrorActionHref(presentation.actionHref)
+      setSyncErrorActionLabel(presentation.actionLabel)
 
-      setTimeout(() => {
-        resetSyncState()
-      }, 2000)
+      if (!presentation.isAccessError) {
+        setTimeout(() => {
+          resetSyncState()
+        }, 2000)
+      }
     }
   }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
@@ -359,6 +374,20 @@ export function ContextSwitcher() {
                           {activeProjectName}
                         </div>
                       )}
+                      {syncState === 'error' && syncErrorActionHref ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-7 px-2 text-[11px]"
+                          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                            event.stopPropagation()
+                            openSettingsDrawer(syncErrorActionHref)
+                          }}
+                        >
+                          {syncErrorActionLabel ?? 'Open Billing'}
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-2 h-0.5 w-full bg-border/50">
