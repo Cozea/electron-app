@@ -98,7 +98,7 @@ function AgentFileSyncBridge({
 
   useAgentFileSync(yjsDoc, projectPath, projectId, userId)
   useBinaryFileSync(projectId, projectPath, userId)
-  useYjsFileWriteback(yjsDoc, projectPath, projectId)
+  useYjsFileWriteback(yjsDoc, projectPath, projectId, userId)
 
   return <>{children}</>
 }

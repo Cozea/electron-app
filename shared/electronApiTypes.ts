@@ -466,6 +466,7 @@ export interface GitSyncStatusResult {
   hasStagedChanges?: boolean
   hasUnstagedChanges?: boolean
   hasUntrackedChanges?: boolean
+  deletedCount?: number
   changedPaths?: string[]
   error?: string
 }

@@ -75,6 +75,22 @@ async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<bo
   return meaningfulFiles.length === 0
 }
 
+function shouldTreatAsSuspectedLocalWipe(status: {
+  deletedCount?: number
+  changedPaths?: string[]
+  hasUntrackedChanges?: boolean
+}): boolean {
+  const deletedCount = status.deletedCount ?? 0
+  const changedCount = status.changedPaths?.length ?? 0
+  const nonDeletedCount = Math.max(0, changedCount - deletedCount)
+
+  if (deletedCount === 0 || status.hasUntrackedChanges) {
+    return false
+  }
+
+  return deletedCount >= 5 && changedCount > 0 && nonDeletedCount <= 2
+}
+
 export async function prepareGitProjectForOpen({
   convex,
   project,
@@ -144,7 +160,14 @@ export async function prepareGitProjectForOpen({
     throw new Error(status.error || 'Failed to read local git status')
   }
 
-  if (fetchResult.headCommit && await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)) {
+  const shouldRestoreWorkspace =
+    Boolean(fetchResult.headCommit) &&
+    (
+      await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath) ||
+      ((status.behind ?? 0) > 0 && shouldTreatAsSuspectedLocalWipe(status))
+    )
+
+  if (shouldRestoreWorkspace) {
     onProgress?.('Restoring project files...')
     const restoreResult = await window.electronAPI.sync.gitRestoreMain({
       projectPath: effectiveLocalPath,

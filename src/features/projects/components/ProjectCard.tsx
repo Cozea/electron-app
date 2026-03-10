@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
+import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
 import {
     logProjectSourceDebug,
     summarizeProjectForDebug,
@@ -89,7 +90,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
     const [isDeleting, setIsDeleting] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
+  const [syncDetail, setSyncDetail] = useState<string | null>(null)
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
+  const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
@@ -161,7 +164,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
         // Start sync check
         setSyncState('checking')
         setSyncMessage('Preparing project...')
+        setSyncDetail(null)
         setSyncErrorActionHref(null)
+        setSyncErrorActionLabel(null)
 
         try {
             const gitOpenResult = await prepareGitProjectForOpen({
@@ -178,7 +183,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
             setLocalPath(gitOpenResult.localPath)
             setSyncState('ready')
             setSyncMessage('Opening project...')
+            setSyncDetail(null)
             setSyncErrorActionHref(null)
+            setSyncErrorActionLabel(null)
 
             setTimeout(() => {
                 navigate(buildProjectPath(String(project._id)), {
@@ -194,13 +201,21 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
 
         } catch (error) {
             console.error('[ProjectCard] Sync check failed:', error)
+            const presentation = formatProjectCloudAccessError(error)
             setSyncState('error')
-            setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
-            setSyncErrorActionHref(null)
-            setTimeout(() => {
-                setSyncState('idle')
-                setSyncMessage('')
-            }, 2000)
+            setSyncMessage(presentation.summary)
+            setSyncDetail(presentation.detail)
+            setSyncErrorActionHref(presentation.actionHref)
+            setSyncErrorActionLabel(presentation.actionLabel)
+            if (!presentation.isAccessError) {
+                setTimeout(() => {
+                    setSyncState('idle')
+                    setSyncMessage('')
+                    setSyncDetail(null)
+                    setSyncErrorActionHref(null)
+                    setSyncErrorActionLabel(null)
+                }, 2000)
+            }
         }
     }, [convex, localPath, navigate, preloadProjectDestination, project, syncState, updateMemberLocalPath, userId])
 
@@ -308,14 +323,19 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                                 openSettingsDrawer(syncErrorActionHref)
                                             }}
                                         >
-                                            Open Billing
+                                            {syncErrorActionLabel ?? 'Open Billing'}
                                         </Button>
                                     ) : (
                                         <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
                                             <Cloud className="h-5 w-5 text-destructive" />
                                         </div>
                                     )}
-                                    <p className="text-xs text-destructive font-medium text-center px-4">{syncMessage}</p>
+                                    <div className="px-4 text-center">
+                                        <p className="text-xs text-destructive font-medium">{syncMessage}</p>
+                                        {syncDetail ? (
+                                            <p className="mt-1 text-[11px] text-destructive/80">{syncDetail}</p>
+                                        ) : null}
+                                    </div>
                                 </>
                             ) : syncState === 'ready' ? (
                                 <>

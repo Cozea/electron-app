@@ -1,8 +1,10 @@
+import type Stripe from 'stripe'
 import { describe, expect, it } from 'vitest'
 
 import {
   isConfirmedReplacementStatus,
   resolvePendingAccountCycleChange,
+  resolveStoredAccountSubscriptionSnapshotFromStripe,
   resolveStoredAccountSubscriptionStatus,
   resolveReplacementStripeSubscriptionId,
   shouldSkipFundingOnSubscriptionUpdate,
@@ -113,6 +115,41 @@ describe('billing plan switching helpers', () => {
         cancelAtPeriodEnd: true,
       })
     ).toBe(true)
+  })
+
+  it('maps Stripe trial subscriptions to stored trial snapshots', () => {
+    const subscription = {
+      status: 'trialing',
+      cancel_at: null,
+      cancel_at_period_end: false,
+      trial_start: 1_700_000_000,
+      trial_end: 1_700_604_800,
+      items: {
+        data: [
+          {
+            current_period_start: 1_700_000_000,
+            current_period_end: 1_700_604_800,
+            price: {
+              recurring: {
+                interval: 'month',
+              },
+            },
+          },
+        ],
+      },
+    } as unknown as Pick<
+      Stripe.Subscription,
+      'status' | 'cancel_at' | 'cancel_at_period_end' | 'trial_start' | 'trial_end' | 'items'
+    >
+
+    expect(resolveStoredAccountSubscriptionSnapshotFromStripe(subscription)).toEqual({
+      status: 'trialing',
+      cycle: 'monthly',
+      trialStart: 1_700_000_000_000,
+      trialEnd: 1_700_604_800_000,
+      currentPeriodStart: 1_700_000_000_000,
+      currentPeriodEnd: 1_700_604_800_000,
+    })
   })
 
   it('resolves a pending cycle change from an active subscription schedule', () => {

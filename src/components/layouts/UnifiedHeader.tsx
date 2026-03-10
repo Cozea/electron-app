@@ -31,9 +31,11 @@ import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAuth } from "@/contexts/AuthContext"
+import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator"
 import type { Id } from "../../../convex/_generated/dataModel"
-import { useMutation, useQuery } from "convex/react"
+import { useConvex, useMutation, useQuery } from "convex/react"
 import { api } from "../../../convex/_generated/api"
 import {
   Breadcrumb,
@@ -495,6 +497,8 @@ function HeaderProjectShareButton({
   projectName?: string | null
 }) {
   const { convexUserId } = useAuth()
+  const convex = useConvex()
+  const syncContext = useOptionalProjectSyncContext()
   const inviteMember = useMutation(api.projectInvites.inviteMember)
   const createOrUpdateActiveLink = useMutation(api.projectJoinLinks.createOrUpdateActiveLink)
   const rotateJoinLink = useMutation(api.projectJoinLinks.rotateLink)
@@ -544,6 +548,23 @@ function HeaderProjectShareButton({
   const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager")
   const activeJoinLink = joinLinkState?.activeLink ?? null
   const canManageJoinLinks = canInvite && (joinLinkState?.isPersonalProject ?? true)
+
+  const flushProjectBeforeShare = useCallback(async () => {
+    if (!projectId || !convexUserId || !syncContext?.projectPath) return
+
+    const coordinator = GitDurabilityCoordinator.acquireShared({
+      projectId,
+      projectPath: syncContext.projectPath,
+      convex,
+      userId: convexUserId,
+    })
+
+    try {
+      await coordinator.flushNow()
+    } finally {
+      coordinator.release()
+    }
+  }, [convex, convexUserId, projectId, syncContext?.projectPath])
 
   useEffect(() => {
     if (!isInviteOpen || !activeJoinLink) return
@@ -611,6 +632,7 @@ function HeaderProjectShareButton({
     setInviteError(null)
 
     try {
+      await flushProjectBeforeShare()
       const failed: Array<{ email: string; error: string }> = []
 
       for (const member of inviteMembers) {
@@ -643,6 +665,7 @@ function HeaderProjectShareButton({
   }, [
     canInvite,
     convexUserId,
+    flushProjectBeforeShare,
     handleInviteOpenChange,
     inviteMember,
     inviteMembers,
@@ -656,6 +679,7 @@ function HeaderProjectShareButton({
     setJoinLinkNotice(null)
 
     try {
+      await flushProjectBeforeShare()
       const link = await createOrUpdateActiveLink({
         projectId,
         actorUserId: convexUserId,
@@ -676,6 +700,7 @@ function HeaderProjectShareButton({
     canManageJoinLinks,
     convexUserId,
     createOrUpdateActiveLink,
+    flushProjectBeforeShare,
     joinLinkRole,
     projectId,
   ])

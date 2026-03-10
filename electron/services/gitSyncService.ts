@@ -51,6 +51,7 @@ interface ParsedStatus {
   hasStagedChanges: boolean
   hasUnstagedChanges: boolean
   hasUntrackedChanges: boolean
+  deletedCount: number
   changedPaths: string[]
 }
 
@@ -336,6 +337,7 @@ export class GitSyncService {
       hasStagedChanges: parsed.hasStagedChanges,
       hasUnstagedChanges: parsed.hasUnstagedChanges,
       hasUntrackedChanges: parsed.hasUntrackedChanges,
+      deletedCount: parsed.deletedCount,
       changedPaths: parsed.changedPaths,
     }
   }
@@ -890,6 +892,7 @@ export class GitSyncService {
     let hasStagedChanges = false
     let hasUnstagedChanges = false
     let hasUntrackedChanges = false
+    let deletedCount = 0
     const changedPaths: string[] = []
 
     for (const line of lines) {
@@ -921,6 +924,9 @@ export class GitSyncService {
         hasUntrackedChanges = true
         continue
       }
+      if (staged === 'D' || unstaged === 'D') {
+        deletedCount += 1
+      }
       if ('UADRC'.includes(staged) || 'UADRC'.includes(unstaged)) {
         hasConflicts = hasConflicts || staged === 'U' || unstaged === 'U' || code === 'AA' || code === 'DD'
       }
@@ -937,6 +943,7 @@ export class GitSyncService {
       hasStagedChanges,
       hasUnstagedChanges,
       hasUntrackedChanges,
+      deletedCount,
       changedPaths,
     }
   }
