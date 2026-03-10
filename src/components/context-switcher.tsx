@@ -43,9 +43,6 @@ interface ProjectNavigationState {
   projectSlug?: string
   projectName?: string
   projectTemplate?: string
-  gateSyncScreen?: boolean
-  syncAccessBlocked?: boolean
-  skipInitialSyncCheck?: boolean
   syncMode?: 'replica' | 'git'
 }
 
@@ -247,9 +244,6 @@ export function ContextSwitcher() {
             projectId: String(project._id),
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
-            gateSyncScreen: false,
-            syncAccessBlocked: false,
-            skipInitialSyncCheck: true,
             syncMode: 'git',
           } satisfies ProjectNavigationState,
         })

@@ -1,7 +1,7 @@
 import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { api } from '../../../convex/_generated/api'
 import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
@@ -72,16 +72,34 @@ function shouldExcludeActivityPath(path: string): boolean {
   ))
 }
 
+function mergeChangeOrigin(
+  current: ChangeOrigin | null,
+  next: ChangeOrigin
+): ChangeOrigin {
+  if (!current || current === next) {
+    return next
+  }
+  if (current === 'agent' || next === 'agent') {
+    return 'agent'
+  }
+  if (current === 'user' || next === 'user') {
+    return 'user'
+  }
+  if (current === 'remote' || next === 'remote') {
+    return 'remote'
+  }
+  return 'init'
+}
+
 /**
  * ProjectFilesPersistence - Persists Yjs file changes to activity logs and durable sync.
  *
  * This provider tracks local Yjs edits/deletes, logs them for the activity feed,
- * and then routes durability to either the legacy replica lane or the Git-backed lane.
+ * and then routes durability through the Git-backed sync lane.
  */
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
-  private projectPath: string | null
   private userId: Id<"users">
   private userName: string
   private convex: ConvexReactClient
@@ -102,7 +120,6 @@ export class ProjectFilesPersistence {
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
-    this.projectPath = projectPath
     this.convex = convex
     this.userId = userId
     this.userName = userName
@@ -208,48 +225,12 @@ export class ProjectFilesPersistence {
     this.debounceTimer = setTimeout(() => this.persistChanges(), this.debounceMs)
   }
 
-  private mergeSnapshotSource(current: ChangeOrigin | null, next: ChangeOrigin): ChangeOrigin {
-    if (current === 'agent' || next === 'agent') return 'agent'
-    if (current === 'remote' || next === 'remote') return 'remote'
-    if (current === 'init' || next === 'init') return 'init'
-    return 'user'
-  }
-
-  private toSnapshotSource(origin: ChangeOrigin): 'user' | 'agent' | 'external' {
-    if (origin === 'agent') return 'agent'
-    if (origin === 'remote') return 'external'
-    return 'user'
-  }
-
-  private async enqueueReplicaSnapshot(source: ChangeOrigin, reason: string): Promise<void> {
-    if (!this.projectPath) {
-      return
-    }
-
-    try {
-      await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
-        projectId: this.projectId,
-        projectPath: this.projectPath,
-        source: this.toSnapshotSource(source),
-        reason,
-      })
-    } catch (error) {
-      console.warn('[ProjectFilesPersistence] Failed to enqueue replica snapshot:', error)
-    }
-  }
-
   private async enqueueDurabilitySync(source: ChangeOrigin, reason: string): Promise<void> {
-    const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
-      projectId: this.projectId,
-      userId: this.userId,
-    })
-
-    if (metadata?.syncMode === 'git') {
-      this.gitDurabilityCoordinator?.scheduleSync(reason)
+    if (source === 'remote' || source === 'init') {
       return
     }
 
-    await this.enqueueReplicaSnapshot(source, reason)
+    this.gitDurabilityCoordinator?.scheduleSync(reason)
   }
 
   private async persistChanges() {
@@ -295,7 +276,7 @@ export class ProjectFilesPersistence {
 
         this.previousContents.delete(path)
         hasMaterialChanges = true
-        snapshotSource = this.mergeSnapshotSource(snapshotSource, origin)
+        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
       }
     }
 
@@ -341,7 +322,7 @@ export class ProjectFilesPersistence {
         // Update previous content for next diff
         this.previousContents.set(path, content)
         hasMaterialChanges = true
-        snapshotSource = this.mergeSnapshotSource(snapshotSource, origin)
+        snapshotSource = mergeChangeOrigin(snapshotSource, origin)
       } catch (error) {
         console.error(`[ProjectFilesPersistence] Failed to log change for ${path}:`, error)
       }

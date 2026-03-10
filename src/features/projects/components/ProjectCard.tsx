@@ -26,7 +26,6 @@ import { ProjectDiffBadge } from '@/components/projects/ProjectDiffBadge'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
-import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import {
@@ -60,7 +59,6 @@ interface ProjectSummary extends ProjectOpenGitProjectLike {
 interface ProjectCardProps {
     project: ProjectSummary
     userId?: Id<'users'>
-    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -189,9 +187,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
-                        gateSyncScreen: false,
-                        syncAccessBlocked: false,
-                        skipInitialSyncCheck: true,
                         syncMode: 'git',
                     },
                 })

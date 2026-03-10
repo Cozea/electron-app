@@ -159,9 +159,6 @@ interface ProjectLayoutProps {
 }
 
 interface ProjectLayoutLocationState {
-    gateSyncScreen?: boolean
-    skipInitialSyncCheck?: boolean
-    syncAccessBlocked?: boolean
     syncMode?: 'replica' | 'git'
 }
 
@@ -213,9 +210,6 @@ export function ProjectLayout({
     const navigate = useViewTransitionNavigate()
     const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
-    const shouldGateSyncScreen = locationState?.gateSyncScreen === true
-    const shouldSkipInitialSyncCheckFromState = locationState?.skipInitialSyncCheck === true
-    const shouldStartInLocalOnlyMode = locationState?.syncAccessBlocked === true
     const initialSyncMode = locationState?.syncMode ?? null
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
@@ -296,7 +290,6 @@ export function ProjectLayout({
     const shouldSkipInitialSyncCheck =
         initialSyncMode === 'git' ||
         project?.syncMode === 'git' ||
-        shouldSkipInitialSyncCheckFromState ||
         (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false)
     const projectSlug = project?.slug ?? routeSlug ?? null
     const projectBasePath = routeProjectId
@@ -655,7 +648,6 @@ export function ProjectLayout({
     // Determine if we can enable sync (need project + user data + resolved path decision)
     const hasSyncIdentities = Boolean(project?._id && convexUser?._id && projectSlug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
-    const shouldHoldWorkspaceForSyncGate = shouldGateSyncScreen && !canSync
     const {
         header: headerContent,
         breadcrumbAddon,
@@ -838,17 +830,6 @@ export function ProjectLayout({
         )
     }
 
-    if (shouldHoldWorkspaceForSyncGate) {
-        return (
-            <div className="h-screen w-screen bg-background flex items-center justify-center">
-                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Preparing sync review...
-                </div>
-            </div>
-        )
-    }
-
     const layoutContent = (
         <SidebarProvider>
             <SidebarFullscreenSync assistantPanelMode={assistantPanelMode} />
@@ -978,8 +959,6 @@ export function ProjectLayout({
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
                 onFilesChanged={handleRefreshFiles}
-                initialGateSyncScreen={shouldGateSyncScreen}
-                initialSyncAccessBlocked={shouldStartInLocalOnlyMode}
                 skipInitialSyncCheck={shouldSkipInitialSyncCheck}
             >
                 {layoutContent}
