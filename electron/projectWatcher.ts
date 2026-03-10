@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from './yjsNotify'
+import { shouldExcludeGeneratedDirectory, shouldExcludeGeneratedFile } from './services/generatedArtifactFilters'
 
 const INTERNAL_IGNORE_MS = 1500
 const PROCESS_DEBOUNCE_MS = 200
@@ -63,7 +64,12 @@ function normalizeRelativePath(relPath: string): string {
 function shouldIgnoreRelativePath(relPath: string): boolean {
   const normalized = normalizeRelativePath(relPath)
   const parts = normalized.split('/')
-  return parts.some((segment) => DEFAULT_EXCLUDED_DIRS.has(segment))
+  return (
+    parts.some((segment) => (
+      DEFAULT_EXCLUDED_DIRS.has(segment) || shouldExcludeGeneratedDirectory(segment)
+    )) ||
+    shouldExcludeGeneratedFile(normalized)
+  )
 }
 
 const internalWriteTimestamps = new Map<string, number>()

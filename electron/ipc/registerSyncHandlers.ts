@@ -448,7 +448,26 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         sessionId?: string
       }
     ) => {
-      return gitReplicaService.bootstrap(options)
+      try {
+        const result = await gitReplicaService.bootstrap(options)
+        if (!result.success) {
+          console.warn('[GitReplica][IPC] Bootstrap failed', {
+            projectId: options.projectId,
+            projectPath: options.projectPath,
+            sessionId: options.sessionId,
+            error: result.error,
+          })
+        }
+        return result
+      } catch (error) {
+        console.error('[GitReplica][IPC] Bootstrap threw', {
+          projectId: options.projectId,
+          projectPath: options.projectPath,
+          sessionId: options.sessionId,
+          error,
+        })
+        throw error
+      }
     }
   )
 
@@ -462,7 +481,26 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         sessionId?: string
       }
     ) => {
-      return gitReplicaService.plan(options)
+      try {
+        const result = await gitReplicaService.plan(options)
+        if (!result.success) {
+          console.warn('[GitReplica][IPC] Plan failed', {
+            projectId: options.projectId,
+            projectPath: options.projectPath,
+            sessionId: options.sessionId,
+            error: result.error,
+          })
+        }
+        return result
+      } catch (error) {
+        console.error('[GitReplica][IPC] Plan threw', {
+          projectId: options.projectId,
+          projectPath: options.projectPath,
+          sessionId: options.sessionId,
+          error,
+        })
+        throw error
+      }
     }
   )
 

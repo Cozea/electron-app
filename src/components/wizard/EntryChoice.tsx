@@ -65,6 +65,7 @@ import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
+import { resolveModelIdFromCatalog } from '@/lib/ai/modelIdResolution'
 import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 
 export interface PromptSettings {
@@ -234,8 +235,12 @@ export function EntryChoice({
               limit: m.limit,
             }
           })
+        const resolvedModelId = resolveModelIdFromCatalog(model, data.models)
         setAvailableModels(mapped)
         setModelCapabilities(nextCapabilities)
+        if (resolvedModelId && resolvedModelId !== model) {
+          setModel(resolvedModelId)
+        }
         setModelsLoaded(true)
       })
       .catch((error) => {

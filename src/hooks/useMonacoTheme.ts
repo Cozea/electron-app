@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import * as monaco from 'monaco-editor'
 import { useTheme, type Theme } from '@/contexts/ThemeContext'
 
@@ -271,7 +271,12 @@ function ensureMonacoTheme(themeName: string, resolvedTheme: ResolvedTheme, vari
   monaco.editor.setTheme(themeName)
 }
 
-export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): string {
+interface MonacoThemeController {
+  themeName: string
+  applyTheme: () => void
+}
+
+export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): MonacoThemeController {
   const { theme } = useTheme()
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => getSystemTheme())
 
@@ -294,10 +299,17 @@ export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): string 
     return `cozea-${resolvedTheme}${suffix}`
   }, [resolvedTheme, variant])
 
-  useEffect(() => {
+  const applyTheme = useCallback(() => {
     if (typeof window === 'undefined') return
     ensureMonacoTheme(themeName, resolvedTheme, variant)
   }, [themeName, resolvedTheme, variant])
 
-  return themeName
+  useLayoutEffect(() => {
+    applyTheme()
+  }, [applyTheme])
+
+  return {
+    themeName,
+    applyTheme,
+  }
 }

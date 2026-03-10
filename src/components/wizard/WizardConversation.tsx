@@ -119,6 +119,7 @@ import {
   type ModelApiModel,
   type ModelApiResponse,
 } from '@/lib/ai/modelCatalogClient'
+import { resolveModelIdFromCatalog } from '@/lib/ai/modelIdResolution'
 import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
@@ -524,9 +525,13 @@ export function WizardConversation({
         for (const m of data.models) {
           if (m.capabilities) caps[m.id] = m.capabilities
         }
+        const resolvedModelId = resolveModelIdFromCatalog(model, data.models)
         setModelCapabilities(caps)
         setModelsError(null)
         setAvailableModels(mapped)
+        if (resolvedModelId && resolvedModelId !== model) {
+          setModel(resolvedModelId)
+        }
         setModelsLoaded(true)
       })
       .catch((err) => {
@@ -704,6 +709,17 @@ export function WizardConversation({
     },
     onBillingError: (err) => setBillingError(err as any),
   })
+
+  const failedUserMessageId = useMemo(() => {
+    if (status !== 'error') return null
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role === 'user') {
+        return message.id
+      }
+    }
+    return null
+  }, [messages, status])
 
   addToolOutputRef.current = addToolOutput
 
@@ -1066,6 +1082,7 @@ export function WizardConversation({
                 message={message}
                 toolsByName={toolsByName}
                 status={status}
+                showUserErrorIndicator={message.id === failedUserMessageId}
               />
             ))}
             {isLoading && (
@@ -1345,27 +1362,43 @@ interface MessageBubbleProps {
   message: UIMessage
   toolsByName: Map<string, ToolMeta>
   status: 'ready' | 'submitted' | 'streaming' | 'error'
+  showUserErrorIndicator?: boolean
 }
 
-function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
+function MessageBubble({ message, toolsByName, status, showUserErrorIndicator = false }: MessageBubbleProps) {
   const isStreaming = status === 'streaming'
   const sourceItems = extractSourcesFromParts(message.parts)
   const hasStandaloneAttachments = message.role === 'user' && message.parts.some(isFilePart)
 
   return (
     <Message from={message.role}>
-      <MessageContent
+      <div
         className={cn(
-          hasStandaloneAttachments && [
-            'group-[.is-user]:w-full',
-            'group-[.is-user]:bg-transparent',
-            'group-[.is-user]:rounded-none',
-            'group-[.is-user]:px-0',
-            'group-[.is-user]:py-0',
-          ]
+          'flex items-start gap-2',
+          message.role === 'user' ? 'justify-end' : 'w-full'
         )}
       >
-        {message.parts.map((part, index) => {
+        {message.role === 'user' && showUserErrorIndicator ? (
+          <div
+            aria-label="Message failed to send"
+            className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive text-[11px] font-semibold text-destructive-foreground"
+            title="Message failed to send"
+          >
+            !
+          </div>
+        ) : null}
+        <MessageContent
+          className={cn(
+            hasStandaloneAttachments && [
+              'group-[.is-user]:w-full',
+              'group-[.is-user]:bg-transparent',
+              'group-[.is-user]:rounded-none',
+              'group-[.is-user]:px-0',
+              'group-[.is-user]:py-0',
+            ]
+          )}
+        >
+          {message.parts.map((part, index) => {
           if (part.type === 'step-start') {
             return (
               <div key={`${message.id}-step-${index}`} className="py-2">
@@ -1507,25 +1540,26 @@ function MessageBubble({ message, toolsByName, status }: MessageBubbleProps) {
           }
 
           return null
-        })}
-        {sourceItems.length > 0 && (
-          <div className="px-2 pb-2">
-            <Sources>
-              <SourcesTrigger count={sourceItems.length} />
-              <SourcesContent>
-                {sourceItems.map((source, idx) => (
-                  <Source
-                    key={`${source.url}-${idx}`}
-                    href={source.url}
-                    title={source.title}
-                    favicon={source.favicon}
-                  />
-                ))}
-              </SourcesContent>
-            </Sources>
-          </div>
-        )}
-      </MessageContent>
+          })}
+          {sourceItems.length > 0 && (
+            <div className="px-2 pb-2">
+              <Sources>
+                <SourcesTrigger count={sourceItems.length} />
+                <SourcesContent>
+                  {sourceItems.map((source, idx) => (
+                    <Source
+                      key={`${source.url}-${idx}`}
+                      href={source.url}
+                      title={source.title}
+                      favicon={source.favicon}
+                    />
+                  ))}
+                </SourcesContent>
+              </Sources>
+            </div>
+          )}
+        </MessageContent>
+      </div>
     </Message>
   )
 }

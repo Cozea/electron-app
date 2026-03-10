@@ -10,7 +10,7 @@ export interface YjsProjectDocInterface {
   doc: Y.Doc
   files: Y.Map<Y.Text>
   awareness: Awareness
-  getFileText(path: string): Y.Text
+  getFileText(path: string): Y.Text | null
   initializeFile(path: string, content: string): void
   applyExternalChange(path: string, newContent: string): void
 }

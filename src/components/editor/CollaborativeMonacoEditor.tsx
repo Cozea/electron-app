@@ -10,6 +10,24 @@ import { configureMonacoTypeScriptValidation, ensureMonacoEnvironment } from '@/
 
 ensureMonacoEnvironment()
 
+function toYjsRelativePath(filePath: string, projectPath?: string): string | null {
+  const normalizedFilePath = filePath.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!normalizedFilePath) return null
+
+  if (projectPath) {
+    const normalizedProjectPath = projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
+    if (normalizedProjectPath && normalizedFilePath.startsWith(`${normalizedProjectPath}/`)) {
+      return normalizedFilePath.slice(normalizedProjectPath.length + 1)
+    }
+  }
+
+  if (normalizedFilePath.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFilePath)) {
+    return null
+  }
+
+  return normalizedFilePath.replace(/^\/+/, '')
+}
+
 interface CollaborativeMonacoEditorProps {
   path: string
   onSave?: () => void
@@ -37,7 +55,7 @@ export function CollaborativeMonacoEditor({
   const bindingRef = useRef<MonacoBinding | null>(null)
   const yTextObserverCleanupRef = useRef<(() => void) | null>(null)
   const cursorDisposablesRef = useRef<monaco.IDisposable[]>([])
-  const theme = useMonacoTheme('sidebar')
+  const { themeName, applyTheme } = useMonacoTheme('sidebar')
 
   const model = useEditorStore((state) => state.models[path])
   const actions = useEditorStore((state) => state.actions)
@@ -63,6 +81,12 @@ export function CollaborativeMonacoEditor({
     }
   }, [])
 
+  const getCurrentCursorPath = useCallback(() => {
+    const currentPath = activePathRef.current
+    const currentModel = useEditorStore.getState().models[currentPath]
+    return toYjsRelativePath(currentPath, currentModel?.projectPath) ?? currentPath
+  }, [])
+
   const bindCurrentModel = useCallback(() => {
     const editor = editorRef.current
     if (!editor || !yjsDoc) {
@@ -74,22 +98,31 @@ export function CollaborativeMonacoEditor({
     if (!currentModel) {
       return
     }
+    const currentYjsPath = toYjsRelativePath(currentPath, currentModel.projectPath)
 
     const editorModel = editor.getModel()
     if (!editorModel) {
       return
     }
 
-    const yText = yjsDoc.getFileText(currentPath)
+    if (!currentYjsPath) {
+      teardownBinding()
+      return
+    }
+
+    const wasDeleted = yjsDoc.isDeleted(currentYjsPath)
+    const yText = yjsDoc.getFileText(currentYjsPath)
     if (!yText) {
-      console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', currentPath)
+      if (wasDeleted) {
+        console.warn('[CollaborativeEditor] Yjs document marked as deleted for path:', currentYjsPath)
+      }
       teardownBinding()
       return
     }
 
     // Initialize Y.Text content if empty and we have content from EditorStore
     if (yText.length === 0) {
-      yjsDoc.initializeFile(currentPath, currentModel.currentContent)
+      yjsDoc.initializeFile(currentYjsPath, currentModel.currentContent)
     }
 
     teardownBinding()
@@ -142,7 +175,7 @@ export function CollaborativeMonacoEditor({
           const position = editor.getPosition()
           if (!position) return
           awareness.setLocalStateField('cursor', {
-            filePath: activePathRef.current,
+            filePath: getCurrentCursorPath(),
             line: position.lineNumber,
             column: position.column,
           })
@@ -236,7 +269,7 @@ export function CollaborativeMonacoEditor({
 
       bindCurrentModel()
     },
-    [actions, awareness, bindCurrentModel, onEditorReady, pingMonacoTyping, teardownBinding]
+    [actions, awareness, bindCurrentModel, getCurrentCursorPath, onEditorReady, pingMonacoTyping, teardownBinding]
   )
 
   // If the target file model is unavailable, ensure old bindings are fully torn down.
@@ -264,7 +297,7 @@ export function CollaborativeMonacoEditor({
       }
 
       awareness.setLocalStateField('cursor', {
-        filePath: activePathRef.current,
+        filePath: getCurrentCursorPath(),
         line: position.lineNumber,
         column: position.column,
       })
@@ -273,7 +306,7 @@ export function CollaborativeMonacoEditor({
     return () => {
       window.cancelAnimationFrame(frame)
     }
-  }, [path, awareness, bindCurrentModel])
+  }, [path, awareness, bindCurrentModel, getCurrentCursorPath])
 
   // Cleanup editor bindings/listeners on unmount.
   useEffect(() => {
@@ -312,7 +345,8 @@ export function CollaborativeMonacoEditor({
         // Don't set value prop - y-monaco manages content
         defaultValue={model.currentContent}
         keepCurrentModel
-        theme={theme}
+        beforeMount={() => applyTheme()}
+        theme={themeName}
         onMount={handleMount}
         // Don't use onChange - y-monaco handles sync
         options={{

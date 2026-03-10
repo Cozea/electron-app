@@ -1,4 +1,5 @@
 import type { AgentId, VariantId, AISurface } from '@/lib/ai/runtimeProfiles'
+import { normalizeStoredModelId } from '@/lib/ai/modelIdResolution'
 
 export type StoredModelSettings = {
   agentId?: AgentId;
@@ -114,7 +115,7 @@ function loadStoredGlobalModelSettingsRaw(): GlobalModelSettings | null {
     if (!isRecord(parsed)) return null
 
     const normalized: GlobalModelSettings = {
-      model: typeof parsed.model === 'string' ? parsed.model : undefined,
+      model: normalizeStoredModelId(typeof parsed.model === 'string' ? parsed.model : undefined),
       variantId: typeof parsed.variantId === 'string' ? parsed.variantId as VariantId : undefined,
     }
 
@@ -142,15 +143,7 @@ function migrateGlobalSettingsFromLegacy(): GlobalModelSettings {
   const entries = Object.entries(legacy)
     .map(([key, value]) => {
       const parsedKey = parseLegacyModelKey(key)
-      let model = parsedKey.model
-      // Basic normalization to scoped ID for legacy hits
-      if (model && !model.includes('/')) {
-        if (model.includes('gpt-')) model = `openai/${model}`
-        else if (model.includes('claude-')) model = `anthropic/${model}`
-        else if (model.includes('gemini-')) model = `google/${model}`
-        else if (model.includes('grok-')) model = `xai/${model}`
-        else if (model.includes('copilot-')) model = `github-copilot/${model}`
-      }
+      const model = normalizeStoredModelId(parsedKey.model)
       return {
         surface: parsedKey.surface,
         model,

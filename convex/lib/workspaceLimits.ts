@@ -364,38 +364,24 @@ export async function getLegacyFileStorageTotals(
   let activeBytes = 0
   let supersededBytes = 0
 
-  await Promise.all([
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("projectFiles")
-          .withIndex("by_project_and_status", (q) =>
-            q.eq("projectId", projectId).eq("status", "active")
-          )
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ sizeBytes: number }>>,
-      (file) => {
-        activeBytes += Math.max(0, file.sizeBytes)
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("projectFiles")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<PaginatedResult<{ sizeBytes: number; status: string }>>,
+    (file) => {
+      const sizeBytes = Math.max(0, file.sizeBytes)
+      if (file.status === "active") {
+        activeBytes += sizeBytes
+      } else if (file.status === "superseded") {
+        supersededBytes += sizeBytes
       }
-    ),
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("projectFiles")
-          .withIndex("by_project_and_status", (q) =>
-            q.eq("projectId", projectId).eq("status", "superseded")
-          )
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ sizeBytes: number }>>,
-      (file) => {
-        supersededBytes += Math.max(0, file.sizeBytes)
-      }
-    ),
-  ])
+    }
+  )
 
   return {
     activeBytes,

@@ -98,6 +98,7 @@ import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
+import { resolveModelIdFromCatalog } from '@/lib/ai/modelIdResolution'
 import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
@@ -592,9 +593,13 @@ export function AIConversation({
             caps[m.id] = m.capabilities
           }
         }
+        const resolvedModelId = resolveModelIdFromCatalog(model, data.models)
         setModelCapabilities(caps)
         setModelsError(null)
         setAvailableModels(mapped)
+        if (resolvedModelId && resolvedModelId !== model) {
+          setModel(resolvedModelId)
+        }
         setModelsLoaded(true)
       })
       .catch((err) => {
@@ -1023,6 +1028,17 @@ export function AIConversation({
       onToolCall: handleToolCall,
     },
   })
+
+  const failedUserMessageId = useMemo(() => {
+    if (status !== 'error') return null
+    for (let index = uniqueMessages.length - 1; index >= 0; index -= 1) {
+      const message = uniqueMessages[index]
+      if (message.role === 'user') {
+        return message.id
+      }
+    }
+    return null
+  }, [status, uniqueMessages])
 
   addToolOutputRef.current = addToolOutput
   addToolApprovalResponseRef.current = addToolApprovalResponse
@@ -1790,6 +1806,7 @@ export function AIConversation({
                   message={message}
                   toolsByName={toolsByName}
                   status={status}
+                  showUserErrorIndicator={message.id === failedUserMessageId}
                   showTodowriteTools
                   shouldRequireLocalApproval={shouldRequireLocalApproval}
                   onApproveTool={handleApprovedTool}

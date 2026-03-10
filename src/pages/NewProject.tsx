@@ -1006,6 +1006,7 @@ export function NewProject() {
                   importError={importError}
                   importSyncState={importSyncState}
                   importSyncMessage={importSyncMessage}
+                  fillHeight={showImportTerminalPanel}
                   className={showImportTerminalPanel ? "max-w-none mx-0" : undefined}
                 />
               </div>

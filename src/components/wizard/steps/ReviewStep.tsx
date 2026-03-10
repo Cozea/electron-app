@@ -15,6 +15,7 @@ interface ReviewStepProps {
   importSyncState?: 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
   importSyncMessage?: string | null
   className?: string
+  fillHeight?: boolean
 }
 
 export function ReviewStep({
@@ -26,6 +27,7 @@ export function ReviewStep({
   importSyncState = 'idle',
   importSyncMessage,
   className,
+  fillHeight = false,
 }: ReviewStepProps) {
   const isRepoPath = state.path === 'repo'
   const isImportActive = importSyncState !== 'idle'
@@ -74,267 +76,278 @@ export function ReviewStep({
   }
 
   return (
-    <div className={cn("max-w-2xl mx-auto", className)}>
+    <div
+      className={cn(
+        "max-w-2xl mx-auto",
+        fillHeight && "h-[44vh] min-h-[260px] lg:h-full lg:min-h-0",
+        className
+      )}
+    >
       {/* Blueprint Card */}
-      <div className="rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
-        {/* Header */}
-        <div className="p-6 pb-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-            {isRepoPath ? 'Import Blueprint' : 'App Blueprint'}
-          </p>
-          <div className="flex items-center gap-3">
-            {isRepoPath && getProviderIcon()}
-            <h2 className="text-2xl font-semibold">
-              {isRepoPath ? repoName : projectName}
-            </h2>
-          </div>
-          {isRepoPath && state.repoSource?.repoUrl && (
-            <p className="text-sm text-muted-foreground mt-1 truncate">
-              {state.repoSource.repoUrl}
+      <div className={cn(
+        "rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden",
+        fillHeight && "flex h-full flex-col"
+      )}>
+        <div className={cn(fillHeight && "min-h-0 flex-1 overflow-y-auto")}>
+          {/* Header */}
+          <div className="p-6 pb-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+              {isRepoPath ? 'Import Blueprint' : 'App Blueprint'}
             </p>
-          )}
-          {!isRepoPath && state.intent.description && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {state.intent.description}
-            </p>
-          )}
-        </div>
-
-        <div className="border-t border-border" />
-
-        {/* Stack Section */}
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Stack</p>
-            {!isRepoPath && (
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(3)}>
-                <Pencil className="h-3 w-3 mr-1" />
-                Edit
-              </Button>
+            <div className="flex items-center gap-3">
+              {isRepoPath && getProviderIcon()}
+              <h2 className="text-2xl font-semibold">
+                {isRepoPath ? repoName : projectName}
+              </h2>
+            </div>
+            {isRepoPath && state.repoSource?.repoUrl && (
+              <p className="text-sm text-muted-foreground mt-1 truncate">
+                {state.repoSource.repoUrl}
+              </p>
+            )}
+            {!isRepoPath && state.intent.description && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {state.intent.description}
+              </p>
             )}
           </div>
 
-          <div className="space-y-3">
-            {isRepoPath && state.repoSource?.detectedStack ? (
-              <>
-                {state.repoSource.detectedStack.framework && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Code2 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Framework</span>
-                    </div>
-                    <span className="text-sm">{state.repoSource.detectedStack.framework}</span>
-                  </div>
-                )}
-                {state.repoSource.detectedStack.styling && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Palette className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Styling</span>
-                    </div>
-                    <span className="text-sm">{state.repoSource.detectedStack.styling}</span>
-                  </div>
-                )}
-                {state.repoSource.detectedStack.database && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Server className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Database</span>
-                    </div>
-                    <span className="text-sm">{state.repoSource.detectedStack.database}</span>
-                  </div>
-                )}
-                {state.repoSource.detectedStack.testingFramework && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Layers className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Testing</span>
-                    </div>
-                    <span className="text-sm">{state.repoSource.detectedStack.testingFramework}</span>
-                  </div>
-                )}
-                {(state.repoSource.detectedStack.pageCount || state.repoSource.detectedStack.componentCount) && (
-                  <div className="flex items-center gap-4 pt-1">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Layers className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Structure</span>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {state.repoSource.detectedStack.pageCount && (
-                        <span>{state.repoSource.detectedStack.pageCount} pages</span>
-                      )}
-                      {state.repoSource.detectedStack.pageCount && state.repoSource.detectedStack.componentCount && (
-                        <span> · </span>
-                      )}
-                      {state.repoSource.detectedStack.componentCount && (
-                        <span>{state.repoSource.detectedStack.componentCount} components</span>
-                      )}
-                    </span>
-                  </div>
-                )}
-              </>
-            ) : !isRepoPath ? (
-              <>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 w-24 shrink-0">
-                    <Server className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Backend</span>
-                  </div>
-                  <span className="text-sm">{state.stack.backend}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 w-24 shrink-0">
-                    <Cloud className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Hosting</span>
-                  </div>
-                  <span className="text-sm">{state.stack.hosting}</span>
-                </div>
-                {state.stack.aiProvider && state.stack.aiProvider !== 'none' && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-24 shrink-0">
-                      <Sparkles className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">AI</span>
-                    </div>
-                    <span className="text-sm">{state.stack.aiProvider}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 w-24 shrink-0">
-                    <GitBranch className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Git</span>
-                  </div>
-                  <span className="text-sm">
-                    {state.sourceControl.provider} · {state.sourceControl.visibility} · {state.sourceControl.mergeStrategy} merge
-                  </span>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No stack detected</p>
-            )}
-          </div>
-        </div>
+          <div className="border-t border-border" />
 
-        {/* Visuals Section - only for fresh path */}
-        {!isRepoPath && (
-          <>
-            <div className="border-t border-border" />
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Style Guidelines</p>
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(5)}>
+          {/* Stack Section */}
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Stack</p>
+              {!isRepoPath && (
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(3)}>
                   <Pencil className="h-3 w-3 mr-1" />
                   Edit
                 </Button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 w-24 shrink-0">
-                    <Palette className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Color</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <div
-                      className="w-6 h-6 rounded-full border border-border"
-                      style={{ backgroundColor: state.visuals.primaryColor }}
-                    />
-                    <div
-                      className="w-6 h-6 rounded-full border border-border"
-                      style={{ backgroundColor: state.visuals.secondaryColor }}
-                    />
-                    <div
-                      className="w-6 h-6 rounded-full border border-border"
-                      style={{ backgroundColor: state.visuals.accentColor }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 w-24 shrink-0">
-                    <Layers className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">UI</span>
-                  </div>
-                  <span className="text-sm">{state.visuals.uiLibrary}</span>
-                </div>
-              </div>
+              )}
             </div>
-          </>
-        )}
 
-        {/* Branch info for repo path */}
-        {isRepoPath && state.repoSource?.branch && (
-          <>
-            <div className="border-t border-border" />
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Source</p>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 w-24 shrink-0">
-                  <GitBranch className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Branch</span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="text-xs font-mono border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-                >
-                  {state.repoSource.branch}
-                </Badge>
-              </div>
+            <div className="space-y-3">
+              {isRepoPath && state.repoSource?.detectedStack ? (
+                <>
+                  {state.repoSource.detectedStack.framework && (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Code2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Framework</span>
+                      </div>
+                      <span className="text-sm">{state.repoSource.detectedStack.framework}</span>
+                    </div>
+                  )}
+                  {state.repoSource.detectedStack.styling && (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Palette className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Styling</span>
+                      </div>
+                      <span className="text-sm">{state.repoSource.detectedStack.styling}</span>
+                    </div>
+                  )}
+                  {state.repoSource.detectedStack.database && (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Server className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Database</span>
+                      </div>
+                      <span className="text-sm">{state.repoSource.detectedStack.database}</span>
+                    </div>
+                  )}
+                  {state.repoSource.detectedStack.testingFramework && (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Layers className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Testing</span>
+                      </div>
+                      <span className="text-sm">{state.repoSource.detectedStack.testingFramework}</span>
+                    </div>
+                  )}
+                  {(state.repoSource.detectedStack.pageCount || state.repoSource.detectedStack.componentCount) && (
+                    <div className="flex items-center gap-4 pt-1">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Layers className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Structure</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {state.repoSource.detectedStack.pageCount && (
+                          <span>{state.repoSource.detectedStack.pageCount} pages</span>
+                        )}
+                        {state.repoSource.detectedStack.pageCount && state.repoSource.detectedStack.componentCount && (
+                          <span> · </span>
+                        )}
+                        {state.repoSource.detectedStack.componentCount && (
+                          <span>{state.repoSource.detectedStack.componentCount} components</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : !isRepoPath ? (
+                <>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
+                      <Server className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Backend</span>
+                    </div>
+                    <span className="text-sm">{state.stack.backend}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
+                      <Cloud className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Hosting</span>
+                    </div>
+                    <span className="text-sm">{state.stack.hosting}</span>
+                  </div>
+                  {state.stack.aiProvider && state.stack.aiProvider !== 'none' && (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 w-24 shrink-0">
+                        <Sparkles className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">AI</span>
+                      </div>
+                      <span className="text-sm">{state.stack.aiProvider}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
+                      <GitBranch className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Git</span>
+                    </div>
+                    <span className="text-sm">
+                      {state.sourceControl.provider} · {state.sourceControl.visibility} · {state.sourceControl.mergeStrategy} merge
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No stack detected</p>
+              )}
             </div>
-          </>
-        )}
-
-        {/* Team Section */}
-        <div className="border-t border-border" />
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Team</p>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(getTeamStepIndex())}>
-              <Pencil className="h-3 w-3 mr-1" />
-              Edit
-            </Button>
           </div>
 
-          {state.team.length > 0 ? (
-            <div className="space-y-3">
-              {state.team.map((member) => {
-                const initials = member.name
-                  ? member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                  : member.email[0].toUpperCase()
-                return (
-                  <div key={member.email} className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      {member.profileImageUrl && (
-                        <AvatarImage src={member.profileImageUrl} alt={member.name || member.email} />
-                      )}
-                      <AvatarFallback className="text-xs bg-muted">
-                        {initials}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm flex-1">
-                      {member.name || member.email}
-                      {member.isCurrentUser && (
-                        <span className="ml-2 text-xs text-muted-foreground">(you)</span>
-                      )}
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className="text-xs capitalize border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-                    >
-                      {member.role.replace('_', ' ')}
-                    </Badge>
+          {/* Visuals Section - only for fresh path */}
+          {!isRepoPath && (
+            <>
+              <div className="border-t border-border" />
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Style Guidelines</p>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(5)}>
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Edit
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
+                      <Palette className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Color</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <div
+                        className="w-6 h-6 rounded-full border border-border"
+                        style={{ backgroundColor: state.visuals.primaryColor }}
+                      />
+                      <div
+                        className="w-6 h-6 rounded-full border border-border"
+                        style={{ backgroundColor: state.visuals.secondaryColor }}
+                      />
+                      <div
+                        className="w-6 h-6 rounded-full border border-border"
+                        style={{ backgroundColor: state.visuals.accentColor }}
+                      />
+                    </div>
                   </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No team members added</p>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
+                      <Layers className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">UI</span>
+                    </div>
+                    <span className="text-sm">{state.visuals.uiLibrary}</span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
+
+          {/* Branch info for repo path */}
+          {isRepoPath && state.repoSource?.branch && (
+            <>
+              <div className="border-t border-border" />
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Source</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 w-24 shrink-0">
+                    <GitBranch className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Branch</span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-mono border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                  >
+                    {state.repoSource.branch}
+                  </Badge>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Team Section */}
+          <div className="border-t border-border" />
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Team</p>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onEditStep(getTeamStepIndex())}>
+                <Pencil className="h-3 w-3 mr-1" />
+                Edit
+              </Button>
+            </div>
+
+            {state.team.length > 0 ? (
+              <div className="space-y-3">
+                {state.team.map((member) => {
+                  const initials = member.name
+                    ? member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                    : member.email[0].toUpperCase()
+                  return (
+                    <div key={member.email} className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        {member.profileImageUrl && (
+                          <AvatarImage src={member.profileImageUrl} alt={member.name || member.email} />
+                        )}
+                        <AvatarFallback className="text-xs bg-muted">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm flex-1">
+                        {member.name || member.email}
+                        {member.isCurrentUser && (
+                          <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                        )}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="text-xs capitalize border-transparent bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                      >
+                        {member.role.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No team members added</p>
+            )}
+          </div>
         </div>
 
         {/* Import Button - only for repo path */}
         {isRepoPath && onImport && (
-          <div className="p-6">
+          <div className="p-6 border-t border-border">
             <div className="flex justify-end">
               <div
                 className={cn(
