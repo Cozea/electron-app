@@ -1817,7 +1817,7 @@ export function AIConversation({
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Generating...</span>
+                <span className="text-sm">Generating</span>
               </div>
             )}
 

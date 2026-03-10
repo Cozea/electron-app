@@ -1089,7 +1089,7 @@ export function WizardConversation({
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Generating...</span>
+                <span className="text-sm">Generating</span>
               </div>
             )}
             {/* Plan selector when AI generates plans */}

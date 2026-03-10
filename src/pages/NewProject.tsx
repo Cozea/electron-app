@@ -381,6 +381,13 @@ export function NewProject() {
       throw new Error('Replica apply did not persist imported files')
     }
 
+    const replicaStatus = await window.electronAPI.sync.gitReplicaStatus({
+      projectId: String(projectId),
+    })
+    if (!replicaStatus.success || !replicaStatus.canonicalHeadCommit) {
+      throw new Error(replicaStatus.error || 'Canonical replica verification failed')
+    }
+
     await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
       projectId: String(projectId),
       projectPath,
@@ -849,8 +856,6 @@ export function NewProject() {
           return
         }
 
-        let replicaSyncWarning: string | null = null
-
         try {
           await uploadLocalSnapshotToCloud(result.projectId, importPath)
           try {
@@ -864,38 +869,40 @@ export function NewProject() {
               syncStatusError,
               'Cloud sync finished, but sync status could not be recorded.'
             )
-            replicaSyncWarning = presentedError.detail
-              ? `${presentedError.summary} ${presentedError.detail}`
-              : presentedError.summary
-            console.warn('[Import] Failed to mark synced status; continuing locally:', replicaSyncWarning)
+            console.warn(
+              '[Import] Failed to mark synced status after successful replica sync:',
+              presentedError.detail
+                ? `${presentedError.summary} ${presentedError.detail}`
+                : presentedError.summary
+            )
           }
         } catch (bootstrapError) {
           const presentedError = formatReplicaSyncError(
             bootstrapError,
             'Cloud sync is unavailable for this import.'
           )
-          replicaSyncWarning = presentedError.detail
+          const replicaSyncError = presentedError.detail
             ? `${presentedError.summary} ${presentedError.detail}`
             : presentedError.summary
-          console.warn('[Import] Pre-open bootstrap failed; continuing locally:', replicaSyncWarning)
+          console.warn('[Import] Import replica sync failed; aborting open:', replicaSyncError)
           try {
             await updateSyncStatus({
               projectId: result.projectId,
               userId: convexUserId,
               status: 'error',
-              errorMessage: replicaSyncWarning,
+              errorMessage: replicaSyncError,
             })
           } catch (syncStatusError) {
             console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
           }
+          setImportError(replicaSyncError)
+          setImportSyncState('error')
+          setImportSyncMessage('Import failed')
+          return
         }
 
         setImportSyncState('ready')
-        setImportSyncMessage(
-          replicaSyncWarning
-            ? 'Opening local project without cloud sync...'
-            : 'Opening project...'
-        )
+        setImportSyncMessage('Opening project...')
         setTimeout(() => {
           const targetPath = buildProjectPath(String(result.projectId))
           console.log('[Import] Navigating to:', targetPath)

@@ -12,11 +12,11 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClipboardListIcon,
-  Loader2Icon,
   XCircleIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { createContext, memo, useContext, useState } from "react";
+import { Loader } from "./loader";
 import { Shimmer } from "./shimmer";
 
 /**
@@ -288,7 +288,7 @@ const StepStatusIcon = ({ status }: { status: PlanStepStatus }) => {
       return <CircleIcon className="size-4 text-muted-foreground" />;
     case "in_progress":
       return (
-        <Loader2Icon className="size-4 animate-spin text-blue-500" />
+        <Loader className="size-4 text-blue-500" />
       );
     case "completed":
       return <CheckCircleIcon className="size-4 text-green-500" />;
@@ -323,8 +323,8 @@ export const PlanSteps = memo(
         ))}
         {isStreaming && steps.length === 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2Icon className="size-4 animate-spin" />
-            <span>Generating plan...</span>
+            <Loader className="size-4" />
+            <span>Generating plan</span>
           </div>
         )}
       </div>
