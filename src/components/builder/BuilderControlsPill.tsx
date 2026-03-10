@@ -1,11 +1,11 @@
 import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ai-elements/loader'
 
 import {
   Check,
   Circle,
-  Loader2,
   AlertCircle,
   Square,
   RotateCcw,
@@ -89,7 +89,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
     if (isAIGenerating) {
       return (
         <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-          <Loader2 className="h-3 w-3 text-primary animate-spin" />
+          <Loader className="h-3 w-3 text-primary" />
         </div>
       )
     }
@@ -218,7 +218,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
                   <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 )}
                 {task.status === 'in_progress' && (
-                  <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin shrink-0" />
+                  <Loader className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                 )}
                 {task.status === 'completed' && (
                   <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />

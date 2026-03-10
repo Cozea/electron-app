@@ -98,6 +98,7 @@ export function ProjectBuild() {
 
   // Mutations
   const updateStatus = useMutation(api.projects.updateStatus)
+  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const startBuilderRun = useMutation(api.builderRuns.startRun)
   const checkpointBuilderRun = useMutation(api.builderRuns.checkpointRun)
@@ -401,6 +402,64 @@ export function ProjectBuild() {
     })
   }, [checkpointBuilderRun, project?._id])
 
+  const syncLocalSnapshotToCloud = useCallback(async () => {
+    if (!project?._id || !convexUserId || !localPath) {
+      return
+    }
+
+    await updateSyncStatus({
+      projectId: project._id,
+      userId: convexUserId,
+      status: 'syncing',
+    })
+
+    addLog('Syncing final project snapshot to cloud...')
+
+    const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
+      projectId: String(project._id),
+      projectPath: localPath,
+    })
+    if (!bootstrap.success) {
+      throw new Error(bootstrap.error || 'Replica bootstrap failed')
+    }
+
+    const replicaPlan = await window.electronAPI.sync.gitReplicaPlan({
+      projectId: String(project._id),
+      projectPath: localPath,
+    })
+    if (!replicaPlan.success) {
+      throw new Error(replicaPlan.error || 'Replica planning failed')
+    }
+
+    const conflictDecisions = Object.fromEntries(
+      replicaPlan.conflicts.map((conflict) => [conflict.path, 'local' as const])
+    )
+
+    const replicaExecute = await window.electronAPI.sync.gitReplicaExecute({
+      projectId: String(project._id),
+      projectPath: localPath,
+      sessionId: replicaPlan.sessionId,
+      conflictDecisions,
+    })
+    if (!replicaExecute.success) {
+      throw new Error(replicaExecute.error || 'Replica apply failed')
+    }
+    if (replicaExecute.requiresConflictResolution) {
+      throw new Error('Replica sync requires conflict resolution')
+    }
+    if (!replicaExecute.applied) {
+      throw new Error('Replica apply did not persist project files')
+    }
+
+    await updateSyncStatus({
+      projectId: project._id,
+      userId: convexUserId,
+      status: 'synced',
+    })
+
+    addLog('Final project snapshot synced to cloud')
+  }, [addLog, convexUserId, localPath, project?._id, updateSyncStatus])
+
   const handleAIComplete = useCallback(async () => {
     addLog('AI generation complete!')
     setIsAIGenerating(false)
@@ -495,6 +554,27 @@ export function ProjectBuild() {
       }
     }
 
+    try {
+      await syncLocalSnapshotToCloud()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      addLog(`Final cloud sync failed: ${message}`)
+      if (project?._id && convexUserId) {
+        try {
+          await updateSyncStatus({
+            projectId: project._id,
+            userId: convexUserId,
+            status: 'error',
+            errorMessage: message,
+          })
+        } catch (syncStatusError) {
+          const syncStatusMessage =
+            syncStatusError instanceof Error ? syncStatusError.message : 'Unknown error'
+          addLog(`Failed to record sync error: ${syncStatusMessage}`)
+        }
+      }
+    }
+
     // Update project status to active
     if (project?._id) {
       await updateStatus({ projectId: project._id, status: 'active' })
@@ -508,7 +588,7 @@ export function ProjectBuild() {
         capturePreviewScreenshot()
       }, 2000)
     }
-  }, [addLog, localPath, project?._id, updateStatus, updateBuilderRunStatus, saveYjsSnapshot, devServer.status, devServer.url, capturePreviewScreenshot])
+  }, [addLog, capturePreviewScreenshot, convexUserId, devServer.status, devServer.url, localPath, project?._id, saveYjsSnapshot, syncLocalSnapshotToCloud, updateBuilderRunStatus, updateStatus, updateSyncStatus])
 
   const handleAIError = useCallback((error: string) => {
     addLog(`AI Error: ${error}`)

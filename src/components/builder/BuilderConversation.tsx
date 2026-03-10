@@ -1934,7 +1934,7 @@ Now begin by defining your task list with todowrite, then start working through 
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground py-2">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Building...</span>
+                <span className="text-sm">Building</span>
               </div>
             )}
           </ConversationContent>

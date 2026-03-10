@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import { useYjsProject } from "@/contexts/YjsProjectContext"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
@@ -236,22 +237,32 @@ export function ProjectSyncIndicator({
 
   if (variant === "compact") {
     return (
-      <div
-        className={cn(
-          "relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
-          className
-        )}
-        title={`${displayState.label} - ${displayState.detail}`}
-      >
-        <div
-          className={cn(
-            "flex h-4 w-4 items-center justify-center transition-[opacity,transform] duration-200 ease-out",
-            isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
-          )}
-        >
-          <Icon className={iconClassName} />
-        </div>
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              "relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
+              className
+            )}
+            aria-label={`${displayState.label} - ${displayState.detail}`}
+          >
+            <div
+              className={cn(
+                "flex h-4 w-4 items-center justify-center transition-[opacity,transform] duration-200 ease-out",
+                isContentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-0.5"
+              )}
+            >
+              <Icon className={iconClassName} />
+            </div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium">{displayState.label}</span>
+            <span className="text-muted-foreground">{displayState.detail}</span>
+          </div>
+        </TooltipContent>
+      </Tooltip>
     )
   }
 
