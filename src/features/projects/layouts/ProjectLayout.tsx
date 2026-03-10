@@ -157,6 +157,7 @@ interface ProjectLayoutProps {
 interface ProjectLayoutLocationState {
     gateSyncScreen?: boolean
     skipInitialSyncCheck?: boolean
+    syncAccessBlocked?: boolean
 }
 
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
@@ -209,6 +210,7 @@ export function ProjectLayout({
     const locationState = (location.state as ProjectLayoutLocationState | null) ?? null
     const shouldGateSyncScreen = locationState?.gateSyncScreen === true
     const shouldSkipInitialSyncCheckFromState = locationState?.skipInitialSyncCheck === true
+    const shouldStartInLocalOnlyMode = locationState?.syncAccessBlocked === true
 
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
@@ -945,6 +947,7 @@ export function ProjectLayout({
                 lastSyncAt={project.lastSyncAt}
                 onFilesChanged={handleRefreshFiles}
                 initialGateSyncScreen={shouldGateSyncScreen}
+                initialSyncAccessBlocked={shouldStartInLocalOnlyMode}
                 skipInitialSyncCheck={shouldSkipInitialSyncCheck}
             >
                 {layoutContent}

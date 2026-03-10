@@ -150,7 +150,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         source: 'ready-pattern' | 'port-detected'
     ) => {
         if (!projectPath) return
-        if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) return
+        if (devServerRunIdRef.current !== runId) return
 
         const probeKey = `${runId}:${port}`
         if (pendingReadyProbeKeyRef.current === probeKey) {
@@ -165,7 +165,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 timeoutMs: 2500,
             })
 
-            if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) {
+            if (devServerRunIdRef.current !== runId) {
                 return
             }
 
@@ -212,7 +212,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             )
             markRunUnhealthy(failure.message, failure.reason, runId)
         } catch (error) {
-            if (devServerRunIdRef.current && devServerRunIdRef.current !== runId) {
+            if (devServerRunIdRef.current !== runId) {
                 return
             }
             const failure = getPreviewFailurePresentation(
@@ -777,17 +777,14 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     }, [projectPath, handleStart])
 
     const handleStop = useCallback(async () => {
-        if (!devServerTerminalIdRef.current) return
+        const terminalId = devServerTerminalIdRef.current
+        if (!terminalId) return
 
         try {
             setIsUpdating(true)
             clearReadyTimeout()
             pendingReadyProbeKeyRef.current = null
             const activeRunId = devServerRunIdRef.current
-
-            // Kill the terminal
-            await window.electronAPI.terminal.kill({ terminalId: devServerTerminalIdRef.current })
-            removeTerminal(devServerTerminalIdRef.current)
 
             actions.setServerStatus('stopped')
             actions.setServerPort(null)
@@ -804,9 +801,15 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 type: 'stopped',
                 message: 'Dev server stopped by user',
             })
+            removeTerminal(terminalId)
             devServerTerminalIdRef.current = null
             devServerProjectPathRef.current = null
             devServerRunIdRef.current = null
+
+            const result = await window.electronAPI.terminal.kill({ terminalId })
+            if (!result.success) {
+                console.warn('[ServerControl] Terminal kill did not report success', { terminalId })
+            }
         } catch (e) {
             console.error(e)
         } finally {

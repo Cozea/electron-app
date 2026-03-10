@@ -290,7 +290,9 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
 
             // Small delay to show the ready state
             setTimeout(() => {
-                markRecentProjectOpenSync(String(project._id))
+                if (!openCheck?.syncAccessBlocked) {
+                    markRecentProjectOpenSync(String(project._id))
+                }
                 if (openCheck?.gateSyncScreen && effectiveLocalPath && onRequireSyncReview) {
                     void onRequireSyncReview({
                         projectId: project._id,
@@ -312,6 +314,7 @@ export function ProjectCard({ project, userId, onRequireSyncReview }: ProjectCar
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
                         gateSyncScreen: openCheck?.gateSyncScreen ?? false,
+                        syncAccessBlocked: openCheck?.syncAccessBlocked ?? false,
                         skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
                     },
                 })

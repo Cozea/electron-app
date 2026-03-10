@@ -1,5 +1,6 @@
 import type { GitReplicaPlanResult } from "@shared/electronApiTypes"
 import { getMeaningfulLocalFileCount, isBootstrapOnlyLocalPath } from "./localWorkspaceState"
+import { isReplicaSyncEntitlementError } from "./replicaErrorPresentation"
 
 function hasMeaningfulLocalMutations(plan: GitReplicaPlanResult): boolean {
   const hasMeaningfulUploads = plan.uploads.some((entry) => !isBootstrapOnlyLocalPath(entry.path))
@@ -30,6 +31,25 @@ export interface ProjectOpenReplicaCheckResult {
   likelyLocalWipe: boolean
   totalChanges: number
   plan: GitReplicaPlanResult
+  syncAccessBlocked: boolean
+}
+
+function createEmptyReplicaPlan(): GitReplicaPlanResult {
+  return {
+    success: true,
+    sessionId: "local-only",
+    downloads: [],
+    uploads: [],
+    localDeletes: [],
+    cloudDeletes: [],
+    autoMerged: [],
+    conflicts: [],
+    noChange: 0,
+  }
+}
+
+function canOpenProjectLocally(meaningfulLocalFileCount: number | null): boolean {
+  return meaningfulLocalFileCount !== null && meaningfulLocalFileCount > 0
 }
 
 function isLikelyLocalWorkspaceWipe(
@@ -65,7 +85,34 @@ export async function runProjectOpenReplicaCheck({
     projectId,
     projectPath,
   })
+  let localFileCount: number | null = null
+  let meaningfulLocalFileCount: number | null = null
+  const localFiles = await window.electronAPI.project.listFiles({ projectPath })
+  if (localFiles.success) {
+    const localPaths = (localFiles.files ?? []).map((entry) => entry.path)
+    localFileCount = localPaths.length
+    meaningfulLocalFileCount = getMeaningfulLocalFileCount(localPaths)
+  }
+
   if (!bootstrap.success) {
+    if (isReplicaSyncEntitlementError(bootstrap.error) && canOpenProjectLocally(meaningfulLocalFileCount)) {
+      console.info("[ReplicaOpenCheck] Cloud sync blocked by entitlement; opening local project only", {
+        projectId,
+        projectPath,
+        localFileCount,
+        meaningfulLocalFileCount,
+      })
+
+      return {
+        gateSyncScreen: false,
+        hasConflicts: false,
+        likelyLocalWipe: false,
+        totalChanges: 0,
+        plan: createEmptyReplicaPlan(),
+        syncAccessBlocked: true,
+      }
+    }
+
     throw new Error(bootstrap.error || "Failed to bootstrap replica")
   }
 
@@ -74,16 +121,25 @@ export async function runProjectOpenReplicaCheck({
     projectPath,
   })
   if (!plan.success) {
-    throw new Error(plan.error || "Failed to plan replica sync")
-  }
+    if (isReplicaSyncEntitlementError(plan.error) && canOpenProjectLocally(meaningfulLocalFileCount)) {
+      console.info("[ReplicaOpenCheck] Cloud sync blocked by entitlement during planning; opening local project only", {
+        projectId,
+        projectPath,
+        localFileCount,
+        meaningfulLocalFileCount,
+      })
 
-  let localFileCount: number | null = null
-  let meaningfulLocalFileCount: number | null = null
-  const localFiles = await window.electronAPI.project.listFiles({ projectPath })
-  if (localFiles.success) {
-    const localPaths = (localFiles.files ?? []).map((entry) => entry.path)
-    localFileCount = localPaths.length
-    meaningfulLocalFileCount = getMeaningfulLocalFileCount(localPaths)
+      return {
+        gateSyncScreen: false,
+        hasConflicts: false,
+        likelyLocalWipe: false,
+        totalChanges: 0,
+        plan: createEmptyReplicaPlan(),
+        syncAccessBlocked: true,
+      }
+    }
+
+    throw new Error(plan.error || "Failed to plan replica sync")
   }
 
   const totalChanges =
@@ -155,5 +211,6 @@ export async function runProjectOpenReplicaCheck({
     likelyLocalWipe,
     totalChanges,
     plan,
+    syncAccessBlocked: false,
   }
 }

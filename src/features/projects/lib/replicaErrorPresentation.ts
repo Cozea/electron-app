@@ -45,6 +45,29 @@ function extractErrorText(input: unknown, fallback: string): string {
   return fallback
 }
 
+function extractReplicaApiPayloadText(message: string): string | null {
+  const replicaPrefixMatch = message.match(/^Replica API [^:]+ failed \(\d+\):\s*(.+)$/i)
+  const payloadText = replicaPrefixMatch?.[1]?.trim() ?? message.trim()
+  return payloadText.startsWith('{') ? payloadText : null
+}
+
+function parseReplicaApiPayload(message: string): Record<string, unknown> | null {
+  const payloadText = extractReplicaApiPayloadText(message)
+  if (!payloadText) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(payloadText)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 function stripReplicaApiPrefix(message: string): string {
   const replicaPrefixMatch = message.match(/^Replica API [^:]+ failed \(\d+\):\s*(.+)$/i)
   return replicaPrefixMatch?.[1]?.trim() || message
@@ -56,7 +79,51 @@ function stripQuotedJsonError(message: string): string {
 }
 
 function cleanRawMessage(message: string): string {
+  const payload = parseReplicaApiPayload(message)
+  if (payload) {
+    const detailedMessage =
+      typeof payload.message === 'string' && payload.message.trim().length > 0
+        ? payload.message.trim()
+        : null
+    if (detailedMessage) {
+      return detailedMessage
+    }
+
+    const errorCode =
+      typeof payload.error === 'string' && payload.error.trim().length > 0
+        ? payload.error.trim()
+        : null
+    if (errorCode) {
+      return errorCode
+    }
+  }
+
   return stripQuotedJsonError(stripReplicaApiPrefix(message))
+}
+
+export function isReplicaSyncEntitlementError(input: unknown): boolean {
+  const rawMessage = extractErrorText(input, '')
+  if (!rawMessage) {
+    return false
+  }
+
+  const payload = parseReplicaApiPayload(rawMessage)
+  const normalized = [
+    rawMessage,
+    typeof payload?.error === 'string' ? payload.error : '',
+    typeof payload?.code === 'string' ? payload.code : '',
+    typeof payload?.title === 'string' ? payload.title : '',
+    typeof payload?.message === 'string' ? payload.message : '',
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  return (
+    normalized.includes('entitlement_required') ||
+    normalized.includes('subscription required') ||
+    normalized.includes('seat assignment required') ||
+    (/\(402\)/.test(rawMessage) && normalized.includes('replica api'))
+  )
 }
 
 export function formatReplicaSyncError(

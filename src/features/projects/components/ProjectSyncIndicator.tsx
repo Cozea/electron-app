@@ -104,6 +104,15 @@ export function ProjectSyncIndicator({
       }
     }
 
+    if (syncContext.cloudSyncBlocked) {
+      return {
+        icon: CloudOff,
+        label: "Local Only",
+        detail: "Billing is inactive, so cloud sync is disabled",
+        toneClassName: "text-amber-600",
+      }
+    }
+
     if (!isOnline) {
       return {
         icon: CloudOff,
