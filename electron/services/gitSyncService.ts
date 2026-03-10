@@ -9,6 +9,7 @@ import type {
   GitSyncFetchResult,
   GitSyncPullResult,
   GitSyncPushResult,
+  GitSyncRestoreResult,
   GitSyncStatusResult,
 } from '../../shared/electronApiTypes'
 import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from './gitAuth'
@@ -310,7 +311,9 @@ export class GitSyncService {
     behind = parsed.behind
 
     const explicitRemoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
-    if ((ahead === 0 && behind === 0) && explicitRemoteHead && metadata.headCommit) {
+    if (!metadata.headCommit && explicitRemoteHead) {
+      behind = (await this.getRevisionCount(projectPath, `${remote}/${branch}`)) ?? 1
+    } else if ((ahead === 0 && behind === 0) && explicitRemoteHead && metadata.headCommit) {
       const aheadBehind = await this.getAheadBehind(projectPath, metadata.headCommit, explicitRemoteHead)
       if (aheadBehind) {
         ahead = aheadBehind.ahead
@@ -375,6 +378,32 @@ export class GitSyncService {
     }
 
     const beforeHead = metadata.headCommit
+    const remoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
+    if (!beforeHead && remoteHead) {
+      const restore = await this.restoreMain(options)
+      if (!restore.success) {
+        return {
+          success: false,
+          remote,
+          branch,
+          strategy,
+          error: restore.error,
+          hadConflicts: false,
+        }
+      }
+      return {
+        success: true,
+        remote,
+        branch,
+        strategy,
+        currentBranch: restore.currentBranch,
+        headCommit: restore.headCommit,
+        alreadyUpToDate: false,
+        hadConflicts: false,
+        fastForward: true,
+      }
+    }
+
     const pullArgs =
       strategy === 'ff-only'
         ? ['pull', '--ff-only', remote, branch]
@@ -409,6 +438,96 @@ export class GitSyncService {
       fastForward:
         /fast-forward/i.test(combinedOutput) ||
         (Boolean(beforeHead) && Boolean(afterHead) && beforeHead !== afterHead && strategy === 'ff-only'),
+    }
+  }
+
+  async restoreMain(options: {
+    projectPath: string
+    remote?: string
+    branch?: string
+    repoUrl?: string
+    extraHeader?: string
+    provider?: string
+    accessToken?: string
+    encryptedCredentials?: string
+    keyId?: string
+  }): Promise<GitSyncRestoreResult> {
+    const remote = this.normalizeRemote(options.remote)
+    const branch = this.normalizeBranch(options.branch)
+    const projectPath = path.resolve(options.projectPath)
+
+    const metadata = await this.getRepoMetadata(projectPath)
+    if (!metadata.isRepo) {
+      return {
+        success: false,
+        error: 'Project path is not a git repository',
+      }
+    }
+
+    if (options.repoUrl?.trim()) {
+      const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+      if (!remoteResult.success) {
+        return {
+          success: false,
+          remote,
+          branch,
+          error: remoteResult.error,
+        }
+      }
+    }
+
+    const remoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
+    if (!remoteHead) {
+      return {
+        success: false,
+        remote,
+        branch,
+        error: `Remote branch ${remote}/${branch} does not exist`,
+      }
+    }
+
+    const checkout = await this.runGit(['checkout', '-B', branch, `${remote}/${branch}`], {
+      cwd: projectPath,
+      extraHeader: this.resolveExtraHeader(options),
+      timeoutMs: 120_000,
+    })
+    if (!checkout.success) {
+      return {
+        success: false,
+        remote,
+        branch,
+        error: checkout.error,
+      }
+    }
+
+    const clean = await this.runGit(['clean', '-fd'], {
+      cwd: projectPath,
+      timeoutMs: 60_000,
+    })
+    if (!clean.success) {
+      return {
+        success: false,
+        remote,
+        branch,
+        error: clean.error,
+      }
+    }
+
+    const upstream = await this.runGit(['branch', '--set-upstream-to', `${remote}/${branch}`, branch], {
+      cwd: projectPath,
+      timeoutMs: 10_000,
+    })
+    if (!upstream.success) {
+      console.warn('[GitSyncService] Failed to set upstream after restore:', upstream.error)
+    }
+
+    return {
+      success: true,
+      remote,
+      branch,
+      currentBranch: await this.getCurrentBranch(projectPath),
+      headCommit: await this.getRevision(projectPath, 'HEAD') ?? remoteHead,
+      restored: true,
     }
   }
 
@@ -748,6 +867,18 @@ export class GitSyncService {
       return null
     }
     return { ahead, behind }
+  }
+
+  private async getRevisionCount(projectPath: string, ref: string): Promise<number | null> {
+    const result = await this.runGit(['rev-list', '--count', ref], {
+      cwd: projectPath,
+      timeoutMs: 10_000,
+    })
+    if (!result.success) {
+      return null
+    }
+    const count = Number(result.stdout.trim())
+    return Number.isFinite(count) ? count : null
   }
 
   private parseStatus(stdout: string): ParsedStatus {

@@ -25,7 +25,7 @@ import {
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
 } from '../services/generatedArtifactFilters'
-import { notifyFileChanged, notifyFileMetaChanged } from '../yjsNotify'
+import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
 interface RegisterProjectHandlersDeps {
   loadSettings: () => AppSettings
@@ -594,6 +594,18 @@ npm-debug.log*
         fs.renameSync(fullOldPath, fullNewPath)
         console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`, origin ? { origin } : undefined)
 
+        if (origin) {
+          const nextStats = fs.statSync(fullNewPath)
+          notifyFileDeleted(fullOldPath, { origin })
+          notifyFileMetaChanged({
+            filePath: fullNewPath,
+            origin,
+            isBinary: false,
+            isDirectory: nextStats.isDirectory(),
+            sizeBytes: nextStats.isDirectory() ? 0 : nextStats.size,
+          })
+        }
+
         return { success: true }
       } catch (error) {
         console.error('[Project] Failed to rename file:', error)
@@ -612,9 +624,11 @@ npm-debug.log*
       {
         projectPath,
         targetPath,
+        origin,
       }: {
         projectPath: string
         targetPath: string
+        origin?: 'agent' | 'remote' | 'sync'
       }
     ): Promise<{ success: boolean; error?: string }> => {
       try {
@@ -633,6 +647,9 @@ npm-debug.log*
         }
 
         console.log(`[Project] Deleted: ${targetPath}`)
+        if (origin) {
+          notifyFileDeleted(fullPath, { origin })
+        }
         return { success: true }
       } catch (error) {
         console.error('[Project] Failed to delete path:', error)
