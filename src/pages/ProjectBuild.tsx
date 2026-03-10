@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useQuery, useMutation } from 'convex/react'
+import { useQuery, useMutation, useConvex } from 'convex/react'
 import * as Y from 'yjs'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -41,6 +41,8 @@ import {
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { prepareGitProjectForOpen } from '@/features/projects/lib/projectOpenGitSync'
+import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? '' : 's'}`
@@ -76,6 +78,7 @@ function formatPreviewHeaderUrl(url: string | null): string | null {
 const MAX_AUTO_PREVIEW_RETRIES = 2
 
 export function ProjectBuild() {
+  const convex = useConvex()
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useViewTransitionNavigate()
   const { user, logout, convexUserId } = useAuth()
@@ -413,43 +416,25 @@ export function ProjectBuild() {
       status: 'syncing',
     })
 
-    addLog('Syncing final project snapshot to cloud...')
+    addLog('Syncing final project state to git...')
 
-    const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
-      projectId: String(project._id),
+    await publishWorkspaceToCozeaGit({
+      convex,
+      project: {
+        _id: project._id,
+        slug: project.slug,
+        organizationId: project.organizationId,
+        syncMode: 'git',
+        gitRepository: project.gitRepository ?? null,
+        sourceControl: project.sourceControl ?? null,
+      },
       projectPath: localPath,
+      userId: convexUserId,
+      onProgress: (message) => {
+        addLog(message)
+      },
+      updateMemberLocalPath,
     })
-    if (!bootstrap.success) {
-      throw new Error(bootstrap.error || 'Replica bootstrap failed')
-    }
-
-    const replicaPlan = await window.electronAPI.sync.gitReplicaPlan({
-      projectId: String(project._id),
-      projectPath: localPath,
-    })
-    if (!replicaPlan.success) {
-      throw new Error(replicaPlan.error || 'Replica planning failed')
-    }
-
-    const conflictDecisions = Object.fromEntries(
-      replicaPlan.conflicts.map((conflict) => [conflict.path, 'local' as const])
-    )
-
-    const replicaExecute = await window.electronAPI.sync.gitReplicaExecute({
-      projectId: String(project._id),
-      projectPath: localPath,
-      sessionId: replicaPlan.sessionId,
-      conflictDecisions,
-    })
-    if (!replicaExecute.success) {
-      throw new Error(replicaExecute.error || 'Replica apply failed')
-    }
-    if (replicaExecute.requiresConflictResolution) {
-      throw new Error('Replica sync requires conflict resolution')
-    }
-    if (!replicaExecute.applied) {
-      throw new Error('Replica apply did not persist project files')
-    }
 
     await updateSyncStatus({
       projectId: project._id,
@@ -457,8 +442,8 @@ export function ProjectBuild() {
       status: 'synced',
     })
 
-    addLog('Final project snapshot synced to cloud')
-  }, [addLog, convexUserId, localPath, project?._id, updateSyncStatus])
+    addLog('Final project state pushed to git')
+  }, [addLog, convex, convexUserId, localPath, project, updateMemberLocalPath, updateSyncStatus])
 
   const handleAIComplete = useCallback(async () => {
     addLog('AI generation complete!')
@@ -763,35 +748,13 @@ export function ProjectBuild() {
     updateStatus,
   ])
 
-  const enqueueReplicaSnapshot = useCallback(
-    async (reason: string, source: 'agent' | 'user' | 'external' = 'agent') => {
-      if (!project?._id || !localPath) return
-      try {
-        const result = await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
-          projectId: String(project._id),
-          projectPath: localPath,
-          source,
-          reason,
-        })
-        if (result.success) {
-          addLog(`Replica snapshot queued (${result.queued} pending)`)
-        }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Unknown error'
-        addLog(`Replica snapshot enqueue failed: ${msg}`)
-      }
-    },
-    [addLog, localPath, project?._id]
-  )
-
   const handleFileCreated = useCallback((file: { path: string; content: string }) => {
     addLog(`Created: ${file.path}`)
     // Track created files for Yjs initialization
     createdFilesRef.current.push(file)
     setBuilderMutationTick((prev) => prev + 1)
     resetPreviewAutoRetryBudget()
-    void enqueueReplicaSnapshot(`builder-created:${file.path}`, 'agent')
-  }, [addLog, enqueueReplicaSnapshot, resetPreviewAutoRetryBudget])
+  }, [addLog, resetPreviewAutoRetryBudget])
 
   const handlePreviewStartRequest = useCallback((reason?: string) => {
     setShowPreview(true)
@@ -801,16 +764,14 @@ export function ProjectBuild() {
     addLog(reason ? `AI requested preview start: ${reason}` : 'AI requested preview start')
   }, [addLog, resetPreviewAutoRetryBudget])
 
-  // Pull files from canonical Git replica to local folder
-  const pullFilesFromCloud = useCallback(async () => {
-    if (!project || !convexUserId) return
+  const pullFilesFromCloud = useCallback(async (): Promise<boolean> => {
+    if (!project || !convexUserId) return false
 
     setIsPulling(true)
     setPullProgress(0)
-    addLog('Starting pull from canonical replica...')
+    addLog('Pulling latest files from git...')
 
     try {
-      // 1. Ensure local folder exists.
       let targetPath = localPath
       const folderExists = await window.electronAPI.project.exists(project.slug)
 
@@ -850,84 +811,64 @@ export function ProjectBuild() {
         throw new Error('Could not determine local path')
       }
 
-      setPullProgress(20)
-      const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
-        projectId: String(project._id),
+      setPullProgress(35)
+      await prepareGitProjectForOpen({
+        convex,
+        project: {
+          _id: project._id,
+          slug: project.slug,
+          organizationId: project.organizationId,
+          syncMode: 'git',
+          gitRepository: project.gitRepository ?? null,
+          sourceControl: project.sourceControl ?? null,
+        },
+        localPath: targetPath,
+        userId: convexUserId,
+        onProgress: (message) => {
+          addLog(message)
+        },
+        updateMemberLocalPath,
+      })
+
+      setPullProgress(80)
+      const filesResult = await window.electronAPI.project.listFiles({
         projectPath: targetPath,
       })
-      if (!bootstrap.success) {
-        throw new Error(bootstrap.error || 'Failed to bootstrap replica')
+      if (!filesResult.success) {
+        throw new Error(filesResult.error || 'Failed to inspect local project files after pull')
       }
 
-      setPullProgress(45)
-      const plan = await window.electronAPI.sync.gitReplicaPlan({
-        projectId: String(project._id),
-        projectPath: targetPath,
-      })
-      if (!plan.success) {
-        throw new Error(plan.error || 'Failed to plan replica sync')
-      }
-
-      const totalChanges =
-        plan.downloads.length +
-        plan.uploads.length +
-        plan.localDeletes.length +
-        plan.cloudDeletes.length +
-        plan.autoMerged.length +
-        plan.conflicts.length
-
-      if (totalChanges === 0) {
+      const fileCount = filesResult.files?.length ?? 0
+      if (fileCount === 0) {
         setPullProgress(100)
-        addLog('Replica already up to date.')
-        setStatusMessage('Files synced from replica')
-        setRunStatus('completed')
-        setProgress(100)
-        return
-      }
-
-      const conflictDecisions = Object.fromEntries(
-        plan.conflicts.map((conflict) => [conflict.path, 'cloud' as const])
-      )
-
-      setPullProgress(75)
-      const execute = await window.electronAPI.sync.gitReplicaExecute({
-        projectId: String(project._id),
-        projectPath: targetPath,
-        sessionId: plan.sessionId,
-        conflictDecisions,
-      })
-      if (!execute.success) {
-        throw new Error(execute.error || 'Replica apply failed')
-      }
-      if (execute.requiresConflictResolution) {
-        throw new Error('Replica pull requires conflict resolution')
-      }
-      if (!execute.applied) {
-        throw new Error('Replica pull did not apply changes')
+        addLog('Remote git repository is empty.')
+        return false
       }
 
       setPullProgress(100)
-      addLog(`Pull complete from replica (${totalChanges} change(s)).`)
-      setStatusMessage('Files synced from replica')
+      addLog(`Pull complete from git (${fileCount} file${fileCount === 1 ? '' : 's'}).`)
+      setStatusMessage('Files synced from git')
       setRunStatus('completed')
       setProgress(100)
+      return true
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       addLog(`Pull failed: ${msg}`)
       setHasError(true)
       setStatusMessage('Pull failed')
+      throw error
     } finally {
       setIsPulling(false)
     }
   }, [
     addLog,
+    convex,
     convexUserId,
     localPath,
     project,
     updateMemberLocalPath,
   ])
 
-  // Resolve initial flow: pull existing replica state if needed, otherwise start AI build.
   useEffect(() => {
     if (!project || autoPullTriggeredRef.current) return
     if (!convexUserId) return
@@ -940,30 +881,21 @@ export function ProjectBuild() {
         const folderExists = await window.electronAPI.project.exists(project.slug)
         if (cancelled) return
 
-        const status = await window.electronAPI.sync.gitReplicaStatus({
-          projectId: String(project._id),
-        })
-        if (cancelled) return
-
-        const hasCanonicalReplica = Boolean(status.success && status.canonicalHeadCommit)
-        if (hasCanonicalReplica && !folderExists) {
-          addLog('Replica state found but no local folder - auto-pulling...')
+        if (!folderExists) {
+          addLog('No local folder found - fetching project from git...')
           autoPullTriggeredRef.current = true
-          await pullFilesFromCloud()
+          const hasFiles = await pullFilesFromCloud()
+          if (cancelled) return
+          if (!hasFiles) {
+            addLog('No files found on main - starting new build...')
+            await startAIBuild()
+          }
           return
-        }
-
-        if (!hasCanonicalReplica) {
-          addLog('No canonical replica state found - starting new build...')
-          autoPullTriggeredRef.current = true
-          await startAIBuild()
         }
       } catch (error) {
         if (cancelled) return
         const msg = error instanceof Error ? error.message : 'Unknown error'
-        addLog(`Initial replica check failed (${msg}) - starting build...`)
-        autoPullTriggeredRef.current = true
-        await startAIBuild()
+        addLog(`Initial git check failed: ${msg}`)
       }
     }
 

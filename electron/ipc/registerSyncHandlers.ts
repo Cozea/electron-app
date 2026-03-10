@@ -24,6 +24,7 @@ import {
   type SyncHistoryPayload,
   type SyncOpRecord,
 } from '../services/syncReplicaStore'
+import { GitSyncService } from '../services/gitSyncService'
 import { GitReplicaService } from '../services/gitReplicaService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
@@ -37,6 +38,7 @@ function getConflictResolutionPath(): string {
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
   const gitReplicaService = GitReplicaService.getInstance()
+  const gitSyncService = GitSyncService.getInstance()
 
   ipcMain.handle(
     'sync:hashFile',
@@ -221,6 +223,130 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('sync:getGitRuntimeHealth', async (_event, { force = false }: { force?: boolean }) => {
     return getGitRuntimeHealth(Boolean(force))
   })
+
+  ipcMain.handle(
+    'sync:gitEnsureRepo',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        branch?: string
+        repoUrl?: string
+      }
+    ) => gitSyncService.ensureRepo(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitCloneIfMissing',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        repoUrl: string
+        branch?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.cloneIfMissing(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitFetchMain',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.fetchMain(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitStatus',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+      }
+    ) => gitSyncService.getStatus(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitPullMain',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        strategy?: 'merge' | 'ff-only'
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.pullMain(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitCommitAll',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        message: string
+        addAll?: boolean
+      }
+    ) => gitSyncService.commitAll(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitPushMain',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.pushMain(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitCommitAndPush',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        message: string
+        remote?: string
+        branch?: string
+        addAll?: boolean
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.commitAndPush(options)
+  )
 
   ipcMain.handle(
     'sync:mergePreview',

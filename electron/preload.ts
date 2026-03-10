@@ -308,6 +308,78 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sync:deleteFiles', options),
     getGitRuntimeHealth: (options?: { force?: boolean }) =>
       ipcRenderer.invoke('sync:getGitRuntimeHealth', options ?? {}),
+    gitEnsureRepo: (options: {
+      projectPath: string
+      branch?: string
+      repoUrl?: string
+    }) => ipcRenderer.invoke('sync:gitEnsureRepo', options),
+    gitCloneIfMissing: (options: {
+      projectPath: string
+      repoUrl: string
+      branch?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitCloneIfMissing', options),
+    gitFetchMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitFetchMain', options),
+    gitStatus: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+    }) => ipcRenderer.invoke('sync:gitStatus', options),
+    gitPullMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      strategy?: 'merge' | 'ff-only'
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitPullMain', options),
+    gitCommitAll: (options: {
+      projectPath: string
+      message: string
+      addAll?: boolean
+    }) => ipcRenderer.invoke('sync:gitCommitAll', options),
+    gitPushMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitPushMain', options),
+    gitCommitAndPush: (options: {
+      projectPath: string
+      message: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      addAll?: boolean
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitCommitAndPush', options),
     mergePreview: (options: {
       baseContent: string
       localContent: string

@@ -1,4 +1,7 @@
+import type { ConvexReactClient } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
 /**
  * Binary file extensions that should be synced via LFS-like blob storage
@@ -49,17 +52,48 @@ const MAX_RETRIES = 3
 export class BinaryFileSync {
   private projectId: Id<'projects'>
   private projectPath: string
+  private convex: ConvexReactClient
+  private userId: Id<'users'>
+  private gitDurabilityCoordinator: GitDurabilityCoordinator
 
-  constructor(projectId: Id<'projects'>, projectPath: string) {
+  constructor(
+    projectId: Id<'projects'>,
+    projectPath: string,
+    convex: ConvexReactClient,
+    userId: Id<'users'>
+  ) {
     this.projectId = projectId
     this.projectPath = projectPath
+    this.convex = convex
+    this.userId = userId
+    this.gitDurabilityCoordinator = GitDurabilityCoordinator.acquireShared({
+      projectId,
+      projectPath,
+      convex,
+      userId,
+    })
+  }
+
+  destroy(): void {
+    this.gitDurabilityCoordinator.release()
   }
 
   /**
-   * Upload a binary file as an LFS-like object and enqueue a replica snapshot.
+   * Upload a binary file through the legacy replica lane or schedule Git durability.
    */
   async uploadBinaryFile(relativePath: string): Promise<string | null> {
     try {
+      const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
+        projectId: this.projectId,
+        userId: this.userId,
+      })
+
+      if (metadata?.syncMode === 'git') {
+        this.gitDurabilityCoordinator.scheduleSync(`binary:${relativePath}`)
+        console.log(`[BinaryFileSync] Scheduled git durability sync: ${relativePath}`)
+        return 'git-sync'
+      }
+
       const readResult = await window.electronAPI.project.readFileBase64({
         projectPath: this.projectPath,
         filePath: relativePath,

@@ -421,6 +421,97 @@ export interface MergeTreePreviewResult {
   error?: string
 }
 
+export interface GitSyncEnsureRepoResult {
+  success: boolean
+  isRepo: boolean
+  initialized?: boolean
+  currentBranch?: string
+  topLevelPath?: string
+  gitDir?: string
+  error?: string
+}
+
+export interface GitSyncCloneResult {
+  success: boolean
+  cloned?: boolean
+  localPath?: string
+  currentBranch?: string
+  headCommit?: string
+  remoteUrl?: string
+  error?: string
+}
+
+export interface GitSyncFetchResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  currentBranch?: string
+  upstreamRef?: string
+  headCommit?: string
+  error?: string
+}
+
+export interface GitSyncStatusResult {
+  success: boolean
+  repoExists: boolean
+  isRepo: boolean
+  gitDir?: string
+  topLevelPath?: string
+  currentBranch?: string
+  upstreamBranch?: string | null
+  clean?: boolean
+  ahead?: number
+  behind?: number
+  hasConflicts?: boolean
+  hasStagedChanges?: boolean
+  hasUnstagedChanges?: boolean
+  hasUntrackedChanges?: boolean
+  changedPaths?: string[]
+  error?: string
+}
+
+export interface GitSyncPullResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  strategy: 'merge' | 'ff-only'
+  currentBranch?: string | null
+  headCommit?: string
+  alreadyUpToDate?: boolean
+  hadConflicts?: boolean
+  fastForward?: boolean
+  error?: string
+}
+
+export interface GitSyncCommitResult {
+  success: boolean
+  currentBranch?: string | null
+  commitCreated?: boolean
+  commitSha?: string
+  error?: string
+}
+
+export interface GitSyncPushResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  currentBranch?: string | null
+  headCommit?: string
+  pushed?: boolean
+  error?: string
+}
+
+export interface GitSyncCommitPushResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  currentBranch?: string
+  commitCreated?: boolean
+  pushed?: boolean
+  commitSha?: string
+  error?: string
+}
+
 export interface MergeCacheRecord {
   key: string
   mergedContent: string
@@ -1059,6 +1150,78 @@ export interface ElectronAPI {
       }
     }) => Promise<SyncDeleteFilesResult>
     getGitRuntimeHealth: (options?: { force?: boolean }) => Promise<GitRuntimeHealth>
+    gitEnsureRepo: (options: {
+      projectPath: string
+      branch?: string
+      repoUrl?: string
+    }) => Promise<GitSyncEnsureRepoResult>
+    gitCloneIfMissing: (options: {
+      projectPath: string
+      repoUrl: string
+      branch?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncCloneResult>
+    gitFetchMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncFetchResult>
+    gitStatus: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+    }) => Promise<GitSyncStatusResult>
+    gitPullMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      strategy?: 'merge' | 'ff-only'
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncPullResult>
+    gitCommitAll: (options: {
+      projectPath: string
+      message: string
+      addAll?: boolean
+    }) => Promise<GitSyncCommitResult>
+    gitPushMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncPushResult>
+    gitCommitAndPush: (options: {
+      projectPath: string
+      message: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      addAll?: boolean
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncCommitPushResult>
     mergePreview: (options: {
       baseContent: string
       localContent: string

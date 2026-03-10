@@ -111,7 +111,6 @@ export const getForProject = query({
       organization?.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
     )
     const canManage = membership.role === "project_manager" && isPersonalProject
-
     const activeLinks = await ctx.db
       .query("projectJoinLinks")
       .withIndex("by_project_and_status", (q) =>

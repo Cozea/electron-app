@@ -1,10 +1,10 @@
 "use client"
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
-import { useQuery, useMutation } from 'convex/react'
+import { useConvex, useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import {
@@ -23,17 +23,16 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
-import { runProjectOpenReplicaCheck } from '@/features/projects/lib/projectOpenReplicaCheck'
-import type { ProjectOpenReplicaCheckResult } from '@/features/projects/lib/projectOpenReplicaCheck'
-import { formatReplicaSyncError } from '@/features/projects/lib/replicaErrorPresentation'
-import { markRecentProjectOpenSync } from '@/features/projects/lib/recentProjectOpenSync'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
+import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
+import {
+  logProjectSourceDebug,
+  summarizeProjectForDebug,
+} from '@/features/projects/lib/projectSourceDebug'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-interface ProjectListItem {
-  _id: Id<'projects'>
-  slug: string
+interface ProjectListItem extends ProjectOpenGitProjectLike {
   name?: string | null
   template?: string | null
   status?: string
@@ -47,9 +46,11 @@ interface ProjectNavigationState {
   gateSyncScreen?: boolean
   syncAccessBlocked?: boolean
   skipInitialSyncCheck?: boolean
+  syncMode?: 'replica' | 'git'
 }
 
 export function ContextSwitcher() {
+  const convex = useConvex()
   const { isMobile } = useSidebar()
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
@@ -161,6 +162,32 @@ export function ContextSwitcher() {
   const navigationTemplateHint =
     hasMatchingNavigationState ? navigationState?.projectTemplate : undefined
 
+  useEffect(() => {
+    logProjectSourceDebug('context_switcher:state', {
+      authWorkosUserId: user?.id ?? null,
+      routeProjectId: routeProject.projectId,
+      routeSlug: routeProject.slug,
+      currentOrganizationId: currentOrganization?.organizationId ?? null,
+      workspaceType: currentOrganization?.workspaceType ?? null,
+      convexOrganizationId: convexOrg?._id ?? null,
+      convexUserId: convexUser?._id ?? null,
+      currentProject: summarizeProjectForDebug(currentProject),
+      selectedProjectFromList: summarizeProjectForDebug(selectedProjectFromList),
+      normalizedProjects: normalizedProjects.map((project) => summarizeProjectForDebug(project)),
+    })
+  }, [
+    convexOrg?._id,
+    convexUser?._id,
+    currentOrganization?.organizationId,
+    currentOrganization?.workspaceType,
+    currentProject,
+    normalizedProjects,
+    routeProject.projectId,
+    routeProject.slug,
+    selectedProjectFromList,
+    user?.id,
+  ])
+
   // Organization info
   const organization = {
     name: currentOrganization?.organizationName || 'My Workspace',
@@ -175,35 +202,15 @@ export function ContextSwitcher() {
     setActiveProjectName(null)
   }, [])
 
-  const executeAutoSyncBeforeOpen = useCallback(async (
-    project: ProjectListItem,
-    effectiveLocalPath: string,
-    check: ProjectOpenReplicaCheckResult
-  ): Promise<boolean> => {
-    setSyncState('syncing')
-    setSyncMessage(check.likelyLocalWipe ? 'Downloading cloud files...' : 'Syncing project files...')
-
-    const result = await window.electronAPI.sync.gitReplicaExecute({
-      projectId: String(project._id),
-      projectPath: effectiveLocalPath,
-      sessionId: check.plan.sessionId,
-    })
-
-    if (result.success && result.applied) {
-      return true
-    }
-
-    throw new Error(
-      formatReplicaSyncError(
-        result.error || 'Failed to sync project files',
-        'Failed to sync project files'
-      ).summary
-    )
-  }, [])
-
   const handleProjectSelect = useCallback(async (project: ProjectListItem, event?: Event) => {
     event?.preventDefault()
     if (syncState !== 'idle') return
+
+    logProjectSourceDebug('context_switcher:open_project', {
+      project: summarizeProjectForDebug(project),
+      routeProjectId: routeProject.projectId,
+      routeSlug: routeProject.slug,
+    })
 
     // Draft projects go straight to wizard
     if (project.status === 'draft') {
@@ -218,66 +225,21 @@ export function ContextSwitcher() {
     setOpen(true)
 
     try {
-      let effectiveLocalPath = await window.electronAPI.project.getLocalPath(project.slug)
-
-      if (!effectiveLocalPath) {
-        setSyncMessage('Creating local folder...')
-        const result = await window.electronAPI.project.createFolder({
-          slug: project.slug,
-          initGit: true,
-        })
-
-        if (!result.success || !result.localPath) {
-          throw new Error(result.error || 'Failed to create folder')
-        }
-
-        effectiveLocalPath = result.localPath
-      }
-
-      if (effectiveLocalPath && convexUser?._id) {
-        await updateMemberLocalPath({
-          projectId: project._id,
-          userId: convexUser._id,
-          localPath: effectiveLocalPath,
-        })
-      }
-
-      let openCheck: ProjectOpenReplicaCheckResult | null = null
-
-      if (effectiveLocalPath) {
-        setSyncMessage('Checking sync status...')
-        const check = await runProjectOpenReplicaCheck({
-          projectId: String(project._id),
-          projectPath: effectiveLocalPath,
-        })
-        openCheck = check
-
-        if (check.totalChanges > 0) {
-          setSyncState('syncing')
-          if (check.hasConflicts) {
-            setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
-          } else if (check.likelyLocalWipe) {
-            setSyncMessage('Downloading cloud files...')
-          } else {
-            setSyncMessage('Syncing project files...')
-          }
-        }
-      }
-
-      if (effectiveLocalPath && openCheck && openCheck.totalChanges > 0 && !openCheck.hasConflicts) {
-        const shouldContinueToOpen = await executeAutoSyncBeforeOpen(project, effectiveLocalPath, openCheck)
-        if (!shouldContinueToOpen) {
-          return
-        }
-      }
+      await prepareGitProjectForOpen({
+        convex,
+        project,
+        localPath: await window.electronAPI.project.getLocalPath(project.slug),
+        userId: convexUser?._id,
+        onProgress: (message) => {
+          setSyncMessage(message)
+        },
+        updateMemberLocalPath: convexUser?._id ? updateMemberLocalPath : undefined,
+      })
 
       setSyncState('ready')
-      setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
+      setSyncMessage('Opening project...')
 
       setTimeout(() => {
-        if (!openCheck?.syncAccessBlocked) {
-          markRecentProjectOpenSync(String(project._id))
-        }
         setOpen(false)
         navigate(buildProjectPath(String(project._id)), {
           state: {
@@ -285,24 +247,24 @@ export function ContextSwitcher() {
             projectId: String(project._id),
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
-            gateSyncScreen: openCheck?.gateSyncScreen ?? false,
-            syncAccessBlocked: openCheck?.syncAccessBlocked ?? false,
-            skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
+            gateSyncScreen: false,
+            syncAccessBlocked: false,
+            skipInitialSyncCheck: true,
+            syncMode: 'git',
           } satisfies ProjectNavigationState,
         })
         resetSyncState()
       }, 200)
     } catch (error) {
       console.error('[ContextSwitcher] Project prep failed:', error)
-      const presentedError = formatReplicaSyncError(error, 'Failed to prepare project')
       setSyncState('error')
-      setSyncMessage(presentedError.summary)
+      setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
 
       setTimeout(() => {
         resetSyncState()
       }, 2000)
     }
-  }, [convexUser?._id, executeAutoSyncBeforeOpen, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = useCallback(() => {
     setOpen(false)

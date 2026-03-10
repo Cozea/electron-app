@@ -59,6 +59,10 @@ import type { ProjectOpenSyncReviewRequest } from '@/features/projects/lib/proje
 import { isBootstrapOnlyLocalPath } from '@/features/projects/lib/localWorkspaceState'
 import type { GitReplicaConflictDecision, GitReplicaPlanResult } from '@shared/electronApiTypes'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import {
+  logProjectSourceDebug,
+  summarizeProjectForDebug,
+} from '@/features/projects/lib/projectSourceDebug'
 
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -357,6 +361,26 @@ export function Projects() {
     },
     [projects]
   )
+
+  useEffect(() => {
+    logProjectSourceDebug('projects_page:source', {
+      authWorkosUserId: user?.id ?? null,
+      workspaceType: currentOrganization?.workspaceType ?? null,
+      currentOrganizationId: currentOrganization?.organizationId ?? null,
+      convexOrganizationId: convexOrg?._id ?? null,
+      convexUserId: convexUser?._id ?? null,
+      rawProjectCount: Array.isArray(projects) ? projects.length : null,
+      normalizedProjectCount: normalizedProjects.length,
+      projects: normalizedProjects.map((project) => summarizeProjectForDebug(project)),
+    })
+  }, [
+    convexOrg?._id,
+    convexUser?._id,
+    currentOrganization?.organizationId,
+    currentOrganization?.workspaceType,
+    normalizedProjects,
+    projects,
+  ])
 
   const filteredProjects = useMemo(() => {
     let result = normalizedProjects

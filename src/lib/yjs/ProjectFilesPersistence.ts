@@ -2,6 +2,7 @@ import * as Y from 'yjs'
 import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
 type ChangeOrigin = 'user' | 'agent' | 'remote' | 'init'
 
@@ -72,10 +73,10 @@ function shouldExcludeActivityPath(path: string): boolean {
 }
 
 /**
- * ProjectFilesPersistence - Persists Yjs file changes to activity logs and replica snapshots.
+ * ProjectFilesPersistence - Persists Yjs file changes to activity logs and durable sync.
  *
  * This provider tracks local Yjs edits/deletes, logs them for the activity feed,
- * and enqueues a Git replica snapshot so the secondary sync lane converges.
+ * and then routes durability to either the legacy replica lane or the Git-backed lane.
  */
 export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
@@ -89,6 +90,7 @@ export class ProjectFilesPersistence {
   private previousContents: Map<string, string> = new Map()
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private debounceMs = 1000
+  private gitDurabilityCoordinator: GitDurabilityCoordinator | null
 
   constructor(
     filesMap: Y.Map<Y.Text>,
@@ -104,6 +106,14 @@ export class ProjectFilesPersistence {
     this.convex = convex
     this.userId = userId
     this.userName = userName
+    this.gitDurabilityCoordinator = projectPath
+      ? GitDurabilityCoordinator.acquireShared({
+          projectId,
+          projectPath,
+          convex,
+          userId,
+        })
+      : null
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -228,6 +238,20 @@ export class ProjectFilesPersistence {
     }
   }
 
+  private async enqueueDurabilitySync(source: ChangeOrigin, reason: string): Promise<void> {
+    const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
+      projectId: this.projectId,
+      userId: this.userId,
+    })
+
+    if (metadata?.syncMode === 'git') {
+      this.gitDurabilityCoordinator?.scheduleSync(reason)
+      return
+    }
+
+    await this.enqueueReplicaSnapshot(source, reason)
+  }
+
   private async persistChanges() {
     const changes = new Map(this.pendingChanges)
     this.pendingChanges.clear()
@@ -324,7 +348,7 @@ export class ProjectFilesPersistence {
     }
 
     if (hasMaterialChanges && snapshotSource) {
-      await this.enqueueReplicaSnapshot(
+      await this.enqueueDurabilitySync(
         snapshotSource,
         `yjs-batch: upserts=${changes.size}, deletes=${deletes.size}`
       )
@@ -332,6 +356,19 @@ export class ProjectFilesPersistence {
   }
 
   destroy() {
+    const releaseGitCoordinator = () => {
+      this.gitDurabilityCoordinator?.release()
+      this.gitDurabilityCoordinator = null
+    }
+
+    if (this.pendingChanges.size > 0 || this.pendingDeletes.size > 0) {
+      void this.persistChanges().finally(releaseGitCoordinator)
+    } else {
+      const flushPromise = this.gitDurabilityCoordinator
+        ? this.gitDurabilityCoordinator.flushNow()
+        : Promise.resolve()
+      void flushPromise.finally(releaseGitCoordinator)
+    }
     this.filesMap.unobserveDeep(this.handleFilesChange)
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
   }

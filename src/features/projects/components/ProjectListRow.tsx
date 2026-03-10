@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useMutation } from 'convex/react'
+import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
@@ -35,21 +35,16 @@ import {
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
-import { runProjectOpenReplicaCheck } from '../lib/projectOpenReplicaCheck'
-import type { ProjectOpenReplicaCheckResult } from '../lib/projectOpenReplicaCheck'
 import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
-import { formatReplicaSyncError } from '../lib/replicaErrorPresentation'
-import { markRecentProjectOpenSync } from '../lib/recentProjectOpenSync'
 import { buildProjectPath } from '../lib/projectRoutes'
+import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
 const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
-interface ProjectSummary {
-    _id: Id<'projects'>
-    slug: string
+interface ProjectSummary extends ProjectOpenGitProjectLike {
     name: string
     template?: string | null
     status: string
@@ -89,8 +84,8 @@ export function ProjectListRow({
   userId,
   creatorName,
   creatorImage,
-  onRequireSyncReview,
 }: ProjectListRowProps) {
+  const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const rowRef = useRef<HTMLTableRowElement | null>(null)
   const isInViewport = useInViewportOnce(rowRef)
@@ -99,7 +94,6 @@ export function ProjectListRow({
   const [syncMessage, setSyncMessage] = useState('')
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
     const deleteProject = useMutation(api.projects.deleteProject)
-    const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const [showMenu, setShowMenu] = useState(false)
   const [localPath, setLocalPath] = useState<string | null>(null)
@@ -134,78 +128,6 @@ export function ProjectListRow({
         }
         void preloadProjectDetailPage()
     }, [project.status])
-
-    const executeAutoSyncBeforeOpen = useCallback(async (
-        effectiveLocalPath: string,
-        check: ProjectOpenReplicaCheckResult
-    ): Promise<boolean> => {
-        setSyncState('syncing')
-        setSyncMessage(check.likelyLocalWipe ? 'Downloading cloud files...' : 'Syncing project files...')
-
-        if (userId) {
-            try {
-                await updateSyncStatus({
-                    projectId: project._id,
-                    userId,
-                    status: 'syncing',
-                })
-            } catch (statusError) {
-                console.error('[ProjectListRow] Failed to update syncing status:', statusError)
-            }
-        }
-
-        const result = await window.electronAPI.sync.gitReplicaExecute({
-            projectId: String(project._id),
-            projectPath: effectiveLocalPath,
-            sessionId: check.plan.sessionId,
-        })
-
-        const syncErrorPresentation = formatReplicaSyncError(
-            result.error || 'Failed to sync project files',
-            'Failed to sync project files'
-        )
-        const syncErrorMessage = syncErrorPresentation.summary
-        const syncStatusDetail = syncErrorPresentation.detail
-            ? `${syncErrorPresentation.summary} ${syncErrorPresentation.detail}`
-            : syncErrorPresentation.summary
-
-        if (userId) {
-            try {
-                await updateSyncStatus({
-                    projectId: project._id,
-                    userId,
-                    status: result.success && result.applied ? 'synced' : 'error',
-                    errorMessage: result.success && result.applied ? undefined : syncStatusDetail,
-                })
-            } catch (statusError) {
-                console.error('[ProjectListRow] Failed to update final sync status:', statusError)
-            }
-        }
-
-        if (result.success && result.applied) {
-            return true
-        }
-
-        if (result.requiresConflictResolution && onRequireSyncReview) {
-            const refreshedCheck = await runProjectOpenReplicaCheck({
-                projectId: String(project._id),
-                projectPath: effectiveLocalPath,
-            })
-            onRequireSyncReview({
-                projectId: project._id,
-                projectSlug: project.slug,
-                projectName: project.name,
-                projectTemplate: project.template ?? undefined,
-                projectPath: effectiveLocalPath,
-                check: refreshedCheck,
-            })
-            setSyncState('idle')
-            setSyncMessage('')
-            return false
-        }
-
-        throw new Error(syncErrorMessage)
-    }, [onRequireSyncReview, project._id, project.name, project.slug, project.template, updateSyncStatus, userId])
 
     const handleDelete = async () => {
         if (!userId) return
@@ -261,107 +183,40 @@ export function ProjectListRow({
         setSyncMessage('Preparing project...')
 
         try {
-            // Determine the real local path for this machine (project.localPath is not per-user).
-            let effectiveLocalPath = await window.electronAPI.project.getLocalPath(project.slug)
+            const gitOpenResult = await prepareGitProjectForOpen({
+                convex,
+                project,
+                localPath,
+                userId,
+                onProgress: (message) => {
+                    setSyncMessage(message)
+                },
+                updateMemberLocalPath,
+            })
 
-            if (!effectiveLocalPath) {
-                setSyncMessage('Creating local folder...')
-                const result = await window.electronAPI.project.createFolder({
-                    slug: project.slug,
-                    initGit: true,
-                })
-
-                if (!result.success || !result.localPath) {
-                    throw new Error(result.error || 'Failed to create folder')
-                }
-
-                effectiveLocalPath = result.localPath
-                setLocalPath(effectiveLocalPath)
-            } else {
-                setLocalPath(effectiveLocalPath)
-            }
-
-            // Save per-user local path in database (machine-specific)
-            if (effectiveLocalPath && userId) {
-                await updateMemberLocalPath({
-                    projectId: project._id,
-                    userId,
-                    localPath: effectiveLocalPath,
-                })
-            }
-
-            let openCheck: ProjectOpenReplicaCheckResult | null = null
-
-            // Full ReplicaGit check before opening. Conflicts route into manual review;
-            // non-conflict sync completes inline before navigation.
-            if (effectiveLocalPath) {
-                setSyncMessage('Checking sync status...')
-                const check = await runProjectOpenReplicaCheck({
-                    projectId: String(project._id),
-                    projectPath: effectiveLocalPath,
-                })
-                openCheck = check
-
-                if (check.totalChanges > 0) {
-                    setSyncState('syncing')
-                    if (check.hasConflicts) {
-                        setSyncMessage(`${check.plan.conflicts.length} conflict${check.plan.conflicts.length === 1 ? '' : 's'} detected`)
-                    } else if (check.likelyLocalWipe) {
-                        setSyncMessage('Downloading cloud files...')
-                    } else {
-                        setSyncMessage('Syncing project files...')
-                    }
-                }
-            }
-
-            if (effectiveLocalPath && openCheck && openCheck.totalChanges > 0 && !openCheck.hasConflicts) {
-                const shouldContinueToOpen = await executeAutoSyncBeforeOpen(effectiveLocalPath, openCheck)
-                if (!shouldContinueToOpen) {
-                    return
-                }
-            }
-
-            // Navigate to project
+            setLocalPath(gitOpenResult.localPath)
             setSyncState('ready')
-            setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
+            setSyncMessage('Opening project...')
 
-            // Small delay to show the ready state
             setTimeout(() => {
-                if (!openCheck?.syncAccessBlocked) {
-                    markRecentProjectOpenSync(String(project._id))
-                }
-                if (openCheck?.gateSyncScreen && effectiveLocalPath && onRequireSyncReview) {
-                    void onRequireSyncReview({
-                        projectId: project._id,
-                        projectSlug: project.slug,
-                        projectName: project.name,
-                        projectTemplate: project.template ?? undefined,
-                        projectPath: effectiveLocalPath,
-                        check: openCheck,
-                    })
-                    setSyncState('idle')
-                    setSyncMessage('')
-                    return
-                }
-
                 navigate(buildProjectPath(String(project._id)), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
-                        gateSyncScreen: openCheck?.gateSyncScreen ?? false,
-                        syncAccessBlocked: openCheck?.syncAccessBlocked ?? false,
-                        skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
+                        gateSyncScreen: false,
+                        syncAccessBlocked: false,
+                        skipInitialSyncCheck: true,
+                        syncMode: 'git',
                     },
                 })
             }, 200)
 
         } catch (error) {
             console.error('[ProjectListRow] Sync check failed:', error)
-            const presentedError = formatReplicaSyncError(error, 'Failed to prepare project')
             setSyncState('error')
-            setSyncMessage(presentedError.summary)
+            setSyncMessage(error instanceof Error ? error.message : 'Failed to prepare project')
 
             // Reset after showing error
             setTimeout(() => {
@@ -369,7 +224,7 @@ export function ProjectListRow({
                 setSyncMessage('')
             }, 2000)
         }
-    }, [executeAutoSyncBeforeOpen, project, userId, navigate, updateMemberLocalPath, preloadProjectDestination, onRequireSyncReview])
+    }, [convex, localPath, navigate, preloadProjectDestination, project, updateMemberLocalPath, userId])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
 

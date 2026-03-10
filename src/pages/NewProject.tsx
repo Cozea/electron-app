@@ -45,7 +45,7 @@ import { TerminalInstance } from '@/features/projects/components/TerminalInstanc
 import { cn } from '@/lib/utils'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
-import { formatReplicaSyncError } from '@/features/projects/lib/replicaErrorPresentation'
+import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
 import {
   buildImportTerminalCommand,
   parseImportTerminalCompletionCode,
@@ -337,64 +337,6 @@ export function NewProject() {
       throw new Error(installResult.error || 'Dependency installation failed')
     }
   }, [runTerminalCommand])
-
-  const uploadLocalSnapshotToCloud = useCallback(async (
-    projectId: Id<'projects'>,
-    projectPath: string,
-  ) => {
-    setImportSyncMessage('Bootstrapping project replica...')
-    const bootstrap = await window.electronAPI.sync.gitReplicaBootstrap({
-      projectId: String(projectId),
-      projectPath,
-    })
-    if (!bootstrap.success) {
-      throw new Error(bootstrap.error || 'Replica bootstrap failed')
-    }
-
-    setImportSyncMessage('Planning replica sync...')
-    const replicaPlan = await window.electronAPI.sync.gitReplicaPlan({
-      projectId: String(projectId),
-      projectPath,
-    })
-    if (!replicaPlan.success) {
-      throw new Error(replicaPlan.error || 'Replica planning failed')
-    }
-
-    const conflictDecisions = Object.fromEntries(
-      replicaPlan.conflicts.map((conflict) => [conflict.path, 'local' as const])
-    )
-
-    setImportSyncMessage('Applying replica sync...')
-    const replicaExecute = await window.electronAPI.sync.gitReplicaExecute({
-      projectId: String(projectId),
-      projectPath,
-      sessionId: replicaPlan.sessionId,
-      conflictDecisions,
-    })
-    if (!replicaExecute.success) {
-      throw new Error(replicaExecute.error || 'Replica apply failed')
-    }
-    if (replicaExecute.requiresConflictResolution) {
-      throw new Error('Replica import requires conflict resolution')
-    }
-    if (!replicaExecute.applied) {
-      throw new Error('Replica apply did not persist imported files')
-    }
-
-    const replicaStatus = await window.electronAPI.sync.gitReplicaStatus({
-      projectId: String(projectId),
-    })
-    if (!replicaStatus.success || !replicaStatus.canonicalHeadCommit) {
-      throw new Error(replicaStatus.error || 'Canonical replica verification failed')
-    }
-
-    await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
-      projectId: String(projectId),
-      projectPath,
-      source: 'user',
-      reason: 'new-project-import',
-    })
-  }, [])
 
   const handleNext = async () => {
     // On the review step for fresh path, create project and go to build
@@ -857,45 +799,50 @@ export function NewProject() {
         }
 
         try {
-          await uploadLocalSnapshotToCloud(result.projectId, importPath)
-          try {
-            await updateSyncStatus({
-              projectId: result.projectId,
-              userId: convexUserId,
-              status: 'synced',
-            })
-          } catch (syncStatusError) {
-            const presentedError = formatReplicaSyncError(
-              syncStatusError,
-              'Cloud sync finished, but sync status could not be recorded.'
-            )
-            console.warn(
-              '[Import] Failed to mark synced status after successful replica sync:',
-              presentedError.detail
-                ? `${presentedError.summary} ${presentedError.detail}`
-                : presentedError.summary
-            )
-          }
-        } catch (bootstrapError) {
-          const presentedError = formatReplicaSyncError(
-            bootstrapError,
-            'Cloud sync is unavailable for this import.'
-          )
-          const replicaSyncError = presentedError.detail
-            ? `${presentedError.summary} ${presentedError.detail}`
-            : presentedError.summary
-          console.warn('[Import] Import replica sync failed; aborting open:', replicaSyncError)
+          await publishWorkspaceToCozeaGit({
+            convex,
+            project: {
+              _id: result.projectId,
+              slug: result.slug ?? repoName,
+              organizationId,
+              syncMode: 'git',
+              gitRepository: {
+                provider: repoSource.provider === 'local' ? 'cozea' : repoSource.provider,
+                url: repoSource.repoUrl,
+                defaultBranch: 'main',
+              },
+              sourceControl: {
+                provider: repoSource.provider,
+                repoUrl: repoSource.repoUrl,
+              },
+            },
+            projectPath: importPath,
+            userId: convexUserId,
+            onProgress: (message) => {
+              setImportSyncMessage(message)
+            },
+            updateMemberLocalPath,
+          })
+
+          await updateSyncStatus({
+            projectId: result.projectId,
+            userId: convexUserId,
+            status: 'synced',
+          })
+        } catch (gitImportError) {
+          const message = gitImportError instanceof Error ? gitImportError.message : 'Git import sync failed'
+          console.warn('[Import] Import publish to Cozea git failed:', message)
           try {
             await updateSyncStatus({
               projectId: result.projectId,
               userId: convexUserId,
               status: 'error',
-              errorMessage: replicaSyncError,
+              errorMessage: message,
             })
           } catch (syncStatusError) {
-            console.warn('[Import] Failed to mark bootstrap error state:', syncStatusError)
+            console.warn('[Import] Failed to mark git import error state:', syncStatusError)
           }
-          setImportError(replicaSyncError)
+          setImportError(message)
           setImportSyncState('error')
           setImportSyncMessage('Import failed')
           return
@@ -910,6 +857,7 @@ export function NewProject() {
             state: {
               gateSyncScreen: false,
               skipInitialSyncCheck: true,
+              syncMode: 'git',
             },
           })
           setImportSyncState('idle')
