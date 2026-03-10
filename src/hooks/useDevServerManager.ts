@@ -126,7 +126,6 @@ export function useDevServerManager({
 
   const isStaleRunEvent = useCallback((runId: string | null | undefined) => {
     if (!runId) return false
-    if (!activeRunIdRef.current) return false
     return runId !== activeRunIdRef.current
   }, [])
 
@@ -369,7 +368,6 @@ export function useDevServerManager({
     const currentRunId = activeRunIdRef.current
 
     try {
-      await window.electronAPI.devServer.stop({ projectPath })
       if (currentRunId) {
         transitionLifecycle({ type: 'stopped', runId: currentRunId })
       }
@@ -389,6 +387,11 @@ export function useDevServerManager({
         type: 'stopped',
         message: 'Dev server stopped',
       })
+
+      const result = await window.electronAPI.devServer.stop({ projectPath })
+      if (!result.success && result.error) {
+        console.warn('[DevServer] Stop reported an error:', result.error)
+      }
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }

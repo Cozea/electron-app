@@ -23,7 +23,10 @@ import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { useYjsProject } from "@/contexts/YjsProjectContext"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { formatReplicaSyncError } from "../lib/replicaErrorPresentation"
+import {
+  formatReplicaSyncError,
+  isReplicaSyncEntitlementError,
+} from "../lib/replicaErrorPresentation"
 import {
   getMeaningfulLocalFileCount,
   isBootstrapOnlyLocalPath,
@@ -229,8 +232,15 @@ function buildLocalWipeRecoveryPlan(plan: SyncPlan): SyncPlan {
   }
 }
 
+function canContinueLocallyWithoutCloudSync(
+  meaningfulLocalFileCount: number | null
+): boolean {
+  return meaningfulLocalFileCount !== null && meaningfulLocalFileCount > 0
+}
+
 interface ProjectSyncContextValue {
   isSynced: boolean
+  cloudSyncBlocked: boolean
   lastSyncAt: number | null
   projectPath: string | null
   triggerSync: () => Promise<void>
@@ -262,6 +272,7 @@ interface ProjectSyncProviderProps {
   localPath: string | null
   lastSyncAt?: number
   initialGateSyncScreen?: boolean
+  initialSyncAccessBlocked?: boolean
   skipInitialSyncCheck?: boolean
   onFilesChanged?: () => void
 }
@@ -316,27 +327,39 @@ export function ProjectSyncProvider({
   localPath,
   lastSyncAt: initialLastSyncAt,
   initialGateSyncScreen = false,
+  initialSyncAccessBlocked = false,
   skipInitialSyncCheck = false,
   onFilesChanged,
 }: ProjectSyncProviderProps) {
   const navigate = useNavigate()
   const { accessToken } = useAuth()
-  const [isSynced, setIsSynced] = useState(skipInitialSyncCheck)
+  const [isSynced, setIsSynced] = useState(skipInitialSyncCheck && !initialSyncAccessBlocked)
+  const [syncAccessBlocked, setSyncAccessBlocked] = useState(initialSyncAccessBlocked)
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(
     initialLastSyncAt ?? null
   )
   const [showSyncScreen, setShowSyncScreen] = useState(
-    initialGateSyncScreen || !skipInitialSyncCheck
+    initialGateSyncScreen || (!skipInitialSyncCheck && !initialSyncAccessBlocked)
   )
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [requireSyncBeforeContinue, setRequireSyncBeforeContinue] = useState(false)
   const [currentLocalPath, setCurrentLocalPath] = useState<string | null>(localPath)
   // Prevent concurrent sync runs
   const [isSyncRunning, setIsSyncRunning] = useState(false)
-  const [hasRunInitialSync, setHasRunInitialSync] = useState(skipInitialSyncCheck)
+  const [hasRunInitialSync, setHasRunInitialSync] = useState(
+    skipInitialSyncCheck || initialSyncAccessBlocked
+  )
 
   const [progress, setProgress] = useState<SyncProgress>(() =>
-    initialGateSyncScreen || !skipInitialSyncCheck
+    initialSyncAccessBlocked
+      ? {
+        status: "idle",
+        message: "",
+        current: 0,
+        total: 0,
+        logs: [],
+      }
+      : initialGateSyncScreen || !skipInitialSyncCheck
       ? {
         status: "checking",
         message: "Checking project files...",
@@ -365,7 +388,7 @@ export function ProjectSyncProvider({
   } = useCollabSession({
     projectId: String(projectId),
     accessToken,
-    enabled: isSynced && Boolean(accessToken),
+    enabled: isSynced && !syncAccessBlocked && Boolean(accessToken),
   })
 
   const activeCollabSession: CollabSessionDescriptor | null =
@@ -410,10 +433,12 @@ export function ProjectSyncProvider({
     overrideConflictDecisions?: Record<string, GitReplicaConflictDecision>
   ) => {
     setIsSyncRunning(true)
+    setSyncAccessBlocked(false)
 
     if (!hasSyncOperations(syncPlan)) {
       setIsSynced(true)
       setShowSyncScreen(false)
+      setSyncAccessBlocked(false)
       setIsSyncRunning(false)
       return
     }
@@ -471,6 +496,7 @@ export function ProjectSyncProvider({
       if (result.success && result.applied) {
         const now = Date.now()
         setIsSynced(true)
+        setSyncAccessBlocked(false)
         setLastSyncAt(now)
         setShowSyncScreen(false)
         setRequireSyncBeforeContinue(false)
@@ -493,6 +519,27 @@ export function ProjectSyncProvider({
           logs: [...prev.logs, "⚠ Conflict resolution required before sync can continue"],
         }))
       } else {
+        if (isReplicaSyncEntitlementError(syncErrorMessage)) {
+          console.info("[ProjectSync] Cloud sync blocked by entitlement during apply; continuing in local-only mode", {
+            projectId: String(projectId),
+            projectPath,
+          })
+          setIsSynced(false)
+          setSyncAccessBlocked(true)
+          setShowSyncScreen(false)
+          setPlan(null)
+          setReplicaPlan(null)
+          setRequireSyncBeforeContinue(false)
+          setProgress({
+            status: "idle",
+            message: "",
+            current: 0,
+            total: 0,
+            logs: [],
+          })
+          return
+        }
+
         // Surface non-conflict failures explicitly. Otherwise UI can stay on
         // "Syncing files..." while already failed.
         setShowSyncScreen(true)
@@ -507,6 +554,27 @@ export function ProjectSyncProvider({
     } catch (error) {
       const syncErrorMessage =
         error instanceof Error ? error.message : "Failed to sync project files"
+
+      if (isReplicaSyncEntitlementError(error)) {
+        console.info("[ProjectSync] Cloud sync blocked by entitlement during apply; continuing in local-only mode", {
+          projectId: String(projectId),
+          projectPath,
+        })
+        setIsSynced(false)
+        setSyncAccessBlocked(true)
+        setShowSyncScreen(false)
+        setPlan(null)
+        setReplicaPlan(null)
+        setRequireSyncBeforeContinue(false)
+        setProgress({
+          status: "idle",
+          message: "",
+          current: 0,
+          total: 0,
+          logs: [],
+        })
+        return
+      }
 
       try {
         await updateSyncStatus({
@@ -555,6 +623,7 @@ export function ProjectSyncProvider({
     const runInitialSync = async () => {
       setIsSyncRunning(true)
       setHasRunInitialSync(true)
+      setSyncAccessBlocked(false)
       setRequireSyncBeforeContinue(false)
       setProgress({
         status: "checking",
@@ -564,12 +633,11 @@ export function ProjectSyncProvider({
         logs: ["Starting sync check..."],
       })
 
-      try {
-        // Check if we already have a local path (e.g., from repo import)
-        let effectiveLocalPath = currentLocalPath
+      let effectiveLocalPath = currentLocalPath
       let localFileCount: number | null = null
       let meaningfulLocalFileCount: number | null = null
 
+      try {
         if (effectiveLocalPath) {
           // For repo imports, we already have the local path - just verify it exists
           setProgress((prev) => ({
@@ -782,6 +850,33 @@ export function ProjectSyncProvider({
           }))
         }
       } catch (error) {
+        if (
+          isReplicaSyncEntitlementError(error) &&
+          canContinueLocallyWithoutCloudSync(meaningfulLocalFileCount) &&
+          effectiveLocalPath
+        ) {
+          console.info("[ProjectSync] Cloud sync blocked by entitlement; continuing in local-only mode", {
+            projectId: String(projectId),
+            projectPath: effectiveLocalPath,
+            meaningfulLocalFileCount,
+          })
+          setIsSynced(false)
+          setSyncAccessBlocked(true)
+          setShowSyncScreen(false)
+          setIsSyncRunning(false)
+          setPlan(null)
+          setReplicaPlan(null)
+          setRequireSyncBeforeContinue(false)
+          setProgress({
+            status: "idle",
+            message: "",
+            current: 0,
+            total: 0,
+            logs: [],
+          })
+          return
+        }
+
         const presentedError = formatReplicaSyncError(error, "Failed to sync project files")
         console.error("[Sync] Initial sync failed:", error)
         setShowSyncScreen(true)
@@ -815,10 +910,19 @@ export function ProjectSyncProvider({
    * Manual sync trigger.
    */
   const triggerSync = useCallback(async () => {
+    if (syncAccessBlocked) {
+      setPlan(null)
+      setReplicaPlan(null)
+      setRequireSyncBeforeContinue(false)
+      setShowSyncScreen(false)
+      setHasRunInitialSync(false)
+      return
+    }
+
     if (!currentLocalPath || !plan) return
 
     await executeSync(currentLocalPath, plan)
-  }, [currentLocalPath, plan, executeSync])
+  }, [currentLocalPath, executeSync, plan, syncAccessBlocked])
 
   /**
    * Handle continue (skip sync).
@@ -869,12 +973,13 @@ export function ProjectSyncProvider({
     await executeSync(currentLocalPath, resolvedPlan, decisions)
   }
 
-  const isBlockingSyncScreen = (showSyncScreen || !isSynced) && !isSynced
+  const isBlockingSyncScreen = !syncAccessBlocked && (showSyncScreen || !isSynced) && !isSynced
 
   return (
     <ProjectSyncContext.Provider
       value={{
         isSynced,
+        cloudSyncBlocked: syncAccessBlocked,
         lastSyncAt,
         projectPath: currentLocalPath,
         triggerSync,
@@ -886,7 +991,7 @@ export function ProjectSyncProvider({
         userId={userId}
         userName={userName}
         projectPath={currentLocalPath}
-        enabled={isSynced}
+        enabled={isSynced && !syncAccessBlocked}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}
       >
@@ -923,13 +1028,17 @@ export function ProjectSyncProvider({
             </DialogContent>
           </Dialog>
         ) : (
-          <AgentFileSyncBridge
-            projectId={projectId}
-            userId={userId}
-            projectPath={currentLocalPath}
-          >
-            {children}
-          </AgentFileSyncBridge>
+          syncAccessBlocked ? (
+            children
+          ) : (
+            <AgentFileSyncBridge
+              projectId={projectId}
+              userId={userId}
+              projectPath={currentLocalPath}
+            >
+              {children}
+            </AgentFileSyncBridge>
+          )
         )}
       </YjsProjectProvider>
     </ProjectSyncContext.Provider>

@@ -101,6 +101,16 @@ function isReplicaAccessDeniedMessage(message: string | undefined): boolean {
   )
 }
 
+function isReplicaEntitlementRequiredMessage(message: string | undefined): boolean {
+  if (!message) return false
+  return (
+    /entitlement_required/i.test(message) ||
+    /subscription required/i.test(message) ||
+    /seat assignment required/i.test(message) ||
+    (/\b402\b/.test(message) && /replica api/i.test(message))
+  )
+}
+
 export class GitReplicaService {
   private static instance: GitReplicaService
 
@@ -636,6 +646,16 @@ export class GitReplicaService {
       this.updateProjectState(projectId, { lastError: message })
       if (isReplicaAccessDeniedMessage(message)) {
         console.warn('[GitReplica] Dropping queued replica sync for inaccessible project', {
+          projectId,
+          error: message,
+        })
+        this.state.queue = this.state.queue.filter((entry) => entry.projectId !== projectId)
+        this.clearRetry(projectId)
+        this.persistState()
+        return
+      }
+      if (isReplicaEntitlementRequiredMessage(message)) {
+        console.warn('[GitReplica] Dropping queued replica sync while cloud access is blocked by entitlement', {
           projectId,
           error: message,
         })

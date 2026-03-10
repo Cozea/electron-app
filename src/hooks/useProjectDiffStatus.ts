@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
 import { useAuth, type RefreshTokenStatus } from "@/contexts/AuthContext"
 import { isBootstrapOnlyLocalPath } from "@/features/projects/lib/localWorkspaceState"
+import { isReplicaSyncEntitlementError } from "@/features/projects/lib/replicaErrorPresentation"
 import {
   useProjectDiffStore,
   type ProjectDiffStatus,
@@ -11,12 +12,14 @@ const MIN_CHECK_INTERVAL = 30 * 1000
 const REPLICA_AUTH_COOLDOWN_MS = 60 * 1000
 const REPLICA_TRANSIENT_COOLDOWN_MS = 90 * 1000
 const REPLICA_ACCESS_DENIED_COOLDOWN_MS = 60 * 1000
+const REPLICA_ENTITLEMENT_COOLDOWN_MS = 60 * 1000
 const INTERACTIVE_LOGIN_COOLDOWN_MS = 2 * 60 * 1000
 const REPLICA_CHECK_TIMEOUT_MS = 20 * 1000
 const AUTH_RECOVERY_TIMEOUT_MS = 12 * 1000
 const INITIAL_CHECK_MAX_STAGGER_MS = 1200
 const inFlightBySlug = new Set<string>()
 const replicaAccessDeniedProjects = new Map<string, number>()
+const replicaEntitlementBlockedProjects = new Map<string, number>()
 let replicaAuthBlockedUntil = 0
 let hasLoggedReplicaAuthCooldown = false
 let replicaTransientBlockedUntil = 0
@@ -101,6 +104,20 @@ function getReplicaAccessDeniedUntil(projectSlug: string): number | null {
   }
 
   return deniedUntil
+}
+
+function getReplicaEntitlementBlockedUntil(projectSlug: string): number | null {
+  const blockedUntil = replicaEntitlementBlockedProjects.get(projectSlug)
+  if (!blockedUntil) {
+    return null
+  }
+
+  if (blockedUntil <= Date.now()) {
+    replicaEntitlementBlockedProjects.delete(projectSlug)
+    return null
+  }
+
+  return blockedUntil
 }
 
 async function recoverReplicaAuth(
@@ -196,6 +213,15 @@ export function useProjectDiffStatus({
           projectId: String(projectId),
           projectSlug,
           deniedUntil,
+        })
+        return
+      }
+      const entitlementBlockedUntil = getReplicaEntitlementBlockedUntil(projectSlug)
+      if (entitlementBlockedUntil) {
+        logProjectDiffDebug('check:skipped_entitlement_blocked', {
+          projectId: String(projectId),
+          projectSlug,
+          blockedUntil: entitlementBlockedUntil,
         })
         return
       }
@@ -368,6 +394,22 @@ export function useProjectDiffStatus({
             uploads: 0,
             conflicts: 0,
             error: message,
+          })
+          return
+        }
+
+        if (isReplicaSyncEntitlementError(error)) {
+          const blockedUntil = Date.now() + REPLICA_ENTITLEMENT_COOLDOWN_MS
+          replicaEntitlementBlockedProjects.set(projectSlug, blockedUntil)
+          console.info(
+            `[ProjectDiffStatus] Replica sync blocked by entitlement for ${projectSlug}; pausing checks for ${Math.round(
+              REPLICA_ENTITLEMENT_COOLDOWN_MS / 1000
+            )}s.`
+          )
+          setDiffStatus(projectSlug, {
+            downloads: 0,
+            uploads: 0,
+            conflicts: 0,
           })
           return
         }

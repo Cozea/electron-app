@@ -45,6 +45,7 @@ interface ProjectNavigationState {
   projectName?: string
   projectTemplate?: string
   gateSyncScreen?: boolean
+  syncAccessBlocked?: boolean
   skipInitialSyncCheck?: boolean
 }
 
@@ -274,7 +275,9 @@ export function ContextSwitcher() {
       setSyncMessage(openCheck?.gateSyncScreen ? 'Opening sync review...' : 'Opening project...')
 
       setTimeout(() => {
-        markRecentProjectOpenSync(String(project._id))
+        if (!openCheck?.syncAccessBlocked) {
+          markRecentProjectOpenSync(String(project._id))
+        }
         setOpen(false)
         navigate(buildProjectPath(String(project._id)), {
           state: {
@@ -283,6 +286,7 @@ export function ContextSwitcher() {
             projectName: project.name ?? undefined,
             projectTemplate: project.template ?? undefined,
             gateSyncScreen: openCheck?.gateSyncScreen ?? false,
+            syncAccessBlocked: openCheck?.syncAccessBlocked ?? false,
             skipInitialSyncCheck: !(openCheck?.gateSyncScreen ?? false),
           } satisfies ProjectNavigationState,
         })
