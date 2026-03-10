@@ -1,5 +1,4 @@
 import type { ConvexReactClient } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
 
@@ -25,13 +24,6 @@ export function isBinaryFile(filePath: string): boolean {
   return BINARY_EXTENSIONS.has(ext)
 }
 
-async function sha256FromBytes(bytes: Uint8Array): Promise<string> {
-  const buffer = new ArrayBuffer(bytes.byteLength)
-  new Uint8Array(buffer).set(bytes)
-  const hash = await crypto.subtle.digest('SHA-256', buffer)
-  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
 /**
  * Queued binary file upload for offline retry.
  */
@@ -47,13 +39,10 @@ const UPLOAD_QUEUE_KEY = 'cozea:binary-upload-queue'
 const MAX_RETRIES = 3
 
 /**
- * BinaryFileSync - Syncs binary files through Git replica LFS/object APIs.
+ * BinaryFileSync - Schedules Git durability syncs for binary file changes.
  */
 export class BinaryFileSync {
   private projectId: Id<'projects'>
-  private projectPath: string
-  private convex: ConvexReactClient
-  private userId: Id<'users'>
   private gitDurabilityCoordinator: GitDurabilityCoordinator
 
   constructor(
@@ -63,9 +52,6 @@ export class BinaryFileSync {
     userId: Id<'users'>
   ) {
     this.projectId = projectId
-    this.projectPath = projectPath
-    this.convex = convex
-    this.userId = userId
     this.gitDurabilityCoordinator = GitDurabilityCoordinator.acquireShared({
       projectId,
       projectPath,
@@ -79,62 +65,13 @@ export class BinaryFileSync {
   }
 
   /**
-   * Upload a binary file through the legacy replica lane or schedule Git durability.
+   * Schedule Git durability for a changed binary file.
    */
   async uploadBinaryFile(relativePath: string): Promise<string | null> {
     try {
-      const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
-        projectId: this.projectId,
-        userId: this.userId,
-      })
-
-      if (metadata?.syncMode === 'git') {
-        this.gitDurabilityCoordinator.scheduleSync(`binary:${relativePath}`)
-        console.log(`[BinaryFileSync] Scheduled git durability sync: ${relativePath}`)
-        return 'git-sync'
-      }
-
-      const readResult = await window.electronAPI.project.readFileBase64({
-        projectPath: this.projectPath,
-        filePath: relativePath,
-      })
-
-      if (!readResult.success || !readResult.base64) {
-        console.error(`[BinaryFileSync] Failed to read file: ${relativePath}`)
-        return null
-      }
-
-      const byteString = atob(readResult.base64)
-      const bytes = new Uint8Array(byteString.length)
-      for (let i = 0; i < byteString.length; i++) {
-        bytes[i] = byteString.charCodeAt(i)
-      }
-
-      const oid = await sha256FromBytes(bytes)
-      const putResult = await window.electronAPI.sync.gitLfsPutObject({
-        projectId: String(this.projectId),
-        oid,
-        size: bytes.byteLength,
-        contentBase64: readResult.base64,
-      })
-
-      if (!putResult.success) {
-        throw new Error(putResult.error || 'LFS object upload failed')
-      }
-
-      const enqueueResult = await window.electronAPI.sync.gitReplicaEnqueueSnapshot({
-        projectId: String(this.projectId),
-        projectPath: this.projectPath,
-        source: 'external',
-        reason: `binary:${relativePath}`,
-      })
-
-      if (!enqueueResult.success) {
-        throw new Error('Failed to enqueue replica snapshot for binary update')
-      }
-
-      console.log(`[BinaryFileSync] Uploaded + enqueued: ${relativePath}`)
-      return oid
+      this.gitDurabilityCoordinator.scheduleSync(`binary:${relativePath}`)
+      console.log(`[BinaryFileSync] Scheduled git durability sync: ${relativePath}`)
+      return 'git-sync'
     } catch (err) {
       console.error(`[BinaryFileSync] Upload failed for ${relativePath}:`, err)
       this.enqueueUpload(relativePath)

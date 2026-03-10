@@ -855,8 +855,6 @@ export function NewProject() {
           console.log('[Import] Navigating to:', targetPath)
           navigate(targetPath, {
             state: {
-              gateSyncScreen: false,
-              skipInitialSyncCheck: true,
               syncMode: 'git',
             },
           })

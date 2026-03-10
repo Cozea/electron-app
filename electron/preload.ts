@@ -421,38 +421,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       lastSyncAt: number
       cloudPaths: string[]
     }) => ipcRenderer.invoke('sync:setHistory', options),
-    gitReplicaBootstrap: (options: {
-      projectId: string
-      projectPath: string
-      sessionId?: string
-    }) => ipcRenderer.invoke('sync:gitReplicaBootstrap', options),
-    gitReplicaPlan: (options: {
-      projectId: string
-      projectPath: string
-      sessionId?: string
-    }) => ipcRenderer.invoke('sync:gitReplicaPlan', options),
-    gitReplicaExecute: (options: {
-      projectId: string
-      projectPath: string
-      sessionId: string
-      conflictDecisions?: Record<string, 'local' | 'cloud'>
-    }) => ipcRenderer.invoke('sync:gitReplicaExecute', options),
-    gitReplicaStatus: (options: { projectId: string }) =>
-      ipcRenderer.invoke('sync:gitReplicaStatus', options),
-    gitReplicaEnqueueSnapshot: (options: {
-      projectId: string
-      projectPath: string
-      source: 'agent' | 'user' | 'external' | 'remote' | 'system'
-      reason: string
-    }) => ipcRenderer.invoke('sync:gitReplicaEnqueueSnapshot', options),
-    gitLfsPutObject: (options: {
-      projectId: string
-      oid: string
-      size: number
-      contentBase64: string
-    }) => ipcRenderer.invoke('sync:gitLfsPutObject', options),
-    gitLfsGetObject: (options: { projectId: string; oid: string }) =>
-      ipcRenderer.invoke('sync:gitLfsGetObject', options),
   },
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {

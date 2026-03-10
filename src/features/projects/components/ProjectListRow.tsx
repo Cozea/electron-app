@@ -35,7 +35,6 @@ import {
 import { ProjectSyncStats } from './ProjectSyncStats'
 import { cn } from '@/lib/utils'
 import { useInViewportOnce } from '@/hooks/useInViewportOnce'
-import type { ProjectOpenSyncReviewRequest } from '../lib/projectOpenSyncReview'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 
@@ -62,7 +61,6 @@ interface ProjectListRowProps {
     userId?: Id<'users'>
     creatorName?: string
     creatorImage?: string
-    onRequireSyncReview?: (request: ProjectOpenSyncReviewRequest) => void
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -205,9 +203,6 @@ export function ProjectListRow({
                         projectSlug: project.slug,
                         projectName: project.name,
                         projectTemplate: project.template ?? undefined,
-                        gateSyncScreen: false,
-                        syncAccessBlocked: false,
-                        skipInitialSyncCheck: true,
                         syncMode: 'git',
                     },
                 })

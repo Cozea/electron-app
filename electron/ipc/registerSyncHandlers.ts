@@ -25,7 +25,6 @@ import {
   type SyncOpRecord,
 } from '../services/syncReplicaStore'
 import { GitSyncService } from '../services/gitSyncService'
-import { GitReplicaService } from '../services/gitReplicaService'
 import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
 
 function sha256Hex(content: Buffer | Uint8Array): string {
@@ -37,7 +36,6 @@ function getConflictResolutionPath(): string {
 }
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
-  const gitReplicaService = GitReplicaService.getInstance()
   const gitSyncService = GitSyncService.getInstance()
 
   ipcMain.handle(
@@ -564,128 +562,4 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
     }
   )
 
-  ipcMain.handle(
-    'sync:gitReplicaBootstrap',
-    async (
-      _event,
-      options: {
-        projectId: string
-        projectPath: string
-        sessionId?: string
-      }
-    ) => {
-      try {
-        const result = await gitReplicaService.bootstrap(options)
-        if (!result.success) {
-          console.warn('[GitReplica][IPC] Bootstrap failed', {
-            projectId: options.projectId,
-            projectPath: options.projectPath,
-            sessionId: options.sessionId,
-            error: result.error,
-          })
-        }
-        return result
-      } catch (error) {
-        console.error('[GitReplica][IPC] Bootstrap threw', {
-          projectId: options.projectId,
-          projectPath: options.projectPath,
-          sessionId: options.sessionId,
-          error,
-        })
-        throw error
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitReplicaPlan',
-    async (
-      _event,
-      options: {
-        projectId: string
-        projectPath: string
-        sessionId?: string
-      }
-    ) => {
-      try {
-        const result = await gitReplicaService.plan(options)
-        if (!result.success) {
-          console.warn('[GitReplica][IPC] Plan failed', {
-            projectId: options.projectId,
-            projectPath: options.projectPath,
-            sessionId: options.sessionId,
-            error: result.error,
-          })
-        }
-        return result
-      } catch (error) {
-        console.error('[GitReplica][IPC] Plan threw', {
-          projectId: options.projectId,
-          projectPath: options.projectPath,
-          sessionId: options.sessionId,
-          error,
-        })
-        throw error
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitReplicaExecute',
-    async (
-      _event,
-      options: {
-        projectId: string
-        projectPath: string
-        sessionId: string
-        conflictDecisions?: Record<string, 'local' | 'cloud'>
-      }
-    ) => {
-      return gitReplicaService.execute(options)
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitReplicaStatus',
-    async (_event, options: { projectId: string }) => {
-      return gitReplicaService.status(options)
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitReplicaEnqueueSnapshot',
-    async (
-      _event,
-      options: {
-        projectId: string
-        projectPath: string
-        source: 'agent' | 'user' | 'external' | 'remote' | 'system'
-        reason: string
-      }
-    ) => {
-      return gitReplicaService.enqueueSnapshot(options)
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitLfsPutObject',
-    async (
-      _event,
-      options: {
-        projectId: string
-        oid: string
-        size: number
-        contentBase64: string
-      }
-    ) => {
-      return gitReplicaService.putLfsObject(options)
-    }
-  )
-
-  ipcMain.handle(
-    'sync:gitLfsGetObject',
-    async (_event, options: { projectId: string; oid: string }) => {
-      return gitReplicaService.getLfsObject(options)
-    }
-  )
 }
