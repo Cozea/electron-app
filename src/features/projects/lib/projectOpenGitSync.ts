@@ -63,6 +63,18 @@ async function resolveTargetProjectPath(projectSlug: string): Promise<string> {
   return `${settings.projectsDirectory.replace(/\/+$/, '')}/${projectSlug}`
 }
 
+async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<boolean> {
+  const listResult = await window.electronAPI.project.listFiles({ projectPath })
+  if (!listResult.success) {
+    return false
+  }
+  const meaningfulFiles = (listResult.files ?? []).filter((file) => {
+    const normalizedPath = file.path.replace(/\\/g, '/')
+    return normalizedPath !== '.gitignore' && normalizedPath !== '.env.example'
+  })
+  return meaningfulFiles.length === 0
+}
+
 export async function prepareGitProjectForOpen({
   convex,
   project,
@@ -130,6 +142,27 @@ export async function prepareGitProjectForOpen({
   })
   if (!status.success || !status.isRepo) {
     throw new Error(status.error || 'Failed to read local git status')
+  }
+
+  if (fetchResult.headCommit && await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)) {
+    onProgress?.('Restoring project files...')
+    const restoreResult = await window.electronAPI.sync.gitRestoreMain({
+      projectPath: effectiveLocalPath,
+      branch,
+      repoUrl,
+      extraHeader,
+    })
+    if (!restoreResult.success) {
+      throw new Error(restoreResult.error || 'Failed to restore project files from cloud')
+    }
+    changed = true
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after restore')
+    }
   }
 
   if (status.hasConflicts) {

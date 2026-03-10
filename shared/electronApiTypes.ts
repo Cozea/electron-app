@@ -483,6 +483,16 @@ export interface GitSyncPullResult {
   error?: string
 }
 
+export interface GitSyncRestoreResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  currentBranch?: string | null
+  headCommit?: string
+  restored?: boolean
+  error?: string
+}
+
 export interface GitSyncCommitResult {
   success: boolean
   currentBranch?: string | null
@@ -512,30 +522,6 @@ export interface GitSyncCommitPushResult {
   error?: string
 }
 
-export interface MergeCacheRecord {
-  key: string
-  mergedContent: string
-  hasConflicts: boolean
-  conflictCount: number
-  createdAt: number
-  lastUsedAt: number
-  hitCount: number
-  engine: 'git-merge-file'
-  strategy: 'zdiff3' | 'diff3'
-  gitVersion: string
-  baseHash: string
-  localHash: string
-  cloudHash: string
-}
-
-export interface ConflictResolutionRecord {
-  fingerprint: string
-  resolvedContent: string
-  createdAt: number
-  lastUsedAt: number
-  hitCount: number
-}
-
 export interface SyncOp {
   opId: string
   idempotencyKey: string
@@ -552,24 +538,15 @@ export interface SyncOp {
   timestamp: number
 }
 
-export interface ReplicaState {
+export interface SyncJournalState {
   projectId: string
-  replicaHead: number
+  journalHead: number
   pendingOps: number
   lastAckedAt: number | null
   ackedOps: number
   pathHeads: Record<string, string>
-  lastStateVector: number
+  lastJournalCursor: number
   lastPersistedAt: number | null
-}
-
-export interface SyncHistory {
-  projectId: string
-  lastSyncAt: number | null
-  cloudPaths: string[]
-  version: number
-  updatedAt: number
-  corrupted: boolean
 }
 
 export interface SyncDeleteFilesResult {
@@ -987,7 +964,11 @@ export interface ElectronAPI {
       newPath: string
       origin?: 'agent' | 'remote' | 'sync'
     }) => Promise<RenameFileResult>
-    deletePath: (options: { projectPath: string; targetPath: string }) => Promise<{ success: boolean; error?: string }>
+    deletePath: (options: {
+      projectPath: string
+      targetPath: string
+      origin?: 'agent' | 'remote' | 'sync'
+    }) => Promise<{ success: boolean; error?: string }>
     copyPath: (options: { projectPath: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
     copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
     preflightImportSource: (options: { projectPath: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
@@ -1078,6 +1059,17 @@ export interface ElectronAPI {
       encryptedCredentials?: string
       keyId?: string
     }) => Promise<GitSyncPullResult>
+    gitRestoreMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => Promise<GitSyncRestoreResult>
     gitCommitAll: (options: {
       projectPath: string
       message: string
@@ -1121,20 +1113,11 @@ export interface ElectronAPI {
       maxPreviewFiles?: number
       maxPreviewBytes?: number
     }) => Promise<MergeTreePreviewResult>
-    mergeCacheGet: (options: { key: string }) => Promise<MergeCacheRecord | null>
-    mergeCacheSet: (options: { record: MergeCacheRecord }) => Promise<{ success: boolean }>
-    mergeCacheDelete: (options: { key: string }) => Promise<{ success: boolean }>
-    mergeCacheGetResolved: (options: { fingerprint: string }) => Promise<ConflictResolutionRecord | null>
-    mergeCacheSaveResolved: (options: { record: ConflictResolutionRecord }) => Promise<{ success: boolean }>
-    mergeCachePrune: (options: { threshold: number; maxEntries?: number }) => Promise<{ removed: number }>
-    resolveConflict: (options: { fingerprint: string; resolvedContent: string }) => Promise<{ success: boolean; error?: string }>
     enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
-      Promise<{ accepted: number; acceptedOpIds: string[]; rejected: number; replicaState: ReplicaState }>
+      Promise<{ accepted: number; acceptedOpIds: string[]; rejected: number; journalState: SyncJournalState }>
     ackOps: (options: { projectId: string; opIds: string[] }) =>
-      Promise<{ acked: number; replicaState: ReplicaState }>
-    getReplicaState: (options: { projectId: string }) => Promise<ReplicaState>
-    getHistory: (options: { projectId: string }) => Promise<SyncHistory>
-    setHistory: (options: { projectId: string; lastSyncAt: number; cloudPaths: string[] }) => Promise<SyncHistory>
+      Promise<{ acked: number; journalState: SyncJournalState }>
+    getJournalState: (options: { projectId: string }) => Promise<SyncJournalState>
   }
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => () => void

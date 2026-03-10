@@ -5,14 +5,14 @@ import type {
   SyncOp,
   SyncOpKind,
   SyncOpSource,
-  ReplicaState,
+  SyncJournalState,
 } from "./types"
 
 export interface EnqueueOpsResult {
   accepted: number
   rejected: number
   acceptedOpIds: string[]
-  replicaState: ReplicaState
+  journalState: SyncJournalState
 }
 
 export interface SyncCoordinatorOptions {
@@ -114,14 +114,14 @@ export class SyncCoordinator {
       ops,
     })
 
-    let replicaState = result.replicaState
+    let journalState = result.journalState
     if (this.autoAck && result.acceptedOpIds.length > 0) {
       try {
         const ackResult = await window.electronAPI.sync.ackOps({
           projectId: this.projectId,
           opIds: result.acceptedOpIds,
         })
-        replicaState = ackResult.replicaState
+        journalState = ackResult.journalState
       } catch (error) {
         console.warn("[SyncCoordinator] Failed to ack sync ops:", error)
       }
@@ -131,15 +131,15 @@ export class SyncCoordinator {
       accepted: result.accepted,
       rejected: result.rejected,
       acceptedOpIds: result.acceptedOpIds,
-      replicaState: {
-        ...replicaState,
+      journalState: {
+        ...journalState,
         projectId: this.projectId,
       },
     }
   }
 
-  async getReplicaState(): Promise<ReplicaState> {
-    const result = await window.electronAPI.sync.getReplicaState({
+  async getJournalState(): Promise<SyncJournalState> {
+    const result = await window.electronAPI.sync.getJournalState({
       projectId: this.projectId,
     })
     return {
@@ -148,13 +148,13 @@ export class SyncCoordinator {
     }
   }
 
-  async ackOps(opIds: string[]): Promise<ReplicaState> {
+  async ackOps(opIds: string[]): Promise<SyncJournalState> {
     const result = await window.electronAPI.sync.ackOps({
       projectId: this.projectId,
       opIds,
     })
     return {
-      ...result.replicaState,
+      ...result.journalState,
       projectId: this.projectId,
     }
   }

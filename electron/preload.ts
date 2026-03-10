@@ -2,10 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type {
   AppSettings,
-  ConflictResolutionRecord,
   ElectronAPI,
   ElectronWindowContext,
-  MergeCacheRecord,
   OrganizationMembership,
   ProviderCloudCredentials,
   ProviderAuthMethod,
@@ -351,6 +349,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       encryptedCredentials?: string
       keyId?: string
     }) => ipcRenderer.invoke('sync:gitPullMain', options),
+    gitRestoreMain: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+    }) => ipcRenderer.invoke('sync:gitRestoreMain', options),
     gitCommitAll: (options: {
       projectPath: string
       message: string
@@ -394,33 +403,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       maxPreviewFiles?: number
       maxPreviewBytes?: number
     }) => ipcRenderer.invoke('sync:mergeTreePreview', options),
-    mergeCacheGet: (options: { key: string }) =>
-      ipcRenderer.invoke('sync:mergeCacheGet', options),
-    mergeCacheSet: (options: { record: MergeCacheRecord }) =>
-      ipcRenderer.invoke('sync:mergeCacheSet', options),
-    mergeCacheDelete: (options: { key: string }) =>
-      ipcRenderer.invoke('sync:mergeCacheDelete', options),
-    mergeCacheGetResolved: (options: { fingerprint: string }) =>
-      ipcRenderer.invoke('sync:mergeCacheGetResolved', options),
-    mergeCacheSaveResolved: (options: { record: ConflictResolutionRecord }) =>
-      ipcRenderer.invoke('sync:mergeCacheSaveResolved', options),
-    mergeCachePrune: (options: { threshold: number; maxEntries?: number }) =>
-      ipcRenderer.invoke('sync:mergeCachePrune', options),
-    resolveConflict: (options: { fingerprint: string; resolvedContent: string }) =>
-      ipcRenderer.invoke('sync:resolveConflict', options),
     enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
       ipcRenderer.invoke('sync:enqueueOps', options),
     ackOps: (options: { projectId: string; opIds: string[] }) =>
       ipcRenderer.invoke('sync:ackOps', options),
-    getReplicaState: (options: { projectId: string }) =>
-      ipcRenderer.invoke('sync:getReplicaState', options),
-    getHistory: (options: { projectId: string }) =>
-      ipcRenderer.invoke('sync:getHistory', options),
-    setHistory: (options: {
-      projectId: string
-      lastSyncAt: number
-      cloudPaths: string[]
-    }) => ipcRenderer.invoke('sync:setHistory', options),
+    getJournalState: (options: { projectId: string }) =>
+      ipcRenderer.invoke('sync:getJournalState', options),
   },
   yjs: {
     onExternalFileChange: (callback: (data: { filePath: string; content: string; origin?: string }) => void) => {

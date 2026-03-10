@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { notifyFileChanged } from './yjsNotify'
+import { notifyFileChanged, notifyFileMetaChanged } from './yjsNotify'
 import { markInternalFsChange } from './projectWatcher'
 import { ensureRuntimeInstalled } from './runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from './runtime/runtimeResolver'
@@ -594,8 +594,16 @@ async function writeFileViaMcp(args: {
   if (args.notify) {
     try {
       const nextContent = fs.readFileSync(args.filePath, 'utf-8')
+      const stats = fs.statSync(args.filePath)
       markInternalFsChange(args.filePath)
       notifyFileChanged(args.filePath, nextContent, { origin: 'agent' })
+      notifyFileMetaChanged({
+        filePath: args.filePath,
+        origin: 'agent',
+        isBinary: false,
+        sizeBytes: stats.size,
+        content: nextContent,
+      })
     } catch {
       // Ignore post-write read failures, write already succeeded.
     }

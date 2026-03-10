@@ -137,6 +137,19 @@ export function useFileTreeExternalSync({
   useEffect(() => {
     if (!normalizedRoot) return
 
+    const unsubscribeChange = window.electronAPI.yjs.onExternalFileChange((payload) => {
+      const projectResource = toProjectResource(payload.filePath, normalizedRoot)
+      if (!projectResource) return
+
+      pendingEventsRef.current.set(projectResource, {
+        kind: 'upsert',
+        resource: projectResource,
+        isDirectory: false,
+        size: typeof payload.content === 'string' ? new TextEncoder().encode(payload.content).length : undefined,
+      })
+      scheduleFlush()
+    })
+
     const unsubscribeMeta = window.electronAPI.yjs.onExternalFileMetaChange((payload) => {
       const projectResource = toProjectResource(payload.filePath, normalizedRoot)
       if (!projectResource) return
@@ -162,6 +175,7 @@ export function useFileTreeExternalSync({
     })
 
     return () => {
+      unsubscribeChange()
       unsubscribeMeta()
       unsubscribeDelete()
     }

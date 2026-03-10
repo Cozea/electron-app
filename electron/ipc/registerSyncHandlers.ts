@@ -1,4 +1,4 @@
-import { app, type IpcMain } from 'electron'
+import { type IpcMain } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -9,19 +9,8 @@ import { markInternalFsChange } from '../projectWatcher'
 import {
   acknowledgeSyncOps,
   enqueueSyncOps,
-  getReplicaStateSnapshot,
-  getSyncHistory,
-  mergeCacheDelete,
-  mergeCacheGet,
-  mergeCacheGetResolvedConflict,
-  mergeCachePrune,
-  mergeCacheSaveResolvedConflict,
-  mergeCacheSet,
+  getSyncJournalStateSnapshot,
   normalizeSyncPath,
-  setSyncHistory,
-  type ConflictResolutionPayload,
-  type MergeCacheRecordPayload,
-  type SyncHistoryPayload,
   type SyncOpRecord,
 } from '../services/syncReplicaStore'
 import { GitSyncService } from '../services/gitSyncService'
@@ -29,10 +18,6 @@ import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../
 
 function sha256Hex(content: Buffer | Uint8Array): string {
   return createHash('sha256').update(content).digest('hex')
-}
-
-function getConflictResolutionPath(): string {
-  return path.join(app.getPath('userData'), 'sync-conflict-resolutions.json')
 }
 
 export function registerSyncHandlers(ipcMain: IpcMain): void {
@@ -299,6 +284,24 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
   )
 
   ipcMain.handle(
+    'sync:gitRestoreMain',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        repoUrl?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+      }
+    ) => gitSyncService.restoreMain(options)
+  )
+
+  ipcMain.handle(
     'sync:gitCommitAll',
     async (
       _event,
@@ -383,93 +386,6 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
   )
 
   ipcMain.handle(
-    'sync:resolveConflict',
-    async (
-      _event,
-      { fingerprint, resolvedContent }: { fingerprint: string; resolvedContent: string }
-    ): Promise<{ success: boolean; error?: string }> => {
-      if (!fingerprint || typeof resolvedContent !== 'string') {
-        return { success: false, error: 'Invalid conflict resolution payload' }
-      }
-      try {
-        const filePath = getConflictResolutionPath()
-        const existing = fs.existsSync(filePath)
-          ? (JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<
-              string,
-              {
-                resolvedContent: string
-                updatedAt: number
-              }
-            >)
-          : {}
-        existing[fingerprint] = {
-          resolvedContent,
-          updatedAt: Date.now(),
-        }
-        fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), 'utf-8')
-        mergeCacheSaveResolvedConflict({
-          fingerprint,
-          resolvedContent,
-          createdAt: Date.now(),
-          lastUsedAt: Date.now(),
-          hitCount: 0,
-        })
-        return { success: true }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to persist conflict resolution',
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCacheGet',
-    async (_event, { key }: { key: string }): Promise<MergeCacheRecordPayload | null> => {
-      return mergeCacheGet(String(key))
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCacheSet',
-    async (_event, { record }: { record: MergeCacheRecordPayload }): Promise<{ success: boolean }> => {
-      return { success: mergeCacheSet(record) }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCacheDelete',
-    async (_event, { key }: { key: string }): Promise<{ success: boolean }> => {
-      return { success: mergeCacheDelete(String(key)) }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCacheGetResolved',
-    async (_event, { fingerprint }: { fingerprint: string }): Promise<ConflictResolutionPayload | null> => {
-      return mergeCacheGetResolvedConflict(String(fingerprint))
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCacheSaveResolved',
-    async (_event, { record }: { record: ConflictResolutionPayload }): Promise<{ success: boolean }> => {
-      return { success: mergeCacheSaveResolvedConflict(record) }
-    }
-  )
-
-  ipcMain.handle(
-    'sync:mergeCachePrune',
-    async (
-      _event,
-      { threshold, maxEntries }: { threshold: number; maxEntries?: number }
-    ): Promise<{ removed: number }> => {
-      return mergeCachePrune(Number(threshold) || 0, maxEntries)
-    }
-  )
-
-  ipcMain.handle(
     'sync:enqueueOps',
     async (
       _event,
@@ -478,18 +394,24 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
       accepted: number
       acceptedOpIds: string[]
       rejected: number
-      replicaState: {
+      journalState: {
         projectId: string
-        replicaHead: number
+        journalHead: number
         pendingOps: number
         lastAckedAt: number | null
         ackedOps: number
         pathHeads: Record<string, string>
-        lastStateVector: number
+        lastJournalCursor: number
         lastPersistedAt: number | null
       }
     }> => {
-      return enqueueSyncOps(String(projectId), Array.isArray(ops) ? ops : [])
+      const result = enqueueSyncOps(String(projectId), Array.isArray(ops) ? ops : [])
+      return {
+        accepted: result.accepted,
+        acceptedOpIds: result.acceptedOpIds,
+        rejected: result.rejected,
+        journalState: getSyncJournalStateSnapshot(String(projectId)),
+      }
     }
   )
 
@@ -500,65 +422,41 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
       { projectId, opIds }: { projectId: string; opIds: string[] }
     ): Promise<{
       acked: number
-      replicaState: {
+      journalState: {
         projectId: string
-        replicaHead: number
+        journalHead: number
         pendingOps: number
         lastAckedAt: number | null
         ackedOps: number
         pathHeads: Record<string, string>
-        lastStateVector: number
+        lastJournalCursor: number
         lastPersistedAt: number | null
       }
     }> => {
-      return acknowledgeSyncOps(String(projectId), Array.isArray(opIds) ? opIds : [])
+      const result = acknowledgeSyncOps(String(projectId), Array.isArray(opIds) ? opIds : [])
+      return {
+        acked: result.acked,
+        journalState: getSyncJournalStateSnapshot(String(projectId)),
+      }
     }
   )
 
   ipcMain.handle(
-    'sync:getReplicaState',
+    'sync:getJournalState',
     async (
       _event,
       { projectId }: { projectId: string }
     ): Promise<{
       projectId: string
-      replicaHead: number
+      journalHead: number
       pendingOps: number
       lastAckedAt: number | null
       ackedOps: number
       pathHeads: Record<string, string>
-      lastStateVector: number
+      lastJournalCursor: number
       lastPersistedAt: number | null
     }> => {
-      return getReplicaStateSnapshot(String(projectId))
-    }
-  )
-
-  ipcMain.handle(
-    'sync:getHistory',
-    async (_event, { projectId }: { projectId: string }): Promise<SyncHistoryPayload> => {
-      return getSyncHistory(String(projectId))
-    }
-  )
-
-  ipcMain.handle(
-    'sync:setHistory',
-    async (
-      _event,
-      {
-        projectId,
-        lastSyncAt,
-        cloudPaths,
-      }: {
-        projectId: string
-        lastSyncAt: number
-        cloudPaths: string[]
-      }
-    ): Promise<SyncHistoryPayload> => {
-      return setSyncHistory(String(projectId), {
-        lastSyncAt: Number(lastSyncAt) || Date.now(),
-        cloudPaths: Array.isArray(cloudPaths) ? cloudPaths : [],
-      })
+      return getSyncJournalStateSnapshot(String(projectId))
     }
   )
 

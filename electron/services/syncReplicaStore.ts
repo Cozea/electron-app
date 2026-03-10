@@ -62,6 +62,17 @@ export interface SyncHistoryPayload {
   corrupted: boolean
 }
 
+export interface SyncJournalStatePayload {
+  projectId: string
+  journalHead: number
+  pendingOps: number
+  lastAckedAt: number | null
+  ackedOps: number
+  pathHeads: Record<string, string>
+  lastJournalCursor: number
+  lastPersistedAt: number | null
+}
+
 const replicaStateByProject = new Map<string, ReplicaStateRecord>()
 const queuedOpsByProject = new Map<string, SyncOpRecord[]>()
 const MAX_ACKED_KEYS = 4_000
@@ -129,6 +140,20 @@ export function getReplicaStateSnapshot(projectId: string): ReturnType<typeof sn
   replica.lastStateVector = replica.replicaHead - replica.pendingOps
   replicaStateByProject.set(normalizedProjectId, replica)
   return snapshotReplicaState(normalizedProjectId, replica)
+}
+
+export function getSyncJournalStateSnapshot(projectId: string): SyncJournalStatePayload {
+  const snapshot = getReplicaStateSnapshot(projectId)
+  return {
+    projectId: snapshot.projectId,
+    journalHead: snapshot.replicaHead,
+    pendingOps: snapshot.pendingOps,
+    lastAckedAt: snapshot.lastAckedAt,
+    ackedOps: snapshot.ackedOps,
+    pathHeads: snapshot.pathHeads,
+    lastJournalCursor: snapshot.lastStateVector,
+    lastPersistedAt: snapshot.lastPersistedAt,
+  }
 }
 
 function normalizeSyncOp(projectId: string, op: SyncOpRecord): SyncOpRecord | null {
@@ -1070,4 +1095,3 @@ export function mergeCachePrune(threshold: number, maxEntries?: number): { remov
     return { removed }
   }
 }
-
