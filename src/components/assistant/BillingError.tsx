@@ -78,53 +78,46 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
         className
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-0.5">
-              <p className="font-medium leading-tight text-sm">
-                {error.title || 'Error'}
-              </p>
-              <p className="text-sm opacity-90 leading-snug">
-                {error.message}
-              </p>
-            </div>
-            {error.action && (
-              <div className="shrink-0 flex items-center gap-2">
-                {error.secondaryAction && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs px-2 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                    onClick={handleSecondaryAction}
-                  >
-                    {error.secondaryAction.label}
-                  </Button>
-                )}
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-7 text-xs gap-1.5 px-3"
-                  onClick={handleAction}
-                >
-                  {error.action.label}
-                  <ArrowRight className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-3">
+          <div className="shrink-0">
+            <Icon className="h-5 w-5" />
           </div>
-
-          {error.hint && (
-            <p className="text-xs opacity-80 mt-1.5">
-              {error.hint}
-            </p>
-          )}
-
-
+          <p className="min-w-0 flex-1 truncate whitespace-nowrap font-medium leading-tight text-sm">
+            {error.title || 'Error'}
+          </p>
+          {error.action ? (
+            <div className="shrink-0 flex items-center gap-2 whitespace-nowrap">
+              {error.secondaryAction && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs px-2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  onClick={handleSecondaryAction}
+                >
+                  {error.secondaryAction.label}
+                </Button>
+              )}
+              <Button
+                variant="default"
+                size="sm"
+                className="h-7 text-xs gap-1.5 px-3"
+                onClick={handleAction}
+              >
+                {error.action.label}
+                <ArrowRight className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : null}
         </div>
+        <p className="text-sm opacity-90 leading-snug">
+          {error.message}
+        </p>
+        {error.hint && (
+          <p className="text-xs opacity-80">
+            {error.hint}
+          </p>
+        )}
       </div>
     </div>
   )

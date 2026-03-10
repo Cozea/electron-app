@@ -18,6 +18,7 @@ interface MonacoEditorProps {
 export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: MonacoEditorProps) {
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
     const pathRef = useRef(path)
+    const themeSyncFrameRef = useRef<number | null>(null)
     const [showBottomFade, setShowBottomFade] = useState(false)
     const model = useEditorStore((state) => state.models[path])
     const actions = useEditorStore((state) => state.actions)
@@ -27,6 +28,15 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
     useEffect(() => {
         pathRef.current = path
     }, [path])
+
+    useEffect(() => {
+        return () => {
+            if (themeSyncFrameRef.current !== null) {
+                window.cancelAnimationFrame(themeSyncFrameRef.current)
+                themeSyncFrameRef.current = null
+            }
+        }
+    }, [])
 
     useEffect(() => {
         editorRef.current?.updateOptions({
@@ -54,6 +64,14 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
         (editor, monacoInstance) => {
             configureMonacoTypeScriptValidation(monacoInstance)
             editorRef.current = editor
+            applyTheme()
+            if (themeSyncFrameRef.current !== null) {
+                window.cancelAnimationFrame(themeSyncFrameRef.current)
+            }
+            themeSyncFrameRef.current = window.requestAnimationFrame(() => {
+                applyTheme()
+                themeSyncFrameRef.current = null
+            })
             const updateBottomFade = () => {
                 const scrollTop = editor.getScrollTop()
                 const viewportHeight = editor.getLayoutInfo().height
@@ -107,6 +125,10 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
             editor.onDidScrollChange(updateBottomFade)
             editor.onDidContentSizeChange(updateBottomFade)
             editor.onDidDispose(() => {
+                if (themeSyncFrameRef.current !== null) {
+                    window.cancelAnimationFrame(themeSyncFrameRef.current)
+                    themeSyncFrameRef.current = null
+                }
                 quickFixAction.dispose()
                 organizeImportsAction.dispose()
                 renameAction.dispose()
@@ -115,7 +137,7 @@ export function MonacoEditor({ path, onEditorReady, minimapEnabled = true }: Mon
             // Notify parent that editor is ready
             onEditorReady?.(editor)
         },
-        [actions, onEditorReady]
+        [actions, applyTheme, onEditorReady]
     )
 
 

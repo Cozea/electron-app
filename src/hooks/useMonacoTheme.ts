@@ -306,6 +306,14 @@ export function useMonacoTheme(variant: MonacoThemeVariant = 'default'): MonacoT
 
   useLayoutEffect(() => {
     applyTheme()
+
+    const frame = window.requestAnimationFrame(() => {
+      applyTheme()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
   }, [applyTheme])
 
   return {

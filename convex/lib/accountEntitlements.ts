@@ -5,6 +5,8 @@ type BillingCtx = QueryCtx | MutationCtx
 
 export type AccountSubscriptionPlan = "free" | "pro" | "max" | "startup" | "enterprise"
 export type AccountSubscriptionStatus = "active" | "canceled" | "past_due" | "trialing"
+
+const PAST_DUE_GRACE_MS = 14 * 24 * 60 * 60 * 1000
 export type AccountBillingCycle = "monthly" | "yearly"
 export type EntitlementSource = "account" | "legacy" | "trial" | "free"
 
@@ -129,6 +131,26 @@ function isLegacySubscriptionEntitled(
 
 export function isAccountStatusEntitled(status: AccountSubscriptionStatus): boolean {
   return status === "active" || status === "trialing"
+}
+
+function resolveEffectiveAccountStatus(
+  subscription: AccountSubscriptionRecord,
+  now: number
+): AccountSubscriptionStatus {
+  if (subscription.status !== "past_due") {
+    return subscription.status
+  }
+
+  const pastDueAnchor =
+    subscription.currentPeriodEnd ??
+    subscription.updatedAt ??
+    subscription.createdAt
+
+  if (typeof pastDueAnchor !== "number") {
+    return subscription.status
+  }
+
+  return now >= pastDueAnchor + PAST_DUE_GRACE_MS ? "canceled" : "past_due"
 }
 
 function dedupeActiveAssignments(
@@ -370,7 +392,8 @@ export async function resolveAccountEntitlementForOrganization(
 
     if (billingSubscription) {
       const normalizedPlan = normalizeAccountPlan(billingSubscription.plan)
-      const entitledStatus = isAccountStatusEntitled(billingSubscription.status)
+      const effectiveBillingStatus = resolveEffectiveAccountStatus(billingSubscription, now)
+      const entitledStatus = isAccountStatusEntitled(effectiveBillingStatus)
       const trialState = resolveSubscriptionTrialState(billingSubscription, now)
 
       let workspaceEntitlement: AccountEntitlement
@@ -381,7 +404,7 @@ export async function resolveAccountEntitlementForOrganization(
           userId,
           billingUserId,
           plan: normalizedPlan,
-          status: billingSubscription.status,
+          status: effectiveBillingStatus,
           cycle: billingSubscription.cycle,
           totalSeats: normalizeStartupSeats(billingSubscription.seatQuantity),
           assignments,
@@ -400,7 +423,7 @@ export async function resolveAccountEntitlementForOrganization(
           userId,
           billingUserId,
           plan: normalizedPlan,
-          status: billingSubscription.status,
+          status: effectiveBillingStatus,
           cycle: billingSubscription.cycle,
           allowAccess: entitledStatus && isBillingUser,
           trialActive: trialState.trialActive,
@@ -441,15 +464,16 @@ export async function resolveAccountEntitlementForOrganization(
         const userPlan = normalizeAccountPlan(userSubscription.plan)
         if (isIndividualPlan(userPlan)) {
           const userTrialState = resolveSubscriptionTrialState(userSubscription, now)
+          const effectiveUserStatus = resolveEffectiveAccountStatus(userSubscription, now)
           return buildIndividualEntitlement({
             source: "account",
             organizationId,
             userId,
             billingUserId: userId,
             plan: userPlan,
-            status: userSubscription.status,
+            status: effectiveUserStatus,
             cycle: userSubscription.cycle,
-            allowAccess: isAccountStatusEntitled(userSubscription.status),
+            allowAccess: isAccountStatusEntitled(effectiveUserStatus),
             trialActive: userTrialState.trialActive,
             trialEndsAt: userTrialState.trialEndsAt,
             currentPeriodStart: userSubscription.currentPeriodStart,
@@ -493,15 +517,16 @@ export async function resolveAccountEntitlementForOrganization(
     const userPlan = normalizeAccountPlan(userSubscription.plan)
     if (isIndividualPlan(userPlan)) {
       const trialState = resolveSubscriptionTrialState(userSubscription, now)
+      const effectiveUserStatus = resolveEffectiveAccountStatus(userSubscription, now)
       return buildIndividualEntitlement({
         source: "account",
         organizationId,
         userId,
         billingUserId: userId,
         plan: userPlan,
-        status: userSubscription.status,
+        status: effectiveUserStatus,
         cycle: userSubscription.cycle,
-        allowAccess: isAccountStatusEntitled(userSubscription.status),
+        allowAccess: isAccountStatusEntitled(effectiveUserStatus),
         trialActive: trialState.trialActive,
         trialEndsAt: trialState.trialEndsAt,
         currentPeriodStart: userSubscription.currentPeriodStart,

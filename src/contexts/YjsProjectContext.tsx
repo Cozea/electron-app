@@ -158,9 +158,28 @@ export function YjsProjectProvider({
     awarenessProviderRef.current = null
   }, [])
 
+  const destroyPersistenceForInit = useCallback((args: {
+    doc: YjsProjectDoc | null
+    indexedDBProvider: YjsIndexedDBProvider | null
+    persistence: ProjectFilesPersistence | null
+  }) => {
+    destroyTransportProviders()
+    args.persistence?.destroy()
+    if (persistenceRef.current === args.persistence) {
+      persistenceRef.current = null
+    }
+    args.indexedDBProvider?.destroy()
+    if (indexedDBProviderRef.current === args.indexedDBProvider) {
+      indexedDBProviderRef.current = null
+    }
+    args.doc?.destroy()
+  }, [destroyTransportProviders])
+
   useEffect(() => {
     let disposed = false
     let docInstance: YjsProjectDoc | null = null
+    let indexedDBProviderInstance: YjsIndexedDBProvider | null = null
+    let persistenceInstance: ProjectFilesPersistence | null = null
 
     if (!enabled) {
       destroyTransportProviders()
@@ -178,8 +197,10 @@ export function YjsProjectProvider({
       const doc = new YjsProjectDoc(projectId)
       docInstance = doc
 
-      indexedDBProviderRef.current = new YjsIndexedDBProvider(projectId, doc.doc)
-      await indexedDBProviderRef.current.waitForSync()
+      const indexedDBProvider = new YjsIndexedDBProvider(projectId, doc.doc)
+      indexedDBProviderInstance = indexedDBProvider
+      indexedDBProviderRef.current = indexedDBProvider
+      await indexedDBProvider.waitForSync()
 
       const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
         projectId,
@@ -203,7 +224,7 @@ export function YjsProjectProvider({
         color: generateColor(userId),
       })
 
-      persistenceRef.current = new ProjectFilesPersistence(
+      const persistence = new ProjectFilesPersistence(
         doc.files,
         projectId,
         projectPath,
@@ -211,6 +232,8 @@ export function YjsProjectProvider({
         userId,
         userName
       )
+      persistenceInstance = persistence
+      persistenceRef.current = persistence
 
       initialKnownSeqRef.current =
         typeof initialSync.serverSeq === 'number' && Number.isFinite(initialSync.serverSeq)
@@ -218,12 +241,11 @@ export function YjsProjectProvider({
           : 0
 
       if (disposed) {
-        destroyTransportProviders()
-        persistenceRef.current?.destroy()
-        persistenceRef.current = null
-        indexedDBProviderRef.current?.destroy()
-        indexedDBProviderRef.current = null
-        doc.destroy()
+        destroyPersistenceForInit({
+          doc,
+          indexedDBProvider,
+          persistence,
+        })
         return
       }
 
@@ -236,24 +258,31 @@ export function YjsProjectProvider({
 
     void initDoc().catch((error) => {
       if (disposed) return
+      destroyPersistenceForInit({
+        doc: docInstance,
+        indexedDBProvider: indexedDBProviderInstance,
+        persistence: persistenceInstance,
+      })
       console.error('[YjsProjectProvider] Failed to initialize Yjs project provider:', error)
       setIsConnected(false)
+      setYjsDoc(null)
+      setLastSyncTime(null)
     })
 
     return () => {
       disposed = true
-      destroyTransportProviders()
-      persistenceRef.current?.destroy()
-      persistenceRef.current = null
-      indexedDBProviderRef.current?.destroy()
-      indexedDBProviderRef.current = null
+      destroyPersistenceForInit({
+        doc: docInstance,
+        indexedDBProvider: indexedDBProviderInstance,
+        persistence: persistenceInstance,
+      })
       setIsConnected(false)
       setYjsDoc(null)
       setLastSyncTime(null)
-      docInstance?.destroy()
     }
   }, [
     convex,
+    destroyPersistenceForInit,
     destroyTransportProviders,
     enabled,
     projectId,

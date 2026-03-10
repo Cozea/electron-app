@@ -5,6 +5,7 @@ import {
   type UIMessage,
 } from 'ai'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Textarea } from '@/components/ui/textarea'
 import {
   DropdownMenu,
@@ -1372,21 +1373,24 @@ function MessageBubble({ message, toolsByName, status, showUserErrorIndicator = 
 
   return (
     <Message from={message.role}>
-      <div
-        className={cn(
-          'flex items-start gap-2',
-          message.role === 'user' ? 'justify-end' : 'w-full'
-        )}
-      >
-        {message.role === 'user' && showUserErrorIndicator ? (
-          <div
-            aria-label="Message failed to send"
-            className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive text-[11px] font-semibold text-destructive-foreground"
-            title="Message failed to send"
-          >
-            !
-          </div>
-        ) : null}
+      <div className={cn(message.role === 'user' ? 'flex justify-end' : 'w-full')}>
+        <div className={cn('flex items-start gap-2', message.role === 'user' ? 'w-fit max-w-full' : 'w-full')}>
+          {message.role === 'user' && showUserErrorIndicator ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label="Request failed"
+                  tabIndex={0}
+                  className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive text-[11px] font-semibold text-destructive-foreground outline-none"
+                >
+                  !
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Request failed</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         <MessageContent
           className={cn(
             hasStandaloneAttachments && [
@@ -1559,6 +1563,7 @@ function MessageBubble({ message, toolsByName, status, showUserErrorIndicator = 
             </div>
           )}
         </MessageContent>
+        </div>
       </div>
     </Message>
   )

@@ -34,6 +34,7 @@ const BILLING_CODE_BY_ERROR: Record<string, string> = {
 }
 
 const BILLING_CODES = new Set<string>(Object.values(BILLING_CODE_BY_ERROR))
+const BILLING_PLANS_HREF = '/settings/billing?plans=1'
 
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -129,6 +130,19 @@ function withFallbackAction(
   return { ...current, action: fallback }
 }
 
+function withBillingPlansAction(
+  current: BillingErrorData,
+  label = 'Billing'
+): BillingErrorData {
+  return {
+    ...current,
+    action: {
+      label,
+      href: BILLING_PLANS_HREF,
+    },
+  }
+}
+
 function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
   const rawMessage = `${error.message || ''} ${error.hint || ''}`.toLowerCase()
   const plan = error.details?.plan?.toLowerCase()
@@ -145,73 +159,73 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
       (plan === 'startup' || plan === 'enterprise' || plan === 'trial'))
 
   if (looksLikeSeatAssignment) {
-    return withFallbackAction(
+    return withBillingPlansAction(
       {
         ...error,
         title: 'AI seat required',
         message: "You don't have an AI seat assigned in this workspace yet.",
         hint: 'Ask a billing admin to assign you a seat in Settings > Billing.',
       },
-      { label: 'Open Billing', href: '/settings/billing' }
+      'Billing'
     )
   }
 
   if (looksLikeSeatsExhausted) {
-    return withFallbackAction(
+    return withBillingPlansAction(
       {
         ...error,
         title: 'All AI seats are in use',
         message: 'Every paid AI seat in this workspace is currently assigned.',
         hint: 'Ask a billing admin to add seats or reassign one in Settings > Billing.',
       },
-      { label: 'Open Billing', href: '/settings/billing' }
+      'Billing'
     )
   }
 
   if (rawMessage.includes('past due')) {
-    return withFallbackAction(
+    return withBillingPlansAction(
       {
         ...error,
         title: 'Billing payment needed',
         message: 'AI is paused because billing for this workspace is past due.',
         hint: 'Update payment details in Settings > Billing, then retry.',
       },
-      { label: 'Open Billing', href: '/settings/billing' }
+      'Billing'
     )
   }
 
   if (rawMessage.includes('canceled')) {
-    return withFallbackAction(
+    return withBillingPlansAction(
       {
         ...error,
         title: 'Subscription is canceled',
         message: 'AI is unavailable because this workspace subscription is canceled.',
         hint: 'Start or renew the plan in Settings > Billing.',
       },
-      { label: 'Open Billing', href: '/settings/billing' }
+      'Billing'
     )
   }
 
   if (rawMessage.includes('could not verify')) {
-    return withFallbackAction(
+    return withBillingPlansAction(
       {
         ...error,
         title: 'AI access could not be verified',
         message: "We couldn't verify AI access for this workspace right now.",
         hint: 'Try again in a moment, or open Settings > Billing to check plan status.',
       },
-      { label: 'Open Billing', href: '/settings/billing' }
+      'Billing'
     )
   }
 
-  return withFallbackAction(
+  return withBillingPlansAction(
     {
       ...error,
-      title: 'AI access requires a paid plan',
-      message: "Your current workspace plan doesn't include AI access.",
-      hint: 'Open Settings > Billing to start or renew a plan.',
+      title: 'Paid Plan Required',
+      message: 'Cozea agents are only in paid plans.',
+      hint: undefined,
     },
-    { label: 'Open Billing', href: '/settings/billing' }
+    'Billing'
   )
 }
 
@@ -255,18 +269,13 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
         { label: 'Open AI Settings', href: '/settings/ai' }
       )
     case 'WALLET_INSUFFICIENT_FUNDS':
-      return withFallbackAction(
+      return withBillingPlansAction(
         {
           ...normalized,
-          title: normalized.title || 'AI wallet balance low',
-          message:
-            normalized.message ||
-            'Not enough AI wallet funds for this request.',
-          hint:
-            normalized.hint ||
-            'Open Billing or use your own provider in AI Settings.',
-        },
-        { label: 'Billing', href: '/settings/billing' }
+          title: 'Not Enough Balance',
+          message: 'Subscription credits exhausted.',
+          hint: undefined,
+        }
       )
     default:
       return normalized
