@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 import type { Id } from '../../../convex/_generated/dataModel'
 import { useProjectDiffStatus } from '@/hooks/useProjectDiffStatus'
 import { cn } from '@/lib/utils'
@@ -6,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { ArrowDown, ArrowUp, AlertTriangle, Loader2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react'
 
 interface ProjectDiffBadgeProps {
   projectId: Id<"projects">
@@ -32,30 +34,75 @@ export function ProjectDiffBadge({
     lastSyncAt,
   })
 
-  // Don't show anything if the diff status has not been hydrated yet.
-  if (!diffStatus) return null
+  const lastRenderableStatusRef = useRef<{
+    downloads: number
+    uploads: number
+    conflicts: number
+  } | null>(null)
+  const wasVisibleRef = useRef(false)
 
-  // Show loading indicator if checking
-  if (diffStatus.isChecking) {
-    return (
-        <div
-        className={cn("flex items-center justify-center text-muted-foreground/70", className)}
-      >
-        <Loader2 className={cn(size === 'compact' ? 'h-3 w-3 animate-spin' : 'h-3.5 w-3.5 animate-spin')} />
-      </div>
-    )
+  const currentTotalChanges = diffStatus
+    ? diffStatus.downloads + diffStatus.uploads + diffStatus.conflicts
+    : 0
+
+  if (diffStatus && !diffStatus.isChecking) {
+    if (currentTotalChanges > 0) {
+      lastRenderableStatusRef.current = {
+        downloads: diffStatus.downloads,
+        uploads: diffStatus.uploads,
+        conflicts: diffStatus.conflicts,
+      }
+    } else {
+      lastRenderableStatusRef.current = null
+    }
   }
 
-  const totalChanges = diffStatus.downloads + diffStatus.uploads + diffStatus.conflicts
+  const visibleStatus = !diffStatus
+    ? null
+    : diffStatus.isChecking
+      ? lastRenderableStatusRef.current
+      : currentTotalChanges > 0
+        ? {
+            downloads: diffStatus.downloads,
+            uploads: diffStatus.uploads,
+            conflicts: diffStatus.conflicts,
+          }
+        : null
 
-  // Don't show if no changes
-  if (totalChanges === 0) return null
+  const isVisible = visibleStatus !== null
+  const shouldAnimateIn = isVisible && !wasVisibleRef.current
 
-  const hasDownloads = diffStatus.downloads > 0
-  const hasUploads = diffStatus.uploads > 0
-  const hasConflicts = diffStatus.conflicts > 0
+  useEffect(() => {
+    wasVisibleRef.current = isVisible
+  }, [isVisible])
+
   const iconClassName = size === 'compact' ? 'h-3 w-3' : 'h-3.5 w-3.5'
   const countClassName = size === 'compact' ? 'text-[11px] leading-none' : 'text-xs leading-none'
+
+  const content = visibleStatus ? (
+    <>
+      {visibleStatus.downloads > 0 && (
+        <span className="flex items-center gap-0.5">
+          <ArrowDown className={cn(iconClassName, 'text-blue-500')} />
+          <span className={countClassName}>{visibleStatus.downloads}</span>
+        </span>
+      )}
+      {visibleStatus.uploads > 0 && (
+        <span className="flex items-center gap-0.5">
+          <ArrowUp className={cn(iconClassName, 'text-green-500')} />
+          <span className={countClassName}>{visibleStatus.uploads}</span>
+        </span>
+      )}
+      {visibleStatus.conflicts > 0 && (
+        <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
+          <AlertTriangle className={iconClassName} />
+          <span className={countClassName}>{visibleStatus.conflicts}</span>
+        </span>
+      )}
+    </>
+  ) : null
+
+  if (!visibleStatus) return null
 
   return (
     <Tooltip>
@@ -65,47 +112,31 @@ export function ProjectDiffBadge({
             size === 'compact'
               ? "flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
               : "flex items-center gap-2 text-sm font-medium text-muted-foreground",
+            shouldAnimateIn && "cozea-diff-badge-enter",
             className
           )}
         >
-          {hasDownloads && (
-            <span className="flex items-center gap-0.5">
-              <ArrowDown className={cn(iconClassName, 'text-blue-500')} />
-              <span className={countClassName}>{diffStatus.downloads}</span>
-            </span>
-          )}
-          {hasUploads && (
-            <span className="flex items-center gap-0.5">
-              <ArrowUp className={cn(iconClassName, 'text-green-500')} />
-              <span className={countClassName}>{diffStatus.uploads}</span>
-            </span>
-          )}
-          {hasConflicts && (
-            <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
-              <AlertTriangle className={iconClassName} />
-              <span className={countClassName}>{diffStatus.conflicts}</span>
-            </span>
-          )}
+          {content}
         </div>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="flex flex-col gap-1">
         <p className="font-medium">Pending sync changes</p>
-        {diffStatus.downloads > 0 && (
+        {visibleStatus.downloads > 0 && (
           <div className="flex items-center gap-1 text-xs">
             <ArrowDown className="h-3 w-3 text-blue-500" />
-            <span>{diffStatus.downloads} to download</span>
+            <span>{visibleStatus.downloads} to download</span>
           </div>
         )}
-        {diffStatus.uploads > 0 && (
+        {visibleStatus.uploads > 0 && (
           <div className="flex items-center gap-1 text-xs">
             <ArrowUp className="h-3 w-3 text-green-500" />
-            <span>{diffStatus.uploads} to upload</span>
+            <span>{visibleStatus.uploads} to upload</span>
           </div>
         )}
-        {diffStatus.conflicts > 0 && (
+        {visibleStatus.conflicts > 0 && (
           <div className="flex items-center gap-1 text-xs">
             <AlertTriangle className="h-3 w-3 text-orange-500" />
-            <span>{diffStatus.conflicts} conflicts</span>
+            <span>{visibleStatus.conflicts} conflicts</span>
           </div>
         )}
       </TooltipContent>

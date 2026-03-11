@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { isModelServableByPolicy } from '../server/src/routes/ai/modelServePolicy'
 
 describe('model serve policy', () => {
-  it('filters Google models older than the Gemini 2.5 series', () => {
+  it('filters Google models older than the Gemini 3 series', () => {
     expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-1.5-pro' })).toBe(false)
     expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-2.0-flash' })).toBe(false)
-    expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-2.5-pro' })).toBe(true)
-    expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-2.5-flash' })).toBe(true)
+    expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-2.5-pro' })).toBe(false)
+    expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-2.5-flash' })).toBe(false)
     expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-3-pro-preview' })).toBe(true)
     expect(isModelServableByPolicy({ providerId: 'google', modelId: 'gemini-flash-latest' })).toBe(false)
   })

@@ -223,8 +223,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       keyId?: string
     }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
-    getLocalPath: (slug: string) => ipcRenderer.invoke('project:getLocalPath', { slug }),
-    exists: (slug: string) => ipcRenderer.invoke('project:exists', { slug }),
+    getLocalPath: (options: string | { slug: string; projectId?: string }) =>
+      ipcRenderer.invoke('project:getLocalPath', options),
+    exists: (options: string | { slug: string; projectId?: string }) =>
+      ipcRenderer.invoke('project:exists', options),
     pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),
     writeFile: (options: {
       projectPath: string
@@ -310,6 +312,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath: string
       branch?: string
       repoUrl?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitEnsureRepo', options),
     gitCloneIfMissing: (options: {
       projectPath: string
@@ -320,6 +323,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitCloneIfMissing', options),
     gitFetchMain: (options: {
       projectPath: string
@@ -331,11 +335,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitFetchMain', options),
     gitStatus: (options: {
       projectPath: string
       remote?: string
       branch?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitStatus', options),
     gitPullMain: (options: {
       projectPath: string
@@ -348,6 +354,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitPullMain', options),
     gitRestoreMain: (options: {
       projectPath: string
@@ -359,7 +366,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => ipcRenderer.invoke('sync:gitRestoreMain', options),
+    gitAdoptWorkspace: (options: {
+      projectPath: string
+      branch?: string
+      repoUrl?: string
+      debug?: boolean
+    }) => ipcRenderer.invoke('sync:gitAdoptWorkspace', options),
     gitCommitAll: (options: {
       projectPath: string
       message: string

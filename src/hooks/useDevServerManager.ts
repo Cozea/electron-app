@@ -11,12 +11,14 @@ import {
   transitionDevServerLifecycle,
 } from '@/features/projects/lib/devServerLifecycle'
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
+import { createDevServerRestartScheduler } from '@/hooks/devServerRestartScheduler'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 
 const STARTUP_SOFT_TIMEOUT_MS = 20_000
 const STARTUP_HARD_TIMEOUT_MS = 120_000
+const RESTART_DELAY_MS = 500
 
 interface UseDevServerManagerOptions {
   projectPath: string | null
@@ -104,6 +106,7 @@ export function useDevServerManager({
   const cleanupRef = useRef<(() => void) | null>(null)
   const startupSoftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startupHardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const restartSchedulerRef = useRef(createDevServerRestartScheduler(RESTART_DELAY_MS))
 
   const clearWatchdogs = useCallback(() => {
     if (startupSoftTimeoutRef.current) {
@@ -262,6 +265,7 @@ export function useDevServerManager({
     if (!projectPath) return
     if (state.status === 'starting' || state.status === 'ready') return
 
+    restartSchedulerRef.current.cancel()
     const requestedRunId = crypto?.randomUUID ? crypto.randomUUID() : `devsrv_${Date.now()}`
     activeRunIdRef.current = requestedRunId
     transitionLifecycle({ type: 'start_requested', runId: requestedRunId })
@@ -368,6 +372,7 @@ export function useDevServerManager({
     const currentRunId = activeRunIdRef.current
 
     try {
+      restartSchedulerRef.current.cancel()
       if (currentRunId) {
         transitionLifecycle({ type: 'stopped', runId: currentRunId })
       }
@@ -400,10 +405,9 @@ export function useDevServerManager({
   // Restart the dev server
   const restart = useCallback(async () => {
     await stop()
-    // Small delay before restarting
-    setTimeout(() => {
-      start()
-    }, 500)
+    restartSchedulerRef.current.schedule(() => {
+      void start()
+    })
   }, [stop, start])
 
   // Check if a line indicates the server is ready and extract port
@@ -545,6 +549,7 @@ export function useDevServerManager({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      restartSchedulerRef.current.cancel()
       if (activeRunIdRef.current && projectPath) {
         console.log('[DevServer] Cleaning up on unmount')
         window.electronAPI.devServer.stop({ projectPath }).catch(console.error)

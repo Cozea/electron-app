@@ -29,10 +29,6 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
-import {
-    logProjectSourceDebug,
-    summarizeProjectForDebug,
-} from '../lib/projectSourceDebug'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary extends ProjectOpenGitProjectLike {
@@ -117,13 +113,16 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
 
     let cancelled = false
 
-    const loadLocalPath = async () => {
+        const loadLocalPath = async () => {
             if (project.status === 'draft') {
                 if (!cancelled) setLocalPath(null)
                 return
             }
 
-            const path = await window.electronAPI.project.getLocalPath(project.slug)
+            const path = project.localPath ?? await window.electronAPI.project.getLocalPath({
+                slug: project.slug,
+                projectId: String(project._id),
+            })
             if (!cancelled) setLocalPath(path)
         }
 
@@ -131,7 +130,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
     return () => {
       cancelled = true
     }
-  }, [project.slug, project.status, shouldHydrateSyncStatus])
+  }, [project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
     setSyncHydrationRequested(true)
@@ -146,12 +145,6 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
         if (syncState !== 'idle') {
             return
         }
-
-        logProjectSourceDebug('project_card:open_click', {
-            project: summarizeProjectForDebug(project),
-            userId: userId ?? null,
-            localPath,
-        })
 
         preloadProjectDestination()
 

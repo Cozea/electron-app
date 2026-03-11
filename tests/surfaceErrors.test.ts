@@ -26,7 +26,7 @@ describe('retry hint surface errors', () => {
     })
   })
 
-  it('keeps actions for non-429 compact cards', () => {
+  it('drops actions for compact quota cards too', () => {
     const surfaceError = getRetryHintSurfaceError({
       retryable: true,
       code: 'provider_usage_limit',
@@ -44,10 +44,7 @@ describe('retry hint surface errors', () => {
       provider: 'google',
       title: 'Gemini quota reached',
       message: 'Daily quota reached. Try again later.',
-      action: {
-        label: 'Open AI Settings',
-        href: '/settings/ai',
-      },
+      action: undefined,
       model: undefined,
     })
   })

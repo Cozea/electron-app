@@ -2,6 +2,7 @@ import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
+import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 
 interface GitSyncMetadataResult {
   projectId: Id<'projects'>
@@ -143,6 +144,11 @@ export class GitDurabilityCoordinator {
   scheduleSync(reason: string): void {
     if (this.destroyed) return
     this.pendingReasons.add(reason)
+    dispatchGitStatusEvent({
+      projectId: String(this.projectId),
+      projectPath: this.projectPath,
+      kind: 'dirty',
+    })
     this.scheduleFlush(DEFAULT_DEBOUNCE_MS)
   }
 
@@ -318,6 +324,11 @@ export class GitDurabilityCoordinator {
     }
 
     this.retryAttempt = 0
+    dispatchGitStatusEvent({
+      projectId: String(this.projectId),
+      projectPath: this.projectPath,
+      kind: 'synced',
+    })
     console.log('[GitDurabilityCoordinator] Synced project via git', {
       projectId: String(this.projectId),
       projectPath: this.projectPath,

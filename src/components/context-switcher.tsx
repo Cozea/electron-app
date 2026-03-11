@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useMemo, useState, type MouseEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
@@ -28,10 +28,6 @@ import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '@/features/projects/lib/projectCloudAccessPresentation'
-import {
-  logProjectSourceDebug,
-  summarizeProjectForDebug,
-} from '@/features/projects/lib/projectSourceDebug'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -116,8 +112,8 @@ export function ContextSwitcher() {
       ? convexUser?._id
         ? { userId: convexUser._id }
         : 'skip'
-      : convexOrg?._id
-        ? { organizationId: convexOrg._id }
+      : convexOrg?._id && convexUser?._id
+        ? { organizationId: convexOrg._id, userId: convexUser._id }
         : 'skip'
   )
 
@@ -165,32 +161,6 @@ export function ContextSwitcher() {
   const navigationTemplateHint =
     hasMatchingNavigationState ? navigationState?.projectTemplate : undefined
 
-  useEffect(() => {
-    logProjectSourceDebug('context_switcher:state', {
-      authWorkosUserId: user?.id ?? null,
-      routeProjectId: routeProject.projectId,
-      routeSlug: routeProject.slug,
-      currentOrganizationId: currentOrganization?.organizationId ?? null,
-      workspaceType: currentOrganization?.workspaceType ?? null,
-      convexOrganizationId: convexOrg?._id ?? null,
-      convexUserId: convexUser?._id ?? null,
-      currentProject: summarizeProjectForDebug(currentProject),
-      selectedProjectFromList: summarizeProjectForDebug(selectedProjectFromList),
-      normalizedProjects: normalizedProjects.map((project) => summarizeProjectForDebug(project)),
-    })
-  }, [
-    convexOrg?._id,
-    convexUser?._id,
-    currentOrganization?.organizationId,
-    currentOrganization?.workspaceType,
-    currentProject,
-    normalizedProjects,
-    routeProject.projectId,
-    routeProject.slug,
-    selectedProjectFromList,
-    user?.id,
-  ])
-
   // Organization info
   const organization = {
     name: currentOrganization?.organizationName || 'My Workspace',
@@ -211,12 +181,6 @@ export function ContextSwitcher() {
     event?.preventDefault()
     if (syncState !== 'idle') return
 
-    logProjectSourceDebug('context_switcher:open_project', {
-      project: summarizeProjectForDebug(project),
-      routeProjectId: routeProject.projectId,
-      routeSlug: routeProject.slug,
-    })
-
     // Draft projects go straight to wizard
     if (project.status === 'draft') {
       setOpen(false)
@@ -235,7 +199,10 @@ export function ContextSwitcher() {
       await prepareGitProjectForOpen({
         convex,
         project,
-        localPath: await window.electronAPI.project.getLocalPath(project.slug),
+        localPath: project.localPath ?? await window.electronAPI.project.getLocalPath({
+          slug: project.slug,
+          projectId: String(project._id),
+        }),
         userId: convexUser?._id,
         onProgress: (message) => {
           setSyncMessage(message)

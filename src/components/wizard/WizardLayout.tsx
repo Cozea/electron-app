@@ -8,6 +8,7 @@ interface WizardLayoutProps {
   currentStep: number
   title?: string
   fullHeight?: boolean
+  preserveInsetInFullHeight?: boolean
   showInternalStepHeader?: boolean
   // Navigation props formerly used by sidebar, kept optional for compatibility if needed elsewhere
   onStepClick?: (step: number) => void
@@ -20,6 +21,7 @@ export function WizardLayout({
   currentStep,
   title = 'New Project',
   fullHeight = false,
+  preserveInsetInFullHeight = false,
   showInternalStepHeader = false,
 }: WizardLayoutProps) {
   const isEntryStep = currentStep === 0
@@ -35,7 +37,11 @@ export function WizardLayout({
   return (
     <div className={cn(
       "flex flex-col -m-4",
-      fullHeight ? "h-[calc(100vh-56px)]" : "min-h-[calc(100vh-56px)]"
+      fullHeight
+        ? preserveInsetInFullHeight
+          ? "h-full min-h-0"
+          : "h-[calc(100vh-56px)]"
+        : "min-h-[calc(100vh-56px)]"
     )}>
       {!fullHeight && showInternalStepHeader && currentStep > 0 && (
         <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm bdry-b">
@@ -67,7 +73,11 @@ export function WizardLayout({
       )}>
         <div className={cn(
           "flex-1 w-full px-8 py-8 flex flex-col min-h-0",
-          fullHeight ? "max-w-full p-0 min-h-0" :
+          fullHeight
+            ? preserveInsetInFullHeight
+              ? "max-w-full min-h-0"
+              : "max-w-full p-0 min-h-0"
+            :
             currentStep === 0 ? "max-w-2xl mx-auto justify-center" : ""
         )}>
           {fullHeight ? (

@@ -40,11 +40,8 @@ import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
+import { logGitOpenDebug } from "@/lib/git/gitOpenDebug"
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
-import {
-    logProjectSourceDebug,
-    summarizeProjectForDebug,
-} from "@/features/projects/lib/projectSourceDebug"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -262,35 +259,26 @@ export function ProjectLayout({
         `layout-project-${routeProjectId ?? routeSlug}`,
         freshProject
     )
-    useEffect(() => {
-        logProjectSourceDebug('project_layout:resolution', {
-            authWorkosUserId: user?.id ?? null,
-            routeProjectId: routeProjectId ?? null,
-            routeSlug: routeSlug ?? null,
-            convexOrganizationId: convexOrg?._id ?? null,
-            convexUserId: convexUser?._id ?? null,
-            freshProjectById: summarizeProjectForDebug(freshProjectById),
-            freshProjectBySlug:
-                freshProjectBySlug?.status === "ok"
-                    ? summarizeProjectForDebug(freshProjectBySlug.project)
-                    : freshProjectBySlug?.status ?? null,
-            cachedProject: summarizeProjectForDebug(project),
-        })
-    }, [
-        convexOrg?._id,
-        convexUser?._id,
-        freshProjectById,
-        freshProjectBySlug,
-        project,
-        routeProjectId,
-        routeSlug,
-        user?.id,
-    ])
     const projectIdForSyncBypass = routeProjectId ?? (project?._id ? String(project._id) : null)
     const shouldSkipInitialSyncCheck =
         initialSyncMode === 'git' ||
         project?.syncMode === 'git' ||
         (projectIdForSyncBypass ? hasRecentProjectOpenSync(projectIdForSyncBypass) : false)
+    useEffect(() => {
+        if (!project?._id) {
+            return
+        }
+
+        logGitOpenDebug('project_layout:route_state', {
+            projectId: String(project._id),
+            routeProjectId: routeProjectId ?? null,
+            routeSlug: routeSlug ?? null,
+            syncMode: project.syncMode ?? null,
+            initialSyncMode,
+            shouldSkipInitialSyncCheck,
+            projectIdForSyncBypass,
+        })
+    }, [initialSyncMode, project?._id, project?.syncMode, projectIdForSyncBypass, routeProjectId, routeSlug, shouldSkipInitialSyncCheck])
     const projectSlug = project?.slug ?? routeSlug ?? null
     const projectBasePath = routeProjectId
         ? buildProjectPath(routeProjectId)
@@ -376,7 +364,10 @@ export function ProjectLayout({
 
             const [previousPathExists, existingTargetPath] = await Promise.all([
                 window.electronAPI.project.pathExists(storedPath),
-                window.electronAPI.project.getLocalPath(projectSlug),
+                window.electronAPI.project.getLocalPath({
+                    slug: projectSlug,
+                    projectId: project?._id ? String(project._id) : undefined,
+                }),
             ])
 
             if (!previousPathExists) {
@@ -451,7 +442,10 @@ export function ProjectLayout({
         setPathResolutionError(null)
 
         try {
-            let targetPath = await window.electronAPI.project.getLocalPath(projectSlug)
+            let targetPath = await window.electronAPI.project.getLocalPath({
+                slug: projectSlug,
+                projectId: project?._id ? String(project._id) : undefined,
+            })
             if (!targetPath) {
                 const created = await window.electronAPI.project.createFolder({
                     slug: projectSlug,

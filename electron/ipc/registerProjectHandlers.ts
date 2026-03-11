@@ -16,9 +16,11 @@ import type {
   WatchProjectResult,
   WriteFileResult,
 } from '../../shared/electronApiTypes'
+import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
+import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
 import {
   EXCLUDED_GENERATED_DIRECTORIES,
@@ -35,6 +37,11 @@ const IMPORT_PREFLIGHT_MAX_ISSUES = 50
 
 function normalizeRelativePathForFilters(relativePath: string): string {
   return relativePath.replace(/\\/g, '/')
+}
+
+function shouldExcludeImportGitPath(relativePath: string): boolean {
+  const normalizedPath = normalizeRelativePathForFilters(relativePath).replace(/^\/+/, '')
+  return normalizedPath === '.git' || normalizedPath.startsWith('.git/')
 }
 
 async function preflightImportSource(
@@ -76,6 +83,9 @@ async function preflightImportSource(
       const fullPath = path.join(normalizedRoot, relPath)
 
       if (entry.isDirectory()) {
+        if (mode === 'relocation' && shouldExcludeImportGitPath(normalizedRelPath)) {
+          continue
+        }
         if (mode === 'relocation' && shouldExcludeGeneratedDirectory(entry.name)) {
           continue
         }
@@ -84,6 +94,9 @@ async function preflightImportSource(
       }
 
       if (!entry.isFile()) continue
+      if (mode === 'relocation' && shouldExcludeImportGitPath(normalizedRelPath)) {
+        continue
+      }
       if (mode === 'relocation' && shouldExcludeGeneratedFile(normalizedRelPath)) {
         continue
       }
@@ -155,6 +168,22 @@ function normalizeRepositoryUrl(repoUrl: string, provider: string): string | nul
   return `https://${host}/${owner}/${repo}.git`
 }
 
+function resolveAvailableProjectPath(projectsDir: string, slug: string): string {
+  const basePath = path.join(projectsDir, slug)
+  if (!fs.existsSync(basePath)) {
+    return basePath
+  }
+
+  let attempt = 2
+  while (true) {
+    const candidate = path.join(projectsDir, `${slug}-${attempt}`)
+    if (!fs.existsSync(candidate)) {
+      return candidate
+    }
+    attempt += 1
+  }
+}
+
 function runGitCommand(
   args: string[],
   cwd: string
@@ -174,6 +203,38 @@ function runGitCommand(
   })
 }
 
+function normalizeProjectLookup(
+  value: unknown,
+): { slug: string; projectId?: string } {
+  if (typeof value === 'string') {
+    return { slug: value }
+  }
+
+  if (!value || typeof value !== 'object') {
+    return { slug: '' }
+  }
+
+  const rawValue = value as {
+    slug?: unknown
+    projectId?: unknown
+  }
+
+  let slug = ''
+  if (typeof rawValue.slug === 'string') {
+    slug = rawValue.slug
+  } else if (
+    rawValue.slug &&
+    typeof rawValue.slug === 'object' &&
+    'slug' in rawValue.slug &&
+    typeof (rawValue.slug as { slug?: unknown }).slug === 'string'
+  ) {
+    slug = (rawValue.slug as { slug: string }).slug
+  }
+
+  const projectId = typeof rawValue.projectId === 'string' ? rawValue.projectId : undefined
+  return { slug, projectId }
+}
+
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   deps: RegisterProjectHandlersDeps
@@ -186,30 +247,24 @@ export function registerProjectHandlers(
     ): Promise<CreateProjectFolderResult> => {
       const settings = deps.loadSettings()
       const projectsDir = settings.projectsDirectory
-      const projectPath = path.join(projectsDir, slug)
 
       try {
         if (!fs.existsSync(projectsDir)) {
           fs.mkdirSync(projectsDir, { recursive: true })
         }
 
-        if (fs.existsSync(projectPath)) {
-          return {
-            success: false,
-            error: `Project folder already exists: ${projectPath}`,
-          }
-        }
+        const resolvedProjectPath = resolveAvailableProjectPath(projectsDir, slug)
 
-        fs.mkdirSync(projectPath, { recursive: true })
-        console.log(`[Project] Created folder: ${projectPath}`)
+        fs.mkdirSync(resolvedProjectPath, { recursive: true })
+        console.log(`[Project] Created folder: ${resolvedProjectPath}`)
 
         if (initGit) {
           try {
-            const initResult = await runGitCommand(['init'], projectPath)
+            const initResult = await runGitCommand(['init'], resolvedProjectPath)
             if (!initResult.success) {
               throw new Error(initResult.error)
             }
-            console.log(`[Project] Initialized git repo: ${projectPath}`)
+            console.log(`[Project] Initialized git repo: ${resolvedProjectPath}`)
 
             const gitignoreContent = `# Dependencies
 node_modules/
@@ -244,7 +299,7 @@ npm-debug.log*
 .cache/
 .turbo/
 `
-            fs.writeFileSync(path.join(projectPath, '.gitignore'), gitignoreContent)
+            fs.writeFileSync(path.join(resolvedProjectPath, '.gitignore'), gitignoreContent)
             console.log('[Project] Created .gitignore')
           } catch (gitError) {
             console.warn('[Project] Git init failed:', gitError)
@@ -257,7 +312,7 @@ npm-debug.log*
 
         return {
           success: true,
-          localPath: projectPath,
+          localPath: resolvedProjectPath,
         }
       } catch (error) {
         console.error('[Project] Failed to create folder:', error)
@@ -294,7 +349,6 @@ npm-debug.log*
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
       const projectsDir = settings.projectsDirectory
-      const targetPath = path.join(projectsDir, slug)
       const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
       const resolvedCloneAuth = resolveCloneAccessToken({
         provider,
@@ -322,16 +376,7 @@ npm-debug.log*
           fs.mkdirSync(projectsDir, { recursive: true })
         }
 
-        if (fs.existsSync(targetPath)) {
-          const existingEntries = fs.readdirSync(targetPath, { withFileTypes: true })
-          if (existingEntries.length > 0) {
-            return {
-              success: false,
-              error: `Destination already exists and is not empty: ${targetPath}`,
-            }
-          }
-          fs.rmSync(targetPath, { recursive: true, force: true })
-        }
+        const resolvedTargetPath = resolveAvailableProjectPath(projectsDir, slug)
 
         const cloneArgs: string[] = []
         const authHeader = buildGitAuthorizationHeader(provider, resolvedCloneAuth.accessToken)
@@ -344,7 +389,7 @@ npm-debug.log*
         if (branch && branch.trim()) {
           cloneArgs.push('--branch', branch.trim())
         }
-        cloneArgs.push(normalizedRepoUrl, targetPath)
+        cloneArgs.push(normalizedRepoUrl, resolvedTargetPath)
 
         const cloneResult = await runGitCommand(cloneArgs, projectsDir)
         if (!cloneResult.success) {
@@ -356,7 +401,7 @@ npm-debug.log*
 
         return {
           success: true,
-          localPath: targetPath,
+          localPath: resolvedTargetPath,
           normalizedRepoUrl,
         }
       } catch (error) {
@@ -368,26 +413,54 @@ npm-debug.log*
     }
   )
 
-  ipcMain.handle('project:getLocalPath', (_event, { slug }: { slug: string }): string | null => {
-    const settings = deps.loadSettings()
-    const projectPath = path.join(settings.projectsDirectory, slug)
-    return fs.existsSync(projectPath) ? projectPath : null
-  })
+  ipcMain.handle(
+    'project:getLocalPath',
+    async (_event, value: string | { slug: string; projectId?: string }): Promise<string | null> => {
+      const { slug, projectId } = normalizeProjectLookup(value)
+      const settings = deps.loadSettings()
+      if (!slug || typeof settings.projectsDirectory !== 'string') {
+        console.warn('[ProjectPath] Invalid getLocalPath lookup payload', {
+          value,
+          normalizedSlug: slug,
+          projectId: projectId ?? null,
+          projectsDirectoryType: typeof settings.projectsDirectory,
+          projectsDirectory: settings.projectsDirectory,
+        })
+        return null
+      }
+      return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+    },
+  )
 
-  ipcMain.handle('project:exists', (_event, { slug }: { slug: string }): boolean => {
-    const settings = deps.loadSettings()
-    const projectPath = path.join(settings.projectsDirectory, slug)
-    return fs.existsSync(projectPath)
-  })
+  ipcMain.handle(
+    'project:exists',
+    async (_event, value: string | { slug: string; projectId?: string }): Promise<boolean> => {
+      const { slug, projectId } = normalizeProjectLookup(value)
+      const settings = deps.loadSettings()
+      if (!slug || typeof settings.projectsDirectory !== 'string') {
+        console.warn('[ProjectPath] Invalid exists lookup payload', {
+          value,
+          normalizedSlug: slug,
+          projectId: projectId ?? null,
+          projectsDirectoryType: typeof settings.projectsDirectory,
+        })
+        return false
+      }
+      return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId }) !== null
+    },
+  )
 
-  ipcMain.handle('project:pathExists', (_event, { projectPath }: { projectPath: string }): boolean => {
-    if (!projectPath || typeof projectPath !== 'string') return false
-    try {
-      return fs.existsSync(projectPath)
-    } catch {
-      return false
-    }
-  })
+  ipcMain.handle(
+    'project:pathExists',
+    (_event, { projectPath }: { projectPath: string }): boolean => {
+      if (!projectPath || typeof projectPath !== 'string') return false
+      try {
+        return fs.existsSync(projectPath)
+      } catch {
+        return false
+      }
+    },
+  )
 
   ipcMain.handle(
     'project:writeFile',
@@ -765,6 +838,7 @@ npm-debug.log*
             const normalizedRelative = relative.replace(/\\/g, '/')
             const entryName = path.basename(src)
 
+            if (shouldExcludeImportGitPath(normalizedRelative)) return false
             if (shouldExcludeGeneratedDirectory(entryName)) return false
             if (shouldExcludeGeneratedFile(normalizedRelative)) return false
             return true
@@ -828,6 +902,12 @@ npm-debug.log*
 
   ipcMain.handle('fs:readDir', async (_event, dirPath: string): Promise<FileEntry[]> => {
     try {
+      const settings = deps.loadSettings()
+      if (!isReadPathAllowed(dirPath, settings)) {
+        console.warn('[FS] Blocked directory read outside approved roots:', dirPath)
+        return []
+      }
+
       if (!fs.existsSync(dirPath)) {
         return []
       }
@@ -862,6 +942,12 @@ npm-debug.log*
 
   ipcMain.handle('fs:readFile', async (_event, filePath: string): Promise<string | null> => {
     try {
+      const settings = deps.loadSettings()
+      if (!isReadPathAllowed(filePath, settings)) {
+        console.warn('[FS] Blocked file read outside approved roots:', filePath)
+        return null
+      }
+
       if (!fs.existsSync(filePath)) {
         return null
       }

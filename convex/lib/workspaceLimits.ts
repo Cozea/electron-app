@@ -570,128 +570,139 @@ export async function estimateProjectStorageBreakdown(
 ): Promise<StorageBreakdown> {
   const breakdown = emptyBreakdown()
 
-  const replica = await ctx.db
-    .query("projectReplicaGit")
-    .withIndex("by_project", (q) => q.eq("projectId", projectId))
-    .first()
+  const project = await ctx.db.get(projectId)
+  if (project?.status === "deleted") {
+    return breakdown
+  }
 
-  let lfsBytes = 0
+  if ((project?.syncMode ?? "replica") === "git") {
+    breakdown.sourceAndConfig += Math.max(0, project?.gitSyncState?.repoBytes ?? 0)
+  } else {
+    const replica = await ctx.db
+      .query("projectReplicaGit")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .first()
+
+    let lfsBytes = 0
+    await forEachPaginated(
+      (cursor) =>
+        ctx.db
+          .query("projectReplicaLfsObjects")
+          .withIndex("by_project", (q) => q.eq("projectId", projectId))
+          .paginate({
+            cursor,
+            numItems: STORAGE_SCAN_PAGE_SIZE,
+          }) as Promise<PaginatedResult<{ size: number }>>,
+      (entry) => {
+        lfsBytes += Math.max(0, entry.size)
+      }
+    )
+    const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
+    const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
+
+    if (useReplicaAccounting) {
+      breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
+    } else {
+      const legacyTotals = await getLegacyFileStorageTotals(ctx, projectId)
+      breakdown.sourceAndConfig += legacyTotals.activeBytes
+      breakdown.gitHistory += legacyTotals.supersededBytes
+    }
+  }
+
+  const seenAssetStorageIds = new Set<string>()
   await forEachPaginated(
     (cursor) =>
       ctx.db
-        .query("projectReplicaLfsObjects")
+        .query("projectAssets")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .paginate({
           cursor,
           numItems: STORAGE_SCAN_PAGE_SIZE,
-        }) as Promise<PaginatedResult<{ size: number }>>,
-    (entry) => {
-      lfsBytes += Math.max(0, entry.size)
+        }) as Promise<PaginatedResult<{ _id: string; storageId?: string; size: number }>>,
+    (asset) => {
+      const dedupeKey = asset.storageId ? String(asset.storageId) : `record:${asset._id}`
+      if (seenAssetStorageIds.has(dedupeKey)) {
+        return
+      }
+      seenAssetStorageIds.add(dedupeKey)
+      breakdown.assets += Math.max(0, asset.size)
     }
   )
-  const replicaBundleBytes = Math.max(0, replica?.bundleSizeBytes ?? 0)
-  const useReplicaAccounting = replicaBundleBytes > 0 || lfsBytes > 0
 
-  if (useReplicaAccounting) {
-    breakdown.sourceAndConfig += replicaBundleBytes + lfsBytes
-  } else {
-    const legacyTotals = await getLegacyFileStorageTotals(ctx, projectId)
-    breakdown.sourceAndConfig += legacyTotals.activeBytes
-    breakdown.gitHistory += legacyTotals.supersededBytes
-  }
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
+    (update) => {
+      breakdown.collaborationData += update.update?.byteLength ?? 0
+    }
+  )
 
-  const seenAssetStorageIds = new Set<string>()
-  await Promise.all([
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("projectAssets")
-          .withIndex("by_project", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ _id: string; storageId?: string; size: number }>>,
-      (asset) => {
-        const dedupeKey = asset.storageId ? String(asset.storageId) : `record:${asset._id}`
-        if (seenAssetStorageIds.has(dedupeKey)) {
-          return
-        }
-        seenAssetStorageIds.add(dedupeKey)
-        breakdown.assets += Math.max(0, asset.size)
-      }
-    ),
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("yjsUpdates")
-          .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ update?: ArrayBuffer }>>,
-      (update) => {
-        breakdown.collaborationData += update.update?.byteLength ?? 0
-      }
-    ),
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("yjsDocuments")
-          .withIndex("by_project", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ byteSize?: number; snapshot?: ArrayBuffer }>>,
-      (snapshot) => {
-        breakdown.snapshots += Math.max(0, snapshot.byteSize ?? snapshot.snapshot?.byteLength ?? 0)
-      }
-    ),
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("builderRuns")
-          .withIndex("by_project", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<
-            PaginatedResult<{
-              runId: string
-              status: string
-              attempt: number
-              conversationId?: string
-              localPath?: string
-              tasks?: unknown
-              progress?: number
-              statusMessage?: string
-              errorMessage?: string
-              logs?: unknown
-              createdAt: number
-              updatedAt: number
-              lastCheckpointAt?: number
-            }>
-          >,
-      (run) => {
-        breakdown.buildCache += estimateBuilderRunBytes(run)
-      }
-    ),
-    forEachPaginated(
-      (cursor) =>
-        ctx.db
-          .query("aiConversations")
-          .withIndex("by_project", (q) => q.eq("projectId", projectId))
-          .paginate({
-            cursor,
-            numItems: STORAGE_SCAN_PAGE_SIZE,
-          }) as Promise<PaginatedResult<{ title: string; messages: unknown }>>,
-      (conversation) => {
-        breakdown.aiHistory += estimateAiConversationBytes({
-          title: conversation.title,
-          messages: conversation.messages,
-        })
-      }
-    ),
-  ])
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("yjsDocuments")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<PaginatedResult<{ byteSize?: number; snapshot?: ArrayBuffer }>>,
+    (snapshot) => {
+      breakdown.snapshots += Math.max(0, snapshot.byteSize ?? snapshot.snapshot?.byteLength ?? 0)
+    }
+  )
+
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("builderRuns")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<
+          PaginatedResult<{
+            runId: string
+            status: string
+            attempt: number
+            conversationId?: string
+            localPath?: string
+            tasks?: unknown
+            progress?: number
+            statusMessage?: string
+            errorMessage?: string
+            logs?: unknown
+            createdAt: number
+            updatedAt: number
+            lastCheckpointAt?: number
+          }>
+        >,
+    (run) => {
+      breakdown.buildCache += estimateBuilderRunBytes(run)
+    }
+  )
+
+  await forEachPaginated(
+    (cursor) =>
+      ctx.db
+        .query("aiConversations")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .paginate({
+          cursor,
+          numItems: STORAGE_SCAN_PAGE_SIZE,
+        }) as Promise<PaginatedResult<{ title: string; messages: unknown }>>,
+    (conversation) => {
+      breakdown.aiHistory += estimateAiConversationBytes({
+        title: conversation.title,
+        messages: conversation.messages,
+      })
+    }
+  )
 
   return breakdown
 }

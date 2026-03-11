@@ -28,7 +28,6 @@ import {
   History,
   Trash2,
   Users,
-  GitBranch,
   Sparkles,
   Archive,
   Image,
@@ -55,7 +54,7 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     id: 'source',
     categoryKey: 'sourceAndConfig',
     name: 'Source & Config',
-    description: 'Canonical Git replica bundles, LFS objects, and source snapshots',
+    description: 'Canonical Cozea Git repositories and source configuration stored in cloud sync',
     icon: FileCode,
     color: 'bg-blue-500',
     canClear: false,
@@ -100,15 +99,6 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     canClear: true,
     clearWarning: 'This will delete all restore points. You won\'t be able to revert to previous states.',
   },
-  gitHistory: {
-    id: 'git',
-    categoryKey: 'gitHistory',
-    name: 'Git History',
-    description: 'Legacy pre-replica file version history',
-    icon: GitBranch,
-    color: 'bg-rose-500',
-    canClear: false,
-  },
   assets: {
     id: 'assets',
     categoryKey: 'assets',
@@ -144,8 +134,6 @@ const getLegendLabel = (category: StorageCategory): string => {
       return 'Build'
     case 'snapshots':
       return 'Snapshots'
-    case 'gitHistory':
-      return 'Git'
     case 'assets':
       return 'Assets'
     default:
@@ -283,17 +271,25 @@ export function Sync() {
               <h2 className="text-base font-semibold">Free Up Space</h2>
               <div className="mt-0.5 space-y-2">
                 <div className="text-sm">
-                  <span className="font-medium">{formatSize(clearableSize)}</span>
-                  <span className="text-muted-foreground"> can be cleared</span>
+                  {clearableSize > 0 ? (
+                    <>
+                      <span className="font-medium">{formatSize(clearableSize)}</span>
+                      <span className="text-muted-foreground"> can be cleared</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Nothing to clear</span>
+                  )}
                 </div>
                 <div className="h-4 rounded-full overflow-hidden bg-muted">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{
-                      width: `${totalUsed > 0 ? Math.min((clearableSize / totalUsed) * 100, 100) : 0}%`,
-                    }}
-                    aria-label="Clearable storage"
-                  />
+                  {clearableSize > 0 ? (
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{
+                        width: `${totalUsed > 0 ? Math.min((clearableSize / totalUsed) * 100, 100) : 0}%`,
+                      }}
+                      aria-label="Clearable storage"
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
