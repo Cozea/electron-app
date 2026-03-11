@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
-import { ensureProjectStorageUsage } from "./lib/workspaceLimits"
+import { applyProjectStorageDeltas, ensureProjectStorageUsage } from "./lib/workspaceLimits"
 
 const PERSONAL_WORKSPACE_PREFIX = "personal:"
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
@@ -25,6 +25,8 @@ interface GitSyncStateMetadata {
   lastPushedCommit?: string
   lastFetchAt?: number
   lastPushAt?: number
+  repoBytes?: number
+  lastRepoSizeAt?: number
   errorMessage?: string
   migratedFromReplicaAt?: number
 }
@@ -375,6 +377,7 @@ export const getBySlug = query({
 export const listForOrganization = query({
   args: {
     organizationId: v.id("organizations"),
+    userId: v.id("users"),
     status: v.optional(
       v.union(
         v.literal("draft"),
@@ -392,14 +395,27 @@ export const listForOrganization = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
 
     const projects = await query.collect()
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    const memberPathMap = new Map(
+      memberships.map((membership) => [membership.projectId.toString(), membership.localPath ?? null])
+    )
 
     // Filter by status if provided, and exclude deleted projects by default
-    return projects.filter((p) => {
-      if (args.status) {
-        return p.status === args.status
-      }
-      return p.status !== "deleted"
-    })
+    return projects
+      .filter((p) => {
+        if (args.status) {
+          return p.status === args.status
+        }
+        return p.status !== "deleted"
+      })
+      .map((project) => ({
+        ...project,
+        localPath: memberPathMap.get(project._id.toString()) ?? null,
+      }))
   },
 })
 
@@ -445,6 +461,7 @@ export const listForPersonalWorkspaceMemberView = query({
         return {
           ...project,
           role: membership.role,
+          localPath: membership.localPath ?? null,
           ownerWorkspace: {
             organizationId: ownerWorkspace._id,
             workosId: ownerWorkspace.workosId,
@@ -1287,6 +1304,8 @@ export const updateGitSyncMetadata = mutation({
         lastPushedCommit: v.optional(v.string()),
         lastFetchAt: v.optional(v.number()),
         lastPushAt: v.optional(v.number()),
+        repoBytes: v.optional(v.number()),
+        lastRepoSizeAt: v.optional(v.number()),
         errorMessage: v.optional(v.string()),
         migratedFromReplicaAt: v.optional(v.number()),
       })
@@ -1362,6 +1381,34 @@ export const listLegacyReplicaProjectsForServer = query({
   },
 })
 
+export const listGitBackedProjectsForServer = query({
+  args: {
+    serverSecret: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const limit = Math.max(1, Math.min(args.limit ?? 5000, 5000))
+    const projects = await ctx.db.query("projects").collect()
+
+    return projects
+      .filter((project) => project.status !== "deleted" && (project.syncMode ?? "replica") === "git")
+      .sort((left, right) => left.updatedAt - right.updatedAt)
+      .slice(0, limit)
+      .map((project) => ({
+        _id: project._id,
+        slug: project.slug,
+        name: project.name,
+        organizationId: project.organizationId,
+        syncMode: (project.syncMode ?? "replica") as ProjectSyncMode,
+        gitRepository: project.gitRepository ?? null,
+        gitSyncState: project.gitSyncState ?? null,
+        updatedAt: project.updatedAt,
+      }))
+  },
+})
+
 export const setGitSyncMetadataForServer = mutation({
   args: {
     projectId: v.id("projects"),
@@ -1388,6 +1435,8 @@ export const setGitSyncMetadataForServer = mutation({
         lastPushedCommit: v.optional(v.string()),
         lastFetchAt: v.optional(v.number()),
         lastPushAt: v.optional(v.number()),
+        repoBytes: v.optional(v.number()),
+        lastRepoSizeAt: v.optional(v.number()),
         errorMessage: v.optional(v.string()),
         migratedFromReplicaAt: v.optional(v.number()),
       })
@@ -1421,6 +1470,52 @@ export const setGitSyncMetadataForServer = mutation({
 
     await ctx.db.patch(args.projectId, updates)
     return await ctx.db.get(args.projectId)
+  },
+})
+
+export const setProjectGitStorageMetricsForServer = mutation({
+  args: {
+    projectId: v.id("projects"),
+    repoBytes: v.number(),
+    measuredAt: v.optional(v.number()),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
+    const measuredAt = args.measuredAt ?? Date.now()
+    const previousState = project.gitSyncState ?? { accessState: "unknown" as GitAccessState }
+    const previousRepoBytes = Math.max(0, previousState.repoBytes ?? 0)
+    const nextRepoBytes = Math.max(0, args.repoBytes)
+    await ctx.db.patch(args.projectId, {
+      gitSyncState: {
+        ...previousState,
+        repoBytes: nextRepoBytes,
+        lastRepoSizeAt: measuredAt,
+      } satisfies GitSyncStateMetadata,
+      updatedAt: Date.now(),
+    })
+
+    const breakdown = await applyProjectStorageDeltas(
+      ctx,
+      project.organizationId,
+      args.projectId,
+      {
+        sourceAndConfig: nextRepoBytes - previousRepoBytes,
+      }
+    )
+    return {
+      success: breakdown !== null,
+      projectId: args.projectId,
+      repoBytes: nextRepoBytes,
+      measuredAt,
+      breakdown,
+    }
   },
 })
 

@@ -5,6 +5,7 @@ export type { OrganizationMembership, Session, User } from './types'
 export interface AppSettings {
   projectsDirectory: string
   previewHeaderCompatibilityEnabled: boolean
+  approvedExternalReadRoots?: string[]
 }
 
 export type UpdateStatus =
@@ -458,6 +459,7 @@ export interface GitSyncStatusResult {
   gitDir?: string
   topLevelPath?: string
   currentBranch?: string
+  headCommit?: string
   upstreamBranch?: string | null
   clean?: boolean
   ahead?: number
@@ -491,6 +493,14 @@ export interface GitSyncRestoreResult {
   currentBranch?: string | null
   headCommit?: string
   restored?: boolean
+  error?: string
+}
+
+export interface GitSyncAdoptResult {
+  success: boolean
+  currentBranch?: string | null
+  headCommit?: string
+  commitCreated?: boolean
   error?: string
 }
 
@@ -946,8 +956,8 @@ export interface ElectronAPI {
       encryptedCredentials?: string
       keyId?: string
     }) => Promise<CloneRepositoryResult>
-    getLocalPath: (slug: string) => Promise<string | null>
-    exists: (slug: string) => Promise<boolean>
+    getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
     writeFile: (options: {
       projectPath: string
@@ -1021,6 +1031,7 @@ export interface ElectronAPI {
       projectPath: string
       branch?: string
       repoUrl?: string
+      debug?: boolean
     }) => Promise<GitSyncEnsureRepoResult>
     gitCloneIfMissing: (options: {
       projectPath: string
@@ -1031,6 +1042,7 @@ export interface ElectronAPI {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => Promise<GitSyncCloneResult>
     gitFetchMain: (options: {
       projectPath: string
@@ -1042,11 +1054,13 @@ export interface ElectronAPI {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => Promise<GitSyncFetchResult>
     gitStatus: (options: {
       projectPath: string
       remote?: string
       branch?: string
+      debug?: boolean
     }) => Promise<GitSyncStatusResult>
     gitPullMain: (options: {
       projectPath: string
@@ -1059,6 +1073,7 @@ export interface ElectronAPI {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => Promise<GitSyncPullResult>
     gitRestoreMain: (options: {
       projectPath: string
@@ -1070,7 +1085,14 @@ export interface ElectronAPI {
       accessToken?: string
       encryptedCredentials?: string
       keyId?: string
+      debug?: boolean
     }) => Promise<GitSyncRestoreResult>
+    gitAdoptWorkspace: (options: {
+      projectPath: string
+      branch?: string
+      repoUrl?: string
+      debug?: boolean
+    }) => Promise<GitSyncAdoptResult>
     gitCommitAll: (options: {
       projectPath: string
       message: string

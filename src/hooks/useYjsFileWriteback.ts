@@ -29,13 +29,11 @@ export function useYjsFileWriteback(
 ): void {
   const convex = useConvex()
   const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const hasHydratedInitialFilesRef = useRef(false)
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing
 
   useEffect(() => {
     if (!yjsDoc || !projectPath || !projectId) return
 
-    let cancelled = false
     const syncCoordinator = new SyncCoordinator({
       projectId,
       actorId: 'remote',
@@ -127,51 +125,6 @@ export function useYjsFileWriteback(
       deleteDebounceTimer = setTimeout(() => {
         void flushDeletes()
       }, DEBOUNCE_MS)
-    }
-
-    const hydrateLocalDiskIfEmpty = async () => {
-      if (hasHydratedInitialFilesRef.current) return
-      hasHydratedInitialFilesRef.current = true
-
-      try {
-        const listResult = await window.electronAPI.project.listFiles({ projectPath })
-        if (!listResult.success) return
-
-        const existingPaths = (listResult.files ?? [])
-          .map((f) => f.path.replace(/\\/g, '/'))
-          .filter((p) => p !== '.gitignore' && p !== '.env.example')
-
-        // If the folder is effectively empty (often only `.gitignore` exists on first run),
-        // hydrate from Yjs so the user actually sees the project files.
-        if (existingPaths.length > 0) return
-        if (yjsDoc.files.size === 0) return
-
-        const filesToWrite = Array.from(yjsDoc.files.entries())
-          .map(([path, yText]) => {
-            const normalizedPath = normalizeFilePath(path)
-            if (!normalizedPath) return null
-            return {
-              path: normalizedPath,
-              content: yText.toString(),
-              encoding: 'utf8' as const,
-            }
-          })
-          .filter((file): file is { path: string; content: string; encoding: 'utf8' } => file !== null)
-
-        if (filesToWrite.length === 0) return
-
-        await window.electronAPI.sync.writeFiles({
-          projectPath,
-          files: filesToWrite,
-        })
-        gitDurabilityCoordinator?.scheduleSync(`remote-hydrate:${filesToWrite.length}`)
-
-        if (!cancelled) {
-          console.log(`[YjsWriteback] Hydrated ${filesToWrite.length} files from Yjs snapshot`)
-        }
-      } catch (err) {
-        console.warn('[YjsWriteback] Initial hydration failed:', err)
-      }
     }
 
     // Observe a single file's Y.Text
@@ -301,13 +254,9 @@ export function useYjsFileWriteback(
     // Observe for renames
     yjsDoc.renames.observe(renamesMapHandler)
 
-    // One-time initial hydration for empty local folders
-    void hydrateLocalDiskIfEmpty()
-
     const pendingWrites = pendingWritesRef.current
 
     return () => {
-      cancelled = true
       // Cleanup: unobserve all files
       for (const unobserve of observedFiles.values()) {
         unobserve()

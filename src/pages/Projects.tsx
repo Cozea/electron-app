@@ -50,10 +50,6 @@ import {
 
 import { Badge } from '../components/ui/badge'
 import { featureFlags } from '@/lib/featureFlags'
-import {
-  logProjectSourceDebug,
-  summarizeProjectForDebug,
-} from '@/features/projects/lib/projectSourceDebug'
 
 
 type SortOption = 'last_modified' | 'name' | 'created'
@@ -123,8 +119,8 @@ export function Projects() {
       ? convexUser?._id
         ? { userId: convexUser._id }
         : 'skip'
-      : convexOrg?._id
-        ? { organizationId: convexOrg._id }
+      : convexOrg?._id && convexUser?._id
+        ? { organizationId: convexOrg._id, userId: convexUser._id }
         : 'skip'
   )
   const projects = useCachedQuery(
@@ -140,26 +136,6 @@ export function Projects() {
     },
     [projects]
   )
-
-  useEffect(() => {
-    logProjectSourceDebug('projects_page:source', {
-      authWorkosUserId: user?.id ?? null,
-      workspaceType: currentOrganization?.workspaceType ?? null,
-      currentOrganizationId: currentOrganization?.organizationId ?? null,
-      convexOrganizationId: convexOrg?._id ?? null,
-      convexUserId: convexUser?._id ?? null,
-      rawProjectCount: Array.isArray(projects) ? projects.length : null,
-      normalizedProjectCount: normalizedProjects.length,
-      projects: normalizedProjects.map((project) => summarizeProjectForDebug(project)),
-    })
-  }, [
-    convexOrg?._id,
-    convexUser?._id,
-    currentOrganization?.organizationId,
-    currentOrganization?.workspaceType,
-    normalizedProjects,
-    projects,
-  ])
 
   const filteredProjects = useMemo(() => {
     let result = normalizedProjects

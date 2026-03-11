@@ -78,13 +78,16 @@ export function FileViewer({ path }: FileViewerProps) {
     const getProjectPath = async () => {
       const localPath =
         syncContext?.projectPath ??
-        (projectSlug ? await window.electronAPI.project.getLocalPath(projectSlug) : null)
+        (projectSlug ? await window.electronAPI.project.getLocalPath({
+          slug: projectSlug,
+          projectId: project?._id ? String(project._id) : projectIdParam ?? undefined,
+        }) : null)
       if (localPath) {
         setProjectPath(localPath)
       }
     }
     getProjectPath()
-  }, [projectSlug, syncContext?.projectPath])
+  }, [project?._id, projectIdParam, projectSlug, syncContext?.projectPath])
 
   // Load file content when path changes and model doesn't exist
   useEffect(() => {
@@ -104,7 +107,10 @@ export function FileViewer({ path }: FileViewerProps) {
 
         const localPath =
           syncContext?.projectPath ??
-          (projectSlug ? await window.electronAPI.project.getLocalPath(projectSlug) : null)
+          (projectSlug ? await window.electronAPI.project.getLocalPath({
+            slug: projectSlug,
+            projectId: project?._id ? String(project._id) : projectIdParam ?? undefined,
+          }) : null)
         if (!localPath) {
           if (requestId === loadRequestIdRef.current) {
             setError('Project folder not found')
@@ -194,7 +200,7 @@ export function FileViewer({ path }: FileViewerProps) {
         loadRequestIdRef.current += 1
       }
     }
-  }, [path, projectSlug, syncContext?.projectPath, model, editorActions, reloadToken, repairBrokenPath])
+  }, [editorActions, model, path, project?._id, projectIdParam, projectSlug, reloadToken, repairBrokenPath, syncContext?.projectPath])
 
   const handleRetry = () => {
     setError(null)

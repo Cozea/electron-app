@@ -37,6 +37,7 @@ import {
   detectFramework,
   detectPackageManager,
   getInstallCommand,
+  getLegacyPeerDepsInstallCommand,
   checkDependenciesInstalled,
   hasPackageJson,
 } from '../utils/projectDetector'
@@ -137,6 +138,7 @@ export function NewProject() {
   )
   const {
     addTerminal,
+    removeTerminal,
     setActiveTerminal,
     updateTerminalStatus,
   } = useTerminalActions()
@@ -245,6 +247,14 @@ export function NewProject() {
         let settled = false
         let commandDispatchTimer: number | null = null
         let completionBuffer = ''
+        let recentOutput = ''
+        const buildTerminalFailureMessage = (fallback: string) => {
+          const sanitizedOutput = recentOutput
+            .replace(new RegExp(`${commandPlan.completionMarker}:\\d+`, 'g'), '')
+            .trim()
+          if (!sanitizedOutput) return fallback
+          return sanitizedOutput.slice(-4000)
+        }
         const cleanup = () => {
           if (settled) return
           settled = true
@@ -267,13 +277,16 @@ export function NewProject() {
           cleanup()
           resolve({
             success: exitCode === 0,
-            error: exitCode === 0 ? undefined : `Command exited with code ${exitCode ?? 'unknown'}`,
+            error: exitCode === 0
+              ? undefined
+              : buildTerminalFailureMessage(`Command exited with code ${exitCode ?? 'unknown'}`),
           })
         })
 
         const unsubscribeOutput = window.electronAPI.terminal.onOutput(({ terminalId: outputTerminalId, data }) => {
           if (outputTerminalId !== terminalId || settled) return
 
+          recentOutput = `${recentOutput}${data}`.slice(-8000)
           completionBuffer = `${completionBuffer}${data}`.slice(-512)
           const exitCode = parseImportTerminalCompletionCode(
             completionBuffer,
@@ -289,7 +302,9 @@ export function NewProject() {
           cleanup()
           resolve({
             success: exitCode === 0,
-            error: exitCode === 0 ? undefined : `Command exited with code ${exitCode}`,
+            error: exitCode === 0
+              ? undefined
+              : buildTerminalFailureMessage(`Command exited with code ${exitCode}`),
           })
         })
 
@@ -333,10 +348,43 @@ export function NewProject() {
     setImportSyncMessage(`Installing dependencies (${packageManager})...`)
     const installCommand = getInstallCommand(packageManager)
     const installResult = await runTerminalCommand(projectPath, installCommand)
-    if (!installResult.success) {
-      throw new Error(installResult.error || 'Dependency installation failed')
+    if (installResult.success) {
+      return
     }
+
+    const legacyPeerDepsCommand = getLegacyPeerDepsInstallCommand(packageManager)
+    const installError = installResult.error || 'Dependency installation failed'
+    const shouldRetryWithLegacyPeerDeps =
+      Boolean(legacyPeerDepsCommand) &&
+      /ERESOLVE|peer dep|peer dependency|unable to resolve dependency tree/i.test(installError)
+
+    if (shouldRetryWithLegacyPeerDeps && legacyPeerDepsCommand) {
+      setImportSyncMessage(`Retrying install with legacy peer deps (${packageManager})...`)
+      const retryResult = await runTerminalCommand(projectPath, legacyPeerDepsCommand)
+      if (retryResult.success) {
+        return
+      }
+      throw new Error(retryResult.error || installError)
+    }
+
+    throw new Error(installError)
   }, [runTerminalCommand])
+
+  const cleanupImportTerminal = useCallback(async () => {
+    if (!importTerminalId) return
+
+    try {
+      const terminalStatus = importTerminal?.status
+      if (terminalStatus === 'starting' || terminalStatus === 'running') {
+        await window.electronAPI.terminal.kill({ terminalId: importTerminalId })
+      }
+    } catch {
+      // Ignore terminal shutdown errors during import cleanup.
+    } finally {
+      removeTerminal(importTerminalId)
+      setImportTerminalId(null)
+    }
+  }, [importTerminal?.status, importTerminalId, removeTerminal])
 
   const handleNext = async () => {
     // On the review step for fresh path, create project and go to build
@@ -619,21 +667,40 @@ export function NewProject() {
 
     setImportSyncMessage('Creating project...')
 
-    try {
-      let createdProjectId: Id<'projects'> | null = null
-      const cleanupCreatedProject = async () => {
-        if (!createdProjectId) return
+    let createdProjectId: Id<'projects'> | null = null
+    let createdWorkspacePath: string | null = null
+    let retainCreatedProject = false
+
+    const cleanupPartialImport = async () => {
+      const workspacePath = createdWorkspacePath
+      createdWorkspacePath = null
+      if (workspacePath) {
         try {
-          await deleteProject({
-            projectId: createdProjectId,
-            userId: convexUserId,
-            confirmName: repoName,
+          const deleteLocalResult = await window.electronAPI.storage.deleteProject({
+            projectPath: workspacePath,
           })
+          if (!deleteLocalResult.success) {
+            throw new Error(deleteLocalResult.error || 'Failed to remove local import workspace')
+          }
         } catch (cleanupError) {
-          console.warn('[Import] Failed to cleanup partially created project:', cleanupError)
+          console.warn('[Import] Failed to cleanup partially imported local workspace:', cleanupError)
         }
       }
 
+      if (!createdProjectId) return
+      try {
+        await deleteProject({
+          projectId: createdProjectId,
+          userId: convexUserId,
+          confirmName: repoName,
+        })
+        createdProjectId = null
+      } catch (cleanupError) {
+        console.warn('[Import] Failed to cleanup partially created project:', cleanupError)
+      }
+    }
+
+    try {
       console.log('[Import] Calling createProject mutation...')
       const result = await createProject({
         organizationId,
@@ -674,7 +741,7 @@ export function NewProject() {
         }
 
         if (!result.slug) {
-          await cleanupCreatedProject()
+          await cleanupPartialImport()
           setImportSyncState('error')
           setImportSyncMessage('Project created but no slug was returned.')
           setImportError('Project created but no slug was returned.')
@@ -692,7 +759,7 @@ export function NewProject() {
         })
 
         if (!cloneResult.success || !cloneResult.localPath) {
-          await cleanupCreatedProject()
+          await cleanupPartialImport()
           let cloneMessage = cloneResult.error || 'Failed to clone repository'
           if (
             isRepoIntegrationProvider(repoSource.provider) &&
@@ -706,6 +773,7 @@ export function NewProject() {
           return
         }
 
+        createdWorkspacePath = cloneResult.localPath
         importPath = cloneResult.localPath
         await updateMemberLocalPath({
           projectId: result.projectId,
@@ -714,7 +782,7 @@ export function NewProject() {
         })
       } else {
         if (!result.slug) {
-          await cleanupCreatedProject()
+          await cleanupPartialImport()
           setImportSyncState('error')
           setImportSyncMessage('Project created but no slug was returned.')
           setImportError('Project created but no slug was returned.')
@@ -727,13 +795,14 @@ export function NewProject() {
           initGit: false,
         })
         if (!createFolderResult.success || !createFolderResult.localPath) {
-          await cleanupCreatedProject()
+          await cleanupPartialImport()
           const message = createFolderResult.error || 'Failed to prepare project workspace'
           setImportSyncState('error')
           setImportSyncMessage(message)
           setImportError(message)
           return
         }
+        createdWorkspacePath = createFolderResult.localPath
 
         const copyResult = await window.electronAPI.project.copyDirectorySnapshot({
           sourcePath: repoSource.repoUrl,
@@ -741,7 +810,7 @@ export function NewProject() {
           mode: 'relocation',
         })
         if (!copyResult.success) {
-          await cleanupCreatedProject()
+          await cleanupPartialImport()
           const message = copyResult.error || 'Failed to relocate local repository'
           setImportSyncState('error')
           setImportSyncMessage(message)
@@ -759,6 +828,7 @@ export function NewProject() {
 
       if (result.projectId) {
         setImportSyncState('syncing')
+        let publishFailed = false
 
         const runtimePreflight = await ensureProjectRuntimeToolchains(importPath, (progress) => {
           setImportSyncMessage(progress.message)
@@ -768,6 +838,7 @@ export function NewProject() {
             ? runtimeLabel(runtimePreflight.failedRuntime)
             : 'Required'
           const message = runtimePreflight.error || `${failedLabel} runtime is unavailable.`
+          await cleanupPartialImport()
           setImportError(message)
           setImportSyncState('error')
           setImportSyncMessage(message)
@@ -792,12 +863,14 @@ export function NewProject() {
           await preinstallDependencies(importPath)
         } catch (dependencyError) {
           const message = dependencyError instanceof Error ? dependencyError.message : 'Dependency installation failed'
+          await cleanupPartialImport()
           setImportError(message)
           setImportSyncState('error')
           setImportSyncMessage('Import failed')
           return
         }
 
+        retainCreatedProject = true
         try {
           await publishWorkspaceToCozeaGit({
             convex,
@@ -830,6 +903,7 @@ export function NewProject() {
             status: 'synced',
           })
         } catch (gitImportError) {
+          publishFailed = true
           const message = gitImportError instanceof Error ? gitImportError.message : 'Git import sync failed'
           console.warn('[Import] Import publish to Cozea git failed:', message)
           try {
@@ -843,16 +917,14 @@ export function NewProject() {
             console.warn('[Import] Failed to mark git import error state:', syncStatusError)
           }
           setImportError(message)
-          setImportSyncState('error')
-          setImportSyncMessage('Import failed')
-          return
         }
 
         setImportSyncState('ready')
-        setImportSyncMessage('Opening project...')
+        setImportSyncMessage(publishFailed ? 'Opening project locally...' : 'Opening project...')
         setTimeout(() => {
           const targetPath = buildProjectPath(String(result.projectId))
           console.log('[Import] Navigating to:', targetPath)
+          void cleanupImportTerminal()
           navigate(targetPath, {
             state: {
               syncMode: 'git',
@@ -868,6 +940,9 @@ export function NewProject() {
         setImportError('Project created but no project id was returned.')
       }
     } catch (error) {
+      if (!retainCreatedProject) {
+        await cleanupPartialImport()
+      }
       console.error('[Import] Failed to create project:', error)
       const message = error instanceof Error ? error.message : 'Failed to create project'
       setImportError(message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, ''))
@@ -934,23 +1009,17 @@ export function NewProject() {
         )
 
       case 'review': {
-        const showImportTerminalPanel = Boolean(
-          importTerminalId && (isImporting || importTerminal || importSyncState === 'error')
-        )
+        const showImportTerminalPanel = Boolean(importTerminalId && importSyncState !== 'idle')
         return (
           <div
             className={cn(
-              showImportTerminalPanel ? "mx-auto w-full max-w-6xl" : ""
+              "flex min-h-0 flex-1 flex-col",
+              "mx-auto w-full",
+              state.path === 'repo' && "max-w-none"
             )}
           >
-            <div
-              className={cn(
-                showImportTerminalPanel
-                  ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 items-stretch"
-                  : ""
-              )}
-            >
-              <div className="min-w-0">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <div className={cn("min-w-0 h-full")}>
                 <ReviewStep
                   state={state}
                   onEditStep={handleEditStep}
@@ -959,31 +1028,30 @@ export function NewProject() {
                   importError={importError}
                   importSyncState={importSyncState}
                   importSyncMessage={importSyncMessage}
-                  fillHeight={showImportTerminalPanel}
-                  className={showImportTerminalPanel ? "max-w-none mx-0" : undefined}
+                  fillHeight={state.path === 'repo'}
+                  className="max-w-none mx-0"
                 />
               </div>
+            </div>
 
-              {showImportTerminalPanel && importTerminalId && (
-                <div className="min-w-0 lg:self-stretch">
-                  <div className="rounded-xl bg-secondary/80 dark:bg-secondary/40 overflow-hidden flex flex-col h-[44vh] min-h-[260px] lg:h-full lg:min-h-0">
-                    <div className="flex items-center justify-between border-b border-border px-6 py-4">
-                      <p className="text-sm font-medium">Import Terminal</p>
-                      <p className="text-xs text-muted-foreground">
-                        Live output from dependency installation
-                      </p>
-                    </div>
-                    <div className="flex-1 min-h-0">
-                      <TerminalInstance
-                        terminalId={importTerminalId}
-                        className="h-full w-full [--terminal-panel-bg:var(--secondary)]"
-                        shouldAutoFocus={isImporting}
-                      />
-                    </div>
+            {showImportTerminalPanel && importTerminalId && (
+              <div className="mt-2 flex h-[280px] min-h-[200px] max-h-[36vh] flex-col overflow-hidden rounded-xl border border-border bg-content-surface">
+                <div className="flex h-8 items-center justify-between border-b border-border px-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      Import Terminal
+                    </p>
                   </div>
                 </div>
-              )}
-            </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <TerminalInstance
+                    terminalId={importTerminalId}
+                    className="h-full w-full [--terminal-panel-bg:var(--content-surface)]"
+                    shouldAutoFocus={isImporting}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )
       }
@@ -1205,7 +1273,8 @@ export function NewProject() {
         onStepClick={goToStep}
         canNavigateToStep={(step) => step < state.step}
         title={isConversationMode ? 'AI Project Planning' : state.path ? 'New Project' : 'Create a New Project'}
-        fullHeight={isConversationMode}
+        fullHeight={isConversationMode || (state.path === 'repo' && currentStepDef?.id === 'review')}
+        preserveInsetInFullHeight={state.path === 'repo' && currentStepDef?.id === 'review'}
         showInternalStepHeader={false}
       >
         {/* Step Content */}

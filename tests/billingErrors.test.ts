@@ -14,10 +14,10 @@ describe('billing error parsing', () => {
       expect.objectContaining({
         error: 'entitlement_required',
         code: 'ENTITLEMENT_REQUIRED',
-        title: 'AI access requires a paid plan',
-        message: "Your current workspace plan doesn't include AI access.",
-        hint: 'Open Settings > Billing to start or renew a plan.',
-        action: { label: 'Open Billing', href: '/settings/billing' },
+        title: 'Paid Plan Required',
+        message: 'Cozea agents are only in paid plans.',
+        hint: undefined,
+        action: { label: 'Billing', href: '/settings/billing?plans=1' },
       })
     )
   })
@@ -54,9 +54,9 @@ describe('billing error parsing', () => {
       expect.objectContaining({
         error: 'wallet_insufficient_funds',
         code: 'WALLET_INSUFFICIENT_FUNDS',
-        title: 'AI wallet balance low',
-        message: 'Not enough AI wallet funds for this request.',
-        action: { label: 'Billing', href: '/settings/billing' },
+        title: 'Not Enough Balance',
+        message: 'Subscription credits exhausted.',
+        action: { label: 'Billing', href: '/settings/billing?plans=1' },
       })
     )
   })

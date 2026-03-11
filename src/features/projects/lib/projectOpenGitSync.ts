@@ -1,6 +1,8 @@
 import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
+import { isGitOpenDebugEnabled, logGitOpenDebug } from '@/lib/git/gitOpenDebug'
+import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 
 export interface GitRepositoryMetadataLike {
   provider?: string
@@ -13,6 +15,7 @@ export interface ProjectOpenGitProjectLike {
   slug: string
   organizationId: Id<'organizations'>
   syncMode?: 'replica' | 'git'
+  localPath?: string | null
   gitRepository?: GitRepositoryMetadataLike | null
   sourceControl?: {
     provider?: string
@@ -40,6 +43,15 @@ export interface PrepareGitProjectForOpenResult {
   currentBranch?: string
 }
 
+function shouldAdoptWorkspaceForMissingRemote(project: ProjectOpenGitProjectLike): boolean {
+  if (project.sourceControl?.provider === 'local') {
+    return true
+  }
+
+  const provider = project.gitRepository?.provider?.trim().toLowerCase()
+  return Boolean(provider && provider !== 'cozea')
+}
+
 interface GitAuthPayload {
   accessToken?: string
 }
@@ -58,19 +70,38 @@ async function resolveGitAuthPayload(): Promise<GitAuthPayload> {
   }
 }
 
-async function resolveTargetProjectPath(projectSlug: string): Promise<string> {
+async function resolveTargetProjectPath(project: Pick<ProjectOpenGitProjectLike, '_id' | 'slug'>): Promise<string> {
+  const resolvedExistingPath = await window.electronAPI.project.getLocalPath({
+    slug: project.slug,
+    projectId: String(project._id),
+  })
+  if (resolvedExistingPath) {
+    return resolvedExistingPath
+  }
+
   const settings = await window.electronAPI.settings.get()
-  return `${settings.projectsDirectory.replace(/\/+$/, '')}/${projectSlug}`
+  return `${settings.projectsDirectory.replace(/\/+$/, '')}/${project.slug}`
 }
 
 async function isEffectivelyEmptyLocalWorkspace(projectPath: string): Promise<boolean> {
   const listResult = await window.electronAPI.project.listFiles({ projectPath })
+  logGitOpenDebug('empty_check:list_result', {
+    projectPath,
+    success: listResult.success,
+    fileCount: listResult.files?.length ?? null,
+    fileSample: (listResult.files ?? []).slice(0, 20).map((file) => file.path),
+  })
   if (!listResult.success) {
     return false
   }
   const meaningfulFiles = (listResult.files ?? []).filter((file) => {
     const normalizedPath = file.path.replace(/\\/g, '/')
     return normalizedPath !== '.gitignore' && normalizedPath !== '.env.example'
+  })
+  logGitOpenDebug('empty_check:meaningful_files', {
+    projectPath,
+    meaningfulFileCount: meaningfulFiles.length,
+    meaningfulFileSample: meaningfulFiles.slice(0, 20).map((file) => file.path),
   })
   return meaningfulFiles.length === 0
 }
@@ -104,8 +135,20 @@ export async function prepareGitProjectForOpen({
   const branch = resolveGitBranch(project)
   const auth = await resolveGitAuthPayload()
   const extraHeader = buildCozeaGitAuthHeader(auth.accessToken)
-  let effectiveLocalPath = localPath ?? (await resolveTargetProjectPath(project.slug))
+  const debug = isGitOpenDebugEnabled()
+  let effectiveLocalPath = localPath ?? project.localPath ?? (await resolveTargetProjectPath(project))
   let changed = false
+
+  logGitOpenDebug('prepare:start', {
+    projectId: String(project._id),
+    projectSlug: project.slug,
+    branch,
+    repoUrl,
+    providedLocalPath: localPath ?? null,
+    projectLocalPath: project.localPath ?? null,
+    effectiveLocalPath,
+    hasAuthToken: Boolean(auth.accessToken),
+  })
 
   if (!localPath) {
     onProgress?.('Cloning repository...')
@@ -114,6 +157,12 @@ export async function prepareGitProjectForOpen({
       repoUrl,
       branch,
       extraHeader,
+      debug,
+    })
+    logGitOpenDebug('prepare:clone_result', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      cloneResult,
     })
     if (!cloneResult.success || !cloneResult.localPath) {
       throw new Error(cloneResult.error || 'Failed to clone repository')
@@ -134,6 +183,12 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       branch,
       repoUrl,
+      debug,
+    })
+    logGitOpenDebug('prepare:ensure_result', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      ensureResult,
     })
     if (!ensureResult.success) {
       throw new Error(ensureResult.error || 'Failed to initialize local git repository')
@@ -147,25 +202,184 @@ export async function prepareGitProjectForOpen({
     branch,
     repoUrl,
     extraHeader,
+    debug,
+  })
+  logGitOpenDebug('prepare:fetch_result', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    fetchResult,
   })
   if (!fetchResult.success) {
     throw new Error(fetchResult.error || 'Failed to fetch latest project changes')
   }
+  let remoteHeadCommit = fetchResult.headCommit ?? null
 
   let status = await window.electronAPI.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
+    debug,
+  })
+  logGitOpenDebug('prepare:initial_status', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    status,
   })
   if (!status.success || !status.isRepo) {
     throw new Error(status.error || 'Failed to read local git status')
   }
 
+  const effectivelyEmptyWorkspace = await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)
+
+  if (
+    !remoteHeadCommit &&
+    shouldAdoptWorkspaceForMissingRemote(project) &&
+    !effectivelyEmptyWorkspace
+  ) {
+    onProgress?.('Preparing imported project history...')
+    const adoptResult = await window.electronAPI.sync.gitAdoptWorkspace({
+      projectPath: effectiveLocalPath,
+      branch,
+      repoUrl,
+      debug,
+    })
+    logGitOpenDebug('prepare:adopt_workspace', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      adoptResult,
+    })
+    if (!adoptResult.success) {
+      throw new Error(adoptResult.error || 'Failed to prepare imported project for Cozea Git')
+    }
+    changed = changed || Boolean(adoptResult.commitCreated)
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_adopt_workspace', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      status,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after preparing imported project')
+    }
+  }
+
+  if (!remoteHeadCommit && status.headCommit) {
+    onProgress?.('Publishing missing cloud history...')
+    const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
+      projectPath: effectiveLocalPath,
+      branch,
+      repoUrl,
+      extraHeader,
+    })
+    logGitOpenDebug('prepare:bootstrap_remote_push', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      bootstrapPushResult,
+      localHeadCommit: status.headCommit,
+    })
+    if (!bootstrapPushResult.success) {
+      throw new Error(bootstrapPushResult.error || 'Failed to restore missing cloud history')
+    }
+    remoteHeadCommit = bootstrapPushResult.headCommit ?? status.headCommit
+    changed = true
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      kind: 'published',
+    })
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_bootstrap_remote_push', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      status,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after restoring cloud history')
+    }
+  }
+
+  const suspectedLocalWipe = (status.behind ?? 0) > 0 && shouldTreatAsSuspectedLocalWipe(status)
+
+  if (!remoteHeadCommit && !status.headCommit && !effectivelyEmptyWorkspace) {
+    onProgress?.('Publishing local project to cloud...')
+    const bootstrapCommitResult = await window.electronAPI.sync.gitCommitAll({
+      projectPath: effectiveLocalPath,
+      message: 'cozea: bootstrap cloud history',
+    })
+    logGitOpenDebug('prepare:bootstrap_initial_commit', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      bootstrapCommitResult,
+    })
+    if (!bootstrapCommitResult.success) {
+      throw new Error(bootstrapCommitResult.error || 'Failed to create initial project commit')
+    }
+
+    const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
+      projectPath: effectiveLocalPath,
+      branch,
+      repoUrl,
+      extraHeader,
+    })
+    logGitOpenDebug('prepare:bootstrap_initial_push', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      bootstrapPushResult,
+      commitSha: bootstrapCommitResult.commitSha ?? null,
+    })
+    if (!bootstrapPushResult.success) {
+      throw new Error(bootstrapPushResult.error || 'Failed to publish project files to cloud')
+    }
+
+    remoteHeadCommit = bootstrapPushResult.headCommit ?? bootstrapCommitResult.commitSha ?? null
+    changed = true
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      kind: 'published',
+    })
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_bootstrap_initial_push', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      status,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after publishing project files')
+    }
+  }
+
   const shouldRestoreWorkspace =
-    Boolean(fetchResult.headCommit) &&
-    (
-      await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath) ||
-      ((status.behind ?? 0) > 0 && shouldTreatAsSuspectedLocalWipe(status))
-    )
+    Boolean(remoteHeadCommit) &&
+    (effectivelyEmptyWorkspace || suspectedLocalWipe)
+
+  logGitOpenDebug('prepare:restore_decision', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    fetchHeadCommit: remoteHeadCommit,
+    behind: status.behind ?? 0,
+    deletedCount: status.deletedCount ?? 0,
+    changedPathCount: status.changedPaths?.length ?? 0,
+    hasUntrackedChanges: status.hasUntrackedChanges ?? false,
+    effectivelyEmptyWorkspace,
+    suspectedLocalWipe,
+    shouldRestoreWorkspace,
+  })
+
+  if (effectivelyEmptyWorkspace && !remoteHeadCommit && !status.headCommit) {
+    throw new Error('Cloud project history is unavailable and this local workspace is empty.')
+  }
 
   if (shouldRestoreWorkspace) {
     onProgress?.('Restoring project files...')
@@ -174,14 +388,31 @@ export async function prepareGitProjectForOpen({
       branch,
       repoUrl,
       extraHeader,
+      debug,
+    })
+    logGitOpenDebug('prepare:restore_result', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      restoreResult,
     })
     if (!restoreResult.success) {
       throw new Error(restoreResult.error || 'Failed to restore project files from cloud')
     }
     changed = true
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      kind: 'restored',
+    })
     status = await window.electronAPI.sync.gitStatus({
       projectPath: effectiveLocalPath,
       branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_restore', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      status,
     })
     if (!status.success || !status.isRepo) {
       throw new Error(status.error || 'Failed to verify git status after restore')
@@ -202,6 +433,11 @@ export async function prepareGitProjectForOpen({
       projectPath: effectiveLocalPath,
       message: 'cozea: sync workspace',
     })
+    logGitOpenDebug('prepare:commit_before_pull', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      commitResult,
+    })
     if (!commitResult.success) {
       throw new Error(commitResult.error || 'Failed to save local git changes')
     }
@@ -216,6 +452,12 @@ export async function prepareGitProjectForOpen({
       repoUrl,
       strategy: 'merge',
       extraHeader,
+      debug,
+    })
+    logGitOpenDebug('prepare:pull_result', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      pullResult,
     })
     if (!pullResult.success) {
       throw new Error(pullResult.error || 'Failed to pull latest project changes')
@@ -224,11 +466,24 @@ export async function prepareGitProjectForOpen({
       throw new Error('Git merge conflicts must be resolved before the project can be opened.')
     }
     changed = changed || !pullResult.alreadyUpToDate
+    if (!pullResult.alreadyUpToDate) {
+      dispatchGitStatusEvent({
+        projectId: String(project._id),
+        projectPath: effectiveLocalPath,
+        kind: 'pulled',
+      })
+    }
   }
 
   status = await window.electronAPI.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
+    debug,
+  })
+  logGitOpenDebug('prepare:status_after_pull', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    status,
   })
   if (!status.success || !status.isRepo) {
     throw new Error(status.error || 'Failed to verify git status after pull')
@@ -250,11 +505,22 @@ export async function prepareGitProjectForOpen({
       throw new Error(pushResult.error || 'Failed to publish local git changes')
     }
     changed = true
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      kind: 'published',
+    })
   }
 
   const finalStatus = await window.electronAPI.sync.gitStatus({
     projectPath: effectiveLocalPath,
     branch,
+    debug,
+  })
+  logGitOpenDebug('prepare:final_status', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    finalStatus,
   })
   if (!finalStatus.success || !finalStatus.isRepo) {
     throw new Error(finalStatus.error || 'Failed to verify final git status')

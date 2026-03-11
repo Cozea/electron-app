@@ -215,6 +215,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         projectPath: string
         branch?: string
         repoUrl?: string
+        debug?: boolean
       }
     ) => gitSyncService.ensureRepo(options)
   )
@@ -232,6 +233,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         accessToken?: string
         encryptedCredentials?: string
         keyId?: string
+        debug?: boolean
       }
     ) => gitSyncService.cloneIfMissing(options)
   )
@@ -249,6 +251,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         accessToken?: string
         encryptedCredentials?: string
         keyId?: string
+        debug?: boolean
       }
     ) => gitSyncService.fetchMain(options)
   )
@@ -261,6 +264,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         projectPath: string
         remote?: string
         branch?: string
+        debug?: boolean
       }
     ) => gitSyncService.getStatus(options)
   )
@@ -279,6 +283,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         accessToken?: string
         encryptedCredentials?: string
         keyId?: string
+        debug?: boolean
       }
     ) => gitSyncService.pullMain(options)
   )
@@ -297,8 +302,22 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         accessToken?: string
         encryptedCredentials?: string
         keyId?: string
+        debug?: boolean
       }
     ) => gitSyncService.restoreMain(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitAdoptWorkspace',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        branch?: string
+        repoUrl?: string
+        debug?: boolean
+      }
+    ) => gitSyncService.adoptWorkspace(options)
   )
 
   ipcMain.handle(

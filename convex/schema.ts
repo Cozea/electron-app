@@ -885,6 +885,8 @@ export default defineSchema({
         lastPushedCommit: v.optional(v.string()),
         lastFetchAt: v.optional(v.number()),
         lastPushAt: v.optional(v.number()),
+        repoBytes: v.optional(v.number()),
+        lastRepoSizeAt: v.optional(v.number()),
         errorMessage: v.optional(v.string()),
         migratedFromReplicaAt: v.optional(v.number()),
       })

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type {
+  GitSyncAdoptResult,
   GitSyncCloneResult,
   GitSyncCommitResult,
   GitSyncCommitPushResult,
@@ -31,6 +32,7 @@ interface GitAuthOptions {
   accessToken?: string
   encryptedCredentials?: string
   keyId?: string
+  debug?: boolean
 }
 
 interface RepoMetadata {
@@ -67,10 +69,19 @@ export class GitSyncService {
 
   private constructor() {}
 
+  private debug(enabled: boolean | undefined, event: string, payload: Record<string, unknown>): void {
+    if (!enabled) {
+      return
+    }
+
+    console.info(`[GitOpenDebug][Main] ${event}`, payload)
+  }
+
   async ensureRepo(options: {
     projectPath: string
     branch?: string
     repoUrl?: string
+    debug?: boolean
   }): Promise<GitSyncEnsureRepoResult> {
     const branch = this.normalizeBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
@@ -114,6 +125,15 @@ export class GitSyncService {
       }
 
       const after = await this.getRepoMetadata(projectPath)
+      this.debug(options.debug, 'ensure_repo', {
+        projectPath,
+        branch,
+        initialized,
+        isRepo: after.isRepo,
+        currentBranch: after.currentBranch ?? null,
+        gitDir: after.gitDir ?? null,
+        topLevelPath: after.topLevelPath ?? null,
+      })
       return {
         success: true,
         isRepo: after.isRepo,
@@ -140,6 +160,7 @@ export class GitSyncService {
     accessToken?: string
     encryptedCredentials?: string
     keyId?: string
+    debug?: boolean
   }): Promise<GitSyncCloneResult> {
     const branch = this.normalizeBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
@@ -151,6 +172,12 @@ export class GitSyncService {
         if (entries.length > 0) {
           const metadata = await this.getRepoMetadata(projectPath)
           if (metadata.isRepo) {
+            this.debug(options.debug, 'clone_if_missing:existing_repo', {
+              projectPath,
+              branch,
+              currentBranch: metadata.currentBranch ?? null,
+              headCommit: metadata.headCommit ?? null,
+            })
             return {
               success: true,
               cloned: false,
@@ -192,6 +219,13 @@ export class GitSyncService {
       }
 
       const metadata = await this.getRepoMetadata(projectPath)
+      this.debug(options.debug, 'clone_if_missing:cloned', {
+        projectPath,
+        branch,
+        currentBranch: metadata.currentBranch ?? null,
+        headCommit: metadata.headCommit ?? null,
+        remoteUrl: await this.getRemoteUrl(projectPath),
+      })
       return {
         success: true,
         cloned: true,
@@ -218,12 +252,21 @@ export class GitSyncService {
     accessToken?: string
     encryptedCredentials?: string
     keyId?: string
+    debug?: boolean
   }): Promise<GitSyncFetchResult> {
     const remote = this.normalizeRemote(options.remote)
     const branch = this.normalizeBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
 
     const metadata = await this.getRepoMetadata(projectPath)
+    this.debug(options.debug, 'fetch:start', {
+      projectPath,
+      remote,
+      branch,
+      isRepo: metadata.isRepo,
+      headCommit: metadata.headCommit ?? null,
+      repoUrl: options.repoUrl ?? null,
+    })
     if (!metadata.isRepo) {
       return { success: false, error: 'Project path is not a git repository' }
     }
@@ -242,20 +285,36 @@ export class GitSyncService {
     })
     if (!fetchResult.success) {
       if (this.isMissingRemoteBranchError(fetchResult.error)) {
+        this.debug(options.debug, 'fetch:missing_remote_branch', {
+          projectPath,
+          remote,
+          branch,
+          currentBranch: await this.getCurrentBranch(projectPath),
+          headCommit: metadata.headCommit ?? null,
+        })
         return {
           success: true,
           remote,
           branch,
           currentBranch: await this.getCurrentBranch(projectPath),
           upstreamRef: `${remote}/${branch}`,
-          headCommit: metadata.headCommit,
+          headCommit: undefined,
         }
       }
       return { success: false, error: fetchResult.error }
     }
 
-    const remoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
+    const remoteHead =
+      (await this.getRevision(projectPath, `${remote}/${branch}`)) ??
+      (await this.getRevision(projectPath, 'FETCH_HEAD'))
     const currentBranch = await this.getCurrentBranch(projectPath)
+    this.debug(options.debug, 'fetch:success', {
+      projectPath,
+      remote,
+      branch,
+      currentBranch: currentBranch ?? null,
+      remoteHead: remoteHead ?? metadata.headCommit ?? null,
+    })
     return {
       success: true,
       remote,
@@ -270,11 +329,21 @@ export class GitSyncService {
     projectPath: string
     remote?: string
     branch?: string
+    debug?: boolean
   }): Promise<GitSyncStatusResult> {
     const remote = this.normalizeRemote(options.remote)
     const branch = this.normalizeBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
     const metadata = await this.getRepoMetadata(projectPath)
+    this.debug(options.debug, 'status:start', {
+      projectPath,
+      remote,
+      branch,
+      repoExists: metadata.repoExists,
+      isRepo: metadata.isRepo,
+      currentBranch: metadata.currentBranch ?? null,
+      headCommit: metadata.headCommit ?? null,
+    })
 
     if (!metadata.repoExists) {
       return {
@@ -311,9 +380,13 @@ export class GitSyncService {
     ahead = parsed.ahead
     behind = parsed.behind
 
-    const explicitRemoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
+    const explicitRemoteHead =
+      (await this.getRevision(projectPath, `${remote}/${branch}`)) ??
+      (await this.getRevision(projectPath, 'FETCH_HEAD'))
     if (!metadata.headCommit && explicitRemoteHead) {
       behind = (await this.getRevisionCount(projectPath, `${remote}/${branch}`)) ?? 1
+    } else if (metadata.headCommit && !explicitRemoteHead) {
+      ahead = (await this.getRevisionCount(projectPath, 'HEAD')) ?? 1
     } else if ((ahead === 0 && behind === 0) && explicitRemoteHead && metadata.headCommit) {
       const aheadBehind = await this.getAheadBehind(projectPath, metadata.headCommit, explicitRemoteHead)
       if (aheadBehind) {
@@ -322,6 +395,24 @@ export class GitSyncService {
       }
     }
 
+    this.debug(options.debug, 'status:result', {
+      projectPath,
+      remote,
+      branch,
+      currentBranch: metadata.currentBranch ?? null,
+      ahead,
+      behind,
+      clean: parsed.clean,
+      hasConflicts: parsed.hasConflicts,
+      hasStagedChanges: parsed.hasStagedChanges,
+      hasUnstagedChanges: parsed.hasUnstagedChanges,
+      hasUntrackedChanges: parsed.hasUntrackedChanges,
+      deletedCount: parsed.deletedCount,
+      changedPathCount: parsed.changedPaths.length,
+      changedPathsSample: parsed.changedPaths.slice(0, 20),
+      explicitRemoteHead: explicitRemoteHead ?? null,
+    })
+
     return {
       success: true,
       repoExists: true,
@@ -329,6 +420,7 @@ export class GitSyncService {
       gitDir: metadata.gitDir,
       topLevelPath: metadata.topLevelPath,
       currentBranch: metadata.currentBranch,
+      headCommit: metadata.headCommit,
       upstreamBranch: parsed.upstreamBranch,
       clean: parsed.clean,
       ahead,
@@ -353,6 +445,7 @@ export class GitSyncService {
     accessToken?: string
     encryptedCredentials?: string
     keyId?: string
+    debug?: boolean
   }): Promise<GitSyncPullResult> {
     const remote = this.normalizeRemote(options.remote)
     const branch = this.normalizeBranch(options.branch)
@@ -360,6 +453,14 @@ export class GitSyncService {
     const projectPath = path.resolve(options.projectPath)
 
     const metadata = await this.getRepoMetadata(projectPath)
+    this.debug(options.debug, 'pull:start', {
+      projectPath,
+      remote,
+      branch,
+      strategy,
+      currentBranch: metadata.currentBranch ?? null,
+      headCommit: metadata.headCommit ?? null,
+    })
     if (!metadata.isRepo) {
       return {
         success: false,
@@ -380,8 +481,16 @@ export class GitSyncService {
     }
 
     const beforeHead = metadata.headCommit
-    const remoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
+    const remoteHead =
+      (await this.getRevision(projectPath, `${remote}/${branch}`)) ??
+      (await this.getRevision(projectPath, 'FETCH_HEAD'))
     if (!beforeHead && remoteHead) {
+      this.debug(options.debug, 'pull:delegating_restore', {
+        projectPath,
+        remote,
+        branch,
+        remoteHead,
+      })
       const restore = await this.restoreMain(options)
       if (!restore.success) {
         return {
@@ -428,6 +537,17 @@ export class GitSyncService {
 
     const afterHead = await this.getRevision(projectPath, 'HEAD')
     const combinedOutput = `${pull.stdout}\n${pull.stderr}`
+    this.debug(options.debug, 'pull:result', {
+      projectPath,
+      remote,
+      branch,
+      beforeHead: beforeHead ?? null,
+      afterHead: afterHead ?? null,
+      alreadyUpToDate: /already up[ -]to[ -]date/i.test(combinedOutput),
+      fastForward:
+        /fast-forward/i.test(combinedOutput) ||
+        (Boolean(beforeHead) && Boolean(afterHead) && beforeHead !== afterHead && strategy === 'ff-only'),
+    })
     return {
       success: true,
       remote,
@@ -453,12 +573,22 @@ export class GitSyncService {
     accessToken?: string
     encryptedCredentials?: string
     keyId?: string
+    debug?: boolean
   }): Promise<GitSyncRestoreResult> {
     const remote = this.normalizeRemote(options.remote)
     const branch = this.normalizeBranch(options.branch)
     const projectPath = path.resolve(options.projectPath)
 
     const metadata = await this.getRepoMetadata(projectPath)
+    this.debug(options.debug, 'restore:start', {
+      projectPath,
+      remote,
+      branch,
+      isRepo: metadata.isRepo,
+      currentBranch: metadata.currentBranch ?? null,
+      headCommit: metadata.headCommit ?? null,
+      repoUrl: options.repoUrl ?? null,
+    })
     if (!metadata.isRepo) {
       return {
         success: false,
@@ -480,6 +610,11 @@ export class GitSyncService {
 
     const remoteHead = await this.getRevision(projectPath, `${remote}/${branch}`)
     if (!remoteHead) {
+      this.debug(options.debug, 'restore:missing_remote_head', {
+        projectPath,
+        remote,
+        branch,
+      })
       return {
         success: false,
         remote,
@@ -523,13 +658,99 @@ export class GitSyncService {
       console.warn('[GitSyncService] Failed to set upstream after restore:', upstream.error)
     }
 
+    const currentBranch = await this.getCurrentBranch(projectPath)
+    const headCommit = await this.getRevision(projectPath, 'HEAD') ?? remoteHead
+    this.debug(options.debug, 'restore:success', {
+      projectPath,
+      remote,
+      branch,
+      currentBranch: currentBranch ?? null,
+      headCommit,
+      remoteHead,
+    })
+
     return {
       success: true,
       remote,
       branch,
-      currentBranch: await this.getCurrentBranch(projectPath),
-      headCommit: await this.getRevision(projectPath, 'HEAD') ?? remoteHead,
+      currentBranch,
+      headCommit,
       restored: true,
+    }
+  }
+
+  async adoptWorkspace(options: {
+    projectPath: string
+    branch?: string
+    repoUrl?: string
+    debug?: boolean
+  }): Promise<GitSyncAdoptResult> {
+    const branch = this.normalizeBranch(options.branch)
+    const projectPath = path.resolve(options.projectPath)
+
+    try {
+      const gitDirPath = path.join(projectPath, '.git')
+      if (fs.existsSync(gitDirPath)) {
+        fs.rmSync(gitDirPath, { recursive: true, force: true })
+      }
+
+      fs.mkdirSync(projectPath, { recursive: true })
+
+      const init = await this.initializeRepository(projectPath, branch)
+      if (!init.success) {
+        return {
+          success: false,
+          error: init.error,
+        }
+      }
+
+      const configured = await this.ensureCommitIdentity(projectPath)
+      if (!configured.success) {
+        return {
+          success: false,
+          error: configured.error,
+        }
+      }
+
+      if (options.repoUrl?.trim()) {
+        const remoteResult = await this.setRemoteUrl(projectPath, this.normalizeRemoteUrl(options.repoUrl))
+        if (!remoteResult.success) {
+          return {
+            success: false,
+            error: remoteResult.error,
+          }
+        }
+      }
+
+      const commitResult = await this.commitAll({
+        projectPath,
+        message: 'cozea: bootstrap cloud history',
+      })
+      if (!commitResult.success) {
+        return {
+          success: false,
+          error: commitResult.error,
+        }
+      }
+
+      this.debug(options.debug, 'adopt_workspace:success', {
+        projectPath,
+        branch,
+        commitCreated: commitResult.commitCreated ?? false,
+        headCommit: commitResult.commitSha ?? null,
+      })
+
+      return {
+        success: true,
+        currentBranch: commitResult.currentBranch ?? branch,
+        headCommit: commitResult.commitSha,
+        commitCreated: commitResult.commitCreated,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to adopt workspace into Cozea Git',
+      }
     }
   }
 
@@ -612,6 +833,7 @@ export class GitSyncService {
     accessToken?: string
     encryptedCredentials?: string
     keyId?: string
+    debug?: boolean
   }): Promise<GitSyncPushResult> {
     const remote = this.normalizeRemote(options.remote)
     const branch = this.normalizeBranch(options.branch)
@@ -641,6 +863,51 @@ export class GitSyncService {
       timeoutMs: 120_000,
     })
     if (!push.success) {
+      if (this.isShallowUpdateRejected(push.error)) {
+        this.debug(options.debug, 'push:shallow_rejected', {
+          projectPath,
+          remote,
+          branch,
+        })
+        const adopt = await this.adoptWorkspace({
+          projectPath,
+          branch,
+          repoUrl: options.repoUrl,
+          debug: options.debug,
+        })
+        if (!adopt.success) {
+          return {
+            success: false,
+            remote,
+            branch,
+            error: adopt.error || push.error,
+          }
+        }
+
+        const retryPush = await this.runGit(['push', remote, `HEAD:${branch}`], {
+          cwd: projectPath,
+          extraHeader: this.resolveExtraHeader(options),
+          timeoutMs: 120_000,
+        })
+        if (!retryPush.success) {
+          return {
+            success: false,
+            remote,
+            branch,
+            error: retryPush.error,
+          }
+        }
+
+        return {
+          success: true,
+          remote,
+          branch,
+          currentBranch: await this.getCurrentBranch(projectPath),
+          headCommit: await this.getRevision(projectPath, 'HEAD') ?? undefined,
+          pushed: true,
+        }
+      }
+
       return {
         success: false,
         remote,
@@ -958,6 +1225,14 @@ export class GitSyncService {
 
   private normalizeRemoteUrl(repoUrl: string): string {
     return repoUrl.trim()
+  }
+
+  private isShallowUpdateRejected(error: string | undefined): boolean {
+    if (!error) {
+      return false
+    }
+
+    return /shallow update not allowed/i.test(error)
   }
 
   private resolveExtraHeader(options: GitAuthOptions & { extraHeader?: string }): string | undefined {

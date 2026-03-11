@@ -467,6 +467,20 @@ export function getInstallCommand(pm: PackageManager): string {
   return commands[pm]
 }
 
+export function getLegacyPeerDepsInstallCommand(pm: PackageManager): string | null {
+  const windows = isWindowsClient()
+
+  if (pm === 'npm') {
+    return windows ? 'npm.cmd install --legacy-peer-deps' : 'npm install --legacy-peer-deps'
+  }
+
+  if (pm === 'pnpm') {
+    return windows ? 'pnpm.cmd install --legacy-peer-deps' : 'pnpm install --legacy-peer-deps'
+  }
+
+  return null
+}
+
 /**
  * Check if dependencies are installed (node_modules exists and has content)
  */

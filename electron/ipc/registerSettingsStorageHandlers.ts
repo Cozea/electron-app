@@ -12,6 +12,7 @@ import type {
   StorageSnapshot,
   StorageUsage,
 } from '../../shared/electronApiTypes'
+import { rememberApprovedExternalReadRoot } from '../fsAccess'
 
 interface RegisterSettingsStorageHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -56,6 +57,7 @@ function getDefaultSettings(): AppSettings {
   return {
     projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
     previewHeaderCompatibilityEnabled: true,
+    approvedExternalReadRoots: [],
   }
 }
 
@@ -402,6 +404,14 @@ export function registerSettingsStorageHandlers(
 
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, canceled: true }
+    }
+
+    const approvedRootUpdate = rememberApprovedExternalReadRoot(
+      deps.loadSettings(),
+      result.filePaths[0],
+    )
+    if (approvedRootUpdate) {
+      deps.saveSettings(approvedRootUpdate)
     }
 
     return { success: true, path: result.filePaths[0] }

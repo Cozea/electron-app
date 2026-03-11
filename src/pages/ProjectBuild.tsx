@@ -43,6 +43,11 @@ import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPrevi
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen } from '@/features/projects/lib/projectOpenGitSync'
 import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
+import {
+  createInitialProjectBuildSessionState,
+  parseStoredProjectBuildSessionState,
+  type ProjectBuildRunStatus,
+} from '@/pages/projectBuildState'
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? '' : 's'}`
@@ -78,10 +83,19 @@ function formatPreviewHeaderUrl(url: string | null): string | null {
 const MAX_AUTO_PREVIEW_RETRIES = 2
 
 export function ProjectBuild() {
-  const convex = useConvex()
   const { projectId } = useParams<{ projectId: string }>()
+  return <ProjectBuildScreen key={projectId ?? 'missing-project'} projectId={projectId ?? null} />
+}
+
+interface ProjectBuildScreenProps {
+  projectId: string | null
+}
+
+function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
+  const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const { user, logout, convexUserId } = useAuth()
+  const initialSessionState = createInitialProjectBuildSessionState()
 
   // Load project from Convex
   const project = useQuery(
@@ -112,12 +126,12 @@ export function ProjectBuild() {
   const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
 
   // Build state
-  const [progress, setProgress] = useState(0)
-  const [statusMessage, setStatusMessage] = useState('Preparing to build...')
+  const [progress, setProgress] = useState(initialSessionState.progress)
+  const [statusMessage, setStatusMessage] = useState(initialSessionState.statusMessage)
   const [hasError, setHasError] = useState(false)
   const [billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [surfaceError, setSurfaceError] = useState<AiSurfaceErrorData | null>(null)
-  const [logs, setLogs] = useState<string[]>([])
+  const [logs, setLogs] = useState<string[]>(initialSessionState.logs)
 
   // Pull state
   const [isPulling, setIsPulling] = useState(false)
@@ -130,11 +144,11 @@ export function ProjectBuild() {
 
   // AI Generation state
   const [isAIGenerating, setIsAIGenerating] = useState(false)
-  const [buildTasks, setBuildTasks] = useState<BuildTask[]>([])
+  const [buildTasks, setBuildTasks] = useState<BuildTask[]>(initialSessionState.buildTasks)
   const [localPath, setLocalPath] = useState<string | null>(null)
-  const [runId, setRunId] = useState<string | null>(null)
-  const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'failed' | 'completed' | 'interrupted'>('idle')
-  const [runAttempt, setRunAttempt] = useState(0)
+  const [runId, setRunId] = useState<string | null>(initialSessionState.runId)
+  const [runStatus, setRunStatus] = useState<ProjectBuildRunStatus>(initialSessionState.runStatus)
+  const [runAttempt, setRunAttempt] = useState(initialSessionState.runAttempt)
   const [stopRequestCount, setStopRequestCount] = useState(0)
   const [hasHydratedRemote, setHasHydratedRemote] = useState(false)
   const runIdRef = useRef<string | null>(null)
@@ -256,34 +270,14 @@ export function ProjectBuild() {
 
   useEffect(() => {
     if (!runStorageKey) return
-    const stored = localStorage.getItem(runStorageKey)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored) as {
-        runId?: string
-        runStatus?: 'idle' | 'running' | 'failed' | 'completed' | 'interrupted'
-        runAttempt?: number
-        buildTasks?: BuildTask[]
-        progress?: number
-        statusMessage?: string
-        logs?: string[]
-      }
-      if (parsed.runId) setRunId(parsed.runId)
-      if (parsed.runAttempt) setRunAttempt(parsed.runAttempt)
-      if (parsed.runStatus) {
-        const status = parsed.runStatus === 'running' ? 'interrupted' : parsed.runStatus
-        setRunStatus(status)
-        if (status === 'interrupted') {
-          setStatusMessage('Build interrupted. You can retry to continue.')
-        }
-      }
-      if (parsed.buildTasks) setBuildTasks(parsed.buildTasks)
-      if (typeof parsed.progress === 'number') setProgress(parsed.progress)
-      if (parsed.statusMessage && parsed.runStatus !== 'running') setStatusMessage(parsed.statusMessage)
-      if (parsed.logs) setLogs(parsed.logs)
-    } catch {
-      // ignore malformed state
-    }
+    const restoredState = parseStoredProjectBuildSessionState(localStorage.getItem(runStorageKey))
+    setRunId(restoredState.runId)
+    setRunAttempt(restoredState.runAttempt)
+    setRunStatus(restoredState.runStatus)
+    setBuildTasks(restoredState.buildTasks)
+    setProgress(restoredState.progress)
+    setStatusMessage(restoredState.statusMessage)
+    setLogs(restoredState.logs)
   }, [runStorageKey])
 
   useEffect(() => {
@@ -646,7 +640,10 @@ export function ProjectBuild() {
     // Ensure local folder exists
     let path = localPath
     try {
-      const folderExists = await window.electronAPI.project.exists(project.slug)
+      const folderExists = await window.electronAPI.project.exists({
+        slug: project.slug,
+        projectId: String(project._id),
+      })
 
       if (!folderExists) {
         addLog('Creating local project folder...')
@@ -670,7 +667,10 @@ export function ProjectBuild() {
           localPath: path,
         })
       } else if (!path) {
-        const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
+        const fetchedPath = await window.electronAPI.project.getLocalPath({
+          slug: project.slug,
+          projectId: String(project._id),
+        })
         if (fetchedPath) {
           path = fetchedPath
           setLocalPath(path)
@@ -773,7 +773,10 @@ export function ProjectBuild() {
 
     try {
       let targetPath = localPath
-      const folderExists = await window.electronAPI.project.exists(project.slug)
+      const folderExists = await window.electronAPI.project.exists({
+        slug: project.slug,
+        projectId: String(project._id),
+      })
 
       if (!folderExists) {
         addLog('Creating local project folder...')
@@ -795,7 +798,10 @@ export function ProjectBuild() {
         addLog(`Created folder at: ${targetPath}`)
       } else if (!targetPath) {
         // Folder exists but path not in DB - get it
-        const fetchedPath = await window.electronAPI.project.getLocalPath(project.slug)
+        const fetchedPath = await window.electronAPI.project.getLocalPath({
+          slug: project.slug,
+          projectId: String(project._id),
+        })
         if (fetchedPath) {
           targetPath = fetchedPath
           setLocalPath(targetPath)
@@ -878,7 +884,10 @@ export function ProjectBuild() {
 
     const resolveInitialAction = async () => {
       try {
-        const folderExists = await window.electronAPI.project.exists(project.slug)
+        const folderExists = await window.electronAPI.project.exists({
+          slug: project.slug,
+          projectId: String(project._id),
+        })
         if (cancelled) return
 
         if (!folderExists) {

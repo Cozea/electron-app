@@ -19,6 +19,7 @@ import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
 import { ProviderAuthService } from './services/ProviderAuthService'
 import { LocalAiRuntimeService } from './services/LocalAiRuntimeService'
+import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
@@ -152,6 +153,7 @@ function getDefaultSettings(): AppSettings {
     _defaultSettings = {
       projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
       previewHeaderCompatibilityEnabled: true,
+      approvedExternalReadRoots: [],
     }
   }
   return _defaultSettings
@@ -774,29 +776,11 @@ app.on('open-url', async (event, url) => {
   } else if (matchesProtocolUrl(url, 'billing/')) {
     handleBillingCallback(url)
   } else if (matchesProtocolUrl(url, 'oauth/callback')) {
-    // Handle integration OAuth callback
-    try {
-      await IntegrationService.getInstance().handleOAuthCallback(url)
-      // Success handled by Service via win.webContents if needed, 
-      // but wait, Service assumes it returns a result?
-      // Let's check Service implementation. 
-      // Service.handleOAuthCallback calls oauthHandler.handleOAuthCallback which returns Promise<Result>.
-      // Service just returns that promise.
-      // So main.ts needs to handle the response broadcasting.
-
-      const result = await IntegrationService.getInstance().handleOAuthCallback(url)
-      if (result.success) {
-        win?.webContents.send('integrations:oauthSuccess', result)
-      } else {
-        win?.webContents.send('integrations:oauthError', { provider: result.provider, error: result.error || 'OAuth failed' })
-      }
-    } catch (err) {
-      console.error('[OAuth] Callback handling error:', err)
-      win?.webContents.send('integrations:oauthError', {
-        provider: 'unknown',
-        error: err instanceof Error ? err.message : 'OAuth callback failed',
-      })
-    }
+    await forwardIntegrationOAuthCallback({
+      url,
+      integrationService: IntegrationService.getInstance(),
+      sender: win?.webContents ?? null,
+    })
   } else {
     const navigationPath = extractNavigationPath(url)
     if (navigationPath) {
@@ -833,22 +817,11 @@ if (!gotTheLock) {
       } else if (matchesProtocolUrl(url, 'billing/')) {
         handleBillingCallback(url)
       } else if (matchesProtocolUrl(url, 'oauth/callback')) {
-        // Handle integration OAuth callback
-        IntegrationService.getInstance().handleOAuthCallback(url)
-          .then((result) => {
-            if (result.success) {
-              win?.webContents.send('integrations:oauthSuccess', result)
-            } else {
-              win?.webContents.send('integrations:oauthError', { provider: result.provider, error: result.error || 'OAuth failed' })
-            }
-          })
-          .catch((err) => {
-            console.error('[OAuth] Callback handling error:', err)
-            win?.webContents.send('integrations:oauthError', {
-              provider: 'unknown',
-              error: err instanceof Error ? err.message : 'OAuth callback failed',
-            })
-          })
+        void forwardIntegrationOAuthCallback({
+          url,
+          integrationService: IntegrationService.getInstance(),
+          sender: win?.webContents ?? null,
+        })
       } else {
         const navigationPath = extractNavigationPath(url)
         if (navigationPath) {

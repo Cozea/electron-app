@@ -4,6 +4,7 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
+import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 
 interface PublishWorkspaceToCozeaGitOptions {
   convex: ConvexReactClient
@@ -85,6 +86,11 @@ export async function publishWorkspaceToCozeaGit({
       if (!pushResult.success) {
         throw new Error(pushResult.error || 'Failed to push workspace changes')
       }
+      dispatchGitStatusEvent({
+        projectId: String(project._id),
+        projectPath,
+        kind: 'published',
+      })
     }
   }
 
@@ -94,6 +100,11 @@ export async function publishWorkspaceToCozeaGit({
   })
 
   if (finalStatus.success && finalStatus.isRepo) {
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath,
+      kind: 'published',
+    })
     await convex.mutation(api.projects.updateGitSyncMetadata, {
       projectId: project._id,
       userId,

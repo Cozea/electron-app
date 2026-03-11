@@ -113,7 +113,10 @@ export function ProjectListRow({
                 return
             }
 
-            const path = await window.electronAPI.project.getLocalPath(project.slug)
+            const path = project.localPath ?? await window.electronAPI.project.getLocalPath({
+                slug: project.slug,
+                projectId: String(project._id),
+            })
             if (!cancelled) setLocalPath(path)
         }
 
@@ -121,7 +124,7 @@ export function ProjectListRow({
         return () => {
             cancelled = true
         }
-    }, [project.slug, project.status, shouldHydrateSyncStatus])
+    }, [project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
         setSyncHydrationRequested(true)

@@ -176,7 +176,6 @@ function AppContent() {
     const warmupTimer = window.setTimeout(() => {
       void import('./pages/NewProject')
       void import('./pages/ProjectBuild')
-      void import('./pages/workspace/Billing')
 
       if (shouldWarmProjectEditor) {
         void import('./features/projects/pages/ProjectPagesPage')
