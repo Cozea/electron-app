@@ -1,3 +1,5 @@
+import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
+
 export interface BillingErrorData {
   error: string
   code?: string
@@ -18,6 +20,10 @@ export interface BillingErrorData {
   }
 }
 
+export interface BillingErrorScopeOptions {
+  workspaceScoped?: boolean
+}
+
 const BILLING_CODE_BY_ERROR: Record<string, string> = {
   billing_error: 'SUBSCRIPTION_REQUIRED',
   subscription_required: 'SUBSCRIPTION_REQUIRED',
@@ -34,7 +40,20 @@ const BILLING_CODE_BY_ERROR: Record<string, string> = {
 }
 
 const BILLING_CODES = new Set<string>(Object.values(BILLING_CODE_BY_ERROR))
-const BILLING_PLANS_HREF = '/settings/billing?plans=1'
+function getBillingPlansHref(options?: BillingErrorScopeOptions): string {
+  const route = getSettingsSurfaceRoute(
+    'billing',
+    options?.workspaceScoped ? 'workspace' : 'personal'
+  )
+  return `${route ?? '/settings/billing'}?plans=1`
+}
+
+function getAiSettingsHref(options?: BillingErrorScopeOptions): string {
+  return (
+    getSettingsSurfaceRoute('ai', options?.workspaceScoped ? 'workspace' : 'personal') ??
+    '/settings/ai'
+  )
+}
 
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -132,18 +151,22 @@ function withFallbackAction(
 
 function withBillingPlansAction(
   current: BillingErrorData,
-  label = 'Billing'
+  label = 'Billing',
+  options?: BillingErrorScopeOptions,
 ): BillingErrorData {
   return {
     ...current,
     action: {
       label,
-      href: BILLING_PLANS_HREF,
+      href: getBillingPlansHref(options),
     },
   }
 }
 
-function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
+function normalizeEntitlementCopy(
+  error: BillingErrorData,
+  options?: BillingErrorScopeOptions,
+): BillingErrorData {
   const rawMessage = `${error.message || ''} ${error.hint || ''}`.toLowerCase()
   const plan = error.details?.plan?.toLowerCase()
   const availableSeats = error.details?.totalAvailable
@@ -166,7 +189,8 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
         message: "You don't have an AI seat assigned in this workspace yet.",
         hint: 'Ask a billing admin to assign you a seat in Settings > Billing.',
       },
-      'Billing'
+      'Billing',
+      options,
     )
   }
 
@@ -178,7 +202,8 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
         message: 'Every paid AI seat in this workspace is currently assigned.',
         hint: 'Ask a billing admin to add seats or reassign one in Settings > Billing.',
       },
-      'Billing'
+      'Billing',
+      options,
     )
   }
 
@@ -190,7 +215,8 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
         message: 'AI is paused because billing for this workspace is past due.',
         hint: 'Update payment details in Settings > Billing, then retry.',
       },
-      'Billing'
+      'Billing',
+      options,
     )
   }
 
@@ -202,7 +228,8 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
         message: 'AI is unavailable because this workspace subscription is canceled.',
         hint: 'Start or renew the plan in Settings > Billing.',
       },
-      'Billing'
+      'Billing',
+      options,
     )
   }
 
@@ -214,22 +241,27 @@ function normalizeEntitlementCopy(error: BillingErrorData): BillingErrorData {
         message: "We couldn't verify AI access for this workspace right now.",
         hint: 'Try again in a moment, or open Settings > Billing to check plan status.',
       },
-      'Billing'
+      'Billing',
+      options,
     )
   }
 
   return withBillingPlansAction(
-    {
-      ...error,
-      title: 'Paid Plan Required',
-      message: 'Cozea agents are only in paid plans.',
-      hint: undefined,
-    },
-    'Billing'
-  )
+      {
+        ...error,
+        title: 'Paid Plan Required',
+        message: 'Cozea agents are only in paid plans.',
+        hint: undefined,
+      },
+      'Billing',
+      options,
+    )
 }
 
-function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
+function normalizeBillingError(
+  raw: BillingErrorData,
+  options?: BillingErrorScopeOptions,
+): BillingErrorData {
   const code = resolveBillingCode(raw.error, raw.code)
   const normalized: BillingErrorData = {
     ...raw,
@@ -239,7 +271,7 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
 
   switch (code) {
     case 'ENTITLEMENT_REQUIRED':
-      return normalizeEntitlementCopy(normalized)
+      return normalizeEntitlementCopy(normalized, options)
     case 'PROVIDER_AUTH_REQUIRED':
       return withFallbackAction(
         {
@@ -252,7 +284,7 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
             normalized.hint ||
             'Open Settings > AI to connect your provider account, then retry.',
         },
-        { label: 'Open AI Settings', href: '/settings/ai' }
+        { label: 'Open AI Settings', href: getAiSettingsHref(options) }
       )
     case 'MODEL_CONFIGURATION_REQUIRED':
       return withFallbackAction(
@@ -266,7 +298,7 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
             normalized.hint ||
             'Pick a provider-specific model in Settings > AI, then retry.',
         },
-        { label: 'Open AI Settings', href: '/settings/ai' }
+        { label: 'Open AI Settings', href: getAiSettingsHref(options) }
       )
     case 'WALLET_INSUFFICIENT_FUNDS':
       return withBillingPlansAction(
@@ -275,14 +307,19 @@ function normalizeBillingError(raw: BillingErrorData): BillingErrorData {
           title: 'Not Enough Balance',
           message: 'Subscription credits exhausted.',
           hint: undefined,
-        }
+        },
+        'Billing',
+        options,
       )
     default:
       return normalized
   }
 }
 
-function parseBillingErrorRecord(record: Record<string, unknown>): BillingErrorData | null {
+function parseBillingErrorRecord(
+  record: Record<string, unknown>,
+  options?: BillingErrorScopeOptions,
+): BillingErrorData | null {
   const error = asNonEmptyString(record.error)
   const code = asNonEmptyString(record.code)
   const resolvedCode = resolveBillingCode(error, code)
@@ -298,14 +335,17 @@ function parseBillingErrorRecord(record: Record<string, unknown>): BillingErrorD
     secondaryAction: parseAction(record.secondaryAction),
     hint: asNonEmptyString(record.hint),
     details: parseDetails(record.details),
-  })
+  }, options)
 }
 
-export function parseBillingError(err: unknown): BillingErrorData | null {
+export function parseBillingError(
+  err: unknown,
+  options?: BillingErrorScopeOptions,
+): BillingErrorData | null {
   if (!err) return null
 
   if (isRecord(err) && !(err instanceof Error)) {
-    const parsedRecord = parseBillingErrorRecord(err)
+    const parsedRecord = parseBillingErrorRecord(err, options)
     if (parsedRecord) return parsedRecord
   }
 
@@ -313,7 +353,7 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
   if (rawMessage) {
     const fromJson = parseJsonRecordFromText(rawMessage)
     if (fromJson) {
-      const parsedRecord = parseBillingErrorRecord(fromJson)
+      const parsedRecord = parseBillingErrorRecord(fromJson, options)
       if (parsedRecord) return parsedRecord
     }
 
@@ -323,7 +363,7 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
         error: 'provider_auth_required',
         code: 'PROVIDER_AUTH_REQUIRED',
         message: rawMessage,
-      })
+      }, options)
     }
     if (
       message.includes('invalid_model_id') ||
@@ -335,21 +375,21 @@ export function parseBillingError(err: unknown): BillingErrorData | null {
         error: 'invalid_model_id',
         code: 'MODEL_CONFIGURATION_REQUIRED',
         message: rawMessage,
-      })
+      }, options)
     }
     if (message.includes('entitlement_required') || message.includes('entitlement') || message.includes('plan limit')) {
       return normalizeBillingError({
         error: 'entitlement_required',
         code: 'ENTITLEMENT_REQUIRED',
         message: rawMessage,
-      })
+      }, options)
     }
     if (message.includes('subscription_required') || message.includes('subscription required')) {
       return normalizeBillingError({
         error: 'subscription_required',
         code: 'SUBSCRIPTION_REQUIRED',
         message: rawMessage,
-      })
+      }, options)
     }
   }
 

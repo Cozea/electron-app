@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { featureFlags } from '@/lib/featureFlags'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
-import { useAuth } from '../../contexts/AuthContext'
 import { useOrganization } from '../../contexts/OrganizationContext'
-import { useQuery, useMutation } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
-import { useCachedQuery } from '../../stores/useQueryCache'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Button } from '../../components/ui/button'
@@ -56,8 +54,18 @@ import {
   ArrowUpDown,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
+import {
+  formatOrganizationWorkspaceRole,
+  type OrganizationWorkspaceRole,
+} from '@/lib/workspaces/organizationRoles'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
+import { useScopedWorkspacePeopleData } from '@/hooks/useScopedWorkspacePeopleData'
+import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
 
 import { IconFilter } from '@tabler/icons-react'
+
+const WORKSPACE_BILLING_ROUTE =
+  getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
 
 type TableRowData = {
   id: string
@@ -65,6 +73,10 @@ type TableRowData = {
   email: string
   name: string
   role: string
+  roleId?: string | null
+  roleBaseRole?: OrganizationWorkspaceRole
+  roleName?: string | null
+  permissions?: string[]
   status: 'active' | 'pending'
   date: number
   avatarUrl?: string
@@ -75,84 +87,54 @@ type TableRowData = {
 type SortField = 'name' | 'role' | 'date'
 type SortDirection = 'asc' | 'desc'
 
-// Permission check helper based on role
-type Role = 'admin' | 'member' | 'viewer'
-type Permission = 'members:invite' | 'members:remove' | 'members:update_role' | 'invitations:revoke'
-
-const PERMISSION_MATRIX: Record<Permission, Role[]> = {
-  'members:invite': ['admin'],
-  'members:remove': ['admin'],
-  'members:update_role': ['admin'],
-  'invitations:revoke': ['admin'],
-}
-
-function hasPermission(role: Role | undefined, permission: Permission): boolean {
-  if (!role) return false
-  return PERMISSION_MATRIX[permission]?.includes(role) ?? false
-}
-
 export function Members() {
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
-  const { user, logout, currentOrganization, convexUserId } = useAuth()
-  const { inviteMember, revokeInvitation: revokeWorkosInvitation, removeMember: removeWorkosMember, updateMemberRole: updateWorkosMemberRole } = useOrganization()
+  const {
+    inviteMember,
+    revokeInvitation: revokeWorkosInvitation,
+    removeMember: removeWorkosMember,
+    updateMemberRole: updateWorkosMemberRole,
+  } = useOrganization()
+  const {
+    settingsPage,
+    user,
+    logout,
+    convexUserId,
+    convexOrg,
+    workspaceOrganizationId,
+    members,
+    pendingInvites,
+    roleOptions,
+    canInvite,
+    canRemove,
+    canUpdateRole,
+    canRevokeInvite,
+    seatManagement,
+    isLoading,
+  } = useScopedWorkspacePeopleData({
+    route: '/teams',
+    surfaceId: 'members',
+    includeSeatManagement: true,
+  })
   const [selected, setSelected] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [isInviteOpen, setIsInviteOpen] = useState(false)
-  const [inviteMembers, setInviteMembers] = useState<{ email: string, role: 'admin' | 'member' | 'viewer' }[]>([])
+  const [inviteMembers, setInviteMembers] = useState<Array<{
+    email: string
+    role: OrganizationWorkspaceRole
+    roleId?: string | null
+    roleName?: string
+  }>>([])
   const [emailInput, setEmailInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
 
   // Filter state
-  const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
+  const [roleFilter, setRoleFilter] = useState<OrganizationWorkspaceRole | 'all'>('all')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-
-  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
-  const freshOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-  const convexOrg = useCachedQuery(
-    `members-org-${currentOrganization?.organizationId}`,
-    freshOrg
-  )
-
-  // Convex queries for members and invitations (with caching)
-  const freshMembers = useQuery(
-    api.organizations.getMembers,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-  const members = useCachedQuery(
-    `members-list-${convexOrg?._id}`,
-    freshMembers
-  )
-
-  const freshInvites = useQuery(
-    api.invitations.listForOrganization,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-  const pendingInvites = useCachedQuery(
-    `members-invites-${convexOrg?._id}`,
-    freshInvites
-  )
-
-  const seatManagement = useQuery(
-    api.billing.getSeatManagement,
-    convexOrg?._id && convexUserId
-      ? { organizationId: convexOrg._id, userId: convexUserId }
-      : 'skip'
-  )
-
-  // Current user's role in the organization
-  const currentUserRole = currentOrganization?.role as Role | undefined
-  const hasInvitePermission = hasPermission(currentUserRole, 'members:invite')
-  const canInvite = hasInvitePermission
-  const canRemove = hasPermission(currentUserRole, 'members:remove')
-  const canUpdateRole = hasPermission(currentUserRole, 'members:update_role')
-  const canRevokeInvite = hasPermission(currentUserRole, 'invitations:revoke')
 
   // Convex mutations
   const createInvitation = useMutation(api.invitations.create)
@@ -160,11 +142,8 @@ export function Members() {
   const removeMemberMutation = useMutation(api.organizations.removeMember)
   const updateMemberRoleMutation = useMutation(api.organizations.updateMemberRole)
 
-  const isLoading = members === undefined || pendingInvites === undefined
-
   const filteredRows = useMemo(() => {
-    const tableRows: TableRowData[] = [
-      ...(members ?? []).map((member): TableRowData => ({
+    const memberRows = (members ?? []).map((member): TableRowData => ({
         id: member._id,
         type: 'member',
         email: member.user?.email || '',
@@ -172,27 +151,55 @@ export function Members() {
           `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim() ||
           member.user?.email?.split('@')[0] ||
           'Unknown',
-        role: member.role || 'member',
+        role: member.roleKey || member.role || 'member',
+        roleId: member.roleId || null,
+        roleBaseRole: (member.roleBaseRole || member.role || 'member') as OrganizationWorkspaceRole,
+        roleName: member.roleName || null,
+        permissions: member.permissions || [],
         status: 'active',
         date: member.joinedAt,
         avatarUrl: member.user?.profileImageUrl || undefined,
         workosMembershipId: member.workosId,
-      })),
-      ...(pendingInvites ?? []).map((invite): TableRowData => ({
+      }))
+
+    const activeEmails = new Set(
+      memberRows
+        .map((row) => row.email.trim().toLowerCase())
+        .filter((email) => email.length > 0)
+    )
+
+    const inviteRows = (pendingInvites ?? [])
+      .filter((invite) => !activeEmails.has(invite.email.trim().toLowerCase()))
+      .reduce<TableRowData[]>((rows, invite) => {
+        const normalizedEmail = invite.email.trim().toLowerCase()
+        if (rows.some((row) => row.type === 'invite' && row.email.trim().toLowerCase() === normalizedEmail)) {
+          return rows
+        }
+        rows.push({
         id: invite._id,
         type: 'invite',
         email: invite.email,
         name: invite.email.split('@')[0],
-        role: invite.role,
+        role: invite.roleKey || invite.role,
+        roleId: invite.roleId || null,
+        roleBaseRole: (invite.roleBaseRole || invite.role || 'member') as OrganizationWorkspaceRole,
+        roleName: invite.roleName || null,
+        permissions: invite.permissions || [],
         status: 'pending',
         date: invite.createdAt,
         workosInvitationId: invite.workosInvitationId,
-      })),
+        })
+        return rows
+      }, [])
+
+    const tableRows: TableRowData[] = [
+      ...memberRows,
+      ...inviteRows,
     ]
 
     const roleFilteredRows = tableRows.filter((row) => {
       if (roleFilter === 'all') return true
-      return row.role === roleFilter
+      return row.roleBaseRole === roleFilter
     })
 
     return [...roleFilteredRows].sort((left, right) => {
@@ -239,9 +246,19 @@ export function Members() {
   const handleAddEmail = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.key === 'Enter' || e.key === ',') && emailInput.trim()) {
       e.preventDefault()
+      if (roleOptions.length === 0) return
       const email = emailInput.trim().replace(',', '')
       if (email && !inviteMembers.some(m => m.email === email) && email.includes('@')) {
-        setInviteMembers([...inviteMembers, { email, role: 'member' }])
+        const defaultRole = roleOptions.find((option) => option.baseRole === 'member') ?? roleOptions[0]
+        setInviteMembers([
+          ...inviteMembers,
+          {
+            email,
+            role: (defaultRole?.baseRole ?? 'member') as OrganizationWorkspaceRole,
+            roleId: defaultRole?.roleId ?? null,
+            roleName: defaultRole?.label ?? 'Member',
+          },
+        ])
         setEmailInput('')
       }
     }
@@ -251,12 +268,25 @@ export function Members() {
     setInviteMembers(inviteMembers.filter((_, i) => i !== index))
   }
 
-  const handleUpdateRole = (index: number, role: 'admin' | 'member' | 'viewer') => {
-    setInviteMembers(inviteMembers.map((m, i) => i === index ? { ...m, role } : m))
+  const handleUpdateRole = (index: number, roleValue: string) => {
+    const selectedRole = roleOptions.find((role) => role.value === roleValue)
+    if (!selectedRole) return
+    setInviteMembers(
+      inviteMembers.map((member, memberIndex) =>
+        memberIndex === index
+          ? {
+              ...member,
+              role: selectedRole.baseRole,
+              roleId: selectedRole.roleId ?? null,
+              roleName: selectedRole.label,
+            }
+          : member,
+      ),
+    )
   }
 
   const handleSendInvites = async () => {
-    if (inviteMembers.length === 0 || !currentOrganization?.organizationId || !convexOrg?._id || !convexUserId) return
+    if (inviteMembers.length === 0 || !workspaceOrganizationId || !convexOrg?._id || !convexUserId) return
 
     setIsSubmitting(true)
     setInviteError(null)
@@ -270,9 +300,10 @@ export function Members() {
         try {
           // Send sequentially so workspace seat-cap checks observe the latest invite count.
           const workosResult = await inviteMember(
-            currentOrganization.organizationId,
+            workspaceOrganizationId,
             member.email,
-            member.role
+            member.role,
+            member.roleId,
           )
 
           if (!workosResult || workosResult.error) {
@@ -301,6 +332,7 @@ export function Members() {
               invitedBy: convexUserId,
               email: member.email,
               role: member.role,
+              roleId: member.roleId ? (member.roleId as Id<'organizationRoles'>) : undefined,
               workosInvitationId: workosResult.invitationId || undefined,
             })
           } catch (convexErr) {
@@ -360,12 +392,12 @@ export function Members() {
   }
 
   const handleRemoveMember = async (memberId: string, workosMembershipId?: string) => {
-    if (!convexUserId || !convexOrg?._id || !currentOrganization?.organizationId) return
+    if (!convexUserId || !convexOrg?._id || !workspaceOrganizationId) return
 
     try {
       // 1. Remove from WorkOS first
       if (workosMembershipId) {
-        await removeWorkosMember(currentOrganization.organizationId, workosMembershipId)
+        await removeWorkosMember(workspaceOrganizationId, workosMembershipId)
       }
 
       // 2. Remove from Convex
@@ -380,20 +412,32 @@ export function Members() {
     }
   }
 
-  const handleChangeRole = async (memberId: string, workosMembershipId: string | undefined, newRole: 'admin' | 'member' | 'viewer') => {
-    if (!convexUserId || !convexOrg?._id || !currentOrganization?.organizationId) return
+  const handleChangeRole = async (
+    memberId: string,
+    workosMembershipId: string | undefined,
+    newRoleValue: string,
+  ) => {
+    if (!convexUserId || !convexOrg?._id || !workspaceOrganizationId) return
+    const selectedRole = roleOptions.find((role) => role.value === newRoleValue)
+    if (!selectedRole) return
 
     try {
       // 1. Update in WorkOS first
       if (workosMembershipId) {
-        await updateWorkosMemberRole(currentOrganization.organizationId, workosMembershipId, newRole)
+        await updateWorkosMemberRole(
+          workspaceOrganizationId,
+          workosMembershipId,
+          selectedRole.baseRole,
+          selectedRole.roleId,
+        )
       }
 
       // 2. Update in Convex
       await updateMemberRoleMutation({
         orgId: convexOrg._id,
         memberId: memberId as Id<'members'>,
-        newRole,
+        newRole: selectedRole.baseRole,
+        newRoleId: selectedRole.roleId ? (selectedRole.roleId as Id<'organizationRoles'>) : undefined,
         updatedBy: convexUserId,
       })
       // Convex queries auto-refresh
@@ -507,14 +551,16 @@ export function Members() {
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" className="gap-2 h-7 px-2 text-xs rounded-full focus:z-10">
             <IconFilter className="h-3.5 w-3.5" />
-            {roleFilter === 'all' ? 'All Roles' : roleFilter.charAt(0).toUpperCase() + roleFilter.slice(1)}
+            {roleFilter === 'all' ? 'All Roles' : formatOrganizationWorkspaceRole(roleFilter)}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { setRoleFilter('all'); setCurrentPage(1) }}>All Roles</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setRoleFilter('admin'); setCurrentPage(1) }}>Admin</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setRoleFilter('member'); setCurrentPage(1) }}>Member</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setRoleFilter('viewer'); setCurrentPage(1) }}>Viewer</DropdownMenuItem>
+          {roleOptions.map((role) => (
+            <DropdownMenuItem key={role.value} onClick={() => { setRoleFilter(role.baseRole); setCurrentPage(1) }}>
+              {role.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -601,20 +647,16 @@ export function Members() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
-                            {member.role}
+                            {formatOrganizationWorkspaceRole(member.role, member.roleName)}
                             <ChevronDown className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'admin')}>
-                            admin
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'member')}>
-                            member
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleUpdateRole(i, 'viewer')}>
-                            viewer
-                          </DropdownMenuItem>
+                          {roleOptions.map((role) => (
+                            <DropdownMenuItem key={role.value} onClick={() => handleUpdateRole(i, role.value)}>
+                              {role.label}
+                            </DropdownMenuItem>
+                          ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
                       <button
@@ -658,10 +700,16 @@ export function Members() {
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Teams' }, { label: 'Members' }]}
+      breadcrumbs={settingsPage.breadcrumbs}
       breadcrumbAddon={breadcrumbAddon}
       header={headerContent}
     >
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="Member access required"
+          description="You do not have permission to view workspace members and invitations."
+        />
+      ) : (
       <div className={featureFlags.contentVisibility ? 'perf-contain-auto' : undefined}>
         {seatManagement?.entitlement.source === 'legacy' && (
           <Alert className="mb-4">
@@ -671,11 +719,11 @@ export function Members() {
               <Button
                 variant="link"
                 className="h-auto p-0 underline"
-                onClick={() => openSettingsDrawer('/settings/billing')}
+                onClick={() => openSettingsDrawer(WORKSPACE_BILLING_ROUTE)}
               >
                 Billing Settings
               </Button>
-              {' '}(Startup seat billing).
+              {' '}(workspace seat billing).
             </AlertDescription>
           </Alert>
         )}
@@ -698,7 +746,7 @@ export function Members() {
               <Button
                 variant="link"
                 className="h-auto p-0 text-destructive underline"
-                onClick={() => openSettingsDrawer('/settings/billing')}
+                onClick={() => openSettingsDrawer(WORKSPACE_BILLING_ROUTE)}
               >
                 Billing Settings
               </Button>
@@ -711,7 +759,7 @@ export function Members() {
         <div
           className={[
             featureFlags.contentVisibility ? 'perf-contain-card' : '',
-            'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1',
+            'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40',
           ].join(' ').trim()}
         >
           <Table className="[&_th]:px-4 [&_td]:px-4">
@@ -760,7 +808,7 @@ export function Members() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge className="border-0 bg-primary/10 text-primary">
-                          {row.role.charAt(0).toUpperCase() + row.role.slice(1)}
+                          {formatOrganizationWorkspaceRole(row.roleBaseRole, row.roleName ?? row.role)}
                         </Badge>
                         {row.email === user?.email ? (
                           <>
@@ -797,32 +845,23 @@ export function Members() {
                           {row.type === 'member' ? (
                             <>
                               <DropdownMenuSub>
-                                <DropdownMenuSubTrigger disabled={!canUpdateRole || row.email === user?.email}>
+                                <DropdownMenuSubTrigger disabled={!canUpdateRole}>
                                   <Shield className="h-4 w-4 mr-2" />
                                   Change Role
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent>
-                                  <DropdownMenuItem
-                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'admin')}
-                                    disabled={row.role === 'admin'}
-                                  >
-                                    Admin
-                                    {row.role === 'admin' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'member')}
-                                    disabled={row.role === 'member'}
-                                  >
-                                    Member
-                                    {row.role === 'member' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleChangeRole(row.id, row.workosMembershipId, 'viewer')}
-                                    disabled={row.role === 'viewer'}
-                                  >
-                                    Viewer
-                                    {row.role === 'viewer' && <span className="ml-2 text-muted-foreground">(current)</span>}
-                                  </DropdownMenuItem>
+                                  {roleOptions.map((role) => (
+                                    <DropdownMenuItem
+                                      key={role.value}
+                                      onClick={() => handleChangeRole(row.id, row.workosMembershipId, role.value)}
+                                      disabled={row.roleId ? row.roleId === role.roleId : row.roleBaseRole === role.baseRole}
+                                    >
+                                      {role.label}
+                                      {(row.roleId ? row.roleId === role.roleId : row.roleBaseRole === role.baseRole) && (
+                                        <span className="ml-2 text-muted-foreground">(current)</span>
+                                      )}
+                                    </DropdownMenuItem>
+                                  ))}
                                 </DropdownMenuSubContent>
                               </DropdownMenuSub>
                               <DropdownMenuItem onClick={() => navigate(`/teams/members/${row.id}`)}>
@@ -917,6 +956,7 @@ export function Members() {
           </div>
         )}
       </div>
+      )}
     </DashboardLayout>
   )
 }

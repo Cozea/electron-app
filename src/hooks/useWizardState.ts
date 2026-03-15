@@ -109,6 +109,33 @@ export interface WizardPromptSettings {
   webSearchEnabled: boolean
 }
 
+function dedupeTeamMembers(team: WizardTeamMember[]): WizardTeamMember[] {
+  const byEmail = new Map<string, WizardTeamMember>()
+
+  for (const member of team) {
+    const normalizedEmail = member.email.trim().toLowerCase()
+    if (!normalizedEmail) continue
+
+    const existing = byEmail.get(normalizedEmail)
+    if (!existing) {
+      byEmail.set(normalizedEmail, member)
+      continue
+    }
+
+    byEmail.set(normalizedEmail, {
+      ...existing,
+      ...member,
+      email: existing.email || member.email,
+      name: member.name ?? existing.name,
+      role: member.role ?? existing.role,
+      isCurrentUser: existing.isCurrentUser || member.isCurrentUser,
+      profileImageUrl: member.profileImageUrl ?? existing.profileImageUrl,
+    })
+  }
+
+  return Array.from(byEmail.values())
+}
+
 export interface WizardState {
   // Navigation
   path: CreationPath | null
@@ -179,6 +206,14 @@ export const PROMPT_STEPS: WizardStepDef[] = [
   { id: 'build', title: 'Build', description: 'Build your project', icon: Rocket },
 ]
 
+function maybeFilterTeamStep(steps: WizardStepDef[], includeTeamStep: boolean): WizardStepDef[] {
+  if (includeTeamStep) {
+    return steps
+  }
+
+  return steps.filter((step) => step.id !== 'team')
+}
+
 // ============================================
 // DEFAULT VALUES
 // ============================================
@@ -229,8 +264,13 @@ const DEFAULT_STATE: WizardState = {
 // HOOK
 // ============================================
 
-export function useWizardState(organizationId?: Id<"organizations">, userId?: Id<"users">) {
+export function useWizardState(
+  organizationId?: Id<"organizations">,
+  userId?: Id<"users">,
+  options?: { includeTeamStep?: boolean }
+) {
   const [state, setState] = useState<WizardState>(DEFAULT_STATE)
+  const includeTeamStep = options?.includeTeamStep ?? true
 
   // Convex mutations
   const createProject = useMutation(api.projects.create)
@@ -243,15 +283,15 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
   const steps = useMemo(() => {
     switch (state.path) {
       case 'fresh':
-        return FRESH_STEPS
+        return maybeFilterTeamStep(FRESH_STEPS, includeTeamStep)
       case 'repo':
-        return REPO_STEPS
+        return maybeFilterTeamStep(REPO_STEPS, includeTeamStep)
       case 'prompt':
-        return PROMPT_STEPS
+        return maybeFilterTeamStep(PROMPT_STEPS, includeTeamStep)
       default:
-        return FRESH_STEPS
+        return maybeFilterTeamStep(FRESH_STEPS, includeTeamStep)
     }
-  }, [state.path])
+  }, [includeTeamStep, state.path])
 
   const currentStepDef = steps[state.step]
   const isFirstStep = state.step === 0
@@ -278,10 +318,11 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
     if (isLastStep) return
 
     // Save progress if we have a project
-    if (state.projectId) {
+    if (state.projectId && userId) {
       try {
         await updateWizardStep({
           projectId: state.projectId,
+          userId,
           step: state.step + 1,
         })
       } catch (e) {
@@ -290,7 +331,7 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
     }
 
     setState((prev) => ({ ...prev, step: prev.step + 1 }))
-  }, [isLastStep, state.projectId, state.step, updateWizardStep])
+  }, [isLastStep, state.projectId, state.step, updateWizardStep, userId])
 
   const prevStep = useCallback(() => {
     if (isFirstStep) return
@@ -334,13 +375,13 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
   }, [])
 
   const setTeam = useCallback((team: WizardTeamMember[]) => {
-    setState((prev) => ({ ...prev, team }))
+    setState((prev) => ({ ...prev, team: dedupeTeamMembers(team) }))
   }, [])
 
   const addTeamMember = useCallback((member: WizardTeamMember) => {
     setState((prev) => ({
       ...prev,
-      team: [...prev.team, member],
+      team: dedupeTeamMembers([...prev.team, member]),
     }))
   }, [])
 
@@ -427,6 +468,7 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
           originalPrompt: effectivePrompt,
           promptSettings: effectiveSettings,
           repoSource: state.repoSource,
+          team: state.team,
         })
         setState((prev) => ({ ...prev, projectId: result.projectId }))
         return result.projectId
@@ -453,35 +495,38 @@ export function useWizardState(organizationId?: Id<"organizations">, userId?: Id
     state.originalPrompt,
     state.promptSettings,
     state.repoSource,
+    state.team,
     createProject,
     updateProject,
   ])
 
   const savePlan = useCallback(async () => {
-    if (!state.projectId || !state.generatedPlan) return
+    if (!state.projectId || !state.generatedPlan || !userId) return
 
     try {
       await saveGeneratedPlan({
         projectId: state.projectId,
+        userId,
         plan: normalizeGeneratedPlan(state.generatedPlan),
       })
     } catch (e) {
       console.error('Failed to save plan:', e)
     }
-  }, [state.projectId, state.generatedPlan, saveGeneratedPlan])
+  }, [state.projectId, state.generatedPlan, saveGeneratedPlan, userId])
 
   const setStatus = useCallback(async (status: ProjectStatus) => {
-    if (!state.projectId) return
+    if (!state.projectId || !userId) return
 
     try {
       await updateStatus({
         projectId: state.projectId,
+        userId,
         status,
       })
     } catch (e) {
       console.error('Failed to update status:', e)
     }
-  }, [state.projectId, updateStatus])
+  }, [state.projectId, updateStatus, userId])
 
   const startGenerating = useCallback(() => {
     setState((prev) => ({ ...prev, isGenerating: true }))

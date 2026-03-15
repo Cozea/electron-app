@@ -1,5 +1,12 @@
-import { mutation, query } from "./_generated/server"
+import { mutation, query, type MutationCtx } from "./_generated/server"
 import { v } from "convex/values"
+import type { Id } from "./_generated/dataModel"
+import {
+  canAccessProjectByWorkspaceOrMembership,
+  getCanonicalOrganizationMembership,
+  getWorkspaceProjectAccess,
+  hasWorkspaceProjectPermission,
+} from "./lib/workspaceProjectAccess"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -28,14 +35,63 @@ function hasPermission(role: ProjectRole, permission: Permission): boolean {
   return permissions?.includes(permission) ?? false
 }
 
+async function getTeamManagementContext(
+  ctx: Pick<MutationCtx, "db">,
+  projectId: Id<"projects">,
+  actorUserId: Id<"users">
+) {
+  const project = await ctx.db.get(projectId)
+  if (!project || project.status === "deleted") {
+    throw new Error("Project not found")
+  }
+
+  const workspaceAccess = await getWorkspaceProjectAccess(
+    ctx,
+    project.organizationId,
+    actorUserId
+  )
+  const actorMembership = await ctx.db
+    .query("projectMembers")
+    .withIndex("by_project_and_user", (q) =>
+      q.eq("projectId", projectId).eq("userId", actorUserId)
+    )
+    .first()
+
+  const isPersonalProject = Boolean(
+    workspaceAccess.organization?.workosId.startsWith("personal:")
+  )
+  const canManageTeam = isPersonalProject
+    ? Boolean(actorMembership && hasPermission(actorMembership.role as ProjectRole, "manage_members"))
+    : hasWorkspaceProjectPermission(workspaceAccess, "projects:share")
+
+  return {
+    project,
+    actorMembership,
+    isPersonalProject,
+    canManageTeam,
+  }
+}
+
 // ============================================
 // MEMBER QUERIES
 // ============================================
 
 // List all members of a project
 export const listMembers = query({
-  args: { projectId: v.id("projects") },
+  args: {
+    projectId: v.id("projects"),
+    viewerUserId: v.id("users"),
+  },
   handler: async (ctx, args) => {
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.viewerUserId
+    )
+    if (!canAccess) {
+      return []
+    }
+
     const memberships = await ctx.db
       .query("projectMembers")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -68,6 +124,15 @@ export const getMemberRole = query({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canAccess) {
+      return null
+    }
+
     const membership = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_and_user", (q) =>
@@ -134,16 +199,24 @@ export const addMember = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Verify actor has permission to add members
-    const actorMembership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.actorUserId)
-      )
-      .first()
-
-    if (!actorMembership || !hasPermission(actorMembership.role as ProjectRole, "manage_members")) {
+    const { project, canManageTeam, isPersonalProject } = await getTeamManagementContext(
+      ctx,
+      args.projectId,
+      args.actorUserId
+    )
+    if (!canManageTeam) {
       throw new Error("Unauthorized to add members")
+    }
+
+    if (!isPersonalProject) {
+      const workspaceMembership = await getCanonicalOrganizationMembership(
+        ctx,
+        project.organizationId,
+        args.memberUserId
+      )
+      if (!workspaceMembership) {
+        throw new Error("User must already be a member of this workspace")
+      }
     }
 
     // Check if user is already a member
@@ -191,15 +264,12 @@ export const updateRole = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Verify actor has permission
-    const actorMembership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.actorUserId)
-      )
-      .first()
-
-    if (!actorMembership || !hasPermission(actorMembership.role as ProjectRole, "manage_members")) {
+    const { canManageTeam } = await getTeamManagementContext(
+      ctx,
+      args.projectId,
+      args.actorUserId
+    )
+    if (!canManageTeam) {
       throw new Error("Unauthorized to change member roles")
     }
 
@@ -247,15 +317,12 @@ export const removeMember = mutation({
     memberUserId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Verify actor has permission
-    const actorMembership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.actorUserId)
-      )
-      .first()
-
-    if (!actorMembership || !hasPermission(actorMembership.role as ProjectRole, "manage_members")) {
+    const { canManageTeam } = await getTeamManagementContext(
+      ctx,
+      args.projectId,
+      args.actorUserId
+    )
+    if (!canManageTeam) {
       throw new Error("Unauthorized to remove members")
     }
 
@@ -402,6 +469,15 @@ export const getMemberLocalPath = query({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canAccess) {
+      return null
+    }
+
     const membership = await ctx.db
       .query("projectMembers")
       .withIndex("by_project_and_user", (q) =>
@@ -434,6 +510,16 @@ export const updateMemberLocalPath = mutation({
       .first()
 
     if (!membership) {
+      const workspaceAccess = await getWorkspaceProjectAccess(
+        ctx,
+        project.organizationId,
+        args.userId
+      )
+
+      if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
+        throw new Error("Unauthorized to access this project")
+      }
+
       // If the user is part of the project's organization, create a default
       // membership so we can store per-user/machine localPath without requiring
       // explicit project invites.

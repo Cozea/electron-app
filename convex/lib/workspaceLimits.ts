@@ -1,6 +1,7 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
+import { resolveOrganizationBillingSnapshot } from "./accountEntitlements"
 
 type StorageCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
 type StorageMutationCtx = Pick<MutationCtx, "db" | "scheduler">
@@ -79,7 +80,10 @@ export async function checkProjectLimit(
     }
   }
 
-  const plan = org.subscription?.plan ?? "free"
+  const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
+    organization: org,
+  })
+  const plan = billingSnapshot.plan
   const limit = getPlanProjectLimit(plan)
 
   const [draftProjects, generatingProjects, buildingProjects, activeProjects, archivedProjects] =
@@ -810,7 +814,10 @@ export async function checkStorageUsage(
     }
   }
 
-  const plan = org.subscription?.plan ?? "free"
+  const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
+    organization: org,
+  })
+  const plan = billingSnapshot.plan
   const limitBytes = getPlanStorageLimit(plan)
 
   const breakdown = org.storageUsage?.breakdown ?? (await rollupProjectStorageUsageBreakdown(ctx, orgId))

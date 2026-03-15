@@ -13,6 +13,7 @@ import {
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { MIN_PANEL_WIDTH, MAX_DRAG_PANEL_WIDTH } from '@/stores/useAssistantPanelStore'
 import { useAuth } from '@/contexts/AuthContext'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { useWindowsCaptionControlsWidth } from '@/hooks/useWindowsCaptionControlsWidth'
 import { cn } from '@/lib/utils'
 
@@ -49,7 +50,8 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const closeHistory = useAssistantPanelStore((state) => state.closeHistory)
   const startNewConversation = useAssistantPanelStore((state) => state.startNewConversation)
 
-  const { user, currentOrganization } = useAuth()
+  const { user } = useAuth()
+  const { convexOrganizationId } = useScopedAppContext()
   const isOpen = mode !== 'closed'
   const isWindowsClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32'
   const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
@@ -82,10 +84,10 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
     api.projects.getAccessibleBySlug,
     shouldResolveProjectForHistory && convexUser?._id && projectSlug
       ? {
-          slug: projectSlug,
-          userId: convexUser._id,
-          preferredOrganizationId: currentOrganization?.convexOrgId as Id<'organizations'> | undefined,
-        }
+        slug: projectSlug,
+        userId: convexUser._id,
+        preferredOrganizationId: convexOrganizationId,
+      }
       : 'skip'
   )
   const resolvedProjectId =

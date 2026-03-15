@@ -10,6 +10,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { useCachedQuery } from '@/stores/useQueryCache'
 import { useAuth } from '@/contexts/AuthContext'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import type { Id } from '../../convex/_generated/dataModel'
 import type {
   IntegrationProvider,
@@ -35,9 +36,16 @@ interface UseIntegrationsReturn {
   clearConnectError: () => void
 }
 
-export function useIntegrations(): UseIntegrationsReturn {
-  const { currentOrganization, convexUserId } = useAuth()
-  const convexOrgId = currentOrganization?.convexOrgId as Id<"organizations"> | undefined
+interface UseIntegrationsOptions {
+  route?: string
+  enabled?: boolean
+}
+
+export function useIntegrations(options: UseIntegrationsOptions = {}): UseIntegrationsReturn {
+  const { convexUserId } = useAuth()
+  const { convexOrg } = useScopedAppContext({ route: options.route })
+  const convexOrgId = convexOrg?._id as Id<"organizations"> | undefined
+  const isEnabled = options.enabled ?? true
 
   const [connectingProvider, setConnectingProvider] = useState<IntegrationProvider | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -45,7 +53,7 @@ export function useIntegrations(): UseIntegrationsReturn {
   // Query integrations from Convex (with caching to prevent loading flash)
   const freshIntegrations = useQuery(
     api.integrations.list,
-    convexOrgId ? { organizationId: convexOrgId } : "skip"
+    convexOrgId && isEnabled ? { organizationId: convexOrgId } : "skip"
   )
   const integrationsData = useCachedQuery(
     `integrations-list-${convexOrgId}`,
@@ -60,7 +68,7 @@ export function useIntegrations(): UseIntegrationsReturn {
   // Get key metadata for the organization
   const keyMetadata = useQuery(
     api.integrations.getKeyMetadata,
-    convexOrgId ? { organizationId: convexOrgId } : "skip"
+    convexOrgId && isEnabled ? { organizationId: convexOrgId } : "skip"
   )
 
   /**
@@ -70,6 +78,11 @@ export function useIntegrations(): UseIntegrationsReturn {
     async (provider: IntegrationProvider, credentials: IntegrationCredentials) => {
       if (!convexOrgId) {
         setConnectError('No organization selected')
+        return
+      }
+
+      if (!isEnabled) {
+        setConnectError('No access to integrations')
         return
       }
 
@@ -175,7 +188,7 @@ export function useIntegrations(): UseIntegrationsReturn {
         throw err // Re-throw so caller knows it failed
       }
     },
-    [convexOrgId, convexUserId, keyMetadata, connectMutation, storeKeyMetadataMutation]
+    [connectMutation, convexOrgId, convexUserId, isEnabled, keyMetadata, storeKeyMetadataMutation]
   )
 
   /**
@@ -205,6 +218,11 @@ export function useIntegrations(): UseIntegrationsReturn {
         return
       }
 
+      if (!isEnabled) {
+        setConnectError('No access to integrations')
+        return
+      }
+
       setConnectingProvider(provider)
       setConnectError(null)
 
@@ -229,7 +247,7 @@ export function useIntegrations(): UseIntegrationsReturn {
         setConnectingProvider(null)
       }
     },
-    [convexOrgId]
+    [convexOrgId, isEnabled]
   )
 
   // Store refs to current values for use in OAuth callback
@@ -394,7 +412,7 @@ export function useIntegrations(): UseIntegrationsReturn {
 
   return {
     integrations,
-    isLoading: integrationsData === undefined,
+    isLoading: isEnabled && Boolean(convexOrgId) && integrationsData === undefined,
     error: null,
     connect,
     disconnect,

@@ -6,8 +6,7 @@
  * production-grade applications.
  */
 
-import { useState, useMemo } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
+import { useMemo, useState } from 'react'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { BreadcrumbCountChip } from '@/components/layouts/BreadcrumbCountChip'
 import { Button } from '@/components/ui/button'
@@ -20,7 +19,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IntegrationConnectDialog } from '@/components/integrations'
 import { IntegrationIcon } from '@/components/integrations/IntegrationIcon'
-import { useIntegrations } from '@/hooks/useIntegrations'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
+import { useScopedIntegrationsData } from '@/hooks/useScopedIntegrationsData'
 import {
   INTEGRATIONS,
   getIntegrationsGroupedByCategory,
@@ -35,18 +35,24 @@ import { Plus, Plug } from 'lucide-react'
 
 type FilterType = 'all' | 'connected' | 'disconnected'
 
-export function Integrations() {
-  const { user, logout } = useAuth()
+interface IntegrationsProps {
+  surface?: 'page' | 'drawer'
+  route?: string
+}
+
+export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   const {
+    settingsPage,
+    user,
+    logout,
     integrations: connectedIntegrations,
-    isLoading,
     connect,
     disconnect,
     startOAuth,
     connectingProvider,
     connectError,
     clearConnectError,
-  } = useIntegrations()
+  } = useScopedIntegrationsData({ route })
 
   const [filter, setFilter] = useState<FilterType>('all')
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationDefinition | null>(null)
@@ -168,22 +174,10 @@ export function Integrations() {
     </div>
   )
 
-  return (
-    <DashboardLayout
-      user={user}
-      onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'CLI Tools' }]}
-      breadcrumbAddon={breadcrumbAddon}
-      header={headerContent}
-    >
+  const content = (
+    <>
       <div className="space-y-8">
-        {isLoading && (
-          <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
-            Loading integrations...
-          </div>
-        )}
-
-        {!isLoading && !hasFilteredIntegrations ? (
+        {!hasFilteredIntegrations ? (
           <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
             {filter === 'connected'
               ? 'No integrations connected yet.'
@@ -287,6 +281,36 @@ export function Integrations() {
         isConnecting={!!connectingProvider}
         error={connectError || undefined}
       />
+    </>
+  )
+
+  if (surface === 'drawer') {
+    return settingsPage.isWorkspaceAccessDenied
+      ? (
+        <WorkspaceAccessNotice
+          title="CLI tools access required"
+          description="You do not have permission to view workspace CLI tools and integrations."
+        />
+      )
+      : content
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onLogout={logout}
+      breadcrumbs={settingsPage.breadcrumbs}
+      breadcrumbAddon={breadcrumbAddon}
+      header={headerContent}
+    >
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="CLI tools access required"
+          description="You do not have permission to view workspace CLI tools and integrations."
+        />
+      ) : (
+        content
+      )}
     </DashboardLayout>
   )
 }

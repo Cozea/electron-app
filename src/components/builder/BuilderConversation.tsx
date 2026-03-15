@@ -3,6 +3,7 @@ import { useCozeaChat } from '@/hooks/useCozeaChat'
 import { useMutation } from 'convex/react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import { LocalAgentRuntime } from '@/agents/localRuntime'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -23,10 +24,10 @@ import { normalizeToolInput } from '@/lib/ai/normalizeToolInput'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import { getRetryHintSurfaceError, type AiSurfaceErrorData } from '@/lib/ai/surfaceErrors'
 import {
-  buildEncodedProviderAuthHeader,
   inferProviderFromModelId,
   isManagedProvider,
 } from '@/lib/ai/providerAuth'
+import { useProviderAuthResolution } from '@/hooks/useProviderAuthResolution'
 import { loadGlobalModelSettings } from '@/lib/modelSettingsStorage'
 import { getModelCatalog } from '@/lib/ai/modelCatalogClient'
 import { resolveModelIdFromCatalog } from '@/lib/ai/modelIdResolution'
@@ -378,7 +379,10 @@ export function BuilderConversation({
   onSurfaceError,
   className,
 }: BuilderConversationProps) {
-  const { accessToken, currentOrganization, convexUserId } = useAuth()
+  const { accessToken, convexUserId } = useAuth()
+  const { organizationId, workspaceScoped } = useAiExecutionScope({
+    requireProjectAccess: true,
+  })
 
   const acquireFileLock = useMutation(api.projectFileLocks.acquireLock)
   const releaseFileLock = useMutation(api.projectFileLocks.releaseLock)
@@ -386,8 +390,6 @@ export function BuilderConversation({
   // State
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
   const [toolsLoaded, setToolsLoaded] = useState(false)
-  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
-  const [providerAuthResolved, setProviderAuthResolved] = useState(false)
   const [providerAuthRevision, setProviderAuthRevision] = useState(0)
   const [_billingError, setBillingError] = useState<BillingErrorData | null>(null)
   const [conversationId] = useState(() => crypto.randomUUID())
@@ -535,6 +537,14 @@ export function BuilderConversation({
   const enableWebSearch = promptSettings?.webSearchEnabled ?? true
   const variantId = promptSettings?.variantId
   const providerOptions = promptSettings?.providerOptions
+  const {
+    header: providerAuthHeader,
+    resolved: providerAuthResolved,
+  } = useProviderAuthResolution({
+    organizationId,
+    modelId: model,
+    refreshKey: providerAuthRevision,
+  })
 
   const headers = useMemo((): Record<string, string> => {
     if (!accessToken) return {}
@@ -565,7 +575,6 @@ export function BuilderConversation({
 
   useEffect(() => {
     let cancelled = false
-    const organizationId = currentOrganization?.organizationId
 
     if (!accessToken || !organizationId) {
       setCatalogFallbackModel('')
@@ -606,65 +615,7 @@ export function BuilderConversation({
     return () => {
       cancelled = true
     }
-  }, [accessToken, currentOrganization?.organizationId, requestedModel])
-
-  useEffect(() => {
-    let cancelled = false
-    const organizationId = currentOrganization?.organizationId
-    if (!organizationId) {
-      setProviderAuthHeader(null)
-      setProviderAuthResolved(false)
-      return
-    }
-
-    if (!hasModel) {
-      setProviderAuthHeader(null)
-      setProviderAuthResolved(true)
-      return
-    }
-
-    const provider = inferProviderFromModelId(model)
-    if (!provider) {
-      setProviderAuthHeader(null)
-      setProviderAuthResolved(true)
-      return
-    }
-    if (isManagedProvider(provider)) {
-      setProviderAuthHeader(null)
-      setProviderAuthResolved(true)
-      return
-    }
-
-    setProviderAuthResolved(false)
-    void (async () => {
-      const maxAttempts = 4
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const result = await buildEncodedProviderAuthHeader({
-          provider,
-          modelId: model,
-          organizationId,
-        })
-        if (cancelled) return
-        if (result.header) {
-          setProviderAuthHeader(result.header)
-          setProviderAuthResolved(true)
-          return
-        }
-
-        setProviderAuthHeader(null)
-        if (attempt < maxAttempts - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
-        }
-      }
-
-      if (cancelled) return
-      setProviderAuthResolved(true)
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [hasModel, model, currentOrganization?.organizationId, providerAuthRevision])
+  }, [accessToken, organizationId, requestedModel])
 
   // Sync tools
   useEffect(() => {
@@ -675,7 +626,7 @@ export function BuilderConversation({
 
   // Fetch tools
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId || !hasModel) {
+    if (!accessToken || !organizationId || !hasModel) {
       setAvailableTools([])
       setToolsLoaded(false)
       return
@@ -684,7 +635,7 @@ export function BuilderConversation({
     setToolsLoaded(false)
     const controller = new AbortController()
     const query = new URLSearchParams({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       model,
       agentId: 'build',
       surface: 'builder',
@@ -713,7 +664,7 @@ export function BuilderConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, hasModel, headers, localPath, model])
+  }, [accessToken, organizationId, hasModel, headers, localPath, model])
 
   // Build initial prompt with full plan context
   const initialPrompt = useMemo(() => {
@@ -1570,7 +1521,7 @@ Now begin by defining your task list with todowrite, then start working through 
   } = useCozeaChat({
     transportArgs: {
       accessToken,
-      organizationId: currentOrganization?.organizationId,
+      organizationId,
       model,
       conversationId,
       agentId: 'build',
@@ -1698,13 +1649,13 @@ Now begin by defining your task list with todowrite, then start working through 
     if (!hasModel) return
     if (!providerAuthResolved) return
     if (!toolsLoaded) return
-    if (!hasSentInitialMessageRef.current && accessToken && currentOrganization?.organizationId && project._id) {
+    if (!hasSentInitialMessageRef.current && accessToken && organizationId && project._id) {
       hasSentInitialMessageRef.current = true
       void sendMessage({ text: initialPrompt })
     }
   }, [
     accessToken,
-    currentOrganization?.organizationId,
+    organizationId,
     initialPrompt,
     hasModel,
     preflightDiagnostic,
@@ -1729,7 +1680,9 @@ Now begin by defining your task list with todowrite, then start working through 
   useEffect(() => {
     if (!error) return
 
-    const billingErr = parseBillingError(error)
+    const billingErr = parseBillingError(error, {
+      workspaceScoped,
+    })
     if (billingErr) {
       setBillingError(billingErr)
       onBillingError?.(billingErr)

@@ -54,6 +54,7 @@ import {
 } from '@tabler/icons-react'
 import { Brain } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import {
   getProviderDisplayName,
   isConnectedProvider,
@@ -125,10 +126,9 @@ import { buildProvisionalModelOption } from '@/lib/ai/modelSelectionFallback'
 import { getRetryHintMessage } from '@/lib/ai/retryHints'
 import { getRetryHintSurfaceError } from '@/lib/ai/surfaceErrors'
 import {
-  buildEncodedProviderAuthHeader,
   inferProviderFromModelId,
-  isManagedProvider,
 } from '@/lib/ai/providerAuth'
+import { useProviderAuthResolution } from '@/hooks/useProviderAuthResolution'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
@@ -263,7 +263,8 @@ export function WizardConversation({
   className,
 }: WizardConversationProps) {
   const navigate = useViewTransitionNavigate()
-  const { accessToken, currentOrganization } = useAuth()
+  const { accessToken } = useAuth()
+  const { organizationId } = useAiExecutionScope()
   const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
   const initialModelId = initialGlobalModelSettings.model || promptSettings.model || ''
@@ -278,9 +279,6 @@ export function WizardConversation({
     initialModelId
   )
   const [availableTools, setAvailableTools] = useState<ToolMeta[]>([])
-  const [providerAuthHeader, setProviderAuthHeader] = useState<string | null>(null)
-  const [providerAuthLoading, setProviderAuthLoading] = useState(false)
-  const [providerAuthError, setProviderAuthError] = useState<string | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [variantId, setVariantId] = useState<StoredModelSettings['variantId']>(initialGlobalModelSettings.variantId ?? promptSettings?.variantId)
   const [modelSettings, setModelSettings] = useState<Record<string, StoredModelSettings>>(
@@ -362,9 +360,17 @@ export function WizardConversation({
     }
     return inferProviderFromModelId(model)
   }, [model, selectedModelData?.chefSlug])
-  const providerRequiresLocalAuth = Boolean(
-    selectedProviderForAuth && !isManagedProvider(selectedProviderForAuth)
-  )
+  const {
+    header: providerAuthHeader,
+    loading: providerAuthLoading,
+    error: providerAuthError,
+    resolved: providerAuthResolved,
+    requiresLocalAuth: providerRequiresLocalAuth,
+  } = useProviderAuthResolution({
+    organizationId,
+    modelId: model,
+    preferredProvider: selectedProviderForAuth ?? null,
+  })
 
   const localRuntime = useMemo(() => new LocalAgentRuntime(), [])
   const isAgentMode = false
@@ -424,62 +430,11 @@ export function WizardConversation({
   }, [accessToken])
 
   useEffect(() => {
-    if (accessToken && currentOrganization?.organizationId) return
+    if (accessToken && organizationId) return
     setModelsError(null)
     setToolsError(null)
     setModelsLoaded(false)
-  }, [accessToken, currentOrganization?.organizationId])
-
-  useEffect(() => {
-    let cancelled = false
-    const organizationId = currentOrganization?.organizationId
-    if (!organizationId) {
-      setProviderAuthLoading(false)
-      setProviderAuthError(null)
-      setProviderAuthHeader(null)
-      return
-    }
-
-    const provider = selectedProviderForAuth
-    if (!provider) {
-      setProviderAuthLoading(false)
-      setProviderAuthError(null)
-      setProviderAuthHeader(null)
-      return
-    }
-    if (isManagedProvider(provider)) {
-      setProviderAuthLoading(false)
-      setProviderAuthError(null)
-      setProviderAuthHeader(null)
-      return
-    }
-
-    setProviderAuthLoading(true)
-    setProviderAuthError(null)
-    setProviderAuthHeader(null)
-
-    void (async () => {
-      const result = await buildEncodedProviderAuthHeader({
-        provider,
-        modelId: model,
-        organizationId,
-      })
-      if (cancelled) return
-      setProviderAuthLoading(false)
-      if (result.header) {
-        setProviderAuthHeader(result.header)
-        setProviderAuthError(null)
-        return
-      }
-
-      setProviderAuthHeader(null)
-      setProviderAuthError(result.error || 'Provider authentication is not ready on this device.')
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentOrganization?.organizationId, model, selectedProviderForAuth])
+  }, [accessToken, organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -498,12 +453,12 @@ export function WizardConversation({
 
   // Fetch models
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !organizationId) return
     let cancelled = false
     setModelsLoaded(false)
 
     getModelCatalog({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       accessToken,
       connectedProviders:
         providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
@@ -549,17 +504,17 @@ export function WizardConversation({
   }, [
     accessToken,
     connectedProviders,
-    currentOrganization?.organizationId,
+    organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
   ])
 
   // Fetch tools
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !organizationId) return
     const controller = new AbortController()
     const query = new URLSearchParams({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       model,
       agentId: 'plan',
       surface: 'wizard',
@@ -592,7 +547,7 @@ export function WizardConversation({
       })
 
     return () => controller.abort()
-  }, [accessToken, currentOrganization?.organizationId, headers, model])
+  }, [accessToken, organizationId, headers, model])
 
   // Tool execution (same as AIConversation)
   const shouldRequireLocalApproval = useCallback((toolMeta?: ToolMeta) => {
@@ -688,7 +643,7 @@ export function WizardConversation({
   } = useCozeaChat({
     transportArgs: {
       accessToken,
-      organizationId: currentOrganization?.organizationId,
+      organizationId,
       model,
       conversationId,
       agentId: 'plan',
@@ -818,9 +773,9 @@ export function WizardConversation({
 
   const canSendMessage = Boolean(
     accessToken &&
-    currentOrganization?.organizationId &&
+    organizationId &&
     hasSelectableModel &&
-    (!providerRequiresLocalAuth || (providerAuthHeader && !providerAuthLoading))
+    (!providerRequiresLocalAuth || (providerAuthResolved && providerAuthHeader))
   )
 
   // Send initial message on mount (use ref to prevent duplicate sends)

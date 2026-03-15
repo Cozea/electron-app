@@ -1,4 +1,3 @@
-import { useCallback } from "react"
 import {
   ChevronsUpDown,
   LogOut,
@@ -81,10 +80,7 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const { theme, setTheme } = useTheme()
   const userData = formatUserData(user)
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
-  const handleOpenSettings = useCallback((route: string) => {
-    openSettingsDrawer(route)
-  }, [openSettingsDrawer])
+  const openSettingsDrawer = useSettingsDrawerStore((state) => state.open)
 
   return (
     <SidebarMenu>
@@ -130,7 +126,7 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onSelect={() => handleOpenSettings('/settings/account')}>
+              <DropdownMenuItem onSelect={() => openSettingsDrawer("account")}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
               </DropdownMenuItem>

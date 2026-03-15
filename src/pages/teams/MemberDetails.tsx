@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
-import { useQuery } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import { formatOrganizationWorkspaceRole } from '@/lib/workspaces/organizationRoles'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
+import { useScopedMemberDetailsData } from '@/hooks/useScopedMemberDetailsData'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Badge } from '../../components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
@@ -175,45 +174,25 @@ function formatRelativeTime(timestamp: number): string {
   return `${days}d ago`
 }
 
-function formatRole(role: string | undefined): string {
-  if (!role) return 'Member'
-  return role.replace(/_/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase())
-}
-
 function isPresent<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined
 }
 
 export function MemberDetails() {
   const { memberId } = useParams<{ memberId: string }>()
-  const { user, logout, currentOrganization } = useAuth()
-
-  // Get Convex organization by WorkOS ID
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-
-  // Get member details
-  const member = useQuery(
-    api.organizations.getMember,
-    convexOrg?._id && memberId ? { orgId: convexOrg._id, memberId: memberId as Id<'members'> } : 'skip'
-  )
-
-  const usageRecords = useQuery(
-    api.aiUsage.getRecentForUser,
-    member?.user?.id ? { userId: member.user.id, limit: 500 } : 'skip'
-  )
-  const memberProjects = useQuery(
-    api.projects.listForUser,
-    member?.user?.id ? { userId: member.user.id } : 'skip'
-  )
-  const organizationMembers = useQuery(
-    api.organizations.getMembers,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-
-  const isLoading = member === undefined
+  const {
+    settingsPage,
+    user,
+    logout,
+    convexOrg,
+    workspaceName,
+    member,
+    memberName,
+    usageRecords,
+    memberProjects,
+    organizationMembers,
+    isLoading,
+  } = useScopedMemberDetailsData({ memberId, route: '/teams' })
 
   const scopedProjects = useMemo(() => {
     if (!memberProjects) return []
@@ -273,23 +252,21 @@ export function MemberDetails() {
     })
   }
 
-  const memberName = member
-    ? `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim()
-      || member.user?.email?.split('@')[0]
-      || 'Unknown'
-    : 'Member'
-
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
       breadcrumbs={[
-        { label: 'Teams' },
-        { label: 'Members', href: '/teams' },
+        ...settingsPage.breadcrumbs,
         { label: isLoading ? 'Loading...' : member ? memberName : 'Not Found' },
       ]}
     >
-      {isLoading ? (
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="Member access required"
+          description="You do not have permission to view workspace members."
+        />
+      ) : isLoading ? (
         <div className="rounded-2xl bg-secondary/60 px-4 py-10 text-center text-muted-foreground">
           Loading member details...
         </div>
@@ -317,7 +294,7 @@ export function MemberDetails() {
                   <p className="text-muted-foreground">{member.user?.email}</p>
                 </div>
                 <Badge variant="secondary" className="text-sm">
-                  {formatRole(member.role)}
+                  {formatOrganizationWorkspaceRole(member.roleBaseRole ?? member.role, member.roleName)}
                 </Badge>
               </div>
 
@@ -379,7 +356,7 @@ export function MemberDetails() {
                   <div key={project._id} className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
                     <div>
                       <p className="font-medium">{project.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatRole(project.role)}</p>
+                      <p className="text-xs text-muted-foreground">{formatOrganizationWorkspaceRole(project.role)}</p>
                     </div>
                     <span className="text-xs text-muted-foreground">{formatRelativeTime(project.updatedAt)}</span>
                   </div>
@@ -397,15 +374,17 @@ export function MemberDetails() {
               <h2 className="text-lg font-semibold">Teams</h2>
             </div>
             <div className="space-y-3">
-              {currentOrganization ? (
+              {workspaceName ? (
                 <div className="flex items-center justify-between rounded-xl bg-background/50 px-3 py-2">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center">
                       <Users className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium">{currentOrganization.organizationName}</p>
-                      <p className="text-xs text-muted-foreground">{formatRole(member.role)}</p>
+                      <p className="font-medium">{workspaceName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatOrganizationWorkspaceRole(member.roleBaseRole ?? member.role, member.roleName)}
+                      </p>
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground">
@@ -413,7 +392,7 @@ export function MemberDetails() {
                   </span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground py-2">No team information available.</p>
+                <p className="text-sm text-muted-foreground py-2">No workspace member information available.</p>
               )}
             </div>
           </div>

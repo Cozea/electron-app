@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
-import type { OrganizationMembership } from '../types/electron'
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { fetchWithAbort } from '@/lib/abort'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'https://api.cozea.app'
@@ -20,6 +19,8 @@ interface Member {
   lastName: string | null
   profileImageUrl: string | null
   role: string
+  roleId?: string | null
+  roleName?: string | null
   status: string
   createdAt: string
 }
@@ -33,22 +34,30 @@ interface Invitation {
 }
 
 interface OrganizationContextType {
-  // Current organization
-  currentOrganization: OrganizationMembership | null
-  organizations: OrganizationMembership[]
-  setOrganizations: (orgs: OrganizationMembership[]) => void
-  switchOrganization: (orgId: string) => void
-
   // Organization CRUD
-  createOrganization: (name: string) => Promise<{ organization: Organization; membership: OrganizationMembership } | null>
   updateOrganization: (orgId: string, name: string) => Promise<Organization | null>
   deleteOrganization: (orgId: string) => Promise<boolean>
 
   // Members
   getMembers: (orgId: string) => Promise<Member[]>
-  inviteMember: (orgId: string, email: string, roleSlug?: string) => Promise<{ invitationId: string; error?: string } | null>
+  inviteMember: (
+    orgId: string,
+    email: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ) => Promise<{ invitationId: string; error?: string } | null>
   removeMember: (orgId: string, membershipId: string) => Promise<boolean>
-  updateMemberRole: (orgId: string, membershipId: string, roleSlug: string) => Promise<boolean>
+  updateMemberRole: (
+    orgId: string,
+    membershipId: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ) => Promise<boolean>
+  updateInvitationRole: (
+    invitationId: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ) => Promise<boolean>
 
   // Invitations
   getPendingInvitations: (orgId: string) => Promise<Invitation[]>
@@ -63,29 +72,11 @@ const OrganizationContext = createContext<OrganizationContextType | null>(null)
 interface OrganizationProviderProps {
   children: ReactNode
   accessToken: string | null
-  initialOrganizations?: OrganizationMembership[]
   onTokenExpired?: () => Promise<boolean>
 }
 
-export function OrganizationProvider({ children, accessToken, initialOrganizations = [], onTokenExpired }: OrganizationProviderProps) {
-  const [organizations, setOrganizations] = useState<OrganizationMembership[]>(initialOrganizations)
-  const [currentOrganization, setCurrentOrganization] = useState<OrganizationMembership | null>(
-    initialOrganizations[0] || null
-  )
+export function OrganizationProvider({ children, accessToken, onTokenExpired }: OrganizationProviderProps) {
   const [isLoading, setIsLoading] = useState(false)
-
-  // Keep local organization state in sync with AuthContext without creating
-  // a self-triggering effect cycle on currentOrganization updates.
-  useEffect(() => {
-    setOrganizations(initialOrganizations)
-
-    if (initialOrganizations.length === 0) {
-      setCurrentOrganization(null)
-      return
-    }
-
-    setCurrentOrganization((prev) => prev ?? initialOrganizations[0])
-  }, [initialOrganizations])
 
   // Make authenticated requests and retry once after token refresh on 401.
   const fetchWithRefresh = useCallback(async (
@@ -121,51 +112,6 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     return response
   }, [accessToken, onTokenExpired])
 
-  const switchOrganization = useCallback((orgId: string) => {
-    const org = organizations.find((o) => o.organizationId === orgId)
-    if (org) {
-      setCurrentOrganization(org)
-    }
-  }, [organizations])
-
-  const createOrganization = useCallback(async (name: string) => {
-    if (!accessToken) return null
-    setIsLoading(true)
-
-    try {
-      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/organizations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create organization')
-      }
-
-      const data = await response.json()
-      const newMembership: OrganizationMembership = {
-        id: data.membership.id,
-        organizationId: data.organization.id,
-        organizationName: data.organization.name,
-        role: data.membership.role,
-        status: data.membership.status,
-      }
-
-      setOrganizations((prev) => [...prev, newMembership])
-      setCurrentOrganization(newMembership)
-
-      return { organization: data.organization, membership: newMembership }
-    } catch (err) {
-      console.error('Failed to create organization:', err)
-      return null
-    } finally {
-      setIsLoading(false)
-    }
-  }, [accessToken, fetchWithRefresh])
-
   const updateOrganization = useCallback(async (orgId: string, name: string) => {
     if (!accessToken) return null
     setIsLoading(true)
@@ -185,17 +131,6 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
 
       const data = await response.json()
 
-      // Update local state
-      setOrganizations((prev) =>
-        prev.map((org) =>
-          org.organizationId === orgId ? { ...org, organizationName: name } : org
-        )
-      )
-
-      if (currentOrganization?.organizationId === orgId) {
-        setCurrentOrganization((prev) => prev ? { ...prev, organizationName: name } : null)
-      }
-
       return data.organization
     } catch (err) {
       console.error('Failed to update organization:', err)
@@ -203,7 +138,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, fetchWithRefresh, currentOrganization])
+  }, [accessToken, fetchWithRefresh])
 
   const deleteOrganization = useCallback(async (orgId: string) => {
     if (!accessToken) return false
@@ -218,13 +153,6 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
         throw new Error('Failed to delete organization')
       }
 
-      // Update local state
-      setOrganizations((prev) => prev.filter((org) => org.organizationId !== orgId))
-
-      if (currentOrganization?.organizationId === orgId) {
-        setCurrentOrganization(organizations.find((o) => o.organizationId !== orgId) || null)
-      }
-
       return true
     } catch (err) {
       console.error('Failed to delete organization:', err)
@@ -232,7 +160,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     } finally {
       setIsLoading(false)
     }
-  }, [accessToken, fetchWithRefresh, currentOrganization, organizations])
+  }, [accessToken, fetchWithRefresh])
 
   const getMembers = useCallback(async (orgId: string): Promise<Member[]> => {
     if (!accessToken) return []
@@ -252,7 +180,12 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     }
   }, [accessToken, fetchWithRefresh])
 
-  const inviteMember = useCallback(async (orgId: string, email: string, roleSlug?: string): Promise<{ invitationId: string; error?: string } | null> => {
+  const inviteMember = useCallback(async (
+    orgId: string,
+    email: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ): Promise<{ invitationId: string; error?: string } | null> => {
     if (!accessToken) return null
     setIsLoading(true)
 
@@ -262,7 +195,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, roleSlug }),
+        body: JSON.stringify({ email, roleSlug, roleId }),
       })
 
       if (!response.ok) {
@@ -313,7 +246,12 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
     }
   }, [accessToken, fetchWithRefresh])
 
-  const updateMemberRole = useCallback(async (orgId: string, membershipId: string, roleSlug: string) => {
+  const updateMemberRole = useCallback(async (
+    orgId: string,
+    membershipId: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ) => {
     if (!accessToken) return false
     setIsLoading(true)
 
@@ -323,7 +261,7 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ roleSlug }),
+        body: JSON.stringify({ roleSlug, roleId }),
       })
 
       if (!response.ok) {
@@ -333,6 +271,36 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
       return true
     } catch (err) {
       console.error('Failed to update member role:', err)
+      return false
+    } finally {
+      setIsLoading(false)
+    }
+  }, [accessToken, fetchWithRefresh])
+
+  const updateInvitationRole = useCallback(async (
+    invitationId: string,
+    roleSlug?: string,
+    roleId?: string | null,
+  ) => {
+    if (!accessToken) return false
+    setIsLoading(true)
+
+    try {
+      const response = await fetchWithRefresh(`${AUTH_SERVER_URL}/invitations/${invitationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ roleSlug, roleId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update invitation role')
+      }
+
+      return true
+    } catch (err) {
+      console.error('Failed to update invitation role:', err)
       return false
     } finally {
       setIsLoading(false)
@@ -379,17 +347,13 @@ export function OrganizationProvider({ children, accessToken, initialOrganizatio
   return (
     <OrganizationContext.Provider
       value={{
-        currentOrganization,
-        organizations,
-        setOrganizations,
-        switchOrganization,
-        createOrganization,
         updateOrganization,
         deleteOrganization,
         getMembers,
         inviteMember,
         removeMember,
         updateMemberRole,
+        updateInvitationRole,
         getPendingInvitations,
         revokeInvitation,
         isLoading,

@@ -99,8 +99,10 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
   // Load project from Convex
   const project = useQuery(
-    api.projects.get,
-    projectId ? { projectId: projectId as Id<'projects'> } : 'skip'
+    api.projects.getAccessibleById,
+    projectId && convexUserId
+      ? { projectId: projectId as Id<'projects'>, userId: convexUserId }
+      : 'skip'
   )
 
   const memberLocalPath = useQuery(
@@ -124,6 +126,24 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
   const saveYjsSnapshot = useMutation(api.yjs.saveSnapshot)
   const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
   const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
+  const generatePreviewUploadUrlForUser = useCallback(
+    (args: { projectId: Id<'projects'> }) => {
+      if (!convexUserId) {
+        throw new Error('Missing user context for preview upload')
+      }
+      return generatePreviewUploadUrl({ ...args, userId: convexUserId })
+    },
+    [convexUserId, generatePreviewUploadUrl]
+  )
+  const updatePreviewImageForUser = useCallback(
+    (args: { projectId: Id<'projects'>; storageId: Id<'_storage'> }) => {
+      if (!convexUserId) {
+        throw new Error('Missing user context for preview upload')
+      }
+      return updatePreviewImage({ ...args, userId: convexUserId })
+    },
+    [convexUserId, updatePreviewImage]
+  )
 
   // Build state
   const [progress, setProgress] = useState(initialSessionState.progress)
@@ -341,15 +361,15 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       await captureAndUploadProjectPreviewFromUrl(
         project._id,
         devServer.url,
-        generatePreviewUploadUrl,
-        updatePreviewImage
+        generatePreviewUploadUrlForUser,
+        updatePreviewImageForUser
       )
       addLog('Preview screenshot saved!')
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       addLog(`Screenshot capture failed: ${msg}`)
     }
-  }, [devServer.url, project?._id, generatePreviewUploadUrl, updatePreviewImage, addLog])
+  }, [devServer.url, project?._id, generatePreviewUploadUrlForUser, updatePreviewImageForUser, addLog])
 
   const handlePreviewRefresh = useCallback(() => {
     resetPreviewAutoRetryBudget()
@@ -556,7 +576,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
     // Update project status to active
     if (project?._id) {
-      await updateStatus({ projectId: project._id, status: 'active' })
+      await updateStatus({ projectId: project._id, userId: convexUserId!, status: 'active' })
       addLog('Project status updated to active')
     }
 
@@ -630,7 +650,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     setStatusMessage('Preparing build environment...')
 
     try {
-      await updateStatus({ projectId: project._id, status: 'building' })
+      await updateStatus({ projectId: project._id, userId: convexUserId, status: 'building' })
       addLog('Project status updated to building')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'

@@ -31,6 +31,8 @@ import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAuth } from "@/contexts/AuthContext"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
+import { buildProjectJoinUrl } from "@shared/projectShare"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { GitDurabilityCoordinator } from "@/lib/git/GitDurabilityCoordinator"
@@ -112,18 +114,6 @@ const PROJECT_INVITE_ROLE_OPTIONS: Array<{ value: ProjectInviteRole; label: stri
   { value: "viewer", label: "Viewer" },
 ]
 
-const DEFAULT_SITE_URL = "https://cozea.app"
-
-function getSiteBaseUrl(): string {
-  const configured = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim()
-  const candidate = configured || DEFAULT_SITE_URL
-  return candidate.replace(/\/+$/, "")
-}
-
-function buildProjectJoinUrl(token: string): string {
-  return `${getSiteBaseUrl()}/join/project/${encodeURIComponent(token)}`
-}
-
 function cleanConvexError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
   return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
@@ -164,16 +154,14 @@ function getInitials(value: string): string {
 }
 
 function HeaderInboxButton() {
-  const { currentOrganization, convexUserId } = useAuth()
-  const isPersonalWorkspace = currentOrganization?.workspaceType === "personal"
-  const currentWorkspaceOrgId =
-    (currentOrganization?.convexOrgId as Id<"organizations"> | undefined) ?? undefined
+  const { convexUserId } = useAuth()
+  const { personalScoped, convexOrganizationId: currentWorkspaceOrgId } = useScopedAppContext()
   const acceptInvite = useMutation(api.projectInvites.acceptInvite)
   const declineInvite = useMutation(api.projectInvites.declineInvite)
   const dismissInboxItems = useMutation(api.projectTasks.dismissInboxItems)
   const incomingInvites = useQuery(
     api.projectInvites.listIncomingForUser,
-    isPersonalWorkspace && convexUserId ? { userId: convexUserId } : "skip"
+    personalScoped && convexUserId ? { userId: convexUserId } : "skip"
   )
   const taskInboxItems = useQuery(
     api.projectTasks.listInboxForUser,
@@ -385,7 +373,7 @@ function HeaderInboxButton() {
             </div>
           )}
 
-          {isPersonalWorkspace ? (
+          {personalScoped ? (
             <>
               <DropdownMenuSeparator />
               <div className="px-3 pb-2 pt-3">
@@ -518,6 +506,7 @@ function HeaderProjectShareButton({
   >([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [joinLinkRole, setJoinLinkRole] = useState<ProjectInviteRole>("developer")
   const [joinLinkError, setJoinLinkError] = useState<string | null>(null)
   const [joinLinkNotice, setJoinLinkNotice] = useState<string | null>(null)
@@ -545,9 +534,12 @@ function HeaderProjectShareButton({
     return next
   }, [inviteLookup])
   const roleCheckPending = Boolean(projectId && convexUserId && memberRole === undefined)
+  const shareStatePending = Boolean(projectId && convexUserId && joinLinkState === undefined)
   const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager")
+  const isPersonalProject = joinLinkState?.isPersonalProject ?? false
   const activeJoinLink = joinLinkState?.activeLink ?? null
-  const canManageJoinLinks = canInvite && (joinLinkState?.isPersonalProject ?? true)
+  const canSendProjectInvites = canInvite && isPersonalProject
+  const canManageJoinLinks = canInvite && isPersonalProject
 
   const flushProjectBeforeShare = useCallback(async () => {
     if (!projectId || !convexUserId || !syncContext?.projectPath) return
@@ -618,6 +610,7 @@ function HeaderProjectShareButton({
       setEmailInput("")
       setInviteMembers([])
       setInviteError(null)
+      setInviteNotice(null)
       setIsSubmitting(false)
       setJoinLinkError(null)
       setJoinLinkNotice(null)
@@ -626,23 +619,28 @@ function HeaderProjectShareButton({
   }, [])
 
   const handleSendInvites = useCallback(async () => {
-    if (!projectId || !convexUserId || !canInvite || inviteMembers.length === 0) return
+    if (!projectId || !convexUserId || !canSendProjectInvites || inviteMembers.length === 0) return
 
     setIsSubmitting(true)
     setInviteError(null)
+    setInviteNotice(null)
 
     try {
       await flushProjectBeforeShare()
       const failed: Array<{ email: string; error: string }> = []
+      let deliveryNotConfiguredCount = 0
 
       for (const member of inviteMembers) {
         try {
-          await inviteMember({
+          const result = await inviteMember({
             projectId,
             email: member.email,
             role: member.role,
             invitedBy: convexUserId,
           })
+          if (result.emailDelivery === "not_configured") {
+            deliveryNotConfiguredCount += 1
+          }
         } catch (error) {
           failed.push({
             email: member.email,
@@ -652,6 +650,16 @@ function HeaderProjectShareButton({
       }
 
       if (failed.length === 0) {
+        if (deliveryNotConfiguredCount > 0) {
+          setInviteMembers([])
+          setEmailInput("")
+          setInviteNotice(
+            deliveryNotConfiguredCount === inviteMembers.length
+              ? "Invites were created, but no Resend integration is connected for this workspace, so no email was sent."
+              : "Some invites were created without email delivery because no Resend integration is connected for this workspace."
+          )
+          return
+        }
         handleInviteOpenChange(false)
         return
       }
@@ -663,7 +671,7 @@ function HeaderProjectShareButton({
       setIsSubmitting(false)
     }
   }, [
-    canInvite,
+    canSendProjectInvites,
     convexUserId,
     flushProjectBeforeShare,
     handleInviteOpenChange,
@@ -685,7 +693,10 @@ function HeaderProjectShareButton({
         actorUserId: convexUserId,
         role: joinLinkRole,
       })
-      const shareUrl = buildProjectJoinUrl(link.token)
+      const shareUrl = buildProjectJoinUrl(
+        import.meta.env.VITE_SITE_URL as string | undefined,
+        link.token
+      )
       if (!navigator.clipboard?.writeText) {
         throw new Error("Clipboard is not available")
       }
@@ -752,9 +763,9 @@ function HeaderProjectShareButton({
             <Button
               variant="ghost"
               className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
-              disabled={!projectId || roleCheckPending}
+              disabled={!projectId || roleCheckPending || shareStatePending}
             >
-              {roleCheckPending ? (
+              {roleCheckPending || shareStatePending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Share2 className="h-3.5 w-3.5" />
@@ -777,6 +788,10 @@ function HeaderProjectShareButton({
           <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
             Only project managers can invite collaborators.
           </div>
+        ) : shareStatePending ? (
+          <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
+            Loading project sharing settings…
+          </div>
         ) : (
           <>
             {joinLinkError ? (
@@ -789,219 +804,228 @@ function HeaderProjectShareButton({
                 {inviteError}
               </div>
             ) : null}
+            {inviteNotice ? (
+              <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {inviteNotice}
+              </div>
+            ) : null}
             {joinLinkNotice ? (
               <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
                 {joinLinkNotice}
               </div>
             ) : null}
 
-            <Input
-              type="email"
-              placeholder="Enter email addresses..."
-              value={emailInput}
-              onChange={(event) => {
-                setEmailInput(event.target.value)
-              }}
-              onKeyDown={handleAddEmail}
-              disabled={isSubmitting}
-            />
+            {!isPersonalProject ? (
+              <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
+                Workspace projects do not support per-project invites. Invite people to the workspace first, then add them to the project from the workspace flow.
+              </div>
+            ) : (
+              <>
+                <Input
+                  type="email"
+                  placeholder="Enter email addresses..."
+                  value={emailInput}
+                  onChange={(event) => {
+                    setEmailInput(event.target.value)
+                  }}
+                  onKeyDown={handleAddEmail}
+                  disabled={isSubmitting}
+                />
 
-            {inviteMembers.length > 0 ? (
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-background to-transparent" />
-                <div className="app-scrollbar max-h-64 space-y-1 overflow-y-auto py-2">
-                  {inviteMembers.map((member, index) => {
-                    const inviteeUser = inviteLookupByEmail.get(member.email)
-                    const inviteeName = formatInviteeDisplayName(member.email, inviteeUser)
-                    return (
-                    <div key={member.email} className="flex items-center justify-between px-1 py-2">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage
-                            src={inviteeUser?.profileImageUrl ?? undefined}
-                            alt={inviteeName}
-                          />
-                          <AvatarFallback className="text-sm">
-                            {getInitials(inviteeName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <span className="block max-w-[220px] truncate font-medium">{inviteeName}</span>
-                          {inviteeUser ? (
-                            <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
-                              {member.email}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                {inviteMembers.length > 0 ? (
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-background to-transparent" />
+                    <div className="app-scrollbar max-h-64 space-y-1 overflow-y-auto py-2">
+                      {inviteMembers.map((member, index) => {
+                        const inviteeUser = inviteLookupByEmail.get(member.email)
+                        const inviteeName = formatInviteeDisplayName(member.email, inviteeUser)
+                        return (
+                        <div key={member.email} className="flex items-center justify-between px-1 py-2">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage
+                                src={inviteeUser?.profileImageUrl ?? undefined}
+                                alt={inviteeName}
+                              />
+                              <AvatarFallback className="text-sm">
+                                {getInitials(inviteeName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <span className="block max-w-[220px] truncate font-medium">{inviteeName}</span>
+                              {inviteeUser ? (
+                                <span className="block max-w-[220px] truncate text-xs text-muted-foreground">
+                                  {member.email}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                  disabled={isSubmitting}
+                                >
+                                  {PROJECT_INVITE_ROLE_OPTIONS.find(
+                                    (option) => option.value === member.role
+                                  )?.label ?? "Role"}
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                                  <DropdownMenuItem
+                                    key={option.value}
+                                    onClick={() => {
+                                      handleUpdateRole(index, option.value)
+                                    }}
+                                  >
+                                    {option.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Button
+                              type="button"
                               variant="ghost"
-                              size="sm"
-                              className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                handleRemoveFromInviteList(index)
+                              }}
                               disabled={isSubmitting}
                             >
-                              {PROJECT_INVITE_ROLE_OPTIONS.find(
-                                (option) => option.value === member.role
-                              )?.label ?? "Role"}
-                              <ChevronDown className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Remove invite</span>
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
-                              <DropdownMenuItem
-                                key={option.value}
-                                onClick={() => {
-                                  handleUpdateRole(index, option.value)
-                                }}
-                              >
-                                {option.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </div>
+                        </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
+                  </span>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void handleSendInvites()
+                    }}
+                    disabled={inviteMembers.length === 0 || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    Send invites
+                  </Button>
+                </div>
+
+                <div className="rounded-xl bg-background/60 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <Link2 className="h-4 w-4" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <Select
+                        value={joinLinkRole}
+                        onValueChange={(value) => setJoinLinkRole(value as ProjectInviteRole)}
+                        disabled={joinLinkAction !== null}
+                      >
+                        <SelectTrigger className="h-10 w-full rounded-full border-0 bg-muted/50 text-sm shadow-none">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                      onClick={() => {
+                        void handleCopyJoinLink()
+                      }}
+                      disabled={joinLinkAction !== null || !canManageJoinLinks}
+                      title="Copy link"
+                    >
+                      {joinLinkAction === "copy" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                      <span className="sr-only">Copy link</span>
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => {
-                            handleRemoveFromInviteList(index)
-                          }}
-                          disabled={isSubmitting}
+                          className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                          disabled={joinLinkAction !== null || !canManageJoinLinks}
+                          title="Link options"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Remove invite</span>
+                          <MoreVertical className="h-4 w-4" />
+                          <span className="sr-only">Link options</span>
                         </Button>
-                      </div>
-                    </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{inviteMembers.length}</span> members added
-              </span>
-              <Button
-                type="button"
-                onClick={() => {
-                  void handleSendInvites()
-                }}
-                disabled={inviteMembers.length === 0 || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="mr-2 h-4 w-4" />
-                )}
-                Send invites
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">Shareable invite link</h3>
-
-              <div className="rounded-xl bg-background/60 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                    <Link2 className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          disabled={joinLinkAction !== null || !canManageJoinLinks}
+                          onClick={() => {
+                            void handleRotateJoinLink()
+                          }}
+                        >
+                          {joinLinkAction === "rotate" ? (
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          Rotate link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink}
+                          onClick={() => {
+                            void handleDisableJoinLink()
+                          }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          {joinLinkAction === "disable" ? (
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ShieldOff className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          Disable link
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <Select
-                      value={joinLinkRole}
-                      onValueChange={(value) => setJoinLinkRole(value as ProjectInviteRole)}
-                      disabled={joinLinkAction !== null}
-                    >
-                      <SelectTrigger className="h-10 w-full rounded-full border-0 bg-muted/50 text-sm shadow-none">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
-                    onClick={() => {
-                      void handleCopyJoinLink()
-                    }}
-                    disabled={joinLinkAction !== null || !canManageJoinLinks}
-                    title="Copy link"
-                  >
-                    {joinLinkAction === "copy" ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                    <span className="sr-only">Copy link</span>
-                  </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
-                        disabled={joinLinkAction !== null || !canManageJoinLinks}
-                        title="Link options"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                        <span className="sr-only">Link options</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={joinLinkAction !== null || !canManageJoinLinks}
-                        onClick={() => {
-                          void handleRotateJoinLink()
-                        }}
-                      >
-                        {joinLinkAction === "rotate" ? (
-                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                        )}
-                        Rotate link
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink}
-                        onClick={() => {
-                          void handleDisableJoinLink()
-                        }}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        {joinLinkAction === "disable" ? (
-                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <ShieldOff className="mr-2 h-3.5 w-3.5" />
-                        )}
-                        Disable link
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <p className="mt-2 pl-[52px] text-xs text-muted-foreground">
+                    {getLinkPermissionDescription(joinLinkRole)}
+                  </p>
                 </div>
-
-                <p className="mt-2 pl-[52px] text-xs text-muted-foreground">
-                  {getLinkPermissionDescription(joinLinkRole)}
-                </p>
-              </div>
-            </div>
+              </>
+            )}
           </>
         )}
       </DialogContent>
@@ -1021,8 +1045,7 @@ export function UnifiedHeader({
   compactHeaderActions = true,
   projectInviteContext = null,
 }: UnifiedHeaderProps) {
-  const { currentOrganization } = useAuth()
-  const isPersonalWorkspace = currentOrganization?.workspaceType === "personal"
+  const { personalScoped } = useScopedAppContext()
   const windowChrome = useWindowChrome()
   const isAssistantOpen = useAssistantPanelStore((state) => state.mode !== "closed")
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows && !isAssistantOpen
@@ -1162,7 +1185,7 @@ export function UnifiedHeader({
 
   const isTabsPrimaryLayout =
     breadcrumbs.length === 0 && !breadcrumbAddon && Boolean(header)
-  const collaborationControl = isPersonalWorkspace
+  const collaborationControl = personalScoped
     ? projectInviteContext
       ? (
           <HeaderProjectShareButton

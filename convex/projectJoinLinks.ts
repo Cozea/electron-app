@@ -1,8 +1,13 @@
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server"
 import { v } from "convex/values"
-import type { Doc, Id } from "./_generated/dataModel"
 
-const PERSONAL_WORKSPACE_PREFIX = "personal:"
+import type { Doc } from "./_generated/dataModel"
+import { mutation, query, type MutationCtx } from "./_generated/server"
+import {
+  assertPersonalProjectShareScope,
+  getProjectMembership,
+  getProjectShareScope,
+  requireProjectManagerMembership,
+} from "./lib/projectSharing"
 
 type JoinLinkDoc = Doc<"projectJoinLinks">
 
@@ -10,50 +15,6 @@ function generateJoinToken(): string {
   const uuid1 = crypto.randomUUID().replace(/-/g, "")
   const uuid2 = crypto.randomUUID().replace(/-/g, "")
   return `${uuid1}${uuid2}`
-}
-
-async function getProjectMembership(
-  ctx: QueryCtx | MutationCtx,
-  projectId: Id<"projects">,
-  userId: Id<"users">
-) {
-  return await ctx.db
-    .query("projectMembers")
-    .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId).eq("userId", userId))
-    .first()
-}
-
-async function requireProjectManager(
-  ctx: MutationCtx,
-  projectId: Id<"projects">,
-  userId: Id<"users">
-) {
-  const membership = await getProjectMembership(ctx, projectId, userId)
-  if (!membership || membership.role !== "project_manager") {
-    throw new Error("Only project managers can manage join links")
-  }
-  return membership
-}
-
-async function assertPersonalProjectScope(
-  ctx: QueryCtx | MutationCtx,
-  projectId: Id<"projects">
-) {
-  const project = await ctx.db.get(projectId)
-  if (!project || project.status === "deleted") {
-    throw new Error("Project not found")
-  }
-
-  const organization = await ctx.db.get(project.organizationId)
-  const isPersonalProject = Boolean(
-    organization?.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
-  )
-
-  if (!isPersonalProject) {
-    throw new Error("Join links are only available for personal projects")
-  }
-
-  return project
 }
 
 function toPublicLink(link: JoinLinkDoc) {
@@ -101,15 +62,7 @@ export const getForProject = query({
       return null
     }
 
-    const project = await ctx.db.get(args.projectId)
-    if (!project || project.status === "deleted") {
-      return null
-    }
-
-    const organization = await ctx.db.get(project.organizationId)
-    const isPersonalProject = Boolean(
-      organization?.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
-    )
+    const { isPersonalProject } = await getProjectShareScope(ctx, args.projectId)
     const canManage = membership.role === "project_manager" && isPersonalProject
     const activeLinks = await ctx.db
       .query("projectJoinLinks")
@@ -129,6 +82,59 @@ export const getForProject = query({
   },
 })
 
+export const previewByToken = query({
+  args: {
+    token: v.string(),
+    viewerUserId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    const normalizedToken = args.token.trim()
+    if (!normalizedToken) {
+      return null
+    }
+
+    const link = await ctx.db
+      .query("projectJoinLinks")
+      .withIndex("by_token", (q) => q.eq("token", normalizedToken))
+      .first()
+
+    if (!link) {
+      return null
+    }
+
+    const scope = await getProjectShareScope(ctx, link.projectId).catch(() => null)
+    if (!scope?.isPersonalProject) {
+      return null
+    }
+
+    const inviter = await ctx.db.get(link.createdBy)
+    const existingMembership = args.viewerUserId
+      ? await getProjectMembership(ctx, scope.project._id, args.viewerUserId)
+      : null
+
+    return {
+      status: link.status,
+      role: link.role,
+      project: {
+        id: scope.project._id,
+        name: scope.project.name,
+        slug: scope.project.slug,
+      },
+      inviter: inviter
+        ? {
+            id: inviter._id,
+            email: inviter.email,
+            firstName: inviter.firstName,
+            lastName: inviter.lastName,
+            profileImageUrl: inviter.profileImageUrl,
+          }
+        : null,
+      alreadyMember: Boolean(existingMembership),
+      existingRole: existingMembership?.role ?? null,
+    }
+  },
+})
+
 export const createOrUpdateActiveLink = mutation({
   args: {
     projectId: v.id("projects"),
@@ -141,8 +147,13 @@ export const createOrUpdateActiveLink = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireProjectManager(ctx, args.projectId, args.actorUserId)
-    await assertPersonalProjectScope(ctx, args.projectId)
+    await requireProjectManagerMembership(
+      ctx,
+      args.projectId,
+      args.actorUserId,
+      "Only project managers can manage join links"
+    )
+    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -203,8 +214,13 @@ export const rotateLink = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireProjectManager(ctx, args.projectId, args.actorUserId)
-    await assertPersonalProjectScope(ctx, args.projectId)
+    await requireProjectManagerMembership(
+      ctx,
+      args.projectId,
+      args.actorUserId,
+      "Only project managers can manage join links"
+    )
+    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -246,8 +262,13 @@ export const revokeLink = mutation({
     actorUserId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    await requireProjectManager(ctx, args.projectId, args.actorUserId)
-    await assertPersonalProjectScope(ctx, args.projectId)
+    await requireProjectManagerMembership(
+      ctx,
+      args.projectId,
+      args.actorUserId,
+      "Only project managers can manage join links"
+    )
+    await assertPersonalProjectShareScope(ctx, args.projectId)
 
     const now = Date.now()
     const activeLinks = await ctx.db
@@ -290,18 +311,7 @@ export const joinByToken = mutation({
       throw new Error("This join link is invalid or has been revoked")
     }
 
-    const project = await ctx.db.get(link.projectId)
-    if (!project || project.status === "deleted") {
-      throw new Error("Project not found")
-    }
-
-    const organization = await ctx.db.get(project.organizationId)
-    const isPersonalProject = Boolean(
-      organization?.workosId && organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
-    )
-    if (!isPersonalProject) {
-      throw new Error("This join link is not valid for this project")
-    }
+    const { project } = await assertPersonalProjectShareScope(ctx, link.projectId)
 
     const user = await ctx.db.get(args.userId)
     if (!user) {

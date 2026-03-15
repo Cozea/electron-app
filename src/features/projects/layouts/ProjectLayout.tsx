@@ -42,6 +42,7 @@ import type { PresenceUser } from "@/hooks/useProjectPresence"
 import { hasRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
 import { logGitOpenDebug } from "@/lib/git/gitOpenDebug"
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 
 interface PathRecoveryChoice {
     previousPath: string
@@ -157,6 +158,13 @@ interface ProjectLayoutProps {
 
 interface ProjectLayoutLocationState {
     syncMode?: 'replica' | 'git'
+    pendingTeamSetup?: Array<{
+        email: string
+        name?: string
+        role: 'project_manager' | 'developer' | 'designer' | 'viewer'
+        isCurrentUser?: boolean
+        profileImageUrl?: string | null
+    }>
 }
 
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
@@ -202,7 +210,8 @@ export function ProjectLayout({
     children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
     const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
-    const { user, logout, currentOrganization } = useAuth()
+    const { convexUserId, user, logout } = useAuth()
+    const { preferredConvexOrganizationId } = useScopedAppContext()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
     const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
@@ -212,41 +221,20 @@ export function ProjectLayout({
     const chatPanelMode = useChatPanelStore((state) => state.mode)
     const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
 
-    // Get Convex organization and user for sync (with caching)
-    const freshConvexOrg = useQuery(
-        api.organizations.getByWorkosId,
-        currentOrganization?.organizationId
-            ? { workosId: currentOrganization.organizationId }
-            : "skip"
-    )
-    const convexOrg = useCachedQuery(
-        `layout-org-${currentOrganization?.organizationId}`,
-        freshConvexOrg
-    )
-
-    const freshConvexUser = useQuery(
-        api.users.getByWorkosId,
-        user?.id ? { workosId: user.id } : "skip"
-    )
-    const convexUser = useCachedQuery(
-        `layout-user-${user?.id}`,
-        freshConvexUser
-    )
-
     // Get project data (with caching)
     const freshProjectById = useQuery(
         api.projects.getAccessibleById,
-        routeProjectId && convexUser?._id
-            ? { projectId: routeProjectId as Id<"projects">, userId: convexUser._id }
+        routeProjectId && convexUserId
+            ? { projectId: routeProjectId as Id<"projects">, userId: convexUserId }
             : "skip"
     )
     const freshProjectBySlug = useQuery(
         api.projects.getAccessibleBySlug,
-        !routeProjectId && routeSlug && convexUser?._id
+        !routeProjectId && routeSlug && convexUserId
             ? {
                 slug: routeSlug,
-                userId: convexUser._id,
-                preferredOrganizationId: convexOrg?._id,
+                userId: convexUserId,
+                preferredOrganizationId: preferredConvexOrganizationId,
             }
             : "skip"
     )
@@ -291,26 +279,100 @@ export function ProjectLayout({
     // Get per-user local path for this project (machine-specific) (with caching)
     const freshMemberLocalPath = useQuery(
         api.projectMembers.getMemberLocalPath,
-        project?._id && convexUser?._id
-            ? { projectId: project._id, userId: convexUser._id }
+        project?._id && convexUserId
+            ? { projectId: project._id, userId: convexUserId }
             : "skip"
     )
     const memberLocalPath = freshMemberLocalPath
     const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+    const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup)
 
     const [effectiveLocalPath, setEffectiveLocalPath] = useState<string | null>(null)
     const [pathRecoveryChoice, setPathRecoveryChoice] = useState<PathRecoveryChoice | null>(null)
     const [isResolvingPath, setIsResolvingPath] = useState(false)
     const [pathResolutionError, setPathResolutionError] = useState<string | null>(null)
+    const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set())
 
     useEffect(() => {
         setEffectiveLocalPath(null)
         setPathRecoveryChoice(null)
         setPathResolutionError(null)
-    }, [project?._id, convexUser?._id, projectSlug])
+    }, [project?._id, convexUserId, projectSlug])
+
+    const pendingTeamSetup = locationState?.pendingTeamSetup ?? []
+    const pendingTeamSetupReady =
+        pendingTeamSetup.length > 0 &&
+        project?._id &&
+        convexUserId &&
+        memberLocalPath !== undefined &&
+        !isResolvingPath &&
+        !pathResolutionError &&
+        effectiveLocalPath !== null
+
+    useEffect(() => {
+        if (!pendingTeamSetupReady || !project?._id || !convexUserId) {
+            return
+        }
+
+        const pendingKey = `${String(project._id)}:${pendingTeamSetup
+            .map((member) => `${member.email}:${member.role}`)
+            .sort()
+            .join('|')}`
+
+        if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
+            return
+        }
+        appliedInitialTeamSetupKeysRef.current.add(pendingKey)
+
+        let cancelled = false
+
+        void (async () => {
+            try {
+                await applyInitialTeamSetup({
+                    projectId: project._id,
+                    actorUserId: convexUserId,
+                    team: pendingTeamSetup,
+                })
+
+                if (cancelled) {
+                    return
+                }
+
+                const nextState = locationState?.syncMode
+                    ? { syncMode: locationState.syncMode }
+                    : null
+                navigate(`${location.pathname}${location.search}${location.hash}`, {
+                    replace: true,
+                    state: nextState,
+                })
+            } catch (error) {
+                console.warn('[ProjectLayout] Failed to apply deferred initial team setup:', error)
+                appliedInitialTeamSetupKeysRef.current.delete(pendingKey)
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [
+        applyInitialTeamSetup,
+        convexUserId,
+        effectiveLocalPath,
+        isResolvingPath,
+        location.hash,
+        location.pathname,
+        location.search,
+        locationState?.syncMode,
+        memberLocalPath,
+        navigate,
+        pathResolutionError,
+        pendingTeamSetup,
+        pendingTeamSetupReady,
+        project?._id,
+    ])
 
     const resolvePathPreference = useCallback(async () => {
-        if (!project?._id || !convexUser?._id || !projectSlug) {
+        if (!project?._id || !convexUserId || !projectSlug) {
             setEffectiveLocalPath(null)
             setPathRecoveryChoice(null)
             setPathResolutionError(null)
@@ -336,7 +398,7 @@ export function ProjectLayout({
             const projectsDirectory = settings.projectsDirectory
             const normalizedStoredPath = normalizePath(storedPath)
             const normalizedProjectsDirectory = normalizePath(projectsDirectory)
-            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
 
             if (pathIsInsideDirectory(normalizedStoredPath, normalizedProjectsDirectory)) {
                 localStorage.removeItem(preferenceKey)
@@ -385,7 +447,7 @@ export function ProjectLayout({
 
                 await updateMemberLocalPath({
                     projectId: project._id,
-                    userId: convexUser._id,
+                    userId: convexUserId,
                     localPath: nextPath,
                 })
                 localStorage.removeItem(preferenceKey)
@@ -416,15 +478,15 @@ export function ProjectLayout({
         } finally {
             setIsResolvingPath(false)
         }
-    }, [convexUser?._id, memberLocalPath, project?._id, projectSlug, updateMemberLocalPath])
+    }, [convexUserId, memberLocalPath, project?._id, projectSlug, updateMemberLocalPath])
 
     useEffect(() => {
         void resolvePathPreference()
     }, [resolvePathPreference])
 
     const handleUsePreviousDirectory = useCallback(() => {
-        if (!project?._id || !convexUser?._id || !pathRecoveryChoice) return
-        const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+        if (!project?._id || !convexUserId || !pathRecoveryChoice) return
+        const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
         const payload: StoredPathPreference = {
             acceptedExternalPath: pathRecoveryChoice.previousPath,
             projectsDirectory: pathRecoveryChoice.projectsDirectory,
@@ -433,10 +495,10 @@ export function ProjectLayout({
         setPathRecoveryChoice(null)
         setPathResolutionError(null)
         setEffectiveLocalPath(pathRecoveryChoice.previousPath)
-    }, [convexUser?._id, pathRecoveryChoice, project?._id])
+    }, [convexUserId, pathRecoveryChoice, project?._id])
 
     const handleUseCurrentDirectory = useCallback(async () => {
-        if (!project?._id || !convexUser?._id || !projectSlug || !pathRecoveryChoice) return
+        if (!project?._id || !convexUserId || !projectSlug || !pathRecoveryChoice) return
 
         setIsResolvingPath(true)
         setPathResolutionError(null)
@@ -471,11 +533,11 @@ export function ProjectLayout({
 
             await updateMemberLocalPath({
                 projectId: project._id,
-                userId: convexUser._id,
+                userId: convexUserId,
                 localPath: targetPath,
             })
 
-            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUser._id.toString())
+            const preferenceKey = buildPathPreferenceKey(project._id.toString(), convexUserId.toString())
             localStorage.removeItem(preferenceKey)
             setPathRecoveryChoice(null)
             setEffectiveLocalPath(targetPath)
@@ -488,7 +550,7 @@ export function ProjectLayout({
         } finally {
             setIsResolvingPath(false)
         }
-    }, [convexUser?._id, pathRecoveryChoice, project?._id, projectSlug, updateMemberLocalPath])
+    }, [convexUserId, pathRecoveryChoice, project?._id, projectSlug, updateMemberLocalPath])
 
     const previousEffectivePathRef = useRef<string | null>(null)
     useEffect(() => {
@@ -572,10 +634,10 @@ export function ProjectLayout({
     // Real-time presence tracking
     const { otherUsers: presenceUsers } = useProjectPresence({
         projectId: project?._id,
-        userId: convexUser?._id,
-        userName: convexUser?.firstName || convexUser?.email || null,
-        userEmail: convexUser?.email || null,
-        userAvatarUrl: convexUser?.profileImageUrl,
+        userId: convexUserId,
+        userName: user?.firstName || user?.email || null,
+        userEmail: user?.email || null,
+        userAvatarUrl: user?.profileImageUrl || null,
         activeFile: presenceActiveFile,
         activeRoute: presenceActiveRoute,
     })
@@ -640,7 +702,7 @@ export function ProjectLayout({
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data + resolved path decision)
-    const hasSyncIdentities = Boolean(project?._id && convexUser?._id && projectSlug) && memberLocalPath !== undefined
+    const hasSyncIdentities = Boolean(project?._id && convexUserId && projectSlug) && memberLocalPath !== undefined
     const canSync = hasSyncIdentities && !isResolvingPath
     const {
         header: headerContent,
@@ -942,13 +1004,13 @@ export function ProjectLayout({
     )
 
     // Wrap with sync provider if we have all the required data
-    if (canSync && project && convexUser && projectSlug) {
+    if (canSync && project && convexUserId && projectSlug) {
         return (
             <ProjectSyncProvider
                 key={project._id}
                 projectId={project._id}
-                userId={convexUser._id}
-                userName={convexUser.firstName || convexUser.email || "User"}
+                userId={convexUserId}
+                userName={user?.firstName || user?.email || "User"}
                 projectSlug={projectSlug}
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}

@@ -61,6 +61,7 @@ import {
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import {
   getProviderDisplayName,
   isConnectedProvider,
@@ -107,8 +108,8 @@ import {
 } from '@/lib/ai/providerAuth'
 import type { ToolCallPayload, ToolMetaShape, ToolsApiResponse } from '@/lib/ai/toolTypes'
 import { fetchWithAbort } from '@/lib/abort'
-import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useProviderAuthResolution } from '@/hooks/useProviderAuthResolution'
+import { useScopedSettingsNavigation } from '@/hooks/useScopedSettingsNavigation'
 
 // AI Elements components
 import {
@@ -288,7 +289,6 @@ export function AIConversation({
   projectName,
   projectSlug,
 }: AIConversationProps) {
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const assistantPanelMode = useAssistantPanelStore((state) => state.mode)
   const assistantPanelWidth = useAssistantPanelStore((state) => state.panelWidth)
   const {
@@ -304,11 +304,14 @@ export function AIConversation({
   } = useAssistantPanelStore()
   const currentPage = usePageContextStore((state) => state.currentPage)
   const inspectedElement = usePageContextStore((state) => state.inspectedElement)
-  const { accessToken, currentOrganization, convexUserId } = useAuth()
-  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
-
-  // Context-based tool availability
+  const { accessToken, convexUserId } = useAuth()
   const hasProjectContext = !!projectPath
+  const {
+    organizationId,
+    preferredConvexOrganizationId,
+  } = useAiExecutionScope({ requireProjectAccess: hasProjectContext })
+  const { openScopedHref } = useScopedSettingsNavigation()
+  const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
 
   const projectBySlugResolution = useQuery(
     api.projects.getAccessibleBySlug,
@@ -316,7 +319,7 @@ export function AIConversation({
       ? {
         slug: projectSlug,
         userId: convexUserId,
-        preferredOrganizationId: currentOrganization?.convexOrgId as Id<'organizations'> | undefined,
+        preferredOrganizationId: preferredConvexOrganizationId,
       }
       : 'skip'
   )
@@ -397,7 +400,7 @@ export function AIConversation({
     header: providerAuthHeader,
     resolved: providerAuthResolved,
   } = useProviderAuthResolution({
-    organizationId: currentOrganization?.organizationId,
+    organizationId,
     modelId: model,
     preferredProvider: selectedProviderForAuth && isConnectedProvider(selectedProviderForAuth)
       ? selectedProviderForAuth
@@ -539,11 +542,11 @@ export function AIConversation({
   }, [accessToken])
 
   useEffect(() => {
-    if (accessToken && currentOrganization?.organizationId) return
+    if (accessToken && organizationId) return
     setModelsError(null)
     setToolsError(null)
     setModelsLoaded(false)
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [accessToken, organizationId])
 
   const toolsByName = useMemo(() => {
     const map = new Map<string, ToolMeta>()
@@ -561,13 +564,13 @@ export function AIConversation({
 
   // Fetch allowed models from AI Gateway
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !organizationId) return
 
     let cancelled = false
     setModelsLoaded(false)
 
     getModelCatalog({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       accessToken,
       connectedProviders:
         providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
@@ -616,18 +619,18 @@ export function AIConversation({
   }, [
     accessToken,
     connectedProviders,
-    currentOrganization?.organizationId,
+    organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
   ])
 
   // Fetch enabled tools from AI Gateway
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !organizationId) return
 
     const controller = new AbortController()
     const query = new URLSearchParams({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       model,
       agentId: normalizedAgentId,
       surface,
@@ -662,7 +665,7 @@ export function AIConversation({
     return () => controller.abort()
   }, [
     accessToken,
-    currentOrganization?.organizationId,
+    organizationId,
     headers,
     model,
     normalizedAgentId,
@@ -1007,7 +1010,7 @@ export function AIConversation({
   } = useCozeaChat({
     transportArgs: {
       accessToken,
-      organizationId: currentOrganization?.organizationId,
+      organizationId,
       model,
       selectedProvider:
         selectedModelData?.chefSlug ??
@@ -1867,7 +1870,7 @@ export function AIConversation({
                   variant="outline"
                   size="sm"
                   className="h-7 shrink-0 border-destructive/40 bg-transparent px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => openSettingsDrawer('/settings/ai')}
+                  onClick={() => openScopedHref('/settings/ai')}
                 >
                   AI Settings
                 </Button>

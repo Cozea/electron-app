@@ -20,6 +20,7 @@ export interface UseCachedPreviewUrlOptions {
  */
 export function useCachedPreviewUrl(
   projectId: Id<'projects'> | undefined,
+  userId?: Id<'users'>,
   options?: UseCachedPreviewUrlOptions
 ): {
   url: string | null
@@ -29,7 +30,7 @@ export function useCachedPreviewUrl(
   const enabled = options?.enabled !== false
   const sourceUrl = useQuery(
     api.projects.getPreviewImageUrl,
-    projectId && enabled ? { projectId } : 'skip'
+    projectId && userId && enabled ? { projectId, userId } : 'skip'
   )
   // Track which projectId the current blobUrl belongs to so we never show another project's screenshot
   const [state, setState] = useState<{ blobUrl: string | null; forProjectId: string | null }>(() => ({

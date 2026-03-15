@@ -3,7 +3,8 @@ import { Navigate, type RouteObject } from 'react-router-dom'
 
 import { AppRoot } from '@/App'
 import { useAuth } from '@/contexts/AuthContext'
-import { isPersonalWorkspace } from '@/lib/workspaces'
+import { useResolvedScope } from '@/hooks/useResolvedScope'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { Projects } from '@/pages/Projects'
 import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
@@ -15,6 +16,15 @@ import { Appearance } from '@/pages/settings/Appearance'
 import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
+import {
+  canAccessWorkspaceSurface,
+  getSettingsSurface,
+  getSettingsSurfaceRoute,
+} from '@/lib/settings/settingsRegistry'
+import type {
+  SettingsSurfaceId,
+  WorkspaceSurfaceAccessState,
+} from '@/lib/settings/settingsSurfaceTypes'
 
 const ProjectLayout = lazy(() =>
   import('@/features/projects/layouts/ProjectLayout').then((module) => ({
@@ -24,6 +34,11 @@ const ProjectLayout = lazy(() =>
 const ProjectJoinPage = lazy(() =>
   import('@/features/projects/pages/ProjectJoinPage').then((module) => ({
     default: module.ProjectJoinPage,
+  }))
+)
+const ProjectInvitePage = lazy(() =>
+  import('@/features/projects/pages/ProjectInvitePage').then((module) => ({
+    default: module.ProjectInvitePage,
   }))
 )
 const LegacyProjectRedirectPage = lazy(() =>
@@ -91,6 +106,9 @@ const MemberDetails = lazy(() =>
 const Roles = lazy(() =>
   import('@/pages/teams/Roles').then((module) => ({ default: module.Roles }))
 )
+const Policies = lazy(() =>
+  import('@/pages/workspace/Policies').then((module) => ({ default: module.Policies }))
+)
 const AcceptInvitation = lazy(() =>
   import('@/pages/AcceptInvitation').then((module) => ({
     default: module.AcceptInvitation,
@@ -107,15 +125,97 @@ const WorkspaceCreate = lazy(() =>
   }))
 )
 
-function OrganizationWorkspaceOnly({ children }: { children: ReactNode }) {
-  const { currentOrganization, isLoading } = useAuth()
+const WORKSPACE_MEMBERS_ROUTE = getSettingsSurfaceRoute('members', 'workspace') ?? '/teams'
+const WORKSPACE_PERMISSIONS_ROUTE = getSettingsSurfaceRoute('permissions', 'workspace') ?? '/teams/roles'
+const WORKSPACE_GENERAL_ROUTE = getSettingsSurfaceRoute('general', 'workspace') ?? '/workspace/general'
+const PERSONAL_GENERAL_ROUTE = getSettingsSurfaceRoute('general', 'personal') ?? '/settings/general'
+const WORKSPACE_POLICIES_ROUTE = getSettingsSurfaceRoute('policies', 'workspace') ?? '/workspace/policies'
+const WORKSPACE_BILLING_ROUTE = getSettingsSurfaceRoute('billing', 'workspace') ?? '/workspace/billing'
+const PERSONAL_BILLING_ROUTE = getSettingsSurfaceRoute('billing', 'personal') ?? '/settings/billing'
+const WORKSPACE_AI_ROUTE = getSettingsSurfaceRoute('ai', 'workspace') ?? '/workspace/ai'
+const PERSONAL_AI_ROUTE = getSettingsSurfaceRoute('ai', 'personal') ?? '/settings/ai'
+const WORKSPACE_MODEL_SELECTION_ROUTE =
+  getSettingsSurfaceRoute('modelSelection', 'workspace') ?? '/workspace/ai/model-selection'
+const PERSONAL_MODEL_SELECTION_ROUTE =
+  getSettingsSurfaceRoute('modelSelection', 'personal') ?? '/settings/ai/model-selection'
+const WORKSPACE_INTEGRATIONS_ROUTE =
+  getSettingsSurfaceRoute('cliTools', 'workspace') ?? '/workspace/integrations'
+const PERSONAL_INTEGRATIONS_ROUTE =
+  getSettingsSurfaceRoute('cliTools', 'personal') ?? '/settings/cli-tools'
+const WORKSPACE_CLOUD_STORAGE_ROUTE =
+  getSettingsSurfaceRoute('cloudStorage', 'workspace') ?? '/workspace/sync'
+const PERSONAL_CLOUD_STORAGE_ROUTE =
+  getSettingsSurfaceRoute('cloudStorage', 'personal') ?? '/settings/cloud-storage'
+const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
+const PERSONAL_APPEARANCE_ROUTE =
+  getSettingsSurfaceRoute('appearance', 'personal') ?? '/settings/appearance'
+const PERSONAL_TOOLING_ROUTE = getSettingsSurfaceRoute('tooling', 'personal') ?? '/settings/tooling'
+const PERSONAL_STORAGE_ROUTE = getSettingsSurfaceRoute('storage', 'personal') ?? '/settings/storage'
+
+function toRoutePath(route: string): string {
+  return route.replace(/^\//, '')
+}
+
+function OrganizationWorkspacePermissionOnly({
+  children,
+  surfaceId,
+  fallback = '/projects',
+}: {
+  children: ReactNode
+  surfaceId: SettingsSurfaceId
+  fallback?: string
+}) {
+  const { isLoading } = useAuth()
+  const {
+    workspaceScoped,
+    surfaceAccess,
+  } = useScopedAppContext({ route: '/workspace/general' })
 
   if (isLoading) {
     return null
   }
 
-  if (!currentOrganization || isPersonalWorkspace(currentOrganization)) {
+  if (!workspaceScoped) {
     return <Navigate to="/projects" replace />
+  }
+
+  const surface = getSettingsSurface(surfaceId)
+  const allowed = surface
+    ? canAccessWorkspaceSurface(
+        surface,
+        surfaceAccess satisfies WorkspaceSurfaceAccessState
+      )
+    : false
+
+  if (!allowed) {
+    return <Navigate to={fallback} replace />
+  }
+
+  return <>{children}</>
+}
+
+function WorkspaceScopedSettingRoute({
+  personalRedirect,
+  children,
+}: {
+  personalRedirect: string
+  children: ReactNode
+}) {
+  const { isLoading } = useAuth()
+  const { currentOrganizationWorkspace, currentPersonalWorkspace } = useResolvedScope({
+    ignoreLocation: true,
+  })
+
+  if (isLoading) {
+    return null
+  }
+
+  if (!currentOrganizationWorkspace && !currentPersonalWorkspace) {
+    return <Navigate to="/projects" replace />
+  }
+
+  if (currentPersonalWorkspace && !currentOrganizationWorkspace) {
+    return <Navigate to={personalRedirect} replace />
   }
 
   return <>{children}</>
@@ -130,6 +230,8 @@ export const appRoutes: RouteObject[] = [
       { path: 'projects', element: <Projects /> },
       { path: 'projects/new', element: <NewProject /> },
       { path: 'projects/join/:token', element: <ProjectJoinPage /> },
+      { path: 'projects/invite/:inviteId', element: <ProjectInvitePage /> },
+      { path: 'join/project/:token', element: <ProjectJoinPage /> },
       { path: 'projects/:projectId/build', element: <ProjectBuild /> },
       {
         path: 'projects/p/:projectId',
@@ -155,51 +257,110 @@ export const appRoutes: RouteObject[] = [
       { path: 'projects/:slug', element: <LegacyProjectRedirectPage /> },
       { path: 'projects/:slug/*', element: <LegacyProjectRedirectPage /> },
       {
-        path: 'teams',
+        path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
         element: (
-          <OrganizationWorkspaceOnly>
+          <OrganizationWorkspacePermissionOnly surfaceId="members">
             <Members />
-          </OrganizationWorkspaceOnly>
+          </OrganizationWorkspacePermissionOnly>
         ),
       },
       {
         path: 'teams/members/:memberId',
         element: (
-          <OrganizationWorkspaceOnly>
+          <OrganizationWorkspacePermissionOnly surfaceId="members">
             <MemberDetails />
-          </OrganizationWorkspaceOnly>
+          </OrganizationWorkspacePermissionOnly>
         ),
       },
       {
-        path: 'teams/roles',
+        path: toRoutePath(WORKSPACE_PERMISSIONS_ROUTE),
         element: (
-          <OrganizationWorkspaceOnly>
+          <OrganizationWorkspacePermissionOnly surfaceId="permissions">
             <Roles />
-          </OrganizationWorkspaceOnly>
+          </OrganizationWorkspacePermissionOnly>
+        ),
+      },
+      {
+        path: toRoutePath(WORKSPACE_POLICIES_ROUTE),
+        element: (
+          <OrganizationWorkspacePermissionOnly surfaceId="policies">
+            <Policies />
+          </OrganizationWorkspacePermissionOnly>
         ),
       },
       { path: 'workspaces/select', element: <WorkspaceSelect /> },
       { path: 'workspaces/new', element: <WorkspaceCreate /> },
       {
-        path: 'workspace/general',
+        path: toRoutePath(PERSONAL_GENERAL_ROUTE),
+        element: <General />,
+      },
+      {
+        path: toRoutePath(WORKSPACE_GENERAL_ROUTE),
         element: (
-          <OrganizationWorkspaceOnly>
+          <OrganizationWorkspacePermissionOnly surfaceId="general">
             <General />
-          </OrganizationWorkspaceOnly>
+          </OrganizationWorkspacePermissionOnly>
         ),
       },
-      { path: 'workspace/billing', element: <Navigate to="/settings/billing" replace /> },
-      { path: 'workspace/ai', element: <Navigate to="/settings/ai" replace /> },
-      { path: 'workspace/ai/model-selection', element: <Navigate to="/settings/ai/model-selection" replace /> },
-      { path: 'workspace/integrations', element: <Integrations /> },
-      { path: 'workspace/sync', element: <Sync /> },
-      { path: 'settings/account', element: <Account /> },
-      { path: 'settings/billing', element: <Billing /> },
-      { path: 'settings/ai', element: <AI /> },
-      { path: 'settings/ai/model-selection', element: <ModelSelection /> },
-      { path: 'settings/appearance', element: <Appearance /> },
-      { path: 'settings/tooling', element: <Tooling /> },
-      { path: 'settings/storage', element: <Storage /> },
+      {
+        path: toRoutePath(WORKSPACE_BILLING_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_BILLING_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="billing" fallback="/projects">
+              <Billing />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      {
+        path: toRoutePath(WORKSPACE_AI_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_AI_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="ai" fallback="/projects">
+              <AI />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      {
+        path: toRoutePath(WORKSPACE_MODEL_SELECTION_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_MODEL_SELECTION_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="modelSelection" fallback="/projects">
+              <ModelSelection />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      {
+        path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_INTEGRATIONS_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="cliTools">
+              <Integrations />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      { path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE), element: <Integrations /> },
+      {
+        path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_CLOUD_STORAGE_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="cloudStorage">
+              <Sync />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      { path: toRoutePath(PERSONAL_CLOUD_STORAGE_ROUTE), element: <Sync /> },
+      { path: toRoutePath(PERSONAL_ACCOUNT_ROUTE), element: <Account /> },
+      { path: toRoutePath(PERSONAL_BILLING_ROUTE), element: <Billing /> },
+      { path: toRoutePath(PERSONAL_AI_ROUTE), element: <AI /> },
+      { path: toRoutePath(PERSONAL_MODEL_SELECTION_ROUTE), element: <ModelSelection /> },
+      { path: toRoutePath(PERSONAL_APPEARANCE_ROUTE), element: <Appearance /> },
+      { path: toRoutePath(PERSONAL_TOOLING_ROUTE), element: <Tooling /> },
+      { path: toRoutePath(PERSONAL_STORAGE_ROUTE), element: <Storage /> },
       { path: 'invite/:token', element: <AcceptInvitation /> },
       { path: '*', element: <Navigate to="/projects" replace /> },
     ],

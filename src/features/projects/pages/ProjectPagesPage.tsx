@@ -3,6 +3,8 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { useAuth } from '@/contexts/AuthContext'
 import {
     useProjectPagesStore,
     type PreviewTimelineEvent,
@@ -123,6 +125,7 @@ function resolvePreviewEmbedModeForRun(
 }
 
 export function ProjectPagesPage() {
+    const { convexUserId } = useAuth()
     const navigate = useViewTransitionNavigate()
     const location = useLocation()
     const [searchParams, setSearchParams] = useSearchParams()
@@ -453,6 +456,24 @@ export function ProjectPagesPage() {
 
     const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
     const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
+    const generatePreviewUploadUrlForUser = useCallback(
+        (args: { projectId: Id<'projects'> }) => {
+            if (!convexUserId) {
+                throw new Error('Missing user context for preview upload')
+            }
+            return generatePreviewUploadUrl({ ...args, userId: convexUserId })
+        },
+        [convexUserId, generatePreviewUploadUrl]
+    )
+    const updatePreviewImageForUser = useCallback(
+        (args: { projectId: Id<'projects'>; storageId: Id<'_storage'> }) => {
+            if (!convexUserId) {
+                throw new Error('Missing user context for preview upload')
+            }
+            return updatePreviewImage({ ...args, userId: convexUserId })
+        },
+        [convexUserId, updatePreviewImage]
+    )
 
     // Extract stored framework info from project
     const storedFrameworkInfo = useMemo(() => {
@@ -486,15 +507,15 @@ export function ProjectPagesPage() {
             await captureAndUploadProjectPreviewFromUrl(
                 projectId,
                 projectPreviewCaptureUrl,
-                generatePreviewUploadUrl,
-                updatePreviewImage
+                generatePreviewUploadUrlForUser,
+                updatePreviewImageForUser
             )
         } catch {
             // Silent: preview capture is best-effort for dashboard
         } finally {
             setIsCapturingPreview(false)
         }
-    }, [project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrl, updatePreviewImage])
+    }, [project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrlForUser, updatePreviewImageForUser])
 
     const handleUpdateProjectPreview = useCallback(() => {
         if (serverStatus !== 'running' || !project?._id) return

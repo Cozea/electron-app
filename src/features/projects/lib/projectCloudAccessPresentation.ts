@@ -1,9 +1,15 @@
+import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
+
 export interface ProjectCloudAccessPresentation {
   summary: string
   detail: string | null
   actionHref: string | null
   actionLabel: string | null
   isAccessError: boolean
+}
+
+interface ProjectCloudAccessPresentationOptions {
+  workspaceScoped?: boolean
 }
 
 function extractErrorText(input: unknown, fallback: string): string {
@@ -27,11 +33,15 @@ function cleanGitTransportError(message: string): string {
 
 export function formatProjectCloudAccessError(
   input: unknown,
-  fallback = 'Failed to prepare project'
+  fallback = 'Failed to prepare project',
+  options: ProjectCloudAccessPresentationOptions = {}
 ): ProjectCloudAccessPresentation {
   const rawMessage = extractErrorText(input, fallback)
   const normalized = cleanGitTransportError(rawMessage)
   const lower = normalized.toLowerCase()
+  const billingHref =
+    getSettingsSurfaceRoute('billing', options.workspaceScoped ? 'workspace' : 'personal') ??
+    '/settings/billing'
 
   if (lower.includes('not a member of this project')) {
     return {
@@ -47,7 +57,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Subscription Required',
       detail: 'Your subscription is past due. Update billing to restore cloud access.',
-      actionHref: '/settings/billing',
+      actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
     }
@@ -57,7 +67,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Subscription Required',
       detail: 'Your subscription is canceled. Start or renew a plan to restore cloud access.',
-      actionHref: '/settings/billing',
+      actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
     }
@@ -67,7 +77,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Seat Assignment Required',
       detail: 'You are not assigned to a paid seat for cloud access in this workspace.',
-      actionHref: '/settings/billing',
+      actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
     }
@@ -77,7 +87,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Seat Assignment Required',
       detail: 'Cloud access requires an active paid seat assignment in this workspace.',
-      actionHref: '/settings/billing',
+      actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
     }
@@ -92,7 +102,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Subscription Required',
       detail: 'Cloud access requires an active subscription for this account.',
-      actionHref: '/settings/billing',
+      actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
     }

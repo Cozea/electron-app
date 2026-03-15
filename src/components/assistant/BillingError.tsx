@@ -1,8 +1,7 @@
 import { AlertCircle, CreditCard, ArrowRight, AlertTriangle, Ban } from 'lucide-react'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { useScopedSettingsNavigation } from '@/hooks/useScopedSettingsNavigation'
 import type { BillingErrorData } from '@/lib/ai/billingErrors'
 
 interface BillingErrorProps {
@@ -36,26 +35,17 @@ const errorColors: Record<string, string> = {
 }
 
 export function BillingError({ error, onAction, className }: BillingErrorProps) {
-  const navigate = useViewTransitionNavigate()
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const { openScopedHref } = useScopedSettingsNavigation()
   const code = error.code || 'UNKNOWN'
   const Icon = errorIcons[code] || AlertCircle
   const colorClass = errorColors[code] || 'text-muted-foreground bg-muted/50 border-border'
-
-  const openHref = (href: string) => {
-    if (href.startsWith('/settings/')) {
-      openSettingsDrawer(href)
-      return
-    }
-    navigate(href)
-  }
 
   const handleAction = () => {
     if (error.action?.href) {
       if (onAction) {
         onAction(error.action.href)
       } else {
-        openHref(error.action.href)
+        openScopedHref(error.action.href)
       }
     }
   }
@@ -65,7 +55,7 @@ export function BillingError({ error, onAction, className }: BillingErrorProps) 
       if (onAction) {
         onAction(error.secondaryAction.href)
       } else {
-        openHref(error.secondaryAction.href)
+        openScopedHref(error.secondaryAction.href)
       }
     }
   }

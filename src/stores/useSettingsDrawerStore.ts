@@ -1,45 +1,15 @@
 import { create } from 'zustand'
+import {
+  getSettingsSurfaceRoute,
+  resolveSettingsSurfaceFromRoute,
+  SETTINGS_SURFACE_IDS,
+} from '@/lib/settings/settingsRegistry'
+import type { SettingsSurfaceId } from '@/lib/settings/settingsSurfaceTypes'
 
-export type SettingsDrawerSection =
-  | 'account'
-  | 'billing'
-  | 'ai'
-  | 'appearance'
-  | 'storage'
-  | 'tooling'
-
-const SETTINGS_SECTIONS = new Set<SettingsDrawerSection>([
-  'account',
-  'billing',
-  'ai',
-  'appearance',
-  'storage',
-  'tooling',
-])
-
-const SETTINGS_PATH_TO_SECTION: Record<string, SettingsDrawerSection> = {
-  '/settings/account': 'account',
-  '/settings/billing': 'billing',
-  '/settings/ai': 'ai',
-  '/settings/ai/model-selection': 'ai',
-  '/settings/appearance': 'appearance',
-  '/settings/storage': 'storage',
-  '/settings/tooling': 'tooling',
-  '/workspace/billing': 'billing',
-  '/workspace/ai': 'ai',
-  '/workspace/ai/model-selection': 'ai',
-}
-
-const SECTION_TO_SETTINGS_PATH: Record<SettingsDrawerSection, string> = {
-  account: '/settings/account',
-  billing: '/settings/billing',
-  ai: '/settings/ai',
-  appearance: '/settings/appearance',
-  storage: '/settings/storage',
-  tooling: '/settings/tooling',
-}
+export type SettingsDrawerSection = SettingsSurfaceId
 
 const DEFAULT_SECTION: SettingsDrawerSection = 'account'
+const DEFAULT_ROUTE = getSettingsSurfaceRoute(DEFAULT_SECTION, 'personal') ?? '/settings/account'
 
 interface ParsedSettingsRoute {
   section: SettingsDrawerSection
@@ -55,15 +25,15 @@ function normalizePath(value: string): string {
 function splitRoute(route?: string): { path: string; query: string } {
   if (!route) {
     return {
-      path: SECTION_TO_SETTINGS_PATH[DEFAULT_SECTION],
+      path: DEFAULT_ROUTE,
       query: '',
     }
   }
 
   const normalizedRoute = route.trim()
-  if (SETTINGS_SECTIONS.has(normalizedRoute as SettingsDrawerSection)) {
+  if (SETTINGS_SURFACE_IDS.has(normalizedRoute as SettingsDrawerSection)) {
     return {
-      path: SECTION_TO_SETTINGS_PATH[normalizedRoute as SettingsDrawerSection],
+      path: getSettingsSurfaceRoute(normalizedRoute as SettingsDrawerSection, 'personal') ?? DEFAULT_ROUTE,
       query: '',
     }
   }
@@ -86,16 +56,11 @@ function splitRoute(route?: string): { path: string; query: string } {
 export function parseSettingsRoute(route?: string): ParsedSettingsRoute {
   const { path, query } = splitRoute(route)
   const normalizedPath = normalizePath(path)
-  const section =
-    SETTINGS_PATH_TO_SECTION[normalizedPath] ??
-    Array.from(SETTINGS_SECTIONS).find((candidate) =>
-      normalizedPath.startsWith(`${SECTION_TO_SETTINGS_PATH[candidate]}/`)
-    ) ??
-    DEFAULT_SECTION
-  const canonicalPath = SECTION_TO_SETTINGS_PATH[section]
-  const routePath = normalizedPath.startsWith(`${canonicalPath}/`)
-    ? normalizedPath
-    : canonicalPath
+  const resolvedSurface = resolveSettingsSurfaceFromRoute(normalizedPath, {
+    placement: 'drawer',
+  })
+  const section = resolvedSurface?.surface.id ?? DEFAULT_SECTION
+  const routePath = resolvedSurface?.route ?? DEFAULT_ROUTE
 
   return {
     section,
@@ -105,7 +70,7 @@ export function parseSettingsRoute(route?: string): ParsedSettingsRoute {
 }
 
 export function getSettingsPathForSection(section: SettingsDrawerSection): string {
-  return SECTION_TO_SETTINGS_PATH[section]
+  return getSettingsSurfaceRoute(section, 'personal') ?? DEFAULT_ROUTE
 }
 
 interface SettingsDrawerState {
@@ -121,13 +86,13 @@ interface SettingsDrawerState {
 export const useSettingsDrawerStore = create<SettingsDrawerState>((set) => ({
   isOpen: false,
   section: DEFAULT_SECTION,
-  route: SECTION_TO_SETTINGS_PATH[DEFAULT_SECTION],
+  route: DEFAULT_ROUTE,
 
   open: (section = DEFAULT_SECTION) =>
     set({
       isOpen: true,
       section,
-      route: SECTION_TO_SETTINGS_PATH[section],
+      route: getSettingsSurfaceRoute(section, 'personal') ?? DEFAULT_ROUTE,
     }),
 
   openFromRoute: (route) => {
@@ -143,7 +108,7 @@ export const useSettingsDrawerStore = create<SettingsDrawerState>((set) => ({
   setSection: (section) =>
     set({
       section,
-      route: SECTION_TO_SETTINGS_PATH[section],
+      route: getSettingsSurfaceRoute(section, 'personal') ?? DEFAULT_ROUTE,
     }),
 
   close: () => set({ isOpen: false }),

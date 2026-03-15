@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useAuth } from '../../contexts/AuthContext'
-import { useOrganization } from '../../contexts/OrganizationContext'
-import { useQuery, useMutation } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
-import { useCachedQuery } from '../../stores/useQueryCache'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
+import { WorkspaceIdentityPicker } from '@/components/workspaces/WorkspaceIdentityPicker'
+import { useScopedGeneralData } from '@/hooks/useScopedGeneralData'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Textarea } from '../../components/ui/textarea'
 import { Label } from '../../components/ui/label'
-import { Separator } from '../../components/ui/separator'
 import {
   Dialog,
   DialogContent,
@@ -22,19 +20,30 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog'
 import { AlertTriangle, Trash2, Loader2, Check, X } from 'lucide-react'
+import {
+  sanitizeWorkspaceIdentityInput,
+  type WorkspaceIdentityInput,
+} from '@shared/workspaceIdentity.ts'
 
 export function General() {
   const navigate = useViewTransitionNavigate()
-  const { user, logout, currentOrganization, convexUserId } = useAuth()
   const {
-    updateOrganization: updateWorkosOrganization,
-    deleteOrganization: deleteWorkosOrganization,
-  } = useOrganization()
+    settingsPage,
+    user,
+    logout,
+    convexUserId,
+    convexOrg,
+    workspaceOrganizationId,
+    canManageGeneral,
+    updateWorkosOrganization,
+    deleteWorkosOrganization,
+    isLoading,
+  } = useScopedGeneralData()
 
   // Form state
   const [workspaceName, setWorkspaceName] = useState('')
   const [workspaceSlug, setWorkspaceSlug] = useState('')
-  const [description, setDescription] = useState('')
+  const [workspaceIdentity, setWorkspaceIdentity] = useState<WorkspaceIdentityInput>({})
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
@@ -44,16 +53,6 @@ export function General() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
-  const freshOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-  const convexOrg = useCachedQuery(
-    `workspace-org-${currentOrganization?.organizationId}`,
-    freshOrg
-  )
 
   // Mutations
   const updateOrganization = useMutation(api.organizations.updateOrganization)
@@ -67,7 +66,12 @@ export function General() {
     if (convexOrg && !isFormInitialized) {
       setWorkspaceName(convexOrg.name)
       setWorkspaceSlug(convexOrg.slug)
-      setDescription(convexOrg.description || '')
+      setWorkspaceIdentity(
+        sanitizeWorkspaceIdentityInput({
+          iconKey: convexOrg.iconKey,
+          iconColor: convexOrg.iconColor,
+        })
+      )
       setIsFormInitialized(true)
     }
   }, [convexOrg, isFormInitialized])
@@ -81,17 +85,19 @@ export function General() {
   }, [saveSuccess])
 
   const handleSave = async () => {
-    if (!convexOrg || !convexUserId || !currentOrganization) return
+    if (!convexOrg || !convexUserId || !canManageGeneral) return
 
     setIsSaving(true)
     setSaveError(null)
     setSaveSuccess(false)
 
     try {
-      // Update WorkOS first if name changed (WorkOS is source of truth for name)
-      if (workspaceName !== convexOrg.name) {
+      const isWorkspaceScoped = settingsPage.workspaceScoped
+
+      // Update WorkOS first if name changed (WorkOS is source of truth for shared workspace names)
+      if (isWorkspaceScoped && workspaceOrganizationId && workspaceName !== convexOrg.name) {
         const workosResult = await updateWorkosOrganization(
-          currentOrganization.organizationId,
+          workspaceOrganizationId,
           workspaceName
         )
         if (!workosResult) {
@@ -99,13 +105,16 @@ export function General() {
         }
       }
 
-      // Then update Convex (for name, slug, and description)
+      // Then update Convex for name, slug, and identity.
       await updateOrganization({
         orgId: convexOrg._id,
         userId: convexUserId,
         name: workspaceName,
-        slug: workspaceSlug,
-        description: description || undefined,
+        slug: isWorkspaceScoped ? workspaceSlug : undefined,
+        iconKey: workspaceIdentity.iconKey ?? null,
+        iconColor: workspaceIdentity.iconKey
+          ? workspaceIdentity.iconColor ?? null
+          : null,
       })
       setSaveSuccess(true)
     } catch (error) {
@@ -116,7 +125,7 @@ export function General() {
   }
 
   const handleDelete = async () => {
-    if (!convexOrg || !convexUserId || !currentOrganization) return
+    if (!convexOrg || !convexUserId || !workspaceOrganizationId || !canManageGeneral) return
 
     setIsDeleting(true)
     setDeleteError(null)
@@ -128,7 +137,7 @@ export function General() {
       }
 
       // Delete from WorkOS first (source of truth)
-      const workosResult = await deleteWorkosOrganization(currentOrganization.organizationId)
+      const workosResult = await deleteWorkosOrganization(workspaceOrganizationId)
       if (!workosResult) {
         throw new Error('Failed to delete organization from WorkOS')
       }
@@ -149,21 +158,14 @@ export function General() {
     }
   }
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  }
-
-  const isLoading = convexOrg === undefined
-
   const hasChanges = isFormInitialized && (
     workspaceName !== convexOrg?.name ||
-    workspaceSlug !== convexOrg?.slug ||
-    description !== (convexOrg?.description || '')
+    (settingsPage.workspaceScoped && workspaceSlug !== convexOrg?.slug) ||
+    (workspaceIdentity.iconKey ?? null) !== (convexOrg?.iconKey ?? null) ||
+    (workspaceIdentity.iconColor ?? null) !== (convexOrg?.iconColor ?? null)
   )
+
+  const isWorkspaceScoped = settingsPage.workspaceScoped
 
 
 
@@ -171,8 +173,14 @@ export function General() {
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Workspace' }, { label: 'General' }]}
+      breadcrumbs={settingsPage.breadcrumbs}
     >
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="Workspace access required"
+          description="You do not have permission to view this workspace."
+        />
+      ) : (
       <div className="flex min-h-[calc(100vh-8rem)] gap-0">
         <div className="w-full max-w-2xl space-y-6 pr-0 xl:pr-10">
           {isLoading && (
@@ -180,6 +188,11 @@ export function General() {
               Loading workspace settings...
             </div>
           )}
+          {!isLoading && !canManageGeneral ? (
+            <div className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+              You can view workspace details, but only owners or admins with organization update access can edit them.
+            </div>
+          ) : null}
 
           {/* Workspace Details */}
           <Card className="border-none shadow-none bg-transparent">
@@ -190,37 +203,36 @@ export function General() {
                   id="name"
                   value={workspaceName}
                   onChange={(e) => setWorkspaceName(e.target.value)}
-                  disabled={isLoading}
+                  disabled={isLoading || !canManageGeneral}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="slug">Workspace URL</Label>
-                <div className="flex items-stretch">
-                  <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
-                    app.cozea.io/
-                  </span>
-                  <Input
-                    id="slug"
-                    value={workspaceSlug}
-                    onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    className="rounded-l-none"
-                    disabled={isLoading}
-                  />
+              {isWorkspaceScoped ? (
+                <div className="space-y-2">
+                  <Label htmlFor="slug">Workspace URL</Label>
+                  <div className="flex items-stretch">
+                    <span className="flex items-center text-sm text-muted-foreground bg-secondary/80 dark:bg-secondary/40 px-3 rounded-l-2xl">
+                      app.cozea.io/
+                    </span>
+                    <Input
+                      id="slug"
+                      value={workspaceSlug}
+                      onChange={(e) => setWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                      className="rounded-l-none"
+                      disabled={isLoading || !canManageGeneral}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This is your workspace&apos;s unique identifier
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  This is your workspace's unique identifier
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="A short description of your workspace"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
+              ) : null}
+              <WorkspaceIdentityPicker
+                workspaceType={isWorkspaceScoped ? 'organization' : 'personal'}
+                workspaceName={workspaceName || 'Workspace'}
+                value={workspaceIdentity}
+                onChange={setWorkspaceIdentity}
+                disabled={isLoading || !canManageGeneral}
+              />
 
               {saveError && (
                 <div className="flex items-center gap-2 text-sm text-destructive">
@@ -236,7 +248,7 @@ export function General() {
                 </div>
               )}
 
-              <Button onClick={handleSave} disabled={isLoading || isSaving || !hasChanges}>
+              <Button onClick={handleSave} disabled={isLoading || isSaving || !hasChanges || !canManageGeneral}>
                 {isSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -249,27 +261,8 @@ export function General() {
             </CardContent>
           </Card>
 
-          {/* Workspace Info */}
-          <Card className="border-none shadow-none bg-transparent">
-            <CardHeader>
-              <CardTitle>Workspace Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2">
-                <span className="text-muted-foreground">Workspace ID</span>
-                <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
-                  {convexOrg?._id ?? '—'}
-                </code>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between py-2">
-                <span className="text-muted-foreground">Created</span>
-                <span>{convexOrg?.createdAt ? formatDate(convexOrg.createdAt) : 'Unknown'}</span>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Danger Zone */}
+          {isWorkspaceScoped ? (
           <Card className="border-none shadow-none bg-transparent">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-destructive">
@@ -290,7 +283,7 @@ export function General() {
                 </div>
                 <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="destructive" className="gap-2">
+                    <Button variant="destructive" className="gap-2" disabled={!canManageGeneral}>
                       <Trash2 className="h-4 w-4" />
                       Delete
                     </Button>
@@ -351,6 +344,7 @@ export function General() {
               </div>
             </CardContent>
           </Card>
+          ) : null}
         </div>
 
         <div className="relative hidden xl:block min-w-0 flex-1 pl-6">
@@ -367,6 +361,7 @@ export function General() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/35 via-transparent to-background/20" />
         </div>
       </div>
+      )}
     </DashboardLayout>
   )
 }

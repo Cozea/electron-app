@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, type MouseEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft, User } from 'lucide-react'
+import { ChevronsUpDown, FolderOpen, Home, Plus, Building2, Loader2, Cloud, Check, ArrowRightLeft } from 'lucide-react'
 import { useConvex, useQuery, useMutation } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -23,11 +23,15 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
-import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
+import { getOrganizationPlanLabel, getPersonalPlanLabel } from '@/lib/billing/planLabels'
+import { useCachedQuery } from '@/stores/useQueryCache'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialogStore'
 import { buildProjectPath, parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '@/features/projects/lib/projectCloudAccessPresentation'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
+import { WorkspaceAvatar } from '@/components/workspaces/WorkspaceAvatar'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -50,8 +54,24 @@ export function ContextSwitcher() {
   const { isMobile } = useSidebar()
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const openCreateWorkspaceDialog = useCreateWorkspaceDialogStore(
+    (state) => state.open
+  )
   const location = useLocation()
-  const { currentOrganization, user, organizations } = useAuth()
+  const { organizationWorkspaces, personalWorkspace, convexUserId } = useAuth()
+  const {
+    resolvedScope,
+    workspaceScoped: isSharedWorkspace,
+    personalScoped: isPersonalWorkspace,
+    preferredConvexOrganizationId,
+    convexOrg,
+    workspaceName,
+  } = useScopedAppContext()
+  const currentWorkspace = resolvedScope.activeWorkspace
+  const availableWorkspaces = useMemo(
+    () => (personalWorkspace ? [personalWorkspace, ...organizationWorkspaces] : organizationWorkspaces),
+    [organizationWorkspaces, personalWorkspace],
+  )
 
   const [open, setOpen] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
@@ -59,20 +79,6 @@ export function ContextSwitcher() {
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
-
-  // Get Convex organization
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId
-      ? { workosId: currentOrganization.organizationId }
-      : 'skip'
-  )
-
-  const convexUser = useQuery(
-    api.users.getByWorkosId,
-    user?.id ? { workosId: user.id } : 'skip'
-  )
-
   const routeProject = useMemo(
     () => parseProjectRoute(location.pathname),
     [location.pathname]
@@ -80,18 +86,18 @@ export function ContextSwitcher() {
 
   const currentProjectById = useQuery(
     api.projects.getAccessibleById,
-    routeProject.projectId && convexUser?._id
-      ? { projectId: routeProject.projectId as Id<'projects'>, userId: convexUser._id }
+    routeProject.projectId && convexUserId
+      ? { projectId: routeProject.projectId as Id<'projects'>, userId: convexUserId }
       : 'skip'
   )
 
   const currentProjectBySlug = useQuery(
     api.projects.getAccessibleBySlug,
-    !routeProject.projectId && routeProject.slug && convexUser?._id
+    !routeProject.projectId && routeProject.slug && convexUserId
       ? {
           slug: routeProject.slug,
-          userId: convexUser._id,
-          preferredOrganizationId: convexOrg?._id,
+          userId: convexUserId,
+          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : 'skip'
   )
@@ -105,25 +111,27 @@ export function ContextSwitcher() {
 
   // Get recent projects
   const projects = useQuery(
-    currentOrganization?.workspaceType === 'personal'
+    isPersonalWorkspace
       ? api.projects.listForPersonalWorkspaceMemberView
       : api.projects.listForOrganization,
-    currentOrganization?.workspaceType === 'personal'
-      ? convexUser?._id
-        ? { userId: convexUser._id }
+    isPersonalWorkspace
+      ? convexUserId
+        ? { userId: convexUserId }
         : 'skip'
-      : convexOrg?._id && convexUser?._id
-        ? { organizationId: convexOrg._id, userId: convexUser._id }
+      : convexOrg?._id && convexUserId
+        ? { organizationId: convexOrg._id, userId: convexUserId }
         : 'skip'
   )
 
-  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
-
-  const personalSeatManagement = useQuery(
+  const currentSeatManagement = useQuery(
     api.billing.getSeatManagement,
-    isPersonalWorkspace && convexOrg?._id && convexUser?._id
-      ? { organizationId: convexOrg._id, userId: convexUser._id }
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip'
+  )
+  const cachedSeatManagement = useCachedQuery(
+    `context-switcher-seat-management-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
+    currentSeatManagement
   )
 
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
@@ -163,10 +171,10 @@ export function ContextSwitcher() {
 
   // Organization info
   const organization = {
-    name: currentOrganization?.organizationName || 'My Workspace',
+    name: workspaceName || currentWorkspace?.organizationName || 'My Workspace',
     plan: isPersonalWorkspace
-      ? getWorkspacePlanLabel(personalSeatManagement?.entitlement?.plan ?? convexOrg?.subscription?.plan)
-      : getWorkspacePlanLabel(convexOrg?.subscription?.plan),
+      ? getPersonalPlanLabel(cachedSeatManagement?.entitlement?.plan)
+      : `Workspace · ${getOrganizationPlanLabel(cachedSeatManagement?.entitlement?.plan)}`,
   }
 
   const resetSyncState = useCallback(() => {
@@ -203,11 +211,11 @@ export function ContextSwitcher() {
           slug: project.slug,
           projectId: String(project._id),
         }),
-        userId: convexUser?._id,
+        userId: convexUserId,
         onProgress: (message) => {
           setSyncMessage(message)
         },
-        updateMemberLocalPath: convexUser?._id ? updateMemberLocalPath : undefined,
+        updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
       })
 
       setSyncState('ready')
@@ -228,7 +236,9 @@ export function ContextSwitcher() {
       }, 200)
     } catch (error) {
       console.error('[ContextSwitcher] Project prep failed:', error)
-      const presentation = formatProjectCloudAccessError(error)
+      const presentation = formatProjectCloudAccessError(error, 'Failed to prepare project', {
+        workspaceScoped: isSharedWorkspace,
+      })
       setSyncState('error')
       setSyncMessage(presentation.detail ?? presentation.summary)
       setSyncErrorActionHref(presentation.actionHref)
@@ -240,7 +250,7 @@ export function ContextSwitcher() {
         }, 2000)
       }
     }
-  }, [convex, convexUser?._id, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convex, convexUserId, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = useCallback(() => {
     setOpen(false)
@@ -259,8 +269,8 @@ export function ContextSwitcher() {
 
   const handleCreateWorkspace = useCallback(() => {
     setOpen(false)
-    navigate('/workspaces/new')
-  }, [navigate])
+    openCreateWorkspaceDialog()
+  }, [openCreateWorkspaceDialog])
 
   const isBusy = syncState !== 'idle'
 
@@ -281,10 +291,16 @@ export function ContextSwitcher() {
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   {isInProject ? (
                     <FolderOpen className="size-4" />
-                  ) : isPersonalWorkspace ? (
-                    <User className="size-4" />
                   ) : (
-                    <Building2 className="size-4" />
+                    <WorkspaceAvatar
+                      workspaceType={currentWorkspace?.workspaceType}
+                      iconKey={currentWorkspace?.iconKey}
+                      iconColor={currentWorkspace?.iconColor}
+                      logoUrl={currentWorkspace?.logoUrl}
+                      size="sm"
+                      className="size-8 rounded-lg border-0"
+                      iconClassName="size-4"
+                    />
                   )}
                 </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -297,14 +313,18 @@ export function ContextSwitcher() {
                       'Project'
                     : organization.name}
                 </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {isInProject
-                    ? currentProject?.template ??
+                {isInProject ? (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {currentProject?.template ??
                       navigationTemplateHint ??
                       selectedProjectFromList?.template ??
-                      'Project'
-                    : organization.plan}
-                </span>
+                      'Project'}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                    <span className="truncate">{organization.plan}</span>
+                  </span>
+                )}
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -416,7 +436,7 @@ export function ContextSwitcher() {
               </div>
               <span className="text-muted-foreground font-medium">Create Workspace</span>
             </DropdownMenuItem>
-            {organizations.length > 1 ? (
+            {availableWorkspaces.length > 1 ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleSwitchWorkspace} className="w-full cursor-pointer gap-2 p-2" disabled={isBusy}>

@@ -10,6 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
 import { featureFlags } from "@/lib/featureFlags"
+import {
+  getSettingsSurfaceRoute,
+  listSettingsSurfaces,
+} from "@/lib/settings/settingsRegistry"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
@@ -33,14 +37,16 @@ interface DashboardLayoutProps {
 
 const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
 const FULLSCREEN_SIDEBAR_COLLAPSE_DELAY_MS = 70
-const SETTINGS_WINDOW_ITEMS = [
-  { href: '/settings/account', label: 'Account' },
-  { href: '/settings/billing', label: 'Billing' },
-  { href: '/settings/ai', label: 'AI' },
-  { href: '/settings/appearance', label: 'Appearance' },
-  { href: '/settings/storage', label: 'Storage' },
-  { href: '/settings/tooling', label: 'Tooling' },
-] as const
+const PERSONAL_ACCOUNT_ROUTE = getSettingsSurfaceRoute('account', 'personal') ?? '/settings/account'
+const PERSONAL_AI_ROUTE = getSettingsSurfaceRoute('ai', 'personal') ?? '/settings/ai'
+const WORKSPACE_AI_ROUTE = getSettingsSurfaceRoute('ai', 'workspace') ?? '/workspace/ai'
+const SETTINGS_WINDOW_ITEMS = listSettingsSurfaces({
+  scopeKind: 'personal',
+  placement: 'settingsWindow',
+}).map((surface) => ({
+  href: surface.routes.personal!,
+  label: surface.label,
+}))
 
 interface DashboardLayoutContentProps {
   children: ReactNode
@@ -111,7 +117,9 @@ function DashboardLayoutContent({
   const isMacClient = windowChrome.isMac
   const isWindowsClient = windowChrome.isWindows
   const effectiveBreadcrumbAddon =
-    normalizedPath === '/settings/ai' || normalizedPath === '/workspace/ai' ? undefined : breadcrumbAddon
+    normalizedPath === PERSONAL_AI_ROUTE || normalizedPath === WORKSPACE_AI_ROUTE
+      ? undefined
+      : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
   const areAllSidebarsCollapsed = sidebar?.state === "collapsed"
@@ -124,13 +132,13 @@ function DashboardLayoutContent({
   useEffect(() => {
     if (!isSettingsWindow) return
     if (normalizedPath.startsWith('/settings/')) return
-    navigate('/settings/account', { replace: true })
+    navigate(PERSONAL_ACCOUNT_ROUTE, { replace: true })
   }, [isSettingsWindow, navigate, normalizedPath])
 
   if (isSettingsWindow) {
     const activeSettingsPath = SETTINGS_WINDOW_ITEMS.some((item) => item.href === normalizedPath)
       ? normalizedPath
-      : '/settings/account'
+      : PERSONAL_ACCOUNT_ROUTE
     const leftInset = isMacClient ? windowChrome.wideLeftInset : 12
     const rightInset = isWindowsClient ? windowsCaptionControlsWidth : 12
 

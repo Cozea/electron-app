@@ -12,7 +12,10 @@ import {
     Archive,
     Pencil,
     Cloud,
-    Check
+    Check,
+    RotateCcw,
+    Settings,
+    FileCode
 } from 'lucide-react'
 import {
     Avatar,
@@ -63,6 +66,7 @@ interface ProjectListRowProps {
     userId?: Id<'users'>
     creatorName?: string
     creatorImage?: string
+    workspaceScoped: boolean
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -84,20 +88,25 @@ export function ProjectListRow({
   userId,
   creatorName,
   creatorImage,
+  workspaceScoped,
 }: ProjectListRowProps) {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const rowRef = useRef<HTMLTableRowElement | null>(null)
   const isInViewport = useInViewportOnce(rowRef)
-    const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isArchiving, setIsArchiving] = useState(false)
+  const [isRestoring, setIsRestoring] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
-    const deleteProject = useMutation(api.projects.deleteProject)
-    const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+  const deleteProject = useMutation(api.projects.deleteProject)
+  const archiveProject = useMutation(api.projects.archive)
+  const restoreProject = useMutation(api.projects.restore)
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const [showMenu, setShowMenu] = useState(false)
   const [localPath, setLocalPath] = useState<string | null>(null)
   const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
@@ -175,6 +184,80 @@ export function ProjectListRow({
         }
     }
 
+  const handleArchive = async () => {
+    if (!userId || isArchiving) return
+
+    const result = await window.electronAPI.dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Cancel', 'Archive Project'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Archive Project',
+      message: `Archive ${project.name}?`,
+      detail: 'The project will be hidden from active views and can be restored later.',
+    })
+
+    if (result.response !== 1) {
+      return
+    }
+
+    setIsArchiving(true)
+    try {
+      await archiveProject({
+        projectId: project._id,
+        userId,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to archive project'
+      const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Archive Failed',
+        message: 'Failed to archive project',
+        detail: cleanMessage,
+      })
+    } finally {
+      setIsArchiving(false)
+    }
+  }
+
+  const handleRestore = async () => {
+    if (!userId || isRestoring) return
+
+    const result = await window.electronAPI.dialog.showMessageBox({
+      type: 'question',
+      buttons: ['Cancel', 'Restore Project'],
+      defaultId: 1,
+      cancelId: 0,
+      title: 'Restore Project',
+      message: `Restore ${project.name}?`,
+      detail: 'The project will return to active views.',
+    })
+
+    if (result.response !== 1) {
+      return
+    }
+
+    setIsRestoring(true)
+    try {
+      await restoreProject({
+        projectId: project._id,
+        userId,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to restore project'
+      const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Restore Failed',
+        message: 'Failed to restore project',
+        detail: cleanMessage,
+      })
+    } finally {
+      setIsRestoring(false)
+    }
+  }
+
     const handleRowClick = useCallback(async () => {
         preloadProjectDestination()
 
@@ -222,7 +305,9 @@ export function ProjectListRow({
 
         } catch (error) {
             console.error('[ProjectListRow] Sync check failed:', error)
-            const presentation = formatProjectCloudAccessError(error)
+            const presentation = formatProjectCloudAccessError(error, 'Failed to prepare project', {
+                workspaceScoped,
+            })
             setSyncState('error')
             setSyncMessage(presentation.detail ?? presentation.summary)
             setSyncErrorActionHref(presentation.actionHref)
@@ -236,9 +321,10 @@ export function ProjectListRow({
                 }, 2000)
             }
         }
-    }, [convex, localPath, navigate, preloadProjectDestination, project, updateMemberLocalPath, userId])
+    }, [convex, localPath, navigate, preloadProjectDestination, project, updateMemberLocalPath, userId, workspaceScoped])
 
     const isBuilding = project.status === 'building' || project.status === 'generating'
+    const isArchiveActionPending = isArchiving || isRestoring
 
     return (
             <TableRow
@@ -352,14 +438,48 @@ export function ProjectListRow({
                                 e.stopPropagation()
                                 void handleRowClick()
                             }}>
+                                <FileCode className="mr-2 h-4 w-4" />
                                 Open Project
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
                                 navigate(buildProjectPath(String(project._id), 'settings'))
                             }}>
+                                <Settings className="mr-2 h-4 w-4" />
                                 Settings
                             </DropdownMenuItem>
+                            {project.status === 'archived' ? (
+                                <DropdownMenuItem
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        void handleRestore()
+                                    }}
+                                    disabled={isArchiveActionPending || !userId}
+                                >
+                                    {isRestoring ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                    )}
+                                    Restore
+                                </DropdownMenuItem>
+                            ) : (
+                                <DropdownMenuItem
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        void handleArchive()
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                    disabled={isArchiveActionPending || !userId}
+                                >
+                                    {isArchiving ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Archive className="mr-2 h-4 w-4" />
+                                    )}
+                                    Archive
+                                </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                                 onClick={(e) => {

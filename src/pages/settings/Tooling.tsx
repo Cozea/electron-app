@@ -13,6 +13,7 @@ import { useRuntimeInstallStore, type RuntimeInstallStatus } from '../../stores/
 
 interface ToolingProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
 const RUNTIME_LABELS: Record<RuntimeKind, string> = {

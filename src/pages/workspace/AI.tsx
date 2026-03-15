@@ -5,14 +5,12 @@ import {
 } from '@shared/aiProviderAvailability'
 import type { ProviderCloudCredentials } from '@shared/electronApiTypes'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
-import { useAuth } from '../../contexts/AuthContext'
-import { useQuery } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
-import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { AI_BASE_URL } from '../../lib/ai/apiEndpoints'
 import { clearModelCatalogCache } from '../../lib/ai/modelCatalogClient'
 import { getProviderLogoUrl } from '../../lib/ai/providerLogos'
+import { useScopedAiData } from '@/hooks/useScopedAiData'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -129,6 +127,7 @@ type ProviderAuthMethod =
 
 interface AIProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
 type UsageRange = '7d' | '30d' | '90d'
@@ -306,26 +305,7 @@ const usageChartConfig: ChartConfig = {
   },
 }
 
-export function AI({ surface = 'page' }: AIProps) {
-  const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
-
-  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
-  const freshOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-  const convexOrg = useCachedQuery(
-    `ai-org-${currentOrganization?.organizationId}`,
-    freshOrg
-  )
-
-  const walletSummary = useQuery(
-    api.aiWallets.getWalletForViewer,
-    convexOrg?._id && convexUserId
-      ? { organizationId: convexOrg._id, userId: convexUserId }
-      : 'skip'
-  )
-
+export function AI({ surface = 'page', route }: AIProps) {
   const [usageTimeRange, setUsageTimeRange] = useState<UsageRange>('30d')
   const usageDaysToShow =
     usageTimeRange === '7d' ? 7 : usageTimeRange === '30d' ? 30 : 90
@@ -336,26 +316,23 @@ export function AI({ surface = 'page' }: AIProps) {
       endDate: currentDayStart + DAY_MS - 1,
     }
   }, [usageDaysToShow])
-  const dailyUsageHistory = useQuery(
-    api.aiUsage.getDailyHistory,
-    convexOrg?._id
-      ? {
-          organizationId: convexOrg._id,
-          startDate: usageDateRange.startDate,
-          endDate: usageDateRange.endDate,
-        }
-      : 'skip'
-  )
-  const detailedUsageHistory = useQuery(
-    api.aiUsage.getDetailedHistory,
-    convexOrg?._id
-      ? {
-          organizationId: convexOrg._id,
-          startDate: usageDateRange.startDate,
-          endDate: usageDateRange.endDate,
-        }
-      : 'skip'
-  )
+  const {
+    settingsPage,
+    user,
+    logout,
+    accessToken,
+    scopedOrganizationId,
+    workspaceScoped,
+    convexOrg: resolvedConvexOrg,
+    canViewWorkspaceAiPage,
+    walletSummary,
+    dailyUsageHistory,
+    detailedUsageHistory,
+  } = useScopedAiData({
+    route,
+    startDate: usageDateRange.startDate,
+    endDate: usageDateRange.endDate,
+  })
 
   // Dialog state for provider connection
   const [connectDialogOpen, setConnectDialogOpen] = useState(false)
@@ -393,6 +370,7 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   const refreshProviderStatuses = async () => {
+    if (workspaceScoped) return
     if (!window.electronAPI?.providerAuth) return
     try {
       const statuses = await window.electronAPI.providerAuth.getStatus()
@@ -407,7 +385,7 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   useEffect(() => {
-    if (!accessToken) return
+    if (!accessToken || !canViewWorkspaceAiPage) return
 
     const controller = new AbortController()
     setProvidersError(null)
@@ -439,9 +417,10 @@ export function AI({ surface = 'page' }: AIProps) {
       })
 
     return () => controller.abort()
-  }, [accessToken])
+  }, [accessToken, canViewWorkspaceAiPage])
 
   useEffect(() => {
+    if (workspaceScoped) return
     if (!window.electronAPI?.providerAuth) return
 
     window.electronAPI.providerAuth
@@ -456,18 +435,20 @@ export function AI({ surface = 'page' }: AIProps) {
       .catch((error) => {
         console.warn('Failed to load provider auth methods:', error)
       })
-  }, [])
+  }, [workspaceScoped])
 
   useEffect(() => {
+    if (workspaceScoped) return
     void refreshProviderStatuses()
-  }, [])
+  }, [workspaceScoped])
 
   // Refresh status on focus so expired tokens show as disconnected (matches useConnectedProviders used by chat)
   useEffect(() => {
+    if (workspaceScoped) return
     const onFocus = () => void refreshProviderStatuses()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [])
+  }, [workspaceScoped])
 
   const handleOpenConnectDialog = (provider: string) => {
     if (!provider) return
@@ -484,8 +465,8 @@ export function AI({ surface = 'page' }: AIProps) {
   }
 
   const invalidateModelCatalog = () => {
-    if (!currentOrganization?.organizationId) return
-    clearModelCatalogCache(currentOrganization.organizationId)
+    if (!scopedOrganizationId) return
+    clearModelCatalogCache(scopedOrganizationId)
   }
 
   const connectProvider = async (
@@ -908,7 +889,7 @@ export function AI({ surface = 'page' }: AIProps) {
             </div>
           </CardHeader>
           <CardContent className="px-0 py-0 overflow-hidden">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
@@ -1062,7 +1043,7 @@ export function AI({ surface = 'page' }: AIProps) {
           </CardContent>
         </Card>
 
-        {providerRows.length > 0 && (
+        {!workspaceScoped && providerRows.length > 0 && (
         <Collapsible open={isManualProvidersOpen} onOpenChange={setIsManualProvidersOpen}>
           <Card className="border-none shadow-none bg-transparent">
             <CardHeader>
@@ -1095,7 +1076,7 @@ export function AI({ surface = 'page' }: AIProps) {
             </CardHeader>
             <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
               <CardContent className="px-4 py-0 overflow-hidden">
-                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="w-full [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow className="hover:bg-transparent">
@@ -1119,7 +1100,7 @@ export function AI({ surface = 'page' }: AIProps) {
                     const isAllowed =
                       !isPolicyManagedProvider ||
                       (
-                        convexOrg?.aiSettings?.allowedProviders?.includes(
+                        resolvedConvexOrg?.aiSettings?.allowedProviders?.includes(
                           provider.id as 'openai' | 'anthropic' | 'google' | 'xai' | 'moonshotai'
                         ) ?? true
                       )
@@ -1562,16 +1543,30 @@ export function AI({ surface = 'page' }: AIProps) {
   )
 
   if (surface === 'drawer') {
-    return content
+    return settingsPage.isWorkspaceAccessDenied
+      ? (
+        <WorkspaceAccessNotice
+          title="AI access required"
+          description="You do not have permission to view this workspace AI page."
+        />
+      )
+      : content
   }
 
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'AI' }]}
+      breadcrumbs={settingsPage.breadcrumbs}
     >
-      {content}
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="AI access required"
+          description="You do not have permission to view this workspace AI page."
+        />
+      ) : (
+        content
+      )}
     </DashboardLayout>
   )
 }
