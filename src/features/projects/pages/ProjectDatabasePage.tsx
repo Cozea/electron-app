@@ -11,9 +11,9 @@ import {
 
 export function ProjectDatabasePage() {
   return (
-    <div className="flex flex-col h-full bg-content-surface">
+    <div className="flex flex-col h-[calc(100%+2.5rem)] -mt-10 bg-content-surface">
       {/* Content */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-6 pt-16">
         <Card className="max-w-md w-full p-12 border-0 bg-content-surface shadow-none">
           <Empty className="py-0">
             <EmptyHeader>

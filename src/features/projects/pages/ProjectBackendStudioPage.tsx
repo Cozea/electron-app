@@ -677,10 +677,10 @@ export function ProjectBackendStudioPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-[calc(100%+2.5rem)] -mt-10 bg-background">
       {/* Content */}
-      <div className="flex-1 min-h-0">
-        <ResizablePanelGroup orientation="horizontal" className="h-full">
+      <div className="flex-1 min-h-0 pt-10">
+        <ResizablePanelGroup orientation="horizontal" className="h-[calc(100%-2.5rem)]">
           <ResizablePanel defaultSize="72" minSize="45" className="min-w-0">
             <ReactFlowProvider>
               <Canvas

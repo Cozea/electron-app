@@ -210,6 +210,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     probeUrl: (options: { url: string; timeoutMs?: number }) => ipcRenderer.invoke('preview:probeUrl', options),
     captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
       ipcRenderer.invoke('preview:captureScreenshot', options),
+    inspectSelection: (options: {
+      url: string
+      frameName?: string
+      bridgeInstanceId?: string
+      selector?: string
+      path?: number[]
+    }) => ipcRenderer.invoke('preview:inspectSelection', options),
+    updateSelectionStyles: (options: {
+      url: string
+      frameName?: string
+      bridgeInstanceId?: string
+      selector?: string
+      path?: number[]
+      styles: Record<string, string>
+    }) => ipcRenderer.invoke('preview:updateSelectionStyles', options),
+    updateSelectionText: (options: {
+      url: string
+      frameName?: string
+      bridgeInstanceId?: string
+      selector?: string
+      path?: number[]
+      text: string
+    }) => ipcRenderer.invoke('preview:updateSelectionText', options),
   },
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => ipcRenderer.invoke('project:createFolder', options),

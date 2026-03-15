@@ -374,6 +374,52 @@ export interface PreviewCaptureScreenshotResult {
   error?: string
 }
 
+export interface PreviewInspectorSelectionInput {
+  url: string
+  frameName?: string
+  bridgeInstanceId?: string
+  selector?: string
+  path?: number[]
+}
+
+export interface PreviewInspectorElementSnapshot {
+  tagName: string
+  className: string
+  id?: string
+  selector: string
+  path: number[]
+  boundingRect: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  computedStyles: Record<string, string>
+  inlineStyles: Record<string, string>
+  htmlSnippet: string
+  textContent?: string
+}
+
+export interface PreviewInspectorSelectionResult {
+  success: boolean
+  snapshot?: PreviewInspectorElementSnapshot
+  error?: string
+}
+
+export interface PreviewInspectorStyleMutationInput extends PreviewInspectorSelectionInput {
+  styles: Record<string, string>
+}
+
+export interface PreviewInspectorTextMutationInput extends PreviewInspectorSelectionInput {
+  text: string
+}
+
+export interface PreviewInspectorMutationResult {
+  success: boolean
+  snapshot?: PreviewInspectorElementSnapshot
+  error?: string
+}
+
 export interface WatchProjectResult {
   success: boolean
   error?: string
@@ -1016,6 +1062,9 @@ export interface ElectronAPI {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
+    inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
+    updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
+    updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
   }
   project: {
     createFolder: (options: { slug: string; initGit?: boolean }) => Promise<CreateProjectFolderResult>

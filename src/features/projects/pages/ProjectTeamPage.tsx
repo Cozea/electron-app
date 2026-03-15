@@ -155,13 +155,17 @@ export function ProjectTeamPage() {
   const currentWorkspaceAccess = useQuery(
     api.organizations.getCurrentMemberAccess,
     hasResolvedWorkspaceContext && !isPersonalWorkspace && projectOrganizationId && convexUserId
-      ? { orgId: projectOrganizationId, userId: convexUserId }
+      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
       : 'skip'
   )
   const workspaceMembers = useQuery(
     api.organizations.getMembers,
-    hasResolvedWorkspaceContext && !isPersonalWorkspace && projectOrganizationId
-      ? { orgId: projectOrganizationId }
+    hasResolvedWorkspaceContext &&
+    !isPersonalWorkspace &&
+    projectOrganizationId &&
+    convexUserId &&
+    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
+      ? { orgId: projectOrganizationId, viewerUserId: convexUserId }
       : 'skip'
   )
   const pendingInvites = useQuery(

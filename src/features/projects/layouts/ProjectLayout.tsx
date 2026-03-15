@@ -109,6 +109,7 @@ interface ProjectLayoutHeaderProps {
     breadcrumbs: { label: string; href?: string }[]
     header?: ReactNode
     breadcrumbAddon?: ReactNode
+    preSearchAddon?: ReactNode
     rightAddon?: ReactNode
     className?: string
     isSecondarySidebarVisible: boolean
@@ -125,6 +126,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     breadcrumbs,
     header,
     breadcrumbAddon,
+    preSearchAddon,
     rightAddon,
     className,
     isSecondarySidebarVisible,
@@ -141,6 +143,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             breadcrumbs={breadcrumbs}
             header={header}
             breadcrumbAddon={breadcrumbAddon}
+            preSearchAddon={preSearchAddon}
             rightAddon={rightAddon}
             className={className}
             leftWindowControlsInset={areAllSidebarsCollapsed}
@@ -853,7 +856,7 @@ export function ProjectLayout({
         setIsResizingAssistantHistorySidebar(true)
     }, [])
 
-    const rightHeaderAddon = useMemo(
+    const presenceHeaderAddon = useMemo(
         () =>
             presenceUsers.length > 0 ? (
                 <PresenceAvatarGroup
@@ -868,7 +871,7 @@ export function ProjectLayout({
         breadcrumbs.length > 0 ||
         Boolean(headerSlot) ||
         Boolean(breadcrumbAddon) ||
-        Boolean(rightHeaderAddon)
+        Boolean(presenceHeaderAddon)
     const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
     const showAssistantHistorySidebar = assistantPanelMode === 'fullscreen'
 
@@ -952,13 +955,11 @@ export function ProjectLayout({
                                 breadcrumbs={breadcrumbs}
                                 header={headerSlot ?? undefined}
                                 breadcrumbAddon={breadcrumbAddon ?? undefined}
-                                rightAddon={rightHeaderAddon ?? undefined}
+                                preSearchAddon={presenceHeaderAddon ?? undefined}
                                 className={
-                                    isPagesView
-                                        ? isWindowsClient
-                                            ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
-                                            : "bg-transparent backdrop-blur-xl"
-                                        : undefined
+                                    isWindowsClient
+                                        ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
+                                        : "bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40"
                                 }
                                 isSecondarySidebarVisible={isSecondarySidebarVisible}
                                 insetLeft={insetLeft}

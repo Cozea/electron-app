@@ -1,14 +1,9 @@
 /**
- * Preview Bridge Script
+ * Preview Bridge utilities.
  *
- * Injected into preview iframes to enable:
- * - Element inspection (click-to-select with highlight overlay)
- * - Computed style extraction
- * - Screenshot capture via html2canvas
- * - Live style updates via postMessage
+ * In the desktop app, bridge injection is owned by the Electron main process.
+ * The renderer no longer attempts a same-origin fallback injection path.
  */
-
-import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
 import type {
   PreviewBridgeFrameDetails,
   PreviewFailureReason,
@@ -38,6 +33,7 @@ export type BridgeMessageType =
   | 'host:update-style'
   | 'host:update-text'
   | 'host:clear-selection'
+  | 'host:restore-selection'
 
 export interface BridgeMessage {
   type: BridgeMessageType
@@ -89,82 +85,50 @@ export async function injectBridgeScript(iframe: HTMLIFrameElement): Promise<Inj
   const frameName = iframe.getAttribute('name') || undefined
   const targetUrl = iframe.src || '(no-src)'
 
-  let electronInjectionError: string | null = null
-  let electronLikelyBlocked = false
-  let electronFailureReason: PreviewFailureReason | undefined
-  let electronFrameDetails: PreviewBridgeFrameDetails | undefined
-  let electronHeaderDiagnostic: PreviewHeaderDiagnostic | null | undefined
-
-  // Prefer Electron main-process injection when available (works cross-origin).
-  const electronInject = window.electronAPI?.preview?.injectBridge
-  if (electronInject && iframe.src) {
-    try {
-      const result = await electronInject({ url: iframe.src, frameName })
-      if (result.success) {
-        return {
-          success: true,
-          reason: result.reason,
-          frame: result.frame,
-          headerDiagnostic: result.headerDiagnostic,
-        }
-      }
-      console.warn('[PreviewBridge][Renderer] Electron injection returned unsuccessful result', {
-        frameName,
-        url: targetUrl,
-        error: result.error,
-      })
-      electronInjectionError = result.error ?? 'Electron preview injection failed'
-      electronLikelyBlocked = /preview frame not found|refusing to inject|chrome error document|err_blocked_by_response|blocked by response/i.test(electronInjectionError)
-      electronFailureReason = result.reason
-      electronFrameDetails = result.frame
-      electronHeaderDiagnostic = result.headerDiagnostic
-    } catch (err) {
-      console.warn('[PreviewBridge][Renderer] Electron injection failed', { frameName, url: targetUrl, error: err })
-      electronInjectionError = err instanceof Error ? err.message : String(err)
+  const electronInject = window.electronAPI.preview.injectBridge
+  if (!iframe.src) {
+    const error = 'Preview bridge target URL is missing'
+    console.warn('[PreviewBridge][Renderer] No fallback injection path available', {
+      frameName,
+      url: targetUrl,
+      error,
+    })
+    return {
+      success: false,
+      error,
+      likelyBlocked: false,
     }
   }
 
   try {
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!iframeDoc) {
-      console.warn('[PreviewBridge][Renderer] Cannot access iframe document', { frameName, url: targetUrl })
-      return {
-        success: false,
-        error: electronInjectionError ?? 'Cannot access iframe document',
-        likelyBlocked: electronLikelyBlocked,
-        reason: electronFailureReason,
-        frame: electronFrameDetails,
-        headerDiagnostic: electronHeaderDiagnostic,
-      }
+    const result = await electronInject({ url: iframe.src, frameName })
+    if (!result.success) {
+      console.warn('[PreviewBridge][Renderer] Electron injection returned unsuccessful result', {
+        frameName,
+        url: targetUrl,
+        error: result.error,
+        reason: result.reason,
+      })
     }
-
-    // Force-refresh bridge instance so style/script updates apply immediately.
-    try {
-      const bridgeWindow = iframe.contentWindow as unknown as { __COZEA_BRIDGE_LOADED__?: boolean } | null
-      if (bridgeWindow) bridgeWindow.__COZEA_BRIDGE_LOADED__ = false
-      iframeDoc.getElementById('cozea-highlight')?.remove()
-      iframeDoc.getElementById('cozea-selected')?.remove()
-      iframeDoc.getElementById('cozea-highlight-label')?.remove()
-      iframeDoc.getElementById('cozea-selected-label')?.remove()
-    } catch {
-      // Ignore and continue with injection.
+    return {
+      success: result.success,
+      error: result.error,
+      likelyBlocked: result.likelyBlocked,
+      reason: result.reason,
+      frame: result.frame,
+      headerDiagnostic: result.headerDiagnostic,
     }
-
-    const script = iframeDoc.createElement('script')
-    script.textContent = BRIDGE_SCRIPT
-    iframeDoc.head.appendChild(script)
-    return { success: true }
   } catch (err) {
-    // Cross-origin iframe
-    console.warn('[PreviewBridge][Renderer] Cannot inject into cross-origin iframe', { frameName, url: targetUrl, error: err })
-    const crossOriginError = err instanceof Error ? err.message : String(err)
+    const error = err instanceof Error ? err.message : String(err)
+    console.warn('[PreviewBridge][Renderer] Electron injection failed', {
+      frameName,
+      url: targetUrl,
+      error,
+    })
     return {
       success: false,
-      error: electronInjectionError ?? crossOriginError,
-      likelyBlocked: electronLikelyBlocked || /x-frame-options|frame-ancestors|cross-origin|err_blocked_by_response|blocked by response/i.test(crossOriginError),
-      reason: electronFailureReason,
-      frame: electronFrameDetails,
-      headerDiagnostic: electronHeaderDiagnostic,
+      error,
+      likelyBlocked: false,
     }
   }
 }

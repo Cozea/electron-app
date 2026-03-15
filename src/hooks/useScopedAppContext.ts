@@ -39,7 +39,7 @@ export function useScopedAppContext(options: UseScopedAppContextOptions = {}) {
   const freshMemberAccess = useQuery(
     api.organizations.getCurrentMemberAccess,
     workspaceScoped && convexOrg?._id && convexUserId
-      ? { orgId: convexOrg._id, userId: convexUserId }
+      ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
   const memberAccess = useCachedQuery(

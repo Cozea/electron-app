@@ -1,7 +1,9 @@
 import type { PresenceUser } from "@/hooks/useProjectPresence"
+import { Loader } from "@/components/ai-elements/loader"
+import { Shimmer } from "@/components/ai-elements/shimmer"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Bot, Code2, MessageSquareText } from "lucide-react"
-import { useMemo } from "react"
+import { Code2, Database, FileCode2, Layers3, Settings, TabletSmartphone } from "lucide-react"
+import { type CSSProperties, useMemo } from "react"
 import {
   Tooltip,
   TooltipContent,
@@ -59,6 +61,59 @@ function formatTabName(tab?: string): string {
   return names[tab] || "Project"
 }
 
+function getTabIcon(tab?: string) {
+  switch (tab) {
+    case "editor":
+      return FileCode2
+    case "pages":
+      return TabletSmartphone
+    case "backend":
+      return Database
+    case "settings":
+      return Settings
+    case "dependencies":
+      return Layers3
+    default:
+      return Code2
+  }
+}
+
+const AI_DOT_SHIMMER_STYLE: CSSProperties = {
+  "--color-background": "var(--secondary-foreground)",
+  "--color-muted-foreground": "color-mix(in srgb, var(--secondary-foreground) 45%, transparent)",
+} as CSSProperties
+
+function renderActivityBubble(user: PresenceUser) {
+  const hasAiActivity = user.isAgentWorking || user.isAiTyping
+  const hasHumanActivity = user.isMonacoTyping
+
+  if (!hasAiActivity && !hasHumanActivity) {
+    return null
+  }
+
+  if (hasAiActivity) {
+    return (
+      <span
+        className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm"
+      >
+        <span className="inline-flex h-full items-center justify-center leading-none" style={AI_DOT_SHIMMER_STYLE}>
+          <Shimmer as="span" className="block text-[12px] font-semibold leading-none tracking-[-0.02em]">
+            •••
+          </Shimmer>
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm text-secondary-foreground"
+    >
+      <Loader size={14} className="shrink-0" />
+    </span>
+  )
+}
+
 export function PresenceAvatarGroup({
   users,
   maxVisible = 4,
@@ -86,38 +141,13 @@ export function PresenceAvatarGroup({
   const visibleUsers = sortedUsers.slice(0, maxVisible)
   const hiddenCount = Math.max(0, sortedUsers.length - maxVisible)
 
-  const getStatusPill = (user: PresenceUser) => {
-    if (user.isAgentWorking) {
-      return {
-        label: "Agent",
-        icon: Bot,
-        className: "bg-violet-600/95 text-white",
-      }
-    }
-    if (user.isAiTyping) {
-      return {
-        label: "AI",
-        icon: MessageSquareText,
-        className: "bg-amber-500/95 text-black",
-      }
-    }
-    if (user.isMonacoTyping) {
-      return {
-        label: "Code",
-        icon: Code2,
-        className: "bg-sky-600/95 text-white",
-      }
-    }
-    return null
-  }
-
   return (
     <TooltipProvider>
       <div className={cn("flex items-center", className)}>
         <div className="flex -space-x-2">
           {visibleUsers.map((user, index) => {
             const color = getUserColor(user.userId)
-            const statusPill = getStatusPill(user)
+            const TabIcon = getTabIcon(user.activeTab)
             return (
               <Tooltip key={user.userId}>
                 <TooltipTrigger asChild>
@@ -144,25 +174,15 @@ export function PresenceAvatarGroup({
                         {getInitials(user.userName)}
                       </AvatarFallback>
                     </Avatar>
-                    {statusPill && (
-                      <span
-                        className={cn(
-                          "pointer-events-none absolute -bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-semibold leading-none shadow-sm",
-                          statusPill.className
-                        )}
-                      >
-                        <statusPill.icon className="h-2.5 w-2.5" />
-                        {statusPill.label}
-                      </span>
-                    )}
+                    {renderActivityBubble(user)}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="flex flex-col gap-0.5">
                   <p className="font-medium">{user.userName}</p>
-                  <p className="text-xs text-muted-foreground">{user.userEmail}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Viewing: {formatTabName(user.activeTab)}
-                  </p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <TabIcon className="h-3 w-3 shrink-0" />
+                    <span>{formatTabName(user.activeTab)}</span>
+                  </div>
                   {user.isAgentWorking && (
                     <p className="text-xs text-muted-foreground">Agent: Working</p>
                   )}

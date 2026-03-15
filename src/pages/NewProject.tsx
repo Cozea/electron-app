@@ -121,6 +121,7 @@ export function NewProject() {
     includeTeamStep,
     canCreateProjects,
     canImportProjects,
+    permissions,
   } = useProjectTargetScope()
   const navigate = useViewTransitionNavigate()
   const convex = useConvex()
@@ -165,7 +166,9 @@ export function NewProject() {
   // Fetch organization members for the team step
   const orgMembersData = useQuery(
     api.organizations.getMembers,
-    organizationId ? { orgId: organizationId } : 'skip'
+    organizationId && convexUserId && permissions.includes('members:view')
+      ? { orgId: organizationId, viewerUserId: convexUserId }
+      : 'skip'
   )
 
   // Transform to OrgMember format

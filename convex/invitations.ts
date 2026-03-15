@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import {
+  hasAnyOrganizationPermission,
   hasOrganizationPermission,
   organizationPermissionValidator,
   resolveCompatibleOrganizationRoleIdForBaseRole,
@@ -11,6 +12,25 @@ import {
   roleBaseValidator,
 } from "./lib/organizationRoles"
 import { PERMISSION_VALUES, type Permission } from "./lib/permissions"
+
+const ORGANIZATION_INVITATION_READ_PERMISSIONS = [
+  "invitations:view",
+  "invitations:send",
+  "invitations:revoke",
+  "members:invite",
+  "roles:assign",
+  "members:update_role",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_INVITATION_CREATE_PERMISSIONS = [
+  "invitations:send",
+  "members:invite",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_ASSIGN_PERMISSIONS = [
+  "roles:assign",
+  "members:update_role",
+] as const satisfies readonly Permission[]
 
 // Generate a cryptographically secure random token.
 function generateToken(): string {
@@ -91,6 +111,13 @@ async function getCanonicalOrgMembership(
   return pickCanonicalMembership(memberships)
 }
 
+function resolveViewerUserId(args: {
+  viewerUserId?: Id<"users">
+  userId?: Id<"users">
+}): Id<"users"> | null {
+  return args.viewerUserId ?? args.userId ?? null
+}
+
 // Invite a user to an organization.
 export const create = mutation({
   args: {
@@ -103,7 +130,11 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const inviterMembership = await getCanonicalOrgMembership(ctx, args.orgId, args.invitedBy)
-    const allowed = await hasOrganizationPermission(ctx, inviterMembership, "invitations:send")
+    const allowed = await hasAnyOrganizationPermission(
+      ctx,
+      inviterMembership,
+      ORGANIZATION_INVITATION_CREATE_PERMISSIONS
+    )
     if (!inviterMembership || !allowed) {
       throw new Error("Unauthorized to invite members")
     }
@@ -208,8 +239,27 @@ export const accept = mutation({
 
 // Get pending invitations for an organization (excludes expired).
 export const listForOrganization = query({
-  args: { orgId: v.id("organizations") },
+  args: {
+    orgId: v.id("organizations"),
+    viewerUserId: v.optional(v.id("users")),
+    userId: v.optional(v.id("users")),
+  },
   handler: async (ctx, args) => {
+    const viewerUserId = resolveViewerUserId(args)
+    if (!viewerUserId) {
+      return []
+    }
+
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, viewerUserId)
+    const allowed = await hasAnyOrganizationPermission(
+      ctx,
+      membership,
+      ORGANIZATION_INVITATION_READ_PERMISSIONS
+    )
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized to view invitations")
+    }
+
     const now = Date.now()
     const invitations = await ctx.db
       .query("invitations")
@@ -364,10 +414,11 @@ export const updateRoleByWorkOSInvitationId = mutation({
   },
   handler: async (ctx, args) => {
     const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const canAssignRoles =
-      (await hasOrganizationPermission(ctx, membership, "roles:assign")) ||
-      (await hasOrganizationPermission(ctx, membership, "members:update_role")) ||
-      (await hasOrganizationPermission(ctx, membership, "invitations:send"))
+    const canAssignRoles = await hasAnyOrganizationPermission(
+      ctx,
+      membership,
+      ORGANIZATION_ROLE_ASSIGN_PERMISSIONS
+    )
 
     if (!membership || !canAssignRoles) {
       throw new Error("Unauthorized")
@@ -436,10 +487,11 @@ export const updatePermissionOverrides = mutation({
   },
   handler: async (ctx, args) => {
     const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const canAssignRoles =
-      (await hasOrganizationPermission(ctx, membership, "roles:assign")) ||
-      (await hasOrganizationPermission(ctx, membership, "members:update_role")) ||
-      (await hasOrganizationPermission(ctx, membership, "invitations:send"))
+    const canAssignRoles = await hasAnyOrganizationPermission(
+      ctx,
+      membership,
+      ORGANIZATION_ROLE_ASSIGN_PERMISSIONS
+    )
 
     if (!membership || !canAssignRoles) {
       throw new Error("Unauthorized")

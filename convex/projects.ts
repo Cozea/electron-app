@@ -11,8 +11,8 @@ import {
 } from "./lib/projectSharing"
 import {
   canAccessProjectByWorkspaceOrMembership,
+  canArchiveProjectByWorkspaceOrMembership,
   canEditProjectByWorkspaceOrMembership,
-  canManageProjectByWorkspaceOrMembership,
   getWorkspaceProjectAccess,
   hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
@@ -1083,13 +1083,13 @@ export const archive = mutation({
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
 
-    const canManage = await canManageProjectByWorkspaceOrMembership(
+    const canArchive = await canArchiveProjectByWorkspaceOrMembership(
       ctx,
       args.projectId,
       args.userId
     )
-    if (!canManage) {
-      throw new Error("Only project managers can archive projects")
+    if (!canArchive) {
+      throw new Error("Only project managers or authorized workspace members can archive projects")
     }
 
     await ctx.db.patch(args.projectId, {
@@ -1113,13 +1113,13 @@ export const restore = mutation({
       throw new Error("Project is not archived")
     }
 
-    const canManage = await canManageProjectByWorkspaceOrMembership(
+    const canArchive = await canArchiveProjectByWorkspaceOrMembership(
       ctx,
       args.projectId,
       args.userId
     )
-    if (!canManage) {
-      throw new Error("Only project managers can restore projects")
+    if (!canArchive) {
+      throw new Error("Only project managers or authorized workspace members can restore projects")
     }
 
     await ctx.db.patch(args.projectId, {

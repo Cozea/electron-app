@@ -871,10 +871,20 @@ export function TasksPage() {
       ? { projectId: project._id, viewerUserId: convexUserId }
       : 'skip',
   )
+  const currentWorkspaceAccess = useQuery(
+    api.organizations.getCurrentMemberAccess,
+    hasResolvedWorkspaceContext && isOrganizationWorkspace && currentProjectOrgId && convexUserId
+      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
+      : 'skip',
+  )
   const workspaceMembers = useQuery(
     api.organizations.getMembers,
-    hasResolvedWorkspaceContext && isOrganizationWorkspace && currentProjectOrgId
-      ? { orgId: currentProjectOrgId }
+    hasResolvedWorkspaceContext &&
+    isOrganizationWorkspace &&
+    currentProjectOrgId &&
+    convexUserId &&
+    (currentWorkspaceAccess?.permissions.includes('members:view') ?? false)
+      ? { orgId: currentProjectOrgId, viewerUserId: convexUserId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(

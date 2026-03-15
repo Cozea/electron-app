@@ -144,6 +144,7 @@ export function ProjectPagesPage() {
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
+    const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
     const visualEditorOpen = useVisualEditorStore((state) => state.isOpen)
@@ -189,6 +190,9 @@ export function ProjectPagesPage() {
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
+    const selectionHydrationSeqRef = useRef(0)
+    const selectionMutationSeqRef = useRef(0)
+    const selectedElementBridgeMetaRef = useRef<BridgeMessage['__cozeaBridgeMeta'] | null>(null)
     const bridgeReadyRef = useRef(false)
     const bridgeReadyTimeoutRef = useRef<number | null>(null)
     const previewFallbackAttemptRef = useRef(0)
@@ -280,7 +284,6 @@ export function ProjectPagesPage() {
         previewFailurePresentation?.blocked || previewFailurePresentation?.reason === 'network_quality_degraded'
     )
     const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
-    const shouldElevateInspectorSidebar = isFocusedPreview && visualEditorOpen
     const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
     const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
@@ -499,7 +502,6 @@ export function ProjectPagesPage() {
     }, [projectPath, refreshRoutes])
 
     // Capture home page screenshot and upload as project preview (for Projects dashboard showcase)
-    const [isCapturingPreview, setIsCapturingPreview] = useState(false)
     const captureAndUploadProjectPreview = useCallback(async () => {
         const projectId = project?._id
         if (!projectId || !projectPreviewCaptureUrl) return
@@ -512,16 +514,8 @@ export function ProjectPagesPage() {
             )
         } catch {
             // Silent: preview capture is best-effort for dashboard
-        } finally {
-            setIsCapturingPreview(false)
         }
     }, [project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrlForUser, updatePreviewImageForUser])
-
-    const handleUpdateProjectPreview = useCallback(() => {
-        if (serverStatus !== 'running' || !project?._id) return
-        setIsCapturingPreview(true)
-        void captureAndUploadProjectPreview()
-    }, [serverStatus, project?._id, captureAndUploadProjectPreview])
 
     // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
     useEffect(() => {
@@ -947,6 +941,90 @@ export function ProjectPagesPage() {
             }
         }
 
+        const logVisualEditorSelectionPayload = (
+            eventName: 'bridge:element-selected' | 'bridge:element-contextmenu',
+            data: SelectedElementData | ElementContextMenuData,
+            context: {
+                origin: string
+                sourceWindowName: string | null
+                sourceMatchesActiveWindow: boolean
+                sourceMatchesByFrameName: boolean
+                sourceMatchesByBridgeMeta: boolean
+                bridgeMeta: BridgeMessage['__cozeaBridgeMeta']
+            },
+        ) => {
+            const styles = data.computedStyles ?? {}
+            console.log(`[VisualEditor][${eventName}]`, {
+                origin: context.origin,
+                sourceWindowName: context.sourceWindowName,
+                sourceMatchesActiveWindow: context.sourceMatchesActiveWindow,
+                sourceMatchesByFrameName: context.sourceMatchesByFrameName,
+                sourceMatchesByBridgeMeta: context.sourceMatchesByBridgeMeta,
+                bridgeMeta: context.bridgeMeta ?? null,
+                selector: data.selector,
+                tagName: data.tagName,
+                className: data.className,
+                id: data.id ?? null,
+                path: data.path ?? null,
+                textContent: data.textContent ?? null,
+                computedStyles: {
+                    fontFamily: styles.fontFamily ?? null,
+                    fontSize: styles.fontSize ?? null,
+                    fontWeight: styles.fontWeight ?? null,
+                    fontStyle: styles.fontStyle ?? null,
+                    lineHeight: styles.lineHeight ?? null,
+                    letterSpacing: styles.letterSpacing ?? null,
+                    textAlign: styles.textAlign ?? null,
+                    textDecoration: styles.textDecoration ?? null,
+                    textTransform: styles.textTransform ?? null,
+                    color: styles.color ?? null,
+                    backgroundColor: styles.backgroundColor ?? null,
+                    width: styles.width ?? null,
+                    height: styles.height ?? null,
+                },
+            })
+        }
+
+        const hydrateSelectedElementFromInspector = async (
+            data: SelectedElementData,
+            bridgeMeta: BridgeMessage['__cozeaBridgeMeta'],
+        ) => {
+            const requestId = ++selectionHydrationSeqRef.current
+            selectedElementBridgeMetaRef.current = bridgeMeta ?? null
+            setSelectedElement(data)
+
+            const inspectSelection = window.electronAPI?.preview?.inspectSelection
+            const targetUrl = bridgeMeta?.href ?? iframeRef.current?.src
+            if (!inspectSelection || !targetUrl) return
+
+            try {
+                const result = await inspectSelection({
+                    url: targetUrl,
+                    frameName: bridgeMeta?.frameName ?? focusedPreviewFrameName,
+                    bridgeInstanceId: bridgeMeta?.instanceId,
+                    selector: data.selector,
+                    path: data.path,
+                })
+
+                if (!result.success || !result.snapshot) {
+                    console.warn(`[VisualEditor][devtools:inspectSelection] Failed to hydrate selection: ${result.error ?? 'Unknown inspector error'}`, {
+                        selector: data.selector,
+                        error: result.error ?? 'Unknown inspector error',
+                    })
+                    return
+                }
+
+                if (selectionHydrationSeqRef.current !== requestId) return
+                console.log('[VisualEditor][devtools:inspectSelection]', result.snapshot)
+                setSelectedElement(result.snapshot as SelectedElementData)
+            } catch (error) {
+                console.warn('[VisualEditor][devtools:inspectSelection] Unexpected failure', {
+                    selector: data.selector,
+                    error: error instanceof Error ? error.message : String(error),
+                })
+            }
+        }
+
         const handleMessage = (event: MessageEvent<BridgeMessage>) => {
             const messageType = typeof event.data?.type === 'string' ? event.data.type : null
             const bridgeMeta = event.data?.__cozeaBridgeMeta
@@ -1076,14 +1154,37 @@ export function ProjectPagesPage() {
                     if (inspectorEnabled && iframeRef.current) {
                         sendBridgeMessage(iframeRef.current, { type: 'host:enable-inspector' })
                     }
+                    if (selectedElement?.path?.length && iframeRef.current) {
+                        sendBridgeMessage(iframeRef.current, { type: 'host:enable-inspector' })
+                        sendBridgeMessage(iframeRef.current, {
+                            type: 'host:restore-selection',
+                            payload: {
+                                path: selectedElement.path,
+                                selector: selectedElement.selector,
+                            },
+                        })
+                    }
                     break
 
                 case 'bridge:element-selected':
+                    logVisualEditorSelectionPayload(
+                        'bridge:element-selected',
+                        payload as SelectedElementData,
+                        {
+                            origin: event.origin,
+                            sourceWindowName,
+                            sourceMatchesActiveWindow,
+                            sourceMatchesByFrameName,
+                            sourceMatchesByBridgeMeta,
+                            bridgeMeta,
+                        },
+                    )
                     closeAssistantPanel()
-                    setSelectedElement(payload as SelectedElementData)
+                    void hydrateSelectedElementFromInspector(payload as SelectedElementData, bridgeMeta)
                     break
                 case 'bridge:selection-cleared':
                     setSelectedElement(null)
+                    selectedElementBridgeMetaRef.current = null
                     setInspectedElement(null)
                     setInspectorContextMenu(null)
                     closeVisualEditor()
@@ -1091,10 +1192,22 @@ export function ProjectPagesPage() {
 
                 case 'bridge:element-contextmenu': {
                     const data = payload as ElementContextMenuData
+                    logVisualEditorSelectionPayload(
+                        'bridge:element-contextmenu',
+                        data,
+                        {
+                            origin: event.origin,
+                            sourceWindowName,
+                            sourceMatchesActiveWindow,
+                            sourceMatchesByFrameName,
+                            sourceMatchesByBridgeMeta,
+                            bridgeMeta,
+                        },
+                    )
 
                     // Keep visual editor selection in sync
                     closeAssistantPanel()
-                    setSelectedElement(data as unknown as SelectedElementData)
+                    void hydrateSelectedElementFromInspector(data as unknown as SelectedElementData, bridgeMeta)
 
                     // Inject inspected element context for AI
                     setInspectedElement({
@@ -1209,7 +1322,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -1579,23 +1692,81 @@ export function ProjectPagesPage() {
 
     // Handle visual editor style preview
     const handlePreviewStyle = useCallback((styles: Record<string, string>) => {
-        if (iframeRef.current) {
-            sendBridgeMessage(iframeRef.current, {
-                type: 'host:update-style',
-                payload: { styles },
-            })
+        const updateSelectionStyles = window.electronAPI?.preview?.updateSelectionStyles
+        const targetUrl = selectedElementBridgeMetaRef.current?.href ?? iframeRef.current?.src
+
+        if (!updateSelectionStyles || !targetUrl || !selectedElement) {
+            return
         }
-    }, [])
+
+        const requestId = ++selectionMutationSeqRef.current
+
+        void updateSelectionStyles({
+            url: targetUrl,
+            frameName: selectedElementBridgeMetaRef.current?.frameName ?? focusedPreviewFrameName,
+            bridgeInstanceId: selectedElementBridgeMetaRef.current?.instanceId,
+            selector: selectedElement.selector,
+            path: selectedElement.path,
+            styles,
+        }).then((result) => {
+            if (!result.success || !result.snapshot) {
+                console.warn(`[VisualEditor][devtools:updateSelectionStyles] Failed: ${result.error ?? 'Unknown mutation error'}`, {
+                    selector: selectedElement.selector,
+                    styles,
+                    error: result.error ?? 'Unknown mutation error',
+                })
+                return
+            }
+
+            if (selectionMutationSeqRef.current !== requestId) return
+            setSelectedElement(result.snapshot as SelectedElementData)
+        }).catch((error) => {
+            console.warn('[VisualEditor][devtools:updateSelectionStyles] Unexpected failure', {
+                selector: selectedElement.selector,
+                styles,
+                error: error instanceof Error ? error.message : String(error),
+            })
+        })
+    }, [focusedPreviewFrameName, selectedElement, setSelectedElement])
 
     // Handle visual editor text preview
     const handlePreviewText = useCallback((text: string) => {
-        if (iframeRef.current) {
-            sendBridgeMessage(iframeRef.current, {
-                type: 'host:update-text',
-                payload: { text },
-            })
+        const updateSelectionText = window.electronAPI?.preview?.updateSelectionText
+        const targetUrl = selectedElementBridgeMetaRef.current?.href ?? iframeRef.current?.src
+
+        if (!updateSelectionText || !targetUrl || !selectedElement) {
+            return
         }
-    }, [])
+
+        const requestId = ++selectionMutationSeqRef.current
+
+        void updateSelectionText({
+            url: targetUrl,
+            frameName: selectedElementBridgeMetaRef.current?.frameName ?? focusedPreviewFrameName,
+            bridgeInstanceId: selectedElementBridgeMetaRef.current?.instanceId,
+            selector: selectedElement.selector,
+            path: selectedElement.path,
+            text,
+        }).then((result) => {
+            if (!result.success || !result.snapshot) {
+                console.warn(`[VisualEditor][devtools:updateSelectionText] Failed: ${result.error ?? 'Unknown mutation error'}`, {
+                    selector: selectedElement.selector,
+                    textLength: text.length,
+                    error: result.error ?? 'Unknown mutation error',
+                })
+                return
+            }
+
+            if (selectionMutationSeqRef.current !== requestId) return
+            setSelectedElement(result.snapshot as SelectedElementData)
+        }).catch((error) => {
+            console.warn('[VisualEditor][devtools:updateSelectionText] Unexpected failure', {
+                selector: selectedElement.selector,
+                textLength: text.length,
+                error: error instanceof Error ? error.message : String(error),
+            })
+        })
+    }, [focusedPreviewFrameName, selectedElement, setSelectedElement])
 
     // Handle apply changes from visual editor
     const handleApplyChanges = useCallback(() => {
@@ -1607,9 +1778,14 @@ export function ProjectPagesPage() {
             .map(([prop, value]) => `${prop}: ${value}`)
             .join('; ')
 
-        const prompt = pendingTextChange
-            ? `Update the element "${selectedElement.selector}" with styles: ${changes} and text content: "${pendingTextChange}"`
-            : `Update the element "${selectedElement.selector}" with styles: ${changes}`
+        const promptParts = [`Update the element "${selectedElement.selector}"`]
+        if (changes.length > 0) {
+            promptParts.push(`with styles: ${changes}`)
+        }
+        if (pendingTextChange !== null) {
+            promptParts.push(`and text content: "${pendingTextChange}"`)
+        }
+        const prompt = promptParts.join(' ')
 
         // Open assistant with the prompt
         useAssistantPanelStore.getState().openWithPrompt(prompt)
@@ -1750,7 +1926,7 @@ export function ProjectPagesPage() {
         <TooltipProvider delayDuration={300}>
             <div
                 ref={headerRef}
-                className={cn("flex items-center gap-2", focusedPageIndex !== null && !isMacClient && "ml-auto")}
+                className="flex items-center gap-2"
             >
                 {focusedPageIndex !== null && (
                     <>
@@ -2083,39 +2259,8 @@ export function ProjectPagesPage() {
                                     </TooltipContent>
                                 </Tooltip>
 
-                                {/* Update project preview (Projects page showcase) */}
-                                <Tooltip open={toolbarTooltip === 'preview'} onOpenChange={(open) => setToolbarTooltip(open ? 'preview' : null)}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            className="inline-flex"
-                                            onPointerEnter={() => setToolbarTooltip('preview')}
-                                            onPointerLeave={() => setToolbarTooltip(null)}
-                                        >
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7"
-                                                disabled={isCapturingPreview}
-                                                onClick={handleUpdateProjectPreview}
-                                            >
-                                                {isCapturingPreview ? (
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                                ) : (
-                                                    <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
-                                                )}
-                                            </Button>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">Update project preview (Projects page)</TooltipContent>
-                                </Tooltip>
                             </>
                         )}
-                        <div className="h-4 w-px bg-border/60" />
-                        <ServerControl
-                            projectPath={projectPath}
-                            storedDevCommand={storedFrameworkInfo?.devCommand}
-                            storedDevPort={storedFrameworkInfo?.devPort}
-                        />
                     </div>
             </div>
         </TooltipProvider>
@@ -2127,7 +2272,6 @@ export function ProjectPagesPage() {
         zoom,
         zoomInputValue,
         isCapturingScreenshot,
-        isCapturingPreview,
         inspectorEnabled,
         toolbarTooltip,
         serverStatus,
@@ -2141,7 +2285,6 @@ export function ProjectPagesPage() {
         retryBridgeInjection,
         handleCaptureScreenshot,
         toggleInspector,
-        handleUpdateProjectPreview,
         handleZoomStepDown,
         handleZoomStepUp,
         commitZoomInput,
@@ -2151,9 +2294,33 @@ export function ProjectPagesPage() {
         setFocusedPageIndex,
     ])
 
+    const serverControlBreadcrumbAddon = useMemo(() => (
+        <div className="flex items-center gap-2">
+            <div className="h-4 w-px shrink-0 bg-border/60" />
+            <ServerControl
+                projectPath={projectPath}
+                storedDevCommand={storedFrameworkInfo?.devCommand}
+                storedDevPort={storedFrameworkInfo?.devPort}
+            />
+        </div>
+    ), [projectPath, storedFrameworkInfo?.devCommand, storedFrameworkInfo?.devPort])
+
+    const focusedPreviewBreadcrumbAddon = useMemo(() => {
+        if (focusedPageIndex === null) {
+            return serverControlBreadcrumbAddon
+        }
+
+        return (
+            <div className="flex min-w-0 items-center gap-2">
+                {headerControls}
+                {serverControlBreadcrumbAddon}
+            </div>
+        )
+    }, [focusedPageIndex, headerControls, serverControlBreadcrumbAddon])
+
     useProjectHeader(
-        headerControls,
-        null,
+        focusedPageIndex !== null ? null : headerControls,
+        focusedPreviewBreadcrumbAddon,
         focusedPageIndex !== null,
         { insetLeft: headerInsetLeft, insetRight: headerInsetRight }
     )
@@ -2173,7 +2340,7 @@ export function ProjectPagesPage() {
         <div
             className={cn(
                 "flex flex-col bg-background relative",
-                shouldElevateInspectorSidebar ? "h-[calc(100%+2.5rem)] -mt-10" : "h-full"
+                "h-[calc(100%+2.5rem)] -mt-10"
             )}
         >
 
@@ -2188,19 +2355,14 @@ export function ProjectPagesPage() {
                     />
                 )}
 
-                <div
-                    className={cn(
-                        "flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden",
-                        shouldElevateInspectorSidebar && "pt-10"
-                    )}
-                >
+                <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
                     {/* Content */}
                     <div className="relative flex-1 overflow-hidden flex flex-col">
                         {routes.length === 0 ? (
                             /* Empty State */
                             <div
                                 key="pages-empty"
-                                className="app-scrollbar flex-1 overflow-y-auto p-6"
+                                className="app-scrollbar flex-1 overflow-y-auto px-6 pb-6 pt-16"
                             >
                                 <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                                     <FileText className="h-10 w-10 mb-3 opacity-20" />
@@ -2237,7 +2399,7 @@ export function ProjectPagesPage() {
                             <div className="relative flex-1 min-h-0 min-w-0 bg-content-surface">
                                 {!isFocusedPreview && (
                                 <div
-                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6"
+                                    className="app-scrollbar absolute inset-0 overflow-y-auto px-6 pb-6 pt-16"
                                 >
                                     <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
                                         {routes.map((route, index) => {
@@ -2349,7 +2511,7 @@ export function ProjectPagesPage() {
                                     >
                                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                             {/* Preview area */}
-                                            <div className="flex-1 flex items-center justify-center min-h-0 pt-4 px-4 pb-4">
+                                            <div className="flex-1 flex items-center justify-center min-h-0 pt-14 px-4 pb-4">
                                                 <div
                                                     className={cn(
                                                         "group/focused-preview relative bg-card overflow-hidden rounded-xl border border-border/40 shadow-xl transition-[transform,box-shadow,border-color] duration-300 ease-out",

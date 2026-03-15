@@ -7,9 +7,11 @@ import { mapWorkOSRole, PERMISSION_VALUES, type Permission, type Role } from "./
 import {
   ensureSystemOrganizationRoles,
   resolveCompatibleOrganizationRoleIdForBaseRole,
+  hasAnyOrganizationPermission,
   hasOrganizationPermission,
   listOrganizationRoles,
   organizationPermissionValidator,
+  resolveEffectivePermissions,
   resolveMemberAccess,
   resolveOrganizationRole,
   roleBaseValidator,
@@ -46,6 +48,52 @@ const PERSONAL_WORKSPACE_PREFIX = "personal:"
 const STORAGE_RECALC_ORG_BATCH_SIZE = 10
 const STORAGE_RECALC_PROJECT_BATCH_SIZE = 5
 type SupportedAiProvider = (typeof DEFAULT_ALLOWED_PROVIDERS)[number]
+
+const ORGANIZATION_MEMBER_READ_PERMISSIONS = [
+  "members:view",
+  "members:invite",
+  "members:remove",
+  "members:update_role",
+  "invitations:view",
+  "invitations:send",
+  "invitations:revoke",
+  "roles:view",
+  "roles:create",
+  "roles:update",
+  "roles:delete",
+  "roles:assign",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_READ_PERMISSIONS = [
+  "roles:view",
+  "roles:create",
+  "roles:update",
+  "roles:delete",
+  "roles:assign",
+  "members:update_role",
+  "members:invite",
+  "invitations:send",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_ASSIGN_PERMISSIONS = [
+  "roles:assign",
+  "members:update_role",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_CREATE_PERMISSIONS = [
+  "roles:create",
+  "members:update_role",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_UPDATE_PERMISSIONS = [
+  "roles:update",
+  "members:update_role",
+] as const satisfies readonly Permission[]
+
+const ORGANIZATION_ROLE_DELETE_PERMISSIONS = [
+  "roles:delete",
+  "members:update_role",
+] as const satisfies readonly Permission[]
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
@@ -201,6 +249,13 @@ async function getCanonicalOrgMembership(
   return pickCanonicalMembership(memberships)
 }
 
+function resolveViewerUserId(args: {
+  viewerUserId?: Id<"users">
+  userId?: Id<"users">
+}): Id<"users"> | null {
+  return args.viewerUserId ?? args.userId ?? null
+}
+
 async function applyAcceptedInvitationRoleToMembership(
   ctx: Pick<MutationCtx, "db">,
   organizationId: Id<"organizations">,
@@ -244,6 +299,108 @@ async function requireOrganizationPermission(
   const membership = await getCanonicalOrgMembership(ctx, organizationId, userId)
   const allowed = await hasOrganizationPermission(ctx, membership, permission)
   return { membership, allowed }
+}
+
+async function requireAnyOrganizationPermission(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  userId: Id<"users">,
+  permissions: readonly Permission[]
+) {
+  const membership = await getCanonicalOrgMembership(ctx, organizationId, userId)
+  const allowed = await hasAnyOrganizationPermission(ctx, membership, permissions)
+  return { membership, allowed }
+}
+
+function normalizePermissionList(
+  permissions: readonly Permission[] | undefined | null
+): Permission[] {
+  return [...new Set((permissions ?? []).filter((permission): permission is Permission =>
+    PERMISSION_VALUES.includes(permission)
+  ))]
+}
+
+function buildEffectiveOrganizationPermissions(
+  inheritedPermissions: readonly Permission[],
+  permissionGrants: readonly Permission[] | undefined | null,
+  permissionDenies: readonly Permission[] | undefined | null
+): Permission[] {
+  return resolveEffectivePermissions(
+    normalizePermissionList(inheritedPermissions),
+    normalizePermissionList(permissionGrants),
+    normalizePermissionList(permissionDenies)
+  )
+}
+
+async function ensureAdministrativeWorkspaceAccessAfterMembershipChange(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  targetMembership: Doc<"members">,
+  currentPermissions: readonly Permission[] | null | undefined,
+  nextPermissions: readonly Permission[] | null | undefined
+) {
+  if (
+    !hasAdministrativeWorkspaceAccess(currentPermissions) ||
+    hasAdministrativeWorkspaceAccess(nextPermissions)
+  ) {
+    return
+  }
+
+  const memberships = await ctx.db
+    .query("members")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .collect()
+
+  for (const candidate of memberships) {
+    if (candidate._id === targetMembership._id) continue
+    const candidateAccess = await resolveMemberAccess(ctx, candidate)
+    if (hasAdministrativeWorkspaceAccess(candidateAccess?.permissions)) {
+      return
+    }
+  }
+
+  throw new Error("Cannot remove the last admin-equivalent access")
+}
+
+async function ensureAdministrativeWorkspaceAccessAfterRoleUpdate(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  roleId: Id<"organizationRoles">,
+  nextRolePermissions: readonly Permission[]
+) {
+  const memberships = await ctx.db
+    .query("members")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .collect()
+
+  let currentAdministrativeCount = 0
+  let nextAdministrativeCount = 0
+
+  for (const membership of memberships) {
+    const currentAccess = await resolveMemberAccess(ctx, membership)
+    const currentPermissions = currentAccess?.permissions ?? []
+
+    if (hasAdministrativeWorkspaceAccess(currentPermissions)) {
+      currentAdministrativeCount += 1
+    }
+
+    const projectedPermissions =
+      membership.roleId === roleId
+        ? buildEffectiveOrganizationPermissions(
+            nextRolePermissions,
+            membership.permissionGrants,
+            membership.permissionDenies
+          )
+        : currentPermissions
+
+    if (hasAdministrativeWorkspaceAccess(projectedPermissions)) {
+      nextAdministrativeCount += 1
+    }
+  }
+
+  if (currentAdministrativeCount > 0 && nextAdministrativeCount === 0) {
+    throw new Error("Cannot remove the last admin-equivalent access")
+  }
 }
 
 async function getCompatibleRoleIdForBaseRole(
@@ -978,8 +1135,27 @@ export const updateOrganization = mutation({
 
 // Get organization members
 export const getMembers = query({
-  args: { orgId: v.id("organizations") },
+  args: {
+    orgId: v.id("organizations"),
+    viewerUserId: v.optional(v.id("users")),
+    userId: v.optional(v.id("users")),
+  },
   handler: async (ctx, args) => {
+    const viewerUserId = resolveViewerUserId(args)
+    if (!viewerUserId) {
+      return []
+    }
+
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      viewerUserId,
+      ORGANIZATION_MEMBER_READ_PERMISSIONS
+    )
+    if (!allowed) {
+      throw new Error("Unauthorized to view organization members")
+    }
+
     const memberships = await ctx.db
       .query("members")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
@@ -1028,9 +1204,26 @@ export const getMembers = query({
 export const getMember = query({
   args: {
     orgId: v.id("organizations"),
+    viewerUserId: v.optional(v.id("users")),
+    userId: v.optional(v.id("users")),
     memberId: v.id("members"),
   },
   handler: async (ctx, args) => {
+    const viewerUserId = resolveViewerUserId(args)
+    if (!viewerUserId) {
+      return null
+    }
+
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      viewerUserId,
+      ORGANIZATION_MEMBER_READ_PERMISSIONS
+    )
+    if (!allowed) {
+      throw new Error("Unauthorized to view organization members")
+    }
+
     const membership = await ctx.db.get(args.memberId)
 
     if (!membership || membership.organizationId !== args.orgId) {
@@ -1080,7 +1273,7 @@ export const removeMember = mutation({
 
     // Get the membership to be removed
     const targetMembership = await ctx.db.get(args.memberId)
-    if (!targetMembership) {
+    if (!targetMembership || targetMembership.organizationId !== args.orgId) {
       throw new Error("Member not found")
     }
 
@@ -1089,18 +1282,14 @@ export const removeMember = mutation({
       throw new Error("Cannot remove yourself from the organization")
     }
 
-    // If removing an admin, check there's at least one other admin
-    if (targetMembership.role === "admin") {
-      const adminCount = await ctx.db
-        .query("members")
-        .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
-        .filter((q) => q.eq(q.field("role"), "admin"))
-        .collect()
-
-      if (adminCount.length <= 1) {
-        throw new Error("Cannot remove the last admin. Promote another member first.")
-      }
-    }
+    const targetAccess = await resolveMemberAccess(ctx, targetMembership)
+    await ensureAdministrativeWorkspaceAccessAfterMembershipChange(
+      ctx,
+      args.orgId,
+      targetMembership,
+      targetAccess?.permissions,
+      []
+    )
 
     // Get user info for audit log
     const targetUser = await ctx.db.get(targetMembership.userId)
@@ -1131,16 +1320,19 @@ export const updateMemberRole = mutation({
     updatedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Verify updater has permission
-    const updaterMembership = await getCanonicalOrgMembership(ctx, args.orgId, args.updatedBy)
-    const allowed = await hasOrganizationPermission(ctx, updaterMembership, "members:update_role")
-    if (!updaterMembership || !allowed) {
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.updatedBy,
+      ORGANIZATION_ROLE_ASSIGN_PERMISSIONS
+    )
+    if (!allowed) {
       throw new Error("Unauthorized to change member roles")
     }
 
     // Get the target membership
     const targetMembership = await ctx.db.get(args.memberId)
-    if (!targetMembership) {
+    if (!targetMembership || targetMembership.organizationId !== args.orgId) {
       throw new Error("Member not found")
     }
 
@@ -1149,26 +1341,27 @@ export const updateMemberRole = mutation({
       throw new Error("Cannot change your own role")
     }
 
-    // If demoting an admin, ensure there's at least one other admin
-    if (targetMembership.role === "admin" && args.newRole !== "admin") {
-      const adminCount = await ctx.db
-        .query("members")
-        .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
-        .filter((q) => q.eq(q.field("role"), "admin"))
-        .collect()
-
-      if (adminCount.length <= 1) {
-        throw new Error("Cannot demote the last admin. Promote another member first.")
-      }
-    }
-
     const now = Date.now()
     const oldRole = targetMembership.role
+    const currentAccess = await resolveMemberAccess(ctx, targetMembership)
     const nextRole = await resolveOrganizationRole(
       ctx,
       args.orgId,
       args.newRole,
       args.newRoleId
+    )
+    const nextPermissions = buildEffectiveOrganizationPermissions(
+      nextRole.permissions,
+      targetMembership.permissionGrants,
+      targetMembership.permissionDenies
+    )
+
+    await ensureAdministrativeWorkspaceAccessAfterMembershipChange(
+      ctx,
+      args.orgId,
+      targetMembership,
+      currentAccess?.permissions,
+      nextPermissions
     )
 
     // Update the role
@@ -1209,11 +1402,13 @@ export const updateMemberPermissionOverrides = mutation({
     permissionDenies: v.array(organizationPermissionValidator),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const allowed =
-      await hasOrganizationPermission(ctx, membership, "roles:assign") ||
-      await hasOrganizationPermission(ctx, membership, "members:update_role")
-    if (!membership || !allowed) {
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      ORGANIZATION_ROLE_ASSIGN_PERMISSIONS
+    )
+    if (!allowed) {
       throw new Error("Unauthorized to manage direct permissions")
     }
 
@@ -1238,36 +1433,19 @@ export const updateMemberPermissionOverrides = mutation({
       targetMembership.role,
       targetMembership.roleId
     )
-    const nextPermissions = [
-      ...new Set([
-        ...nextRole.permissions,
-        ...sanitized.permissionGrants,
-      ]),
-    ].filter((permission): permission is Permission => !sanitized.permissionDenies.includes(permission))
+    const nextPermissions = buildEffectiveOrganizationPermissions(
+      nextRole.permissions,
+      sanitized.permissionGrants,
+      sanitized.permissionDenies
+    )
 
-    if (
-      currentAccess &&
-      hasAdministrativeWorkspaceAccess(currentAccess.permissions) &&
-      !hasAdministrativeWorkspaceAccess(nextPermissions)
-    ) {
-      const memberships = await ctx.db
-        .query("members")
-        .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
-        .collect()
-
-      let otherAdmins = 0
-      for (const candidate of memberships) {
-        if (candidate._id === targetMembership._id) continue
-        const candidateAccess = await resolveMemberAccess(ctx, candidate)
-        if (hasAdministrativeWorkspaceAccess(candidateAccess?.permissions)) {
-          otherAdmins += 1
-        }
-      }
-
-      if (otherAdmins === 0) {
-        throw new Error("Cannot remove the last admin-equivalent access")
-      }
-    }
+    await ensureAdministrativeWorkspaceAccessAfterMembershipChange(
+      ctx,
+      args.orgId,
+      targetMembership,
+      currentAccess?.permissions,
+      nextPermissions
+    )
 
     await ctx.db.patch(args.memberId, {
       permissionGrants: sanitized.permissionGrants,
@@ -1288,8 +1466,27 @@ export const updateMemberPermissionOverrides = mutation({
 })
 
 export const listRoles = query({
-  args: { orgId: v.id("organizations") },
+  args: {
+    orgId: v.id("organizations"),
+    viewerUserId: v.optional(v.id("users")),
+    userId: v.optional(v.id("users")),
+  },
   handler: async (ctx, args) => {
+    const viewerUserId = resolveViewerUserId(args)
+    if (!viewerUserId) {
+      return []
+    }
+
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      viewerUserId,
+      ORGANIZATION_ROLE_READ_PERMISSIONS
+    )
+    if (!allowed) {
+      throw new Error("Unauthorized to view organization roles")
+    }
+
     const roles = await listOrganizationRoles(ctx, args.orgId)
     return roles.map((role) => ({
       _id: role._id,
@@ -1315,9 +1512,13 @@ export const createRole = mutation({
     permissions: v.array(organizationPermissionValidator),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
-    if (!membership || !allowed) {
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      ORGANIZATION_ROLE_CREATE_PERMISSIONS
+    )
+    if (!allowed) {
       throw new Error("Unauthorized to manage roles")
     }
 
@@ -1327,6 +1528,7 @@ export const createRole = mutation({
       throw new Error("Role name is required")
     }
 
+    const permissions = normalizePermissionList(args.permissions)
     const key = await resolveUniqueOrganizationRoleKey(ctx, args.orgId, trimmedName)
     const roleId = await ctx.db.insert("organizationRoles", {
       organizationId: args.orgId,
@@ -1334,7 +1536,7 @@ export const createRole = mutation({
       name: trimmedName,
       description: args.description.trim(),
       baseRole: args.baseRole,
-      permissions: [...new Set(args.permissions)],
+      permissions,
       isSystem: false,
       createdAt: now,
       updatedAt: now,
@@ -1369,9 +1571,13 @@ export const updateRole = mutation({
     permissions: v.array(organizationPermissionValidator),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
-    if (!membership || !allowed) {
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      ORGANIZATION_ROLE_UPDATE_PERMISSIONS
+    )
+    if (!allowed) {
       throw new Error("Unauthorized to manage roles")
     }
 
@@ -1388,14 +1594,50 @@ export const updateRole = mutation({
       throw new Error("Role name is required")
     }
 
+    const nextPermissions = normalizePermissionList(args.permissions)
+    await ensureAdministrativeWorkspaceAccessAfterRoleUpdate(
+      ctx,
+      args.orgId,
+      args.roleId,
+      nextPermissions
+    )
+
     const now = Date.now()
     await ctx.db.patch(args.roleId, {
       name: trimmedName,
       description: args.description.trim(),
       baseRole: args.baseRole,
-      permissions: [...new Set(args.permissions)],
+      permissions: nextPermissions,
       updatedAt: now,
     })
+
+    if (role.baseRole !== args.baseRole) {
+      const [membersUsingRole, invitesUsingRole] = await Promise.all([
+        ctx.db
+          .query("members")
+          .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+          .filter((q) => q.eq(q.field("roleId"), args.roleId))
+          .collect(),
+        ctx.db
+          .query("invitations")
+          .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+          .filter((q) => q.eq(q.field("roleId"), args.roleId))
+          .collect(),
+      ])
+
+      for (const membership of membersUsingRole) {
+        await ctx.db.patch(membership._id, {
+          role: args.baseRole,
+          updatedAt: now,
+        })
+      }
+
+      for (const invitation of invitesUsingRole) {
+        await ctx.db.patch(invitation._id, {
+          role: args.baseRole,
+        })
+      }
+    }
 
     await ctx.db.insert("auditLogs", {
       organizationId: args.orgId,
@@ -1420,9 +1662,13 @@ export const deleteRole = mutation({
     roleId: v.id("organizationRoles"),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
-    if (!membership || !allowed) {
+    const { allowed } = await requireAnyOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      ORGANIZATION_ROLE_DELETE_PERMISSIONS
+    )
+    if (!allowed) {
       throw new Error("Unauthorized to manage roles")
     }
 
@@ -1471,10 +1717,20 @@ export const deleteRole = mutation({
 export const getCurrentMemberAccess = query({
   args: {
     orgId: v.id("organizations"),
-    userId: v.id("users"),
+    viewerUserId: v.optional(v.id("users")),
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const viewerUserId = resolveViewerUserId(args)
+    if (!viewerUserId) {
+      return null
+    }
+
+    const membership = await getCanonicalOrgMembership(
+      ctx,
+      args.orgId,
+      viewerUserId
+    )
     const access = await resolveMemberAccess(ctx, membership)
     if (!membership || !access) return null
 

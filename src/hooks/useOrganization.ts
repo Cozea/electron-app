@@ -1,8 +1,10 @@
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function useOrganization(orgId: Id<"organizations"> | null) {
+  const { convexUserId } = useAuth()
   const organization = useQuery(
     api.organizations.get,
     orgId ? { id: orgId } : "skip"
@@ -10,12 +12,12 @@ export function useOrganization(orgId: Id<"organizations"> | null) {
 
   const members = useQuery(
     api.organizations.getMembers,
-    orgId ? { orgId } : "skip"
+    orgId && convexUserId ? { orgId, viewerUserId: convexUserId } : "skip"
   )
 
   const pendingInvitations = useQuery(
     api.invitations.listForOrganization,
-    orgId ? { orgId } : "skip"
+    orgId && convexUserId ? { orgId, viewerUserId: convexUserId } : "skip"
   )
 
   const usageSummary = useQuery(

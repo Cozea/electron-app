@@ -86,6 +86,7 @@ interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
   header?: ReactNode
   breadcrumbAddon?: ReactNode
+  preSearchAddon?: ReactNode
   rightAddon?: ReactNode
   className?: string
   leftWindowControlsInset?: boolean
@@ -1037,6 +1038,7 @@ export function UnifiedHeader({
   breadcrumbs,
   header,
   breadcrumbAddon,
+  preSearchAddon,
   rightAddon,
   className,
   leftWindowControlsInset = false,
@@ -1218,7 +1220,12 @@ export function UnifiedHeader({
               </div>
             )}
           </div>
-          <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
+          {preSearchAddon && (
+            <div className="flex items-center titlebar-no-drag shrink-0">{preSearchAddon}</div>
+          )}
+          {(header || preSearchAddon) && (
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
+          )}
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
             <CommandSearch />
             {collaborationControl}
@@ -1349,7 +1356,10 @@ export function UnifiedHeader({
           ) : (
             header
           )}
-          {header && (
+          {preSearchAddon && (
+            <div className="flex items-center shrink-0">{preSearchAddon}</div>
+          )}
+          {(header || preSearchAddon) && (
             <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />
           )}
           <div className="flex items-center gap-0.5">
