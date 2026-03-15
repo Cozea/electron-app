@@ -2,6 +2,7 @@ import { useQuery } from 'convex/react'
 
 import { api } from '../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
 
@@ -41,15 +42,31 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
     api.organizations.getMembers,
     convexOrg?._id && canLoadWorkspaceBillingData ? { orgId: convexOrg._id } : 'skip',
   )
+  const memberAccessResolved = settingsPage.workspaceAccess.memberAccess !== undefined
+  const canLoadPersonalBillingData =
+    !workspaceScoped &&
+    Boolean(convexOrg?._id) &&
+    Boolean(convexUserId) &&
+    canLoadWorkspaceBillingData
+  const canLoadWorkspaceViewerBillingData =
+    workspaceScoped &&
+    Boolean(convexOrg?._id) &&
+    Boolean(convexUserId) &&
+    canLoadWorkspaceBillingData &&
+    memberAccessResolved &&
+    settingsPage.workspaceAccess.memberAccess !== null
 
   const billingViewerArgs =
+    (canLoadPersonalBillingData || canLoadWorkspaceViewerBillingData) &&
     convexOrg?._id &&
-    convexUserId &&
-    canLoadWorkspaceBillingData &&
-    settingsPage.workspaceAccess.memberAccess !== undefined &&
-    settingsPage.workspaceAccess.memberAccess !== null
+    convexUserId
       ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip'
+
+  useHydrateWorkspaceMembers({
+    workspaceOrganizationId: billingOrganizationId,
+    enabled: workspaceScoped && canLoadWorkspaceBillingData && memberAccessResolved,
+  })
 
   const seatManagement = useQuery(
     api.billing.getSeatManagement,
@@ -63,7 +80,7 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
 
   const seatWallets = useQuery(
     api.aiWallets.getSeatWalletsForViewer,
-    billingViewerArgs,
+    workspaceScoped ? billingViewerArgs : 'skip',
   )
 
   return {

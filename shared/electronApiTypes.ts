@@ -480,6 +480,7 @@ export interface GitSyncStatusResult {
   hasUntrackedChanges?: boolean
   deletedCount?: number
   changedPaths?: string[]
+  conflictedPaths?: string[]
   error?: string
 }
 
@@ -492,7 +493,68 @@ export interface GitSyncPullResult {
   headCommit?: string
   alreadyUpToDate?: boolean
   hadConflicts?: boolean
+  conflictedPaths?: string[]
   fastForward?: boolean
+  error?: string
+}
+
+export interface GitSyncReplayResult {
+  success: boolean
+  remote?: string
+  branch?: string
+  currentBranch?: string | null
+  headCommit?: string
+  replayedCommitCount?: number
+  replayedCommits?: string[]
+  hadConflicts?: boolean
+  conflictedPaths?: string[]
+  error?: string
+}
+
+export type GitRepoHealthState =
+  | 'healthy'
+  | 'dirty'
+  | 'diverged'
+  | 'merge_in_progress'
+  | 'cherry_pick_in_progress'
+  | 'rebase_in_progress'
+  | 'detached_head'
+  | 'index_locked'
+  | 'unrelated_history'
+  | 'broken'
+
+export interface GitRepoHealthResult {
+  success: boolean
+  health?: GitRepoHealthState
+  currentBranch?: string | null
+  headCommit?: string
+  error?: string
+}
+
+export interface GitSyncSalvageResult {
+  success: boolean
+  localPath?: string
+  backupPath?: string
+  currentBranch?: string | null
+  headCommit?: string
+  error?: string
+}
+
+export interface GitConflictFileResult {
+  success: boolean
+  filePath: string
+  currentContent?: string
+  baseContent?: string | null
+  localContent?: string | null
+  cloudContent?: string | null
+  error?: string
+}
+
+export interface GitResolveConflictResult {
+  success: boolean
+  filePath: string
+  remainingConflictedPaths?: string[]
+  mergeCompleted?: boolean
   error?: string
 }
 
@@ -1079,6 +1141,7 @@ export interface ElectronAPI {
       branch?: string
       repoUrl?: string
       strategy?: 'merge' | 'ff-only'
+      allowUnrelatedHistories?: boolean
       extraHeader?: string
       provider?: string
       accessToken?: string
@@ -1086,6 +1149,44 @@ export interface ElectronAPI {
       keyId?: string
       debug?: boolean
     }) => Promise<GitSyncPullResult>
+    gitReplayLocalCommits: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+      debug?: boolean
+    }) => Promise<GitSyncReplayResult>
+    gitClassifyRepoHealth: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      debug?: boolean
+    }) => Promise<GitRepoHealthResult>
+    gitSalvageReclone: (options: {
+      projectPath: string
+      repoUrl: string
+      branch?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+      debug?: boolean
+    }) => Promise<GitSyncSalvageResult>
+    gitReadConflictFile: (options: {
+      projectPath: string
+      filePath: string
+    }) => Promise<GitConflictFileResult>
+    gitResolveConflictFile: (options: {
+      projectPath: string
+      filePath: string
+      resolvedContent: string
+    }) => Promise<GitResolveConflictResult>
     gitRestoreMain: (options: {
       projectPath: string
       remote?: string

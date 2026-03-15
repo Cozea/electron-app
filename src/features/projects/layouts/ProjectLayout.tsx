@@ -90,6 +90,8 @@ function getProjectSubpageLabel(pathname: string, basePath: string | null): stri
             return "Dependencies"
         case "changes":
             return "Changes"
+        case "conflicts":
+            return "Conflicts"
         case "settings":
             return "Settings"
         case "team":
@@ -971,7 +973,7 @@ export function ProjectLayout({
                                 className={cn(
                                     // `min-w-0` prevents the main content from overflowing under the right panels
                                     // when it contains wide children (iframes, editors, etc.).
-                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                                    "flex flex-1 flex-col min-h-0 min-w-0 overflow-y-auto overflow-x-hidden",
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}

@@ -2,6 +2,7 @@ import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
 import { isGitOpenDebugEnabled, logGitOpenDebug } from '@/lib/git/gitOpenDebug'
+import { recordGitOpenTelemetry, type GitOpenTelemetryEvent } from '@/lib/git/gitOpenTelemetry'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
 
 export interface GitRepositoryMetadataLike {
@@ -41,6 +42,9 @@ export interface PrepareGitProjectForOpenResult {
   skipInitialSyncCheck: boolean
   changed: boolean
   currentBranch?: string
+  cancelled?: boolean
+  needsConflictResolution?: boolean
+  conflictedPaths?: string[]
 }
 
 function shouldAdoptWorkspaceForMissingRemote(project: ProjectOpenGitProjectLike): boolean {
@@ -122,6 +126,57 @@ function shouldTreatAsSuspectedLocalWipe(status: {
   return deletedCount >= 5 && changedCount > 0 && nonDeletedCount <= 2
 }
 
+function formatConflictFileList(paths: string[] | undefined, maxItems = 5): string {
+  const conflictedPaths = (paths ?? []).filter(Boolean)
+  if (conflictedPaths.length === 0) {
+    return 'Resolve the merge in your editor before opening the project again.'
+  }
+
+  const visiblePaths = conflictedPaths.slice(0, maxItems)
+  const remainingCount = conflictedPaths.length - visiblePaths.length
+  const fileList = visiblePaths.map((filePath) => `• ${filePath}`).join('\n')
+  const remainder =
+    remainingCount > 0
+      ? `\n+${remainingCount} more conflicted file${remainingCount === 1 ? '' : 's'}`
+      : ''
+
+  return `These files need a merge resolution first:\n${fileList}${remainder}`
+}
+
+async function promptForGitConflicts(args: {
+  projectName: string
+  projectPath: string
+  conflictedPaths?: string[]
+}): Promise<'later' | 'open-folder' | 'resolve-now'> {
+  const result = await window.electronAPI.dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Later', 'Open Folder', 'Resolve Now'],
+    defaultId: 2,
+    cancelId: 0,
+    title: 'Resolve conflicts first',
+    message: `${args.projectName} has files changed in both places.`,
+    detail: formatConflictFileList(args.conflictedPaths),
+    noLink: true,
+  })
+
+  if (result.response === 2) {
+    return 'resolve-now'
+  }
+
+  if (result.response !== 1) {
+    return 'later'
+  }
+
+  const openFolderResult = await window.electronAPI.project.openFolder({
+    projectPath: args.projectPath,
+  })
+  if (!openFolderResult.success) {
+    throw new Error(openFolderResult.error || 'Failed to open project folder')
+  }
+
+  return 'open-folder'
+}
+
 export async function prepareGitProjectForOpen({
   convex,
   project,
@@ -138,6 +193,28 @@ export async function prepareGitProjectForOpen({
   const debug = isGitOpenDebugEnabled()
   let effectiveLocalPath = localPath ?? project.localPath ?? (await resolveTargetProjectPath(project))
   let changed = false
+  const startedAt = Date.now()
+  let strategy: GitOpenTelemetryEvent['strategy'] = 'clean'
+  let lastRepoHealth: string | undefined
+  let hadMeaningfulLocalState = false
+
+  const recordOutcome = (
+    outcome: GitOpenTelemetryEvent['outcome'],
+    overrides?: Partial<GitOpenTelemetryEvent>
+  ): void => {
+    recordGitOpenTelemetry({
+      at: new Date().toISOString(),
+      projectId: String(project._id),
+      projectSlug: project.slug,
+      outcome,
+      durationMs: Date.now() - startedAt,
+      strategy,
+      changed,
+      repoHealth: lastRepoHealth,
+      hadMeaningfulLocalState,
+      ...overrides,
+    })
+  }
 
   logGitOpenDebug('prepare:start', {
     projectId: String(project._id),
@@ -150,60 +227,61 @@ export async function prepareGitProjectForOpen({
     hasAuthToken: Boolean(auth.accessToken),
   })
 
-  if (!localPath) {
-    onProgress?.('Cloning repository...')
-    const cloneResult = await window.electronAPI.sync.gitCloneIfMissing({
+  try {
+    if (!localPath) {
+      onProgress?.('Cloning repository...')
+      const cloneResult = await window.electronAPI.sync.gitCloneIfMissing({
+        projectPath: effectiveLocalPath,
+        repoUrl,
+        branch,
+        extraHeader,
+        debug,
+      })
+      logGitOpenDebug('prepare:clone_result', {
+        projectId: String(project._id),
+        effectiveLocalPath,
+        cloneResult,
+      })
+      if (!cloneResult.success || !cloneResult.localPath) {
+        throw new Error(cloneResult.error || 'Failed to clone repository')
+      }
+      effectiveLocalPath = cloneResult.localPath
+      changed = true
+
+      if (userId && updateMemberLocalPath) {
+        await updateMemberLocalPath({
+          projectId: project._id,
+          userId,
+          localPath: effectiveLocalPath,
+        })
+      }
+    } else {
+      onProgress?.('Checking git repository...')
+      const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
+        projectPath: effectiveLocalPath,
+        branch,
+        repoUrl,
+        debug,
+      })
+      logGitOpenDebug('prepare:ensure_result', {
+        projectId: String(project._id),
+        effectiveLocalPath,
+        ensureResult,
+      })
+      if (!ensureResult.success) {
+        throw new Error(ensureResult.error || 'Failed to initialize local git repository')
+      }
+      changed = changed || Boolean(ensureResult.initialized)
+    }
+
+    onProgress?.('Fetching latest changes...')
+    const fetchResult = await window.electronAPI.sync.gitFetchMain({
       projectPath: effectiveLocalPath,
-      repoUrl,
       branch,
+      repoUrl,
       extraHeader,
       debug,
     })
-    logGitOpenDebug('prepare:clone_result', {
-      projectId: String(project._id),
-      effectiveLocalPath,
-      cloneResult,
-    })
-    if (!cloneResult.success || !cloneResult.localPath) {
-      throw new Error(cloneResult.error || 'Failed to clone repository')
-    }
-    effectiveLocalPath = cloneResult.localPath
-    changed = true
-
-    if (userId && updateMemberLocalPath) {
-      await updateMemberLocalPath({
-        projectId: project._id,
-        userId,
-        localPath: effectiveLocalPath,
-      })
-    }
-  } else {
-    onProgress?.('Checking git repository...')
-    const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
-      projectPath: effectiveLocalPath,
-      branch,
-      repoUrl,
-      debug,
-    })
-    logGitOpenDebug('prepare:ensure_result', {
-      projectId: String(project._id),
-      effectiveLocalPath,
-      ensureResult,
-    })
-    if (!ensureResult.success) {
-      throw new Error(ensureResult.error || 'Failed to initialize local git repository')
-    }
-    changed = changed || Boolean(ensureResult.initialized)
-  }
-
-  onProgress?.('Fetching latest changes...')
-  const fetchResult = await window.electronAPI.sync.gitFetchMain({
-    projectPath: effectiveLocalPath,
-    branch,
-    repoUrl,
-    extraHeader,
-    debug,
-  })
   logGitOpenDebug('prepare:fetch_result', {
     projectId: String(project._id),
     effectiveLocalPath,
@@ -228,7 +306,87 @@ export async function prepareGitProjectForOpen({
     throw new Error(status.error || 'Failed to read local git status')
   }
 
-  const effectivelyEmptyWorkspace = await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)
+    const repoHealth = await window.electronAPI.sync.gitClassifyRepoHealth({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+  logGitOpenDebug('prepare:repo_health', {
+    projectId: String(project._id),
+    effectiveLocalPath,
+    repoHealth,
+  })
+  if (!repoHealth.success || !repoHealth.health) {
+    throw new Error(repoHealth.error || 'Failed to inspect local git repository health')
+  }
+  lastRepoHealth = repoHealth.health
+
+  if (repoHealth.health === 'merge_in_progress' || repoHealth.health === 'cherry_pick_in_progress') {
+    strategy = 'conflict-resume'
+    const conflictAction = await promptForGitConflicts({
+      projectName: project.slug,
+      projectPath: effectiveLocalPath,
+      conflictedPaths: status.conflictedPaths,
+    })
+    const result: PrepareGitProjectForOpenResult = {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: status.currentBranch ?? undefined,
+      cancelled: true,
+      needsConflictResolution: conflictAction === 'resolve-now',
+      conflictedPaths: status.conflictedPaths,
+    }
+    recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
+      conflictedPathsCount: result.conflictedPaths?.length ?? 0,
+    })
+    return result
+  }
+
+  if (
+    repoHealth.health === 'rebase_in_progress' ||
+    repoHealth.health === 'detached_head' ||
+    repoHealth.health === 'index_locked' ||
+    repoHealth.health === 'unrelated_history' ||
+    repoHealth.health === 'broken'
+  ) {
+    strategy = 'salvage-reclone'
+    onProgress?.('Recovering local project...')
+    const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
+      projectPath: effectiveLocalPath,
+      repoUrl,
+      branch,
+      extraHeader,
+      debug,
+    })
+    logGitOpenDebug('prepare:salvage_reclone', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      salvageResult,
+      health: repoHealth.health,
+    })
+    if (!salvageResult.success || !salvageResult.localPath) {
+      throw new Error(salvageResult.error || 'Failed to recover local project')
+    }
+    effectiveLocalPath = salvageResult.localPath
+    remoteHeadCommit = salvageResult.headCommit ?? remoteHeadCommit
+    changed = true
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_salvage', {
+      projectId: String(project._id),
+      effectiveLocalPath,
+      status,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after local project recovery')
+    }
+  }
+
+  let effectivelyEmptyWorkspace = await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)
 
   if (
     !remoteHeadCommit &&
@@ -267,6 +425,7 @@ export async function prepareGitProjectForOpen({
   }
 
   if (!remoteHeadCommit && status.headCommit) {
+    strategy = 'bootstrap-publish'
     onProgress?.('Publishing missing cloud history...')
     const bootstrapPushResult = await window.electronAPI.sync.gitPushMain({
       projectPath: effectiveLocalPath,
@@ -308,6 +467,7 @@ export async function prepareGitProjectForOpen({
   const suspectedLocalWipe = (status.behind ?? 0) > 0 && shouldTreatAsSuspectedLocalWipe(status)
 
   if (!remoteHeadCommit && !status.headCommit && !effectivelyEmptyWorkspace) {
+    strategy = 'bootstrap-publish'
     onProgress?.('Publishing local project to cloud...')
     const bootstrapCommitResult = await window.electronAPI.sync.gitCommitAll({
       projectPath: effectiveLocalPath,
@@ -382,6 +542,7 @@ export async function prepareGitProjectForOpen({
   }
 
   if (shouldRestoreWorkspace) {
+    strategy = 'restore'
     onProgress?.('Restoring project files...')
     const restoreResult = await window.electronAPI.sync.gitRestoreMain({
       projectPath: effectiveLocalPath,
@@ -420,57 +581,109 @@ export async function prepareGitProjectForOpen({
   }
 
   if (status.hasConflicts) {
-    throw new Error('Local git conflicts must be resolved before the project can be opened.')
-  }
-
-  if (
-    status.behind &&
-    status.behind > 0 &&
-    (status.hasStagedChanges || status.hasUnstagedChanges || status.hasUntrackedChanges)
-  ) {
-    onProgress?.('Saving local changes...')
-    const commitResult = await window.electronAPI.sync.gitCommitAll({
+    strategy = 'conflict-resume'
+    const conflictAction = await promptForGitConflicts({
+      projectName: project.slug,
       projectPath: effectiveLocalPath,
-      message: 'cozea: sync workspace',
+      conflictedPaths: status.conflictedPaths,
     })
-    logGitOpenDebug('prepare:commit_before_pull', {
-      projectId: String(project._id),
-      effectiveLocalPath,
-      commitResult,
-    })
-    if (!commitResult.success) {
-      throw new Error(commitResult.error || 'Failed to save local git changes')
+    const result: PrepareGitProjectForOpenResult = {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: status.currentBranch ?? undefined,
+      cancelled: true,
+      needsConflictResolution: conflictAction === 'resolve-now',
+      conflictedPaths: status.conflictedPaths,
     }
-    changed = changed || Boolean(commitResult.commitCreated)
+    recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
+      conflictedPathsCount: result.conflictedPaths?.length ?? 0,
+    })
+    return result
   }
 
   if (status.behind && status.behind > 0) {
-    onProgress?.('Pulling latest changes...')
-    const pullResult = await window.electronAPI.sync.gitPullMain({
-      projectPath: effectiveLocalPath,
-      branch,
-      repoUrl,
-      strategy: 'merge',
-      extraHeader,
-      debug,
-    })
-    logGitOpenDebug('prepare:pull_result', {
+    hadMeaningfulLocalState =
+      Boolean(status.ahead && status.ahead > 0) ||
+      Boolean(status.hasStagedChanges) ||
+      Boolean(status.hasUnstagedChanges) ||
+      Boolean(status.hasUntrackedChanges)
+
+    logGitOpenDebug('prepare:sync_strategy', {
       projectId: String(project._id),
       effectiveLocalPath,
-      pullResult,
+      behind: status.behind ?? 0,
+      ahead: status.ahead ?? 0,
+      hasMeaningfulLocalState: hadMeaningfulLocalState,
     })
-    if (!pullResult.success) {
-      throw new Error(pullResult.error || 'Failed to pull latest project changes')
-    }
-    if (pullResult.hadConflicts) {
-      throw new Error('Git merge conflicts must be resolved before the project can be opened.')
-    }
-    changed = changed || !pullResult.alreadyUpToDate
-    if (!pullResult.alreadyUpToDate) {
+
+    if (hadMeaningfulLocalState) {
+      strategy = 'replay'
+      onProgress?.('Replaying local changes...')
+      const replayResult = await window.electronAPI.sync.gitReplayLocalCommits({
+        projectPath: effectiveLocalPath,
+        branch,
+        repoUrl,
+        extraHeader,
+        debug,
+      })
+      logGitOpenDebug('prepare:replay_result', {
+        projectId: String(project._id),
+        effectiveLocalPath,
+        replayResult,
+      })
+      if (replayResult.hadConflicts) {
+        const conflictAction = await promptForGitConflicts({
+          projectName: project.slug,
+          projectPath: effectiveLocalPath,
+          conflictedPaths: replayResult.conflictedPaths,
+        })
+        const result: PrepareGitProjectForOpenResult = {
+          localPath: effectiveLocalPath,
+          skipInitialSyncCheck: true,
+          changed,
+          currentBranch: status.currentBranch ?? undefined,
+          cancelled: true,
+          needsConflictResolution: conflictAction === 'resolve-now',
+          conflictedPaths: replayResult.conflictedPaths,
+        }
+        recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
+          conflictedPathsCount: result.conflictedPaths?.length ?? 0,
+        })
+        return result
+      }
+      if (!replayResult.success) {
+        throw new Error(replayResult.error || 'Failed to replay local changes on top of cloud history')
+      }
+      changed = true
       dispatchGitStatusEvent({
         projectId: String(project._id),
         projectPath: effectiveLocalPath,
         kind: 'pulled',
+      })
+    } else {
+      strategy = 'restore'
+      onProgress?.('Refreshing local project...')
+      const restoreResult = await window.electronAPI.sync.gitRestoreMain({
+        projectPath: effectiveLocalPath,
+        branch,
+        repoUrl,
+        extraHeader,
+        debug,
+      })
+      logGitOpenDebug('prepare:restore_behind_result', {
+        projectId: String(project._id),
+        effectiveLocalPath,
+        restoreResult,
+      })
+      if (!restoreResult.success) {
+        throw new Error(restoreResult.error || 'Failed to refresh local project from cloud')
+      }
+      changed = true
+      dispatchGitStatusEvent({
+        projectId: String(project._id),
+        projectPath: effectiveLocalPath,
+        kind: 'restored',
       })
     }
   }
@@ -490,7 +703,25 @@ export async function prepareGitProjectForOpen({
   }
 
   if (status.hasConflicts) {
-    throw new Error('Local git conflicts must be resolved before the project can be opened.')
+    strategy = 'conflict-resume'
+    const conflictAction = await promptForGitConflicts({
+      projectName: project.slug,
+      projectPath: effectiveLocalPath,
+      conflictedPaths: status.conflictedPaths,
+    })
+    const result: PrepareGitProjectForOpenResult = {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: status.currentBranch ?? undefined,
+      cancelled: true,
+      needsConflictResolution: conflictAction === 'resolve-now',
+      conflictedPaths: status.conflictedPaths,
+    }
+    recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
+      conflictedPathsCount: result.conflictedPaths?.length ?? 0,
+    })
+    return result
   }
 
   if (status.ahead && status.ahead > 0) {
@@ -527,13 +758,39 @@ export async function prepareGitProjectForOpen({
   }
 
   if (finalStatus.hasConflicts) {
-    throw new Error('Local git conflicts must be resolved before the project can be opened.')
+    strategy = 'conflict-resume'
+    const conflictAction = await promptForGitConflicts({
+      projectName: project.slug,
+      projectPath: effectiveLocalPath,
+      conflictedPaths: finalStatus.conflictedPaths,
+    })
+    const result: PrepareGitProjectForOpenResult = {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: finalStatus.currentBranch ?? undefined,
+      cancelled: true,
+      needsConflictResolution: conflictAction === 'resolve-now',
+      conflictedPaths: finalStatus.conflictedPaths,
+    }
+    recordOutcome(conflictAction === 'later' ? 'cancelled' : 'manual_conflict', {
+      conflictedPathsCount: result.conflictedPaths?.length ?? 0,
+    })
+    return result
   }
 
-  return {
-    localPath: effectiveLocalPath,
-    skipInitialSyncCheck: true,
-    changed,
-    currentBranch: finalStatus.currentBranch ?? undefined,
+    const result: PrepareGitProjectForOpenResult = {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: finalStatus.currentBranch ?? undefined,
+    }
+    recordOutcome('opened')
+    return result
+  } catch (error) {
+    recordOutcome('failed', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    throw error
   }
 }

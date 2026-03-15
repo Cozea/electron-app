@@ -1037,16 +1037,19 @@ export const getWalletForViewer = query({
       throw new Error("Organization or user not found")
     }
 
+    const personalWorkspace = isPersonalWorkspaceOrganization(organization)
+    const personalWorkspaceOwner =
+      personalWorkspace && organization.workosId === `${PERSONAL_WORKSPACE_PREFIX}${user.workosId}`
+
     const memberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", args.organizationId).eq("userId", args.userId)
       )
       .collect()
-    if (memberships.length === 0) {
+    if (memberships.length === 0 && !personalWorkspaceOwner) {
       throw new Error("Unauthorized")
     }
-    const personalWorkspace = isPersonalWorkspaceOrganization(organization)
 
     const entitlement = await resolveAccountEntitlementForOrganization(ctx, {
       organization,
@@ -1164,13 +1167,17 @@ export const getSeatWalletsForViewer = query({
       throw new Error("Organization or user not found")
     }
 
+    const personalWorkspace = isPersonalWorkspaceOrganization(organization)
+    const personalWorkspaceOwner =
+      personalWorkspace && organization.workosId === `${PERSONAL_WORKSPACE_PREFIX}${user.workosId}`
+
     const memberships = await ctx.db
       .query("members")
       .withIndex("by_organization_and_user", (q) =>
         q.eq("organizationId", args.organizationId).eq("userId", args.userId)
       )
       .collect()
-    if (memberships.length === 0) {
+    if (memberships.length === 0 && !personalWorkspaceOwner) {
       throw new Error("Unauthorized")
     }
 

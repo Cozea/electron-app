@@ -189,6 +189,7 @@ export function ProjectSidebar({
     )
     const isFilesRoute = routeActiveTab === "Files"
     const isPagesRoute = routeActiveTab === "Previews"
+    const isBackendStudioRoute = routeActiveTab === "Backend Studio"
 
     const preloadProjectTab = React.useCallback((tabTitle: string) => {
         const preloader = projectRoutePreloaders[tabTitle]
@@ -388,6 +389,11 @@ export function ProjectSidebar({
 
     const isFilesPanelActive = activeTab === 'Files' && isFilesRoute
     const isPagesPanelActive = isPagesRoute && pagesListOpen
+    const shouldDisableSecondarySidebarMotion =
+        isFilesRoute ||
+        isBackendStudioRoute ||
+        activeTab === 'Files' ||
+        activeTab === 'Backend Studio'
 
     React.useEffect(() => {
         if (!isFilesPanelActive) {
@@ -546,13 +552,13 @@ export function ProjectSidebar({
                 </Sidebar>
             </div>
 
-            {/* 2. Secondary Sidebar (Context Panel) - Resizable, width animates for smooth transition */}
+            {/* 2. Secondary Sidebar (Context Panel) */}
             <div
                 style={{
                     "--sidebar-width": `${secondaryWidth}px`,
                     width: isSecondarySidebarVisible ? secondaryWidth : 0,
                     minWidth: 0,
-                    transition: 'width 200ms ease-in-out',
+                    transition: shouldDisableSecondarySidebarMotion ? 'none' : 'width 200ms ease-in-out',
                     overflow: 'hidden',
                 } as React.CSSProperties}
                 className="h-full hidden md:flex relative shrink-0"
@@ -611,7 +617,7 @@ export function ProjectSidebar({
                             <div className="relative h-full">
                                 <div
                                     className={cn(
-                                        "absolute inset-0 transition-opacity duration-150",
+                                        "absolute inset-0",
                                         isFilesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
                                     )}
                                 >
@@ -623,13 +629,15 @@ export function ProjectSidebar({
                                     </div>
                                     <div
                                         className={cn(
-                                            "pointer-events-none absolute left-0 right-0 top-0 h-5 bg-gradient-to-b from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                            "pointer-events-none absolute left-0 right-0 top-0 h-5 bg-gradient-to-b from-sidebar via-sidebar/80 to-transparent",
+                                            !shouldDisableSecondarySidebarMotion && "transition-opacity duration-150",
                                             isFilesPanelActive && showFileTopFade ? "opacity-100" : "opacity-0"
                                         )}
                                     />
                                     <div
                                         className={cn(
-                                            "pointer-events-none absolute left-0 right-0 bottom-0 h-5 bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent transition-opacity duration-150",
+                                            "pointer-events-none absolute left-0 right-0 bottom-0 h-5 bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent",
+                                            !shouldDisableSecondarySidebarMotion && "transition-opacity duration-150",
                                             isFilesPanelActive && showFileBottomFade ? "opacity-100" : "opacity-0"
                                         )}
                                     />
@@ -637,7 +645,7 @@ export function ProjectSidebar({
 
                                 <div
                                     className={cn(
-                                        "absolute inset-0 transition-opacity duration-150",
+                                        "absolute inset-0",
                                         isPagesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
                                     )}
                                 >
@@ -656,7 +664,8 @@ export function ProjectSidebar({
                         )}
                     >
                         <div className={cn(
-                            "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity",
+                            "absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100",
+                            !shouldDisableSecondarySidebarMotion && "transition-opacity",
                             "flex items-center justify-center h-8 w-3 rounded-sm bg-border",
                             isResizing && "opacity-100"
                         )}>

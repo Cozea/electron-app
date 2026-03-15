@@ -351,6 +351,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       branch?: string
       repoUrl?: string
       strategy?: 'merge' | 'ff-only'
+      allowUnrelatedHistories?: boolean
       extraHeader?: string
       provider?: string
       accessToken?: string
@@ -358,6 +359,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
       keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('sync:gitPullMain', options),
+    gitReplayLocalCommits: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      repoUrl?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+      debug?: boolean
+    }) => ipcRenderer.invoke('sync:gitReplayLocalCommits', options),
+    gitClassifyRepoHealth: (options: {
+      projectPath: string
+      remote?: string
+      branch?: string
+      debug?: boolean
+    }) => ipcRenderer.invoke('sync:gitClassifyRepoHealth', options),
+    gitSalvageReclone: (options: {
+      projectPath: string
+      repoUrl: string
+      branch?: string
+      extraHeader?: string
+      provider?: string
+      accessToken?: string
+      encryptedCredentials?: string
+      keyId?: string
+      debug?: boolean
+    }) => ipcRenderer.invoke('sync:gitSalvageReclone', options),
+    gitReadConflictFile: (options: {
+      projectPath: string
+      filePath: string
+    }) => ipcRenderer.invoke('sync:gitReadConflictFile', options),
+    gitResolveConflictFile: (options: {
+      projectPath: string
+      filePath: string
+      resolvedContent: string
+    }) => ipcRenderer.invoke('sync:gitResolveConflictFile', options),
     gitRestoreMain: (options: {
       projectPath: string
       remote?: string

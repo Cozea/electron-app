@@ -1494,7 +1494,7 @@ export function TasksPage() {
           <div className="app-scrollbar h-full overflow-auto">
             <div
               className={cn(
-                "mx-auto flex w-full max-w-[1600px] flex-col px-6 animate-in fade-in slide-in-from-bottom-2 duration-300",
+                "mx-auto flex w-full max-w-[1600px] flex-col px-6",
                 boardItems.length === 0 ? "min-h-full justify-center py-10" : "gap-4 py-6",
               )}
             >

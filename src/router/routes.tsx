@@ -90,6 +90,11 @@ const ProjectSettingsPage = lazy(() =>
     default: module.ProjectSettingsPage,
   }))
 )
+const ProjectConflictsPage = lazy(() =>
+  import('@/features/projects/pages/ProjectConflictsPage').then((module) => ({
+    default: module.ProjectConflictsPage,
+  }))
+)
 const ProjectTeamPage = lazy(() =>
   import('@/features/projects/pages/ProjectTeamPage').then((module) => ({
     default: module.ProjectTeamPage,
@@ -248,6 +253,7 @@ export const appRoutes: RouteObject[] = [
           { path: 'version-control', element: <Navigate to="../changes" replace /> },
           { path: 'tasks', element: <TasksPage /> },
           { path: 'team', element: <ProjectTeamPage /> },
+          { path: 'conflicts', element: <ProjectConflictsPage /> },
           { path: 'settings', element: <ProjectSettingsPage /> },
           { path: 'settings/team', element: <Navigate to="../team" replace /> },
           { path: 'settings/:section', element: <ProjectSettingsPage /> },

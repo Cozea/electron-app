@@ -584,12 +584,16 @@ export const getSeatManagement = query({
       throw new Error("User not found")
     }
 
+    const personalWorkspace = organization.workosId.startsWith("personal:")
+    const personalWorkspaceOwner =
+      personalWorkspace && organization.workosId === `personal:${user.workosId}`
+
     const membership = await getCanonicalOrganizationMembership(
       ctx,
       args.organizationId,
       args.userId
     )
-    if (!membership) {
+    if (!membership && !personalWorkspaceOwner) {
       return null
     }
 
@@ -636,11 +640,13 @@ export const getSeatManagement = query({
       billingAccountSubscription?.plan === "enterprise" ||
       entitlement.source === "trial"
 
-    const canManageBilling = await hasOrganizationPermission(
-      ctx,
-      membership,
-      "org:manage_billing"
-    )
+    const canManageBilling = personalWorkspaceOwner
+      ? true
+      : await hasOrganizationPermission(
+          ctx,
+          membership,
+          "org:manage_billing"
+        )
 
     const canManageSeats = Boolean(
       seatAssignmentsEnabled &&
@@ -652,7 +658,7 @@ export const getSeatManagement = query({
     const accountSubscription = billingAccountSubscription ?? viewerAccountSubscription
 
     return {
-      membershipRole: membership.role,
+      membershipRole: membership?.role ?? "admin",
       canManageSeats,
       entitlement,
       billingAccount,
