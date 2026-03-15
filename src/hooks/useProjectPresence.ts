@@ -57,22 +57,12 @@ export function useProjectPresence({
   const activitySnapshotRef = useRef({
     activeFile: activeFile ?? null,
     activeRoute: activeRoute ?? null,
+    activeTab: "editor",
     isMonacoTyping,
     isAiTyping,
     isAgentWorking,
     lastActivityAt,
   })
-
-  useEffect(() => {
-    activitySnapshotRef.current = {
-      activeFile: activeFile ?? null,
-      activeRoute: activeRoute ?? null,
-      isMonacoTyping,
-      isAiTyping,
-      isAgentWorking,
-      lastActivityAt,
-    }
-  }, [activeFile, activeRoute, isMonacoTyping, isAiTyping, isAgentWorking, lastActivityAt])
 
   // Determine active tab from current route
   const getActiveTab = useCallback(() => {
@@ -84,6 +74,19 @@ export function useProjectPresence({
     if (path.includes("/deployments")) return "deployments"
     return "editor"
   }, [location.pathname])
+  const activeTab = getActiveTab()
+
+  useEffect(() => {
+    activitySnapshotRef.current = {
+      activeFile: activeFile ?? null,
+      activeRoute: activeRoute ?? null,
+      activeTab,
+      isMonacoTyping,
+      isAiTyping,
+      isAgentWorking,
+      lastActivityAt,
+    }
+  }, [activeFile, activeRoute, activeTab, isMonacoTyping, isAiTyping, isAgentWorking, lastActivityAt])
 
   // Send heartbeat
   const sendHeartbeat = useCallback(async () => {
@@ -97,7 +100,7 @@ export function useProjectPresence({
         userName,
         userEmail,
         userAvatarUrl: userAvatarUrl ?? undefined,
-        activeTab: getActiveTab(),
+        activeTab: snapshot.activeTab,
         activeFile: snapshot.activeFile ?? undefined,
         activeRoute: snapshot.activeRoute ?? undefined,
         isMonacoTyping: snapshot.isMonacoTyping,
@@ -108,7 +111,7 @@ export function useProjectPresence({
     } catch (error) {
       console.warn("[Presence] Heartbeat failed:", error)
     }
-  }, [getActiveTab, heartbeat, projectId, userAvatarUrl, userEmail, userId, userName])
+  }, [heartbeat, projectId, userAvatarUrl, userEmail, userId, userName])
 
   // Handle leaving
   const handleLeave = useCallback(async () => {
@@ -147,7 +150,7 @@ export function useProjectPresence({
     if (projectId && userId) {
       sendHeartbeat()
     }
-  }, [location.pathname, projectId, userId, sendHeartbeat])
+  }, [activeTab, projectId, userId, sendHeartbeat])
 
   // Send an immediate transition heartbeat for typing/agent-status changes.
   useEffect(() => {
