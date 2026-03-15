@@ -66,7 +66,11 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
 
   const seatManagement = useQuery(
     api.billing.getSeatManagement,
-    options.includeSeatManagement && convexOrg?._id && convexUserId
+    options.includeSeatManagement &&
+      convexOrg?._id &&
+      convexUserId &&
+      settingsPage.workspaceAccess.memberAccess !== undefined &&
+      settingsPage.workspaceAccess.memberAccess !== null
       ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip',
   )

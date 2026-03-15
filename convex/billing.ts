@@ -590,7 +590,7 @@ export const getSeatManagement = query({
       args.userId
     )
     if (!membership) {
-      throw new Error("Unauthorized")
+      return null
     }
 
     const billingAccount = await getCanonicalBillingAccountByOrganization(ctx, args.organizationId)
