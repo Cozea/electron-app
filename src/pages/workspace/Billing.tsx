@@ -34,6 +34,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { fetchWithAbort } from '@/lib/abort'
+import { NO_ACTIVE_PLAN_LABEL } from '@/lib/billing/planLabels'
 import { featureFlags } from '@/lib/featureFlags'
 import { cn } from '@/lib/utils'
 import { useScopedBillingData } from '@/hooks/useScopedBillingData'
@@ -46,6 +47,7 @@ const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Pla
 const STARTUP_MIN_SEATS = 2
 const STARTUP_MAX_SEATS = 10
 const MAX_TRIAL_INCLUDED_PERCENT = 5
+const INACTIVE_PLAN_STATUS_LABEL = 'Inactive'
 
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
@@ -63,7 +65,7 @@ interface PlanFeature {
 }
 
 interface PlanCard {
-  id: CheckoutPlan | 'free'
+  id: CheckoutPlan
   name: string
   description: string
   price: string
@@ -136,28 +138,9 @@ const BILLING_CYCLE_OPTIONS: SegmentedControlOption<BillingCycle>[] = [
 
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
-    id: 'free',
-    name: 'Starter',
-    description: 'For developers who want to explore Cozea locally.',
-    price: 'Free',
-    period: '',
-    trial: 'No credit card required',
-    featuresHeading: 'Includes:',
-    features: [
-      { text: 'Full access to the Cozea IDE', included: true },
-      { text: 'Run coding agents locally', included: true },
-      { text: 'Bring your own AI API keys', included: true },
-      { text: 'Access to 20+ integrations', included: true },
-      { text: 'Local project workspace', included: true },
-      { text: 'Build and test projects on your machine', included: true },
-    ],
-    conclusion: '',
-    footerText: '',
-  },
-  {
     id: 'pro',
     name: 'Pro',
-    description: 'For serious builders who want AI as a competitive edge.',
+    description: 'Single-user plan with hosted AI usage.',
     price: '$20',
     period: '/ month',
     featuresHeading: 'Includes:',
@@ -176,7 +159,7 @@ const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
     id: 'max',
     name: 'Max',
-    description: 'For power users pushing AI to the limit.',
+    description: 'Single-user plan with higher hosted AI usage.',
     price: '$49',
     period: '/ month',
     trial: '7 day free trial',
@@ -193,7 +176,7 @@ const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
 const STARTUP_PLAN_CARD: PlanCard = {
   id: 'startup',
   name: 'Startup',
-  description: 'For fast-moving teams shipping real products.',
+  description: 'Workspace plan with seat-based billing.',
   price: '$200',
   period: '/ 2 seats / month',
   priceSecondary: '$100 / seat / month',
@@ -225,7 +208,7 @@ interface EnterprisePlanCard {
 
 const ENTERPRISE_PLAN_CARD: EnterprisePlanCard = {
   name: 'Custom Enterprise',
-  description: 'For organizations with advanced security and AI integration needs.',
+  description: 'Custom workspace plan for larger deployments.',
   priceLabel: 'Custom pricing',
   featuresHeading: 'Everything in Startup, plus:',
   features: [
@@ -455,13 +438,13 @@ function planLabel(args: {
     if (args.plan === 'startup' || args.plan === 'pro' || args.plan === 'max' || args.source === 'trial') {
       return 'Startup'
     }
-    return 'Free'
+    return NO_ACTIVE_PLAN_LABEL
   }
   if (args.plan === 'pro') return 'Pro'
   if (args.plan === 'max') return 'Max'
   if (args.plan === 'enterprise') return 'Enterprise'
   if (args.plan === 'startup' || args.source === 'trial') return 'Startup'
-  return 'Free'
+  return NO_ACTIVE_PLAN_LABEL
 }
 
 function normalizeSeatQuantity(value: number): number {
@@ -581,6 +564,7 @@ function getPlanIncludedFeatures(planId: PlanTierId): string[] {
 function getPlanDisplayName(planId: PlanTierId): string {
   if (planId === 'enterprise') return ENTERPRISE_PLAN_CARD.name
   if (planId === 'startup') return STARTUP_PLAN_CARD.name
+  if (planId === 'free') return NO_ACTIVE_PLAN_LABEL
   return INDIVIDUAL_PLAN_CARDS.find((card) => card.id === planId)?.name ?? 'Plan'
 }
 
@@ -697,16 +681,30 @@ function SlidingSegmentedControl<Value extends string>({
 function getPlanCtaLabel(
   targetPlanId: PlanTierId,
   currentPlanId: PlanTierId,
-  targetPlanName: string
+  targetPlanName: string,
+  currentStatus?: string
 ): string {
   if (targetPlanId === currentPlanId) {
-    return targetPlanId === 'free' ? 'Download Free' : 'Current Plan'
+    if (targetPlanId === 'enterprise') {
+      return currentStatus === 'canceled' ? 'Contact Sales' : 'Current Plan'
+    }
+    if (currentStatus === 'canceled' && targetPlanId !== 'free') {
+      return `Reactivate ${targetPlanName}`
+    }
+    return targetPlanId === 'free' ? NO_ACTIVE_PLAN_LABEL : 'Current Plan'
+  }
+
+  if (targetPlanId === 'enterprise') {
+    return 'Contact Sales'
   }
 
   const targetRank = PLAN_TIER_RANK[targetPlanId]
   const currentRank = PLAN_TIER_RANK[currentPlanId]
 
   if (targetRank > currentRank) {
+    if (currentPlanId === 'free') {
+      return `Start ${targetPlanName}`
+    }
     return `Upgrade to ${targetPlanName}`
   }
 
@@ -714,7 +712,7 @@ function getPlanCtaLabel(
 }
 
 function getPlanBadge(
-  planId: PlanCard['id'],
+  planId: CheckoutPlan,
   currentPlanId: 'free' | CheckoutPlan | 'enterprise'
 ): string | null {
   if (currentPlanId === 'free' && planId === 'pro') return 'Most Popular'
@@ -927,7 +925,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     plan: entitlement?.plan,
     workspaceScoped,
   })
-  const entitlementStatusLabel = formatEntitlementStatus(entitlement?.status)
   const paidSeatTotal = entitlement?.seatCounts.total ?? 0
   const paidSeatAssigned = entitlement?.seatCounts.assigned ?? 0
   const paidSeatAvailable = entitlement?.seatCounts.available ?? 0
@@ -970,6 +967,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     entitlement?.plan,
     workspaceScoped
   )
+  const hasNoActivePlan = currentPlanIdForCards === 'free'
+  const currentPlanHeading = hasNoActivePlan ? NO_ACTIVE_PLAN_LABEL : `${currentPlanName} plan`
+  const entitlementStatusLabel = hasNoActivePlan
+    ? INACTIVE_PLAN_STATUS_LABEL
+    : formatEntitlementStatus(entitlement?.status)
+  const currentPlanIsCanceled =
+    entitlement?.status === 'canceled' && currentPlanIdForCards !== 'free'
   const currentSubscriptionCycle =
     seatManagement?.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
   const currentSelfServePlan =
@@ -984,12 +988,11 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       : null
   const isPlanActionPending =
     isCheckoutPending || isCycleChangePending || isCancelScheduledCycleChangePending
-  const shouldShowFreeTrialText = currentPlanIdForCards === 'free'
   const hasConsumedMaxTrial = Boolean(
     seatManagement?.accountSubscription?.trialStart &&
     seatManagement?.accountSubscription?.stripeSubscriptionId
   )
-  const maxTrialEligible = shouldShowFreeTrialText && !hasConsumedMaxTrial
+  const maxTrialEligible = hasNoActivePlan && !hasConsumedMaxTrial
   const hasActiveMaxTrial = Boolean(
     entitlement?.source === 'account' &&
     entitlement?.plan === 'max' &&
@@ -1000,6 +1003,14 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     hasActiveMaxTrial && entitlement?.trialEndsAt
       ? formatDate(entitlement.trialEndsAt)
       : null
+  const invoiceHistoryDescription = workspaceScoped
+    ? 'Review recent Stripe invoices billed to this workspace.'
+    : 'Review recent Stripe invoices for your personal plan.'
+  const emptyInvoiceHistoryLabel = invoicesLoading
+    ? 'Loading invoices...'
+    : workspaceScoped
+      ? 'No workspace invoices yet'
+      : 'No personal invoices yet'
   const pendingDowngradeTargetPlanName = pendingDowngradeTargetPlanId
     ? getPlanDisplayName(pendingDowngradeTargetPlanId)
     : null
@@ -1026,7 +1037,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   }, [currentPlanIdForCards, pendingDowngradeTargetPlanId])
   const individualPlanCards = useMemo(() => {
     return INDIVIDUAL_PLAN_CARDS.map((card) => {
-      if (card.id === 'free') return card
       const resolvedPricing = resolvePlanPricing({
         catalog: pricingCatalog,
         plan: card.id,
@@ -1039,8 +1049,18 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       }
     })
   }, [checkoutCycle, pricingCatalog])
-  const startupPlanCtaLabel = getPlanCtaLabel('startup', currentPlanIdForCards, STARTUP_PLAN_CARD.name)
-  const enterprisePlanCtaLabel = getPlanCtaLabel('enterprise', currentPlanIdForCards, ENTERPRISE_PLAN_CARD.name)
+  const startupPlanCtaLabel = getPlanCtaLabel(
+    'startup',
+    currentPlanIdForCards,
+    STARTUP_PLAN_CARD.name,
+    entitlement?.status
+  )
+  const enterprisePlanCtaLabel = getPlanCtaLabel(
+    'enterprise',
+    currentPlanIdForCards,
+    ENTERPRISE_PLAN_CARD.name,
+    entitlement?.status
+  )
 
   const handleManageBilling = useCallback(async () => {
     if (!billingOrganizationId || !accessToken) return
@@ -1476,13 +1496,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className={hasBillingOverviewContent ? 'pt-0 px-0' : 'pt-0 px-0 pb-2'}>
             <div className="min-w-0 flex items-center gap-2">
-              <CardTitle className="truncate text-3xl font-semibold tracking-tight">{currentPlanName} plan</CardTitle>
+              <CardTitle className="truncate text-3xl font-semibold tracking-tight">{currentPlanHeading}</CardTitle>
               <Badge variant="secondary">{entitlementStatusLabel}</Badge>
             </div>
             <CardDescription>
               {workspaceScoped
-                ? 'Workspace billing is centralized and seat-based. Manage Startup or Enterprise access, seat assignment, and included AI usage for this workspace here.'
-                : 'Billing is personal and account-scoped. Manage your plan, included AI usage, and invoices here.'}
+                ? hasNoActivePlan
+                  ? 'No paid workspace plan is active. Start Startup or contact sales for Enterprise here.'
+                  : 'Workspace billing is centralized and seat-based. Manage Startup or Enterprise access, seat assignment, and included AI usage here.'
+                : hasNoActivePlan
+                  ? 'No paid plan is active. Start Pro or Max here.'
+                  : 'Billing is personal and account-scoped. Manage your plan, included AI usage, and invoices here.'}
             </CardDescription>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
@@ -1494,7 +1518,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 Manage Billing
               </Button>
               <Button variant="outline" onClick={() => setShowUpgradeOptions((current) => !current)}>
-                {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
+                {showUpgradeOptions ? 'Hide Plans' : hasNoActivePlan ? 'View Plans' : 'Change Plan'}
               </Button>
             </div>
           </CardHeader>
@@ -1550,29 +1574,34 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           <Card className="-mt-4 border-none bg-transparent shadow-none">
             <CardContent className="px-0 pt-0">
               {!workspaceScoped ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   {individualPlanCards.map((planCard, index) => {
                     const isCurrentPlan = currentPlanIdForCards === planCard.id
+                    const isReactivatableCurrentPlan = isCurrentPlan && currentPlanIsCanceled
                     const isSamePlanCycleSwitch =
                       currentSelfServePlan === planCard.id &&
                       currentSubscriptionCycle !== checkoutCycle
                     const isCycleSwitchScheduled =
                       scheduledCycleChange?.plan === planCard.id &&
                       scheduledCycleChange.cycle === checkoutCycle
-                    const isExactCurrentSelection = isCurrentPlan && !isSamePlanCycleSwitch
+                    const isExactCurrentSelection =
+                      isCurrentPlan && !isSamePlanCycleSwitch && !isReactivatableCurrentPlan
                     const badge = getPlanBadge(planCard.id, currentPlanIdForCards)
                     const planCardCtaLabel =
                       isSamePlanCycleSwitch
                         ? isCycleSwitchScheduled
                           ? `${formatBillingCycleLabel(checkoutCycle)} Scheduled`
                           : `Switch to ${formatBillingCycleLabel(checkoutCycle)}`
-                        : getPlanCtaLabel(planCard.id, currentPlanIdForCards, planCard.name)
+                        : getPlanCtaLabel(
+                            planCard.id,
+                            currentPlanIdForCards,
+                            planCard.name,
+                            entitlement?.status
+                          )
                     const showTrialText = Boolean(planCard.trial) && (
-                      planCard.id === 'free'
-                        ? shouldShowFreeTrialText
-                        : planCard.id === 'max'
-                          ? maxTrialEligible
-                          : false
+                      planCard.id === 'max'
+                        ? maxTrialEligible
+                        : false
                     )
                     const planCardFooterText =
                       planCard.id === 'max' && !(maxTrialEligible || hasActiveMaxTrial)
@@ -1597,7 +1626,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           <div className="min-w-0">
                             <h3 className="text-lg font-semibold text-foreground">{planCard.name}</h3>
                           </div>
-                          {planCard.id !== 'free' ? renderCycleToggle() : null}
+                          {renderCycleToggle()}
                         </div>
                         {planCard.description ? (
                           <p className="mt-2 text-sm text-muted-foreground">{planCard.description}</p>
@@ -1637,34 +1666,23 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                           <p className="mt-5 text-center text-xs text-muted-foreground">{planCardFooterText}</p>
                         ) : null}
 
-                        {planCard.id === 'free' ? (
-                          <Button
-                            className="mt-5 w-full rounded-lg"
-                            variant="outline"
-                            onClick={() => handlePlanCtaClick('free')}
-                            disabled={!canOpenCheckout || isCurrentPlan || isPortalPending || isPlanActionPending}
-                          >
-                            {planCardCtaLabel}
-                          </Button>
-                        ) : (
-                          <Button
-                            className="mt-5 w-full rounded-full"
-                            variant={isExactCurrentSelection || isCycleSwitchScheduled ? 'secondary' : 'default'}
-                            onClick={() => handlePlanCtaClick(planCard.id)}
-                            disabled={
-                              !canOpenCheckout ||
-                              isExactCurrentSelection ||
-                              isPlanActionPending ||
-                              isPortalPending ||
-                              isCycleSwitchScheduled
-                            }
-                          >
-                            {isPlanActionPending ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : null}
-                            {planCardCtaLabel}
-                          </Button>
-                        )}
+                        <Button
+                          className="mt-5 w-full rounded-full"
+                          variant={isExactCurrentSelection || isCycleSwitchScheduled ? 'secondary' : 'default'}
+                          onClick={() => handlePlanCtaClick(planCard.id)}
+                          disabled={
+                            !canOpenCheckout ||
+                            isExactCurrentSelection ||
+                            isPlanActionPending ||
+                            isPortalPending ||
+                            isCycleSwitchScheduled
+                          }
+                        >
+                          {isPlanActionPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          {planCardCtaLabel}
+                        </Button>
                       </div>
                     )
                   })}
@@ -1716,9 +1734,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     ) : null}
                     <Button
                       className="mt-6 w-full rounded-lg"
-                      variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
+                      variant={
+                        currentPlanIdForCards === 'startup' && !currentPlanIsCanceled
+                          ? 'secondary'
+                          : 'default'
+                      }
                       onClick={() => handlePlanCtaClick('startup')}
-                      disabled={currentPlanIdForCards === 'startup' || isPlanActionPending || isPortalPending}
+                      disabled={
+                        (currentPlanIdForCards === 'startup' && !currentPlanIsCanceled) ||
+                        isPlanActionPending ||
+                        isPortalPending
+                      }
                     >
                       {startupPlanCtaLabel}
                     </Button>
@@ -1745,9 +1771,17 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     ) : null}
                     <Button
                       className="mt-6 w-full rounded-lg"
-                      variant={currentPlanIdForCards === 'enterprise' ? 'secondary' : 'default'}
+                      variant={
+                        currentPlanIdForCards === 'enterprise' && !currentPlanIsCanceled
+                          ? 'secondary'
+                          : 'default'
+                      }
                       onClick={() => handlePlanCtaClick('enterprise')}
-                      disabled={currentPlanIdForCards === 'enterprise' || isPlanActionPending || isPortalPending}
+                      disabled={
+                        (currentPlanIdForCards === 'enterprise' && !currentPlanIsCanceled) ||
+                        isPlanActionPending ||
+                        isPortalPending
+                      }
                     >
                       {enterprisePlanCtaLabel}
                     </Button>
@@ -2046,9 +2080,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>Invoice History</CardTitle>
-            <CardDescription>
-              Review recent Stripe invoices for the active billing customer.
-            </CardDescription>
+            <CardDescription>{invoiceHistoryDescription}</CardDescription>
           </CardHeader>
           <CardContent className="pt-0 px-0">
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
@@ -2097,7 +2129,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
-                        {invoicesLoading ? 'Loading invoices...' : 'No invoices yet'}
+                        {emptyInvoiceHistoryLabel}
                       </TableCell>
                     </TableRow>
                   )}

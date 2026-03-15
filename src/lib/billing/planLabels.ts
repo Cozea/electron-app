@@ -5,8 +5,10 @@ export type PersonalPricingPlanId = 'free' | 'pro' | 'max' | 'startup' | 'enterp
 export type OrganizationPricingPlanId = 'free' | 'startup' | 'enterprise'
 export type WorkspacePricingPlanId = PersonalPricingPlanId
 
+export const NO_ACTIVE_PLAN_LABEL = 'No active plan'
+
 export const PERSONAL_PLAN_LABELS: Record<PersonalPlanId, string> = {
-  free: 'Free',
+  free: NO_ACTIVE_PLAN_LABEL,
   pro: 'Pro',
   max: 'Max',
   startup: 'Startup',
@@ -15,7 +17,7 @@ export const PERSONAL_PLAN_LABELS: Record<PersonalPlanId, string> = {
 }
 
 export const ORGANIZATION_PLAN_LABELS: Record<OrganizationPlanId, string> = {
-  free: 'Free',
+  free: NO_ACTIVE_PLAN_LABEL,
   startup: 'Startup',
   team: 'Startup',
   pro: 'Startup',
