@@ -885,6 +885,10 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
       setInvoicesLoading(true)
       try {
+        console.info('[Billing][Invoices][Request]', {
+          scope: workspaceScoped ? 'workspace' : 'personal',
+          billingOrganizationId,
+        })
         const response = await fetchWithAbort(
           `${AUTH_SERVER_URL}/stripe/invoices?organizationId=${billingOrganizationId}&limit=10`,
           {
@@ -895,12 +899,49 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           },
           { signal: controller.signal, timeoutMs: 15000 }
         )
+        const data = (await response.json().catch(() => null)) as
+          | {
+              invoices?: StripeInvoice[]
+              debug?: {
+                requestedWorkosOrganizationId?: string
+                resolvedOrganizationId?: string
+                scope?: 'personal' | 'workspace'
+                entitlementSource?: string | null
+                entitlementPlan?: string | null
+                entitlementStatus?: string | null
+                customerIdSuffix?: string
+                fetchedInvoiceCount?: number
+                scopedInvoiceCount?: number
+                returnedInvoiceCount?: number
+                returnedInvoiceIds?: string[]
+              }
+              error?: string
+            }
+          | null
 
         if (response.ok) {
-          const data = (await response.json()) as { invoices?: StripeInvoice[] }
           if (!cancelled) {
-            setStripeInvoices(data.invoices || [])
+            setStripeInvoices(data?.invoices ?? [])
           }
+          console.info('[Billing][Invoices][Response]', {
+            scope: workspaceScoped ? 'workspace' : 'personal',
+            billingOrganizationId,
+            debug: data?.debug ?? null,
+            invoices:
+              data?.invoices?.map((invoice) => ({
+                id: invoice.id,
+                description: invoice.description,
+                amountPaid: invoice.amountPaid,
+                status: invoice.status,
+              })) ?? [],
+          })
+        } else {
+          console.error('[Billing][Invoices][Error]', {
+            scope: workspaceScoped ? 'workspace' : 'personal',
+            billingOrganizationId,
+            status: response.status,
+            error: data?.error ?? 'Failed to fetch invoices',
+          })
         }
       } catch (err) {
         if (isAbortError(err)) return
@@ -917,7 +958,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       cancelled = true
       controller.abort()
     }
-  }, [billingOrganizationId, accessToken])
+  }, [billingOrganizationId, accessToken, workspaceScoped])
 
   const entitlement = seatManagement?.entitlement
   const currentPlanName = planLabel({
