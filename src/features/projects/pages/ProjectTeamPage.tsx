@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -181,6 +180,7 @@ export function ProjectTeamPage() {
   const [roleFilter, setRoleFilter] = useState<'all' | ProjectRole>('all')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const hasResolvedTeamRows = members !== undefined && (!isPersonalWorkspace || pendingInvites !== undefined)
 
   const isManager = memberRole === 'project_manager'
   const canManageTeam = Boolean(convexUserId) && (
@@ -432,11 +432,7 @@ export function ProjectTeamPage() {
   useProjectHeader(headerActions)
 
   if (project === undefined) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
+    return null
   }
 
   if (project === null) {
@@ -455,14 +451,7 @@ export function ProjectTeamPage() {
         </div>
       ) : null}
 
-      {projectWorkspace.isLoading ? (
-        <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-5 w-48 rounded-lg" />
-            <Skeleton className="h-4 w-80 rounded-lg" />
-          </div>
-        </div>
-      ) : !isPersonalWorkspace ? (
+      {!projectWorkspace.isLoading && !isPersonalWorkspace ? (
         <div className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -550,25 +539,7 @@ export function ProjectTeamPage() {
             </TableRow>
           </TableHeader>
           <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-            {members === undefined ? (
-              Array.from({ length: 4 }).map((_, index) => (
-                <TableRow key={`loading-row-${index}`}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="h-9 w-9 rounded-full" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-40 rounded-lg" />
-                        <Skeleton className="h-4 w-28 rounded-lg" />
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell><Skeleton className="h-6 w-24 rounded-full" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16 rounded-lg" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20 rounded-lg" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
-                </TableRow>
-              ))
-            ) : filteredRows.length > 0 ? (
+            {filteredRows.length > 0 ? (
               filteredRows.map((row) => {
                 const roleActionKey =
                   row.type === 'member' && row.userId ? `role:${String(row.userId)}` : null
@@ -737,13 +708,13 @@ export function ProjectTeamPage() {
                   </TableRow>
                 )
               })
-            ) : (
+            ) : hasResolvedTeamRows ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                   No members or pending invites yet.
                 </TableCell>
               </TableRow>
-            )}
+            ) : null}
           </TableBody>
         </Table>
       </div>

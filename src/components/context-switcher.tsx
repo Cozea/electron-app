@@ -204,7 +204,7 @@ export function ContextSwitcher() {
     setOpen(true)
 
     try {
-      await prepareGitProjectForOpen({
+      const gitOpenResult = await prepareGitProjectForOpen({
         convex,
         project,
         localPath: project.localPath ?? await window.electronAPI.project.getLocalPath({
@@ -217,6 +217,25 @@ export function ContextSwitcher() {
         },
         updateMemberLocalPath: convexUserId ? updateMemberLocalPath : undefined,
       })
+
+      if (gitOpenResult.cancelled) {
+        if (gitOpenResult.needsConflictResolution) {
+          setOpen(false)
+          navigate(buildProjectPath(String(project._id), 'conflicts'), {
+            state: {
+              projectSlug: project.slug,
+              projectId: String(project._id),
+              projectName: project.name ?? undefined,
+              projectTemplate: project.template ?? undefined,
+              syncMode: 'git',
+            } satisfies ProjectNavigationState,
+          })
+          resetSyncState()
+          return
+        }
+        resetSyncState()
+        return
+      }
 
       setSyncState('ready')
       setSyncMessage('Opening project...')

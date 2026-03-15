@@ -183,6 +183,27 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
                 updateMemberLocalPath,
             })
 
+            if (gitOpenResult.cancelled) {
+                if (gitOpenResult.needsConflictResolution) {
+                    navigate(buildProjectPath(String(project._id), 'conflicts'), {
+                        state: {
+                            projectId: String(project._id),
+                            projectSlug: project.slug,
+                            projectName: project.name,
+                            projectTemplate: project.template ?? undefined,
+                            syncMode: 'git',
+                        },
+                    })
+                    return
+                }
+                setSyncState('idle')
+                setSyncMessage('')
+                setSyncDetail(null)
+                setSyncErrorActionHref(null)
+                setSyncErrorActionLabel(null)
+                return
+            }
+
             setLocalPath(gitOpenResult.localPath)
             setSyncState('ready')
             setSyncMessage('Opening project...')

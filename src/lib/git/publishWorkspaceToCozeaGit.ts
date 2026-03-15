@@ -41,7 +41,7 @@ export async function publishWorkspaceToCozeaGit({
 }: PublishWorkspaceToCozeaGitOptions): Promise<void> {
   const branch = project.gitRepository?.defaultBranch?.trim() || 'main'
 
-  await prepareGitProjectForOpen({
+  const prepareResult = await prepareGitProjectForOpen({
     convex,
     project,
     localPath: projectPath,
@@ -49,6 +49,13 @@ export async function publishWorkspaceToCozeaGit({
     onProgress,
     updateMemberLocalPath,
   })
+
+  if (prepareResult.cancelled) {
+    if (prepareResult.needsConflictResolution) {
+      throw new Error('Resolve git conflicts before publishing workspace changes')
+    }
+    return
+  }
 
   const accessToken = await resolveAccessToken()
   const repoUrl = buildCozeaGitRemoteUrl(String(project._id))

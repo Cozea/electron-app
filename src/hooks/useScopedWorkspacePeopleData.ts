@@ -3,6 +3,7 @@ import { useQuery } from 'convex/react'
 
 import { api } from '../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
 import { useCachedQuery } from '@/stores/useQueryCache'
 import {
@@ -30,6 +31,7 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     convexOrg?.name ??
     settingsPage.resolvedScope.scopedWorkspace?.organizationName ??
     'Workspace'
+  const memberAccessResolved = settingsPage.workspaceAccess.memberAccess !== undefined
 
   const freshMembers = useQuery(
     api.organizations.getMembers,
@@ -100,10 +102,15 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
     hasOrganizationWorkspacePermission(currentUserPermissions, 'roles:assign') ||
     hasOrganizationWorkspacePermission(currentUserPermissions, 'members:update_role')
 
+  useHydrateWorkspaceMembers({
+    workspaceOrganizationId,
+    enabled: Boolean(convexOrg?._id) && memberAccessResolved,
+  })
+
   const isLoading =
     members === undefined ||
     organizationRoles === undefined ||
-    settingsPage.workspaceAccess.memberAccess === undefined ||
+    !memberAccessResolved ||
     (canViewInvitations && pendingInvites === undefined) ||
     (options.includeSeatManagement === true && seatManagement === undefined)
 

@@ -2200,7 +2200,7 @@ export function ProjectPagesPage() {
                             /* Empty State */
                             <div
                                 key="pages-empty"
-                                className="app-scrollbar flex-1 overflow-y-auto p-6 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                                className="app-scrollbar flex-1 overflow-y-auto p-6"
                             >
                                 <div className="flex flex-col items-center justify-center min-h-full text-muted-foreground border-2 border-dashed border-border/50 rounded-xl bg-muted/5">
                                     <FileText className="h-10 w-10 mb-3 opacity-20" />
@@ -2237,7 +2237,7 @@ export function ProjectPagesPage() {
                             <div className="relative flex-1 min-h-0 min-w-0 bg-content-surface">
                                 {!isFocusedPreview && (
                                 <div
-                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6 animate-in fade-in duration-300"
+                                    className="app-scrollbar absolute inset-0 overflow-y-auto p-6"
                                 >
                                     <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
                                         {routes.map((route, index) => {
@@ -2345,7 +2345,7 @@ export function ProjectPagesPage() {
 
                                 {isFocusedPreview && previewRoute && (
                                     <div
-                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0 animate-in fade-in duration-300"
+                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0"
                                     >
                                         <div className="flex-1 flex flex-col min-h-0 min-w-0">
                                             {/* Preview area */}

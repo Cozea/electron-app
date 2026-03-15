@@ -838,7 +838,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       }
 
       setPullProgress(35)
-      await prepareGitProjectForOpen({
+      const gitOpenResult = await prepareGitProjectForOpen({
         convex,
         project: {
           _id: project._id,
@@ -855,6 +855,24 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
         },
         updateMemberLocalPath,
       })
+
+      if (gitOpenResult.cancelled) {
+        if (gitOpenResult.needsConflictResolution) {
+          navigate(buildProjectPath(String(project._id), 'conflicts'), {
+            state: {
+              projectId: String(project._id),
+              projectSlug: project.slug,
+              projectName: project.name ?? undefined,
+              projectTemplate: project.template ?? undefined,
+              syncMode: 'git',
+            },
+          })
+          return false
+        }
+        addLog('Pull canceled.')
+        setStatusMessage('Pull canceled')
+        return false
+      }
 
       setPullProgress(80)
       const filesResult = await window.electronAPI.project.listFiles({

@@ -278,6 +278,7 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         remote?: string
         branch?: string
         strategy?: 'merge' | 'ff-only'
+        allowUnrelatedHistories?: boolean
         extraHeader?: string
         provider?: string
         accessToken?: string
@@ -286,6 +287,79 @@ export function registerSyncHandlers(ipcMain: IpcMain): void {
         debug?: boolean
       }
     ) => gitSyncService.pullMain(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitReplayLocalCommits',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        repoUrl?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+        debug?: boolean
+      }
+    ) => gitSyncService.replayLocalCommits(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitClassifyRepoHealth',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        remote?: string
+        branch?: string
+        debug?: boolean
+      }
+    ) => gitSyncService.classifyRepoHealth(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitSalvageReclone',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        repoUrl: string
+        branch?: string
+        extraHeader?: string
+        provider?: string
+        accessToken?: string
+        encryptedCredentials?: string
+        keyId?: string
+        debug?: boolean
+      }
+    ) => gitSyncService.salvageReclone(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitReadConflictFile',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        filePath: string
+      }
+    ) => gitSyncService.readConflictFile(options)
+  )
+
+  ipcMain.handle(
+    'sync:gitResolveConflictFile',
+    async (
+      _event,
+      options: {
+        projectPath: string
+        filePath: string
+        resolvedContent: string
+      }
+    ) => gitSyncService.resolveConflictFile(options)
   )
 
   ipcMain.handle(

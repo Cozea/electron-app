@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
-import { type NavigateOptions, type NavigateFunction, type To, useNavigate } from 'react-router-dom'
+import { createPath, type NavigateOptions, type NavigateFunction, type To, useNavigate } from 'react-router-dom'
 
+import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
 
 function runWithViewTransition(update: () => void): void {
@@ -17,11 +18,47 @@ function runWithViewTransition(update: () => void): void {
   void documentWithTransition.startViewTransition(update).finished
 }
 
+function isProjectRoutePath(pathname: string | null): boolean {
+  if (!pathname) return false
+  const route = parseProjectRoute(pathname)
+  return Boolean(route.projectId || route.slug)
+}
+
+function resolveNavigationPathname(to: To | number): string | null {
+  if (typeof window === 'undefined') return null
+  if (typeof to === 'number') return window.location.pathname
+
+  const target = typeof to === 'string' ? to : createPath(to)
+
+  try {
+    return new URL(target, window.location.href).pathname
+  } catch {
+    return null
+  }
+}
+
+function shouldSkipViewTransition(to: To | number): boolean {
+  if (typeof window === 'undefined') return false
+  return (
+    isProjectRoutePath(window.location.pathname) ||
+    isProjectRoutePath(resolveNavigationPathname(to))
+  )
+}
+
 export function navigateWithTransition(
   navigate: NavigateFunction,
   to: To | number,
   options?: NavigateOptions
 ): void {
+  if (shouldSkipViewTransition(to)) {
+    if (typeof to === 'number') {
+      navigate(to)
+      return
+    }
+    navigate(to, options)
+    return
+  }
+
   runWithViewTransition(() => {
     if (typeof to === 'number') {
       navigate(to)
