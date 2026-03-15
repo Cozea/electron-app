@@ -43,7 +43,11 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
   )
 
   const billingViewerArgs =
-    convexOrg?._id && convexUserId && canLoadWorkspaceBillingData
+    convexOrg?._id &&
+    convexUserId &&
+    canLoadWorkspaceBillingData &&
+    settingsPage.workspaceAccess.memberAccess !== undefined &&
+    settingsPage.workspaceAccess.memberAccess !== null
       ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip'
 
