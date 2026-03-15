@@ -25,9 +25,9 @@ export function CollapsibleItem({
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (
-    <div className="border border-sidebar-border/70 rounded-md overflow-hidden bg-background/30">
+    <div className="overflow-hidden bg-background/30">
       <div
-        className="flex items-center gap-2 h-7 px-2 cursor-pointer hover:bg-sidebar-accent/70 transition-colors"
+        className="flex items-center gap-2 h-7 rounded-full px-2 cursor-pointer hover:bg-sidebar-accent/70 transition-colors"
         onClick={() => setIsOpen(!isOpen)}
       >
         <ChevronDown
@@ -46,7 +46,7 @@ export function CollapsibleItem({
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-md hover:bg-destructive/10 hover:text-destructive shrink-0"
+            className="h-6 w-6  hover:bg-destructive/10 hover:text-destructive shrink-0"
             onClick={(e) => {
               e.stopPropagation()
               onRemove()
@@ -57,7 +57,7 @@ export function CollapsibleItem({
         )}
       </div>
       {isOpen && (
-        <div className="px-2 pb-2 pt-2 space-y-2 border-t border-sidebar-border/60 bg-sidebar-accent/20">
+        <div className="px-2 pb-2 pt-2 space-y-2 border-t border-sidebar-border/50 bg-sidebar-accent/20">
           {children}
         </div>
       )}
@@ -87,12 +87,12 @@ export function CollapsibleSection({
   const alwaysOpen = !collapsible || isOpen
 
   return (
-    <div className="border-b border-sidebar-border">
+    <div className="border-b border-sidebar-border/50">
       <div className="flex items-center gap-1 px-2 h-8">
         {collapsible ? (
           <button
             type="button"
-            className="flex items-center gap-2 flex-1 min-w-0 text-[11px] font-medium text-sidebar-foreground hover:bg-sidebar-accent/70 rounded-md px-2 h-7 transition-colors"
+            className="flex items-center gap-2 flex-1 min-w-0 text-[11px] font-medium text-sidebar-foreground hover:bg-sidebar-accent/70  px-2 h-7 rounded-full transition-colors"
             onClick={() => setIsOpen(!isOpen)}
           >
             <ChevronDown
@@ -105,7 +105,7 @@ export function CollapsibleSection({
             <span className="truncate">{title}</span>
           </button>
         ) : (
-          <div className="flex items-center gap-2 flex-1 min-w-0 px-2 h-7 text-[11px] font-medium text-sidebar-foreground">
+          <div className="flex items-center gap-2 flex-1 min-w-0 px-2 h-7 rounded-full text-[11px] font-medium text-sidebar-foreground">
             {icon && <span className="text-sidebar-foreground/80 shrink-0">{icon}</span>}
             <span className="truncate">{title}</span>
           </div>
@@ -114,7 +114,7 @@ export function CollapsibleSection({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="h-7 w-7  hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={onAdd}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -208,9 +208,9 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
                   const v = parseInt(e.target.value, 10)
                   if (!Number.isNaN(v)) setValue(Math.min(max, Math.max(min, v)))
                 }}
-                className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 text-right rounded-r-none border-r-0 bg-background/70 border border-sidebar-border/70 focus-visible:ring-sidebar-ring/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 text-right border-none bg-background/70 focus-visible:ring-sidebar-ring/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <div className="flex flex-col shrink-0 h-7 rounded-r-md border border-sidebar-border/70 border-l-0 bg-sidebar-accent/60 overflow-hidden">
+              <div className="flex flex-col shrink-0 h-7 rounded-full rounded-r-md border-l-0 bg-sidebar-accent/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setValue(Math.min(max, value + STEP))}
@@ -222,7 +222,7 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
                 <button
                   type="button"
                   onClick={() => setValue(Math.max(min, value - STEP))}
-                  className="flex-1 min-h-0 flex items-center justify-center px-1.5 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground transition-colors border-t border-sidebar-border/50"
+                  className="flex-1 min-h-0 flex items-center justify-center px-1.5 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground transition-colors -t "
                   aria-label="Decrease"
                 >
                   <ChevronDown className="h-3 w-3" />
@@ -232,7 +232,7 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 h-7 mt-1.5">
+      <div className="flex items-center gap-2 h-7 rounded-full mt-1.5">
         <Label className="text-[11px] text-sidebar-foreground/70 w-14 shrink-0 truncate">
           Color
         </Label>
@@ -243,7 +243,7 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
             trigger={
               <button
                 type="button"
-                className="w-7 h-7 rounded-md border border-muted-foreground/50 cursor-pointer bg-background/70 shrink-0 focus:outline-none focus:ring-2 focus:ring-sidebar-ring/40"
+                className="w-7 h-7 rounded-full border border-muted-foreground/50 cursor-pointer bg-background/70 shrink-0 focus:outline-none focus:ring-2 focus:ring-sidebar-ring/40"
                 style={{ backgroundColor: hexValue }}
                 aria-label="Open color picker"
               />
@@ -261,7 +261,7 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
               setColorEditing(false)
               handleColorChange(toHex(colorBuffer.trim()))
             }}
-            className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 bg-background/70 border-sidebar-border/70 focus-visible:ring-sidebar-ring/40"
+            className="h-7 text-[11px] font-mono px-2 flex-1 min-w-0 bg-background/70  focus-visible:ring-sidebar-ring/40"
             placeholder="#000000"
           />
         </div>
@@ -294,7 +294,7 @@ export function TransformItem({ type, value, onChange, onRemove }: TransformItem
                 type="number"
                 value={x}
                 onChange={(e) => onChange(`translate(${e.target.value}px, ${y}px)`)}
-                className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+                className="w-full h-7 rounded-full text-[11px] text-center px-1.5 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
               />
               <span className="text-[10px] text-muted-foreground">px</span>
             </div>
@@ -306,7 +306,7 @@ export function TransformItem({ type, value, onChange, onRemove }: TransformItem
                 type="number"
                 value={y}
                 onChange={(e) => onChange(`translate(${x}px, ${e.target.value}px)`)}
-                className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+                className="w-full h-7 rounded-full text-[11px] text-center px-1.5 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
               />
               <span className="text-[10px] text-muted-foreground">px</span>
             </div>
@@ -327,7 +327,7 @@ export function TransformItem({ type, value, onChange, onRemove }: TransformItem
             type="number"
             value={deg}
             onChange={(e) => onChange(`rotate(${e.target.value}deg)`)}
-            className="w-20 h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+            className="w-20 h-7 rounded-full text-[11px] text-center px-1.5 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
           />
           <span className="text-[10px] text-muted-foreground">deg</span>
         </div>
@@ -350,7 +350,7 @@ export function TransformItem({ type, value, onChange, onRemove }: TransformItem
               step={0.1}
               value={x}
               onChange={(e) => onChange(`scale(${e.target.value}, ${y})`)}
-              className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+              className="w-full h-7 rounded-full text-[11px] text-center px-1.5 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
             />
           </div>
           <div className="space-y-0.5">
@@ -360,7 +360,7 @@ export function TransformItem({ type, value, onChange, onRemove }: TransformItem
               step={0.1}
               value={y}
               onChange={(e) => onChange(`scale(${x}, ${e.target.value})`)}
-              className="w-full h-7 text-[11px] text-center px-1.5 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+              className="w-full h-7 rounded-full text-[11px] text-center px-1.5 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
             />
           </div>
         </div>
@@ -398,14 +398,14 @@ export function TransitionItem({ value, onChange, onRemove }: TransitionItemProp
           <select
             value={property}
             onChange={(e) => onChange(build({ property: e.target.value }))}
-            className="flex-1 h-7 text-[11px] px-2 bg-background/70 border border-sidebar-border/70 rounded-md focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+            className="flex-1 h-7 rounded-full text-[11px] px-2 bg-background/70    focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
           >
             <option value="all">all</option>
             <option value="opacity">opacity</option>
             <option value="transform">transform</option>
             <option value="background">background</option>
             <option value="color">color</option>
-            <option value="border">border</option>
+            <option value=""></option>
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -414,7 +414,7 @@ export function TransitionItem({ value, onChange, onRemove }: TransitionItemProp
             type="text"
             value={duration}
             onChange={(e) => onChange(build({ duration: e.target.value }))}
-            className="flex-1 h-7 text-[11px] px-2 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+            className="flex-1 h-7 rounded-full text-[11px] px-2 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
             placeholder="300ms"
           />
         </div>
@@ -423,7 +423,7 @@ export function TransitionItem({ value, onChange, onRemove }: TransitionItemProp
           <select
             value={timing}
             onChange={(e) => onChange(build({ timing: e.target.value }))}
-            className="flex-1 h-7 text-[11px] px-2 bg-background/70 border border-sidebar-border/70 rounded-md focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+            className="flex-1 h-7 rounded-full text-[11px] px-2 bg-background/70    focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
           >
             <option value="ease">ease</option>
             <option value="linear">linear</option>
@@ -438,7 +438,7 @@ export function TransitionItem({ value, onChange, onRemove }: TransitionItemProp
             type="text"
             value={delay}
             onChange={(e) => onChange(build({ delay: e.target.value }))}
-            className="flex-1 h-7 text-[11px] px-2 bg-background/70 border border-sidebar-border/70 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
+            className="flex-1 h-7 rounded-full text-[11px] px-2 bg-background/70    font-mono focus:outline-none focus:ring-1 focus:ring-sidebar-ring/40"
             placeholder="0ms"
           />
         </div>

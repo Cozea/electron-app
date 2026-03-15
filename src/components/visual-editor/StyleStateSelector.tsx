@@ -23,7 +23,7 @@ export function StyleStateSelector({ value, onChange, className }: StyleStateSel
     <Select value={value} onValueChange={(next) => onChange(next as StyleState)}>
       <SelectTrigger
         className={cn(
-          'h-8 w-full bg-sidebar-accent/60 border-sidebar-border/70 text-[11px] font-medium text-sidebar-foreground focus:ring-sidebar-ring/40',
+          'h-9 w-full bg-secondary/80 border-none rounded-2xl pl-4 pr-2 text-[11px] font-medium text-sidebar-foreground focus:ring-sidebar-ring/40',
           className
         )}
       >

@@ -207,9 +207,9 @@ export function ProjectSettingsPage() {
   }
 
   return (
-    <div className="h-full">
+    <div className="h-[calc(100%+2.5rem)] -mt-10">
       <ScrollArea className="h-full">
-        <div className="w-full min-h-full px-4 py-6 xl:px-3">
+        <div className="w-full min-h-full px-4 pt-16 pb-6 xl:px-3">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
             <aside className="rounded-2xl border border-border/60 bg-card/50 p-2">
               <div className="space-y-1">

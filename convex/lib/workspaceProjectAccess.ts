@@ -14,6 +14,7 @@ export type WorkspaceProjectPermission =
   | "projects:view"
   | "projects:create"
   | "projects:import"
+  | "projects:archive"
   | "projects:share"
   | "projects:delete"
 
@@ -115,6 +116,20 @@ export function hasWorkspaceProjectPermission(
   return workspaceAccess.access?.permissions.includes(permission) ?? false
 }
 
+function canUseProjectMembershipFallback(
+  workspaceAccess: WorkspaceProjectAccess
+): boolean {
+  if (!workspaceAccess.organization) {
+    return false
+  }
+
+  if (workspaceAccess.organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)) {
+    return true
+  }
+
+  return workspaceAccess.membership !== null
+}
+
 export async function canAccessProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
@@ -133,6 +148,10 @@ export async function canAccessProjectByWorkspaceOrMembership(
 
   if (hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
     return true
+  }
+
+  if (!canUseProjectMembershipFallback(workspaceAccess)) {
+    return false
   }
 
   const membership = await getProjectMembership(ctx, projectId, userId)
@@ -159,6 +178,10 @@ export async function canEditProjectByWorkspaceOrMembership(
     return true
   }
 
+  if (!canUseProjectMembershipFallback(workspaceAccess)) {
+    return false
+  }
+
   const membership = await getProjectMembership(ctx, projectId, userId)
   return membership ? membership.role !== "viewer" : false
 }
@@ -181,6 +204,38 @@ export async function canManageProjectByWorkspaceOrMembership(
 
   if (workspaceAccess.isPersonalOwner) {
     return true
+  }
+
+  if (!canUseProjectMembershipFallback(workspaceAccess)) {
+    return false
+  }
+
+  const membership = await getProjectMembership(ctx, projectId, userId)
+  return membership?.role === "project_manager"
+}
+
+export async function canArchiveProjectByWorkspaceOrMembership(
+  ctx: ReadDatabaseCtx,
+  projectId: Id<"projects">,
+  userId: Id<"users">
+): Promise<boolean> {
+  const project = await ctx.db.get(projectId)
+  if (!project || project.status === "deleted") {
+    return false
+  }
+
+  const workspaceAccess = await getWorkspaceProjectAccess(
+    ctx,
+    project.organizationId,
+    userId
+  )
+
+  if (hasWorkspaceProjectPermission(workspaceAccess, "projects:archive")) {
+    return true
+  }
+
+  if (!canUseProjectMembershipFallback(workspaceAccess)) {
+    return false
   }
 
   const membership = await getProjectMembership(ctx, projectId, userId)

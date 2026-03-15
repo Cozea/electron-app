@@ -213,9 +213,9 @@ export function TerminalTabBar({
                             key={term.id}
                             onClick={() => handleTerminalClick(term.id)}
                             className={cn(
-                                "group flex h-6 shrink-0 items-center rounded-md pl-2.5 pr-1.5 text-xs font-medium transition-[background-color,color,box-shadow]",
+                                "group flex h-6 shrink-0 items-center rounded-full pl-2.5 pr-1.5 text-xs font-medium transition-[background-color,color,box-shadow]",
                                 isActive
-                                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                                    ? "bg-sidebar/90 dark:bg-secondary/80 text-sidebar-foreground dark:text-secondary-foreground"
                                     : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                             )}
                         >
@@ -258,9 +258,9 @@ export function TerminalTabBar({
                 <button
                     onClick={() => onViewChange("problems")}
                     className={cn(
-                        "flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-[background-color,color,box-shadow]",
+                        "flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-[background-color,color,box-shadow]",
                         activeView === "problems"
-                            ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                            ? "bg-sidebar/90 dark:bg-secondary/80 text-sidebar-foreground dark:text-secondary-foreground"
                             : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                     )}
                 >

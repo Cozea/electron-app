@@ -11,21 +11,7 @@
  * the exact same script source.
  */
 
-/** CSS properties we extract from computed styles */
-const STYLE_PROPERTIES = [
-  'display', 'position', 'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
-  'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-  'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-  'overflow', 'cursor', 'zIndex',
-  'fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'letterSpacing', 'textAlign',
-  'textDecoration', 'textTransform',
-  'color', 'backgroundColor',
-  'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat',
-  'border', 'borderWidth', 'borderStyle', 'borderColor', 'borderRadius',
-  'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
-  'boxShadow', 'opacity', 'transform', 'transition',
-  'flexDirection', 'justifyContent', 'alignItems', 'gap', 'flexWrap', 'flexGrow', 'flexShrink',
-] as const
+import { STYLE_PROPERTIES } from './styleProperties'
 
 const OFFSCREEN_SCREENSHOT_ENCODING_ENABLED = (() => {
   const raw =
@@ -59,9 +45,20 @@ export const BRIDGE_SCRIPT = `
   let lastContextMenuTime = 0;
   let selectedTrackRaf = null;
   let lastSelectedRect = null;
+  const SELECTED_ATTR = 'data-cozea-selected';
   const BRIDGE_INSTANCE_ID = Math.random().toString(36).slice(2, 10);
   const BRIDGE_FRAME_NAME = window.name || '(unnamed)';
   const BRIDGE_LOG_PREFIX = '[Cozea Bridge]';
+  window.__COZEA_BRIDGE_INSTANCE_ID__ = BRIDGE_INSTANCE_ID;
+  window.__COZEA_BRIDGE_FRAME_NAME__ = BRIDGE_FRAME_NAME;
+  try {
+    if (document.documentElement) {
+      document.documentElement.setAttribute('data-cozea-bridge-instance-id', BRIDGE_INSTANCE_ID);
+      document.documentElement.setAttribute('data-cozea-bridge-frame-name', BRIDGE_FRAME_NAME);
+    }
+  } catch (_err) {
+    // ignore
+  }
   const TRACE_POST_TYPES = {
     'bridge:ready': true,
     'bridge:close-inspector': true,
@@ -166,6 +163,32 @@ export const BRIDGE_SCRIPT = `
     }
 
     return { title, subtitle };
+  }
+
+  function getSafeClassName(el) {
+    try {
+      if (!el) return '';
+      if (typeof el.className === 'string') return el.className;
+      if (typeof el.getAttribute === 'function') {
+        return el.getAttribute('class') || '';
+      }
+      return '';
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  function updateSelectedMarker(nextSelected) {
+    try {
+      if (currentSelectedElement && currentSelectedElement !== nextSelected && typeof currentSelectedElement.removeAttribute === 'function') {
+        currentSelectedElement.removeAttribute(SELECTED_ATTR);
+      }
+      if (nextSelected && typeof nextSelected.setAttribute === 'function') {
+        nextSelected.setAttribute(SELECTED_ATTR, 'true');
+      }
+    } catch (_err) {
+      // ignore
+    }
   }
 
   function setLabelContent(label, el) {
@@ -309,6 +332,18 @@ export const BRIDGE_SCRIPT = `
     return styles;
   }
 
+  function getVisibleText(el) {
+    if (!el) return undefined;
+    const rawText =
+      typeof el.innerText === 'string' && el.innerText.trim().length > 0
+        ? el.innerText
+        : typeof el.textContent === 'string'
+          ? el.textContent
+          : '';
+    const normalized = rawText.replace(/\\s+/g, ' ').trim();
+    return normalized ? normalized.slice(0, 800) : undefined;
+  }
+
   // Get element path (indices) for re-selection
   function getElementPath(el) {
     const path = [];
@@ -321,6 +356,36 @@ export const BRIDGE_SCRIPT = `
       el = parent;
     }
     return path;
+  }
+
+  function resolveElementFromPath(path, selector) {
+    try {
+      if (Array.isArray(path) && path.length > 0) {
+        let current = document.body;
+        for (const index of path) {
+          if (!current || !current.children || typeof index !== 'number') {
+            current = null;
+            break;
+          }
+          current = current.children[index];
+        }
+        if (current instanceof Element) {
+          return current;
+        }
+      }
+    } catch (_err) {
+      // ignore and fall back to selector
+    }
+
+    if (typeof selector === 'string' && selector.trim().length > 0) {
+      try {
+        return document.querySelector(selector);
+      } catch (_err) {
+        // ignore
+      }
+    }
+
+    return null;
   }
 
   // Try to extract a React component stack for a DOM element (dev-only, best-effort)
@@ -545,7 +610,7 @@ export const BRIDGE_SCRIPT = `
       type: 'bridge:element-hover',
       payload: {
         tagName: el.tagName.toLowerCase(),
-        className: el.className || '',
+        className: getSafeClassName(el),
         boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
       }
     });
@@ -553,6 +618,45 @@ export const BRIDGE_SCRIPT = `
 
   function hideHoverOverlay() {
     hideIndicator(highlightOverlay, highlightLabel);
+  }
+
+  function selectElement(el, messageType, extraPayload) {
+    if (
+      !el ||
+      el === highlightOverlay ||
+      el === selectedOverlay ||
+      el === highlightLabel ||
+      el === selectedLabel ||
+      el === document.documentElement
+    ) {
+      return false;
+    }
+
+    updateSelectedMarker(el);
+    currentSelectedElement = el;
+    const rect = el.getBoundingClientRect();
+
+    showIndicator(selectedOverlay, selectedLabel, el, rect);
+    hideIndicator(highlightOverlay, highlightLabel);
+    startSelectionTracking();
+
+    postToParent({
+      type: messageType,
+      payload: {
+        tagName: el.tagName.toLowerCase(),
+        className: getSafeClassName(el),
+        id: el.id || undefined,
+        selector: getSelector(el),
+        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        computedStyles: getComputedStylesMap(el),
+        htmlSnippet: el.outerHTML.slice(0, 500),
+        textContent: getVisibleText(el),
+        path: getElementPath(el),
+        ...(extraPayload || {})
+      }
+    });
+
+    return true;
   }
 
   // Handle click during inspection
@@ -570,28 +674,7 @@ export const BRIDGE_SCRIPT = `
       return;
     }
 
-    currentSelectedElement = el;
-    const rect = el.getBoundingClientRect();
-
-    // Show selection overlay, hide hover
-    showIndicator(selectedOverlay, selectedLabel, el, rect);
-    hideIndicator(highlightOverlay, highlightLabel);
-    startSelectionTracking();
-
-    postToParent({
-      type: 'bridge:element-selected',
-      payload: {
-        tagName: el.tagName.toLowerCase(),
-        className: el.className || '',
-        id: el.id || undefined,
-        selector: getSelector(el),
-        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-        computedStyles: getComputedStylesMap(el),
-        htmlSnippet: el.outerHTML.slice(0, 500),
-        textContent: el.textContent?.trim().slice(0, 200),
-        path: getElementPath(el)
-      }
-    });
+    selectElement(el, 'bridge:element-selected');
   }
 
   // Handle right-click during inspection (captures context)
@@ -616,30 +699,10 @@ export const BRIDGE_SCRIPT = `
       el === document.documentElement
     ) return;
 
-    currentSelectedElement = el;
-    const rect = el.getBoundingClientRect();
-
-    // Show selection overlay, hide hover
-    showIndicator(selectedOverlay, selectedLabel, el, rect);
-    hideIndicator(highlightOverlay, highlightLabel);
-    startSelectionTracking();
-
-    postToParent({
-      type: 'bridge:element-contextmenu',
-      payload: {
-        tagName: el.tagName.toLowerCase(),
-        className: el.className || '',
-        id: el.id || undefined,
-        selector: getSelector(el),
-        boundingRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-        computedStyles: getComputedStylesMap(el),
-        htmlSnippet: el.outerHTML.slice(0, 500),
-        textContent: el.textContent?.trim().slice(0, 200),
-        path: getElementPath(el),
-        clientX: e.clientX,
-        clientY: e.clientY,
-        react: getReactComponentInfo(el),
-      }
+    selectElement(el, 'bridge:element-contextmenu', {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      react: getReactComponentInfo(el),
     });
   }
 
@@ -784,6 +847,7 @@ export const BRIDGE_SCRIPT = `
 
   // Clear selection
   function clearSelection() {
+    updateSelectedMarker(null);
     currentSelectedElement = null;
     hideIndicator(selectedOverlay, selectedLabel);
     hideIndicator(highlightOverlay, highlightLabel);
@@ -843,6 +907,26 @@ export const BRIDGE_SCRIPT = `
       case 'host:clear-selection':
         bridgeLog('Clear selection requested by host');
         clearSelection();
+        break;
+
+      case 'host:restore-selection':
+        if (!payload) break;
+        {
+          const restored = resolveElementFromPath(payload.path, payload.selector);
+          if (!restored) {
+            bridgeLog('Restore selection failed', {
+              selector: payload.selector || null,
+              hasPath: Array.isArray(payload.path),
+            });
+            break;
+          }
+
+          bridgeLog('Restoring selection from host', {
+            selector: payload.selector || null,
+            hasPath: Array.isArray(payload.path),
+          });
+          selectElement(restored, 'bridge:element-selected');
+        }
         break;
     }
   });

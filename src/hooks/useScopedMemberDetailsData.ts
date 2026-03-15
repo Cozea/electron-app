@@ -14,7 +14,7 @@ interface UseScopedMemberDetailsDataOptions {
 export function useScopedMemberDetailsData(
   options: UseScopedMemberDetailsDataOptions,
 ) {
-  const { user, logout } = useAuth()
+  const { user, logout, convexUserId } = useAuth()
   const settingsPage = useScopedSettingsPage({
     route: options.route ?? '/teams',
     surfaceId: 'members',
@@ -27,8 +27,12 @@ export function useScopedMemberDetailsData(
 
   const member = useQuery(
     api.organizations.getMember,
-    convexOrg?._id && options.memberId
-      ? { orgId: convexOrg._id, memberId: options.memberId as Id<'members'> }
+    convexOrg?._id && convexUserId && options.memberId
+      ? {
+          orgId: convexOrg._id,
+          viewerUserId: convexUserId,
+          memberId: options.memberId as Id<'members'>,
+        }
       : 'skip',
   )
 
@@ -42,7 +46,9 @@ export function useScopedMemberDetailsData(
   )
   const organizationMembers = useQuery(
     api.organizations.getMembers,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip',
+    convexOrg?._id && convexUserId
+      ? { orgId: convexOrg._id, viewerUserId: convexUserId }
+      : 'skip',
   )
 
   const memberName = useMemo(() => {

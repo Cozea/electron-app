@@ -92,9 +92,9 @@ export function ProjectDetailPage() {
 
   // Editor Layout - always shown, with tabs when files are open
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-[calc(100%+2.5rem)] -mt-10 bg-background overflow-hidden">
       {/* Editor Content */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative pt-10">
         {activeFile ? (
           <FileViewer path={activeFile} />
         ) : (

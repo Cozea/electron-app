@@ -86,6 +86,7 @@ export interface SelectedElement {
   className: string
   id?: string
   selector: string
+  path?: number[]
   boundingRect: { x: number; y: number; width: number; height: number }
   computedStyles?: Partial<ElementStyles>
   htmlSnippet: string
@@ -185,6 +186,29 @@ const initialState = {
   openingAfterSwitch: false,
 }
 
+function isSameSelectedElement(
+  current: SelectedElement | null,
+  next: SelectedElement | null,
+): boolean {
+  if (!current || !next) return false
+
+  if (
+    current.path &&
+    next.path &&
+    current.path.length > 0 &&
+    current.path.length === next.path.length
+  ) {
+    return current.path.every((segment, index) => segment === next.path?.[index])
+  }
+
+  return (
+    current.selector === next.selector &&
+    current.tagName === next.tagName &&
+    current.id === next.id &&
+    current.className === next.className
+  )
+}
+
 export const useVisualEditorStore = create<VisualEditorState>()(
   persist(
     immer((set, get) => ({
@@ -236,9 +260,38 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     }),
 
     setSelectedElement: (element) => set((state) => {
+      const preservePendingChanges = isSameSelectedElement(state.selectedElement, element)
+
+      if (element) {
+        console.log('[VisualEditor][store:setSelectedElement]', {
+          selector: element.selector,
+          tagName: element.tagName,
+          path: element.path ?? null,
+          textContent: element.textContent ?? null,
+          preservePendingChanges,
+          prevPath: state.selectedElement?.path ?? null,
+          prevSelector: state.selectedElement?.selector ?? null,
+          computedStylesKeys: element.computedStyles ? Object.keys(element.computedStyles).slice(0, 10) : [],
+          computedStyles: {
+            fontFamily: element.computedStyles?.fontFamily ?? null,
+            fontSize: element.computedStyles?.fontSize ?? null,
+            fontWeight: element.computedStyles?.fontWeight ?? null,
+            lineHeight: element.computedStyles?.lineHeight ?? null,
+            letterSpacing: element.computedStyles?.letterSpacing ?? null,
+            textAlign: element.computedStyles?.textAlign ?? null,
+            color: element.computedStyles?.color ?? null,
+            paddingTop: element.computedStyles?.paddingTop ?? null,
+          },
+        })
+      } else {
+        console.log('[VisualEditor][store:setSelectedElement]', null)
+      }
+
       state.selectedElement = element
-      state.pendingChanges = {}
-      state.pendingTextChange = null
+      if (!preservePendingChanges) {
+        state.pendingChanges = {}
+        state.pendingTextChange = null
+      }
       if (element) {
         state.isOpen = true
       }

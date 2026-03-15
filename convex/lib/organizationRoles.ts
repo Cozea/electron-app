@@ -94,7 +94,7 @@ function uniquePermissions(
   ))]
 }
 
-function resolveEffectivePermissions(
+export function resolveEffectivePermissions(
   inheritedPermissions: readonly Permission[],
   directGrants: readonly Permission[],
   directDenies: readonly Permission[]
@@ -292,13 +292,19 @@ export async function hasOrganizationPermission(
   permission: Permission
 ): Promise<boolean> {
   if (!membership) return false
-  const resolved = await resolveOrganizationRole(
-    ctx,
-    membership.organizationId,
-    membership.role,
-    membership.roleId
-  )
-  return resolved.permissions.includes(permission)
+  const access = await resolveMemberAccess(ctx, membership)
+  return access?.permissions.includes(permission) ?? false
+}
+
+export async function hasAnyOrganizationPermission(
+  ctx: ReadDatabaseCtx,
+  membership: Doc<"members"> | null,
+  permissions: readonly Permission[]
+): Promise<boolean> {
+  if (!membership) return false
+  const access = await resolveMemberAccess(ctx, membership)
+  if (!access) return false
+  return permissions.some((permission) => access.permissions.includes(permission))
 }
 
 export async function resolveMemberAccess(

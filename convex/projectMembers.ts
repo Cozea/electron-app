@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 import {
   canAccessProjectByWorkspaceOrMembership,
+  canEditProjectByWorkspaceOrMembership,
   getCanonicalOrganizationMembership,
   getWorkspaceProjectAccess,
   hasWorkspaceProjectPermission,
@@ -178,6 +179,28 @@ export const isProjectMemberForServer = query({
       )
       .first()
     return !!membership
+  },
+})
+
+// Server-only project access check for authenticated gateway routes.
+export const getProjectAccessForServer = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const [canAccess, canEdit] = await Promise.all([
+      canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
+      canEditProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
+    ])
+
+    return {
+      canAccess,
+      canEdit,
+    }
   },
 })
 
@@ -520,41 +543,15 @@ export const updateMemberLocalPath = mutation({
         throw new Error("Unauthorized to access this project")
       }
 
-      // If the user is part of the project's organization, create a default
-      // membership so we can store per-user/machine localPath without requiring
-      // explicit project invites.
-      const orgMembership = await ctx.db
-        .query("members")
-        .withIndex("by_organization_and_user", (q) =>
-          q.eq("organizationId", project.organizationId).eq("userId", args.userId)
-        )
-        .collect()
-      const canonicalOrgMembership = [...orgMembership].sort((a, b) => {
-        const roleScore = (role: "admin" | "member" | "viewer") =>
-          role === "admin" ? 3 : role === "member" ? 2 : 1
-        const roleDelta = roleScore(b.role) - roleScore(a.role)
-        if (roleDelta !== 0) return roleDelta
-        const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
-        if (updatedDelta !== 0) return updatedDelta
-        return String(a._id).localeCompare(String(b._id))
-      })[0]
-
-      if (!canonicalOrgMembership) {
-        throw new Error("User is not a member of this organization")
+      if (!workspaceAccess.isPersonalOwner) {
+        return { success: true }
       }
-
-      const role =
-        canonicalOrgMembership.role === "admin"
-          ? "project_manager"
-          : canonicalOrgMembership.role === "member"
-            ? "developer"
-            : "viewer"
 
       const now = Date.now()
       await ctx.db.insert("projectMembers", {
         projectId: args.projectId,
         userId: args.userId,
-        role,
+        role: "project_manager",
         addedAt: now,
         addedBy: args.userId,
         localPath: args.localPath,

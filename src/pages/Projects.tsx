@@ -58,7 +58,7 @@ type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
 
 export function Projects() {
   const { user, convexUserId, logout } = useAuth()
-  const { personalScoped, workspaceScoped, convexOrg, capabilities } = useScopedAppContext()
+  const { personalScoped, workspaceScoped, convexOrg, capabilities, permissions } = useScopedAppContext()
   const navigate = useViewTransitionNavigate()
   const [sortBy, setSortBy] = useState<SortOption>('last_modified')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -78,7 +78,12 @@ export function Projects() {
   // Get organization members to display names
   const members = useQuery(
     api.organizations.getMembers,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
+    workspaceScoped &&
+    convexOrg?._id &&
+    convexUserId &&
+    permissions.includes('members:view')
+      ? { orgId: convexOrg._id, viewerUserId: convexUserId }
+      : 'skip'
   )
 
   const userMap = useMemo(() => {

@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { v } from "convex/values"
+import { canAccessProjectByWorkspaceOrMembership } from "./lib/workspaceProjectAccess"
 
 const SYNTHETIC_TASK_SOURCE_VALIDATOR = v.union(
   v.literal("page"),
@@ -152,14 +153,13 @@ async function getAccessibleProject(
   projectId: Id<"projects">,
   userId: Id<"users">
 ): Promise<Doc<"projects">> {
-  const membership = await ctx.db
-    .query("projectMembers")
-    .withIndex("by_project_and_user", (q) =>
-      q.eq("projectId", projectId).eq("userId", userId)
-    )
-    .first()
+  const canAccess = await canAccessProjectByWorkspaceOrMembership(
+    ctx,
+    projectId,
+    userId
+  )
 
-  if (!membership) {
+  if (!canAccess) {
     throw new Error("Unauthorized")
   }
 

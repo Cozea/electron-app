@@ -34,14 +34,21 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
   const workspaceScoped = settingsPage.workspaceScoped
   const billingOrganizationId = scopedWorkspace?.organizationId ?? null
   const canLoadWorkspaceBillingData = !settingsPage.isWorkspaceAccessDenied
+  const canViewWorkspaceMembers = settingsPage.workspaceAccess.permissions.includes('members:view')
   const billingRoute =
     settingsPage.surface?.routes[settingsPage.scopeKind] ??
     (workspaceScoped ? WORKSPACE_BILLING_ROUTE : PERSONAL_BILLING_ROUTE)
 
-  const members = useQuery(
+  const membersQuery = useQuery(
     api.organizations.getMembers,
-    convexOrg?._id && canLoadWorkspaceBillingData ? { orgId: convexOrg._id } : 'skip',
+    convexOrg?._id &&
+    convexUserId &&
+    canLoadWorkspaceBillingData &&
+    canViewWorkspaceMembers
+      ? { orgId: convexOrg._id, viewerUserId: convexUserId }
+      : 'skip',
   )
+  const members = canViewWorkspaceMembers ? membersQuery : []
   const memberAccessResolved = settingsPage.workspaceAccess.memberAccess !== undefined
   const canLoadPersonalBillingData =
     !workspaceScoped &&
@@ -65,7 +72,11 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
 
   useHydrateWorkspaceMembers({
     workspaceOrganizationId: billingOrganizationId,
-    enabled: workspaceScoped && canLoadWorkspaceBillingData && memberAccessResolved,
+    enabled:
+      workspaceScoped &&
+      canLoadWorkspaceBillingData &&
+      memberAccessResolved &&
+      canViewWorkspaceMembers,
   })
 
   const seatManagement = useQuery(

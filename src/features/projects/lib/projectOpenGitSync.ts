@@ -248,13 +248,6 @@ export async function prepareGitProjectForOpen({
       effectiveLocalPath = cloneResult.localPath
       changed = true
 
-      if (userId && updateMemberLocalPath) {
-        await updateMemberLocalPath({
-          projectId: project._id,
-          userId,
-          localPath: effectiveLocalPath,
-        })
-      }
     } else {
       onProgress?.('Checking git repository...')
       const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
@@ -778,6 +771,14 @@ export async function prepareGitProjectForOpen({
     })
     return result
   }
+
+    if (userId && updateMemberLocalPath) {
+      await updateMemberLocalPath({
+        projectId: project._id,
+        userId,
+        localPath: effectiveLocalPath,
+      })
+    }
 
     const result: PrepareGitProjectForOpenResult = {
       localPath: effectiveLocalPath,

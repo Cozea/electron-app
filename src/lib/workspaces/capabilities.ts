@@ -114,13 +114,17 @@ export function resolveWorkspaceCapabilities(
   const canViewWorkspaceMembers = hasAnyPermission(permissions, [
     'members:view',
     'members:invite',
+    'members:remove',
+    'members:update_role',
     'invitations:send',
     'invitations:view',
+    'invitations:revoke',
   ])
   const canManageWorkspaceMembers = hasAnyPermission(permissions, [
     'members:invite',
     'invitations:send',
     'members:remove',
+    'members:update_role',
     'invitations:revoke',
   ])
   const canViewWorkspaceRoles = hasAnyPermission(permissions, [
