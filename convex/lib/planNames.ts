@@ -1,19 +1,41 @@
-export type WorkspacePlanId = 'free' | 'pro' | 'max' | 'startup' | 'team' | 'enterprise'
+export type PersonalPlanId = 'free' | 'pro' | 'max' | 'startup' | 'team' | 'enterprise'
+export type OrganizationPlanId = 'free' | 'startup' | 'team' | 'pro' | 'max' | 'enterprise'
+export type WorkspacePlanId = PersonalPlanId
 
-const PLAN_LABELS: Record<WorkspacePlanId, string> = {
+const PERSONAL_PLAN_LABELS: Record<PersonalPlanId, string> = {
   free: 'Free',
   pro: 'Pro',
   max: 'Max',
   startup: 'Startup',
-  // Legacy alias
   team: 'Startup',
   enterprise: 'Enterprise',
 }
 
-export function getWorkspacePlanLabel(plan?: string | null): string {
-  if (!plan) return PLAN_LABELS.free
-  if (plan in PLAN_LABELS) {
-    return PLAN_LABELS[plan as WorkspacePlanId]
+const ORGANIZATION_PLAN_LABELS: Record<OrganizationPlanId, string> = {
+  free: 'Free',
+  startup: 'Startup',
+  team: 'Startup',
+  pro: 'Startup',
+  max: 'Startup',
+  enterprise: 'Enterprise',
+}
+
+export function getPersonalPlanLabel(plan?: string | null): string {
+  if (!plan) return PERSONAL_PLAN_LABELS.free
+  if (plan in PERSONAL_PLAN_LABELS) {
+    return PERSONAL_PLAN_LABELS[plan as PersonalPlanId]
   }
-  return PLAN_LABELS.free
+  return PERSONAL_PLAN_LABELS.free
+}
+
+export function getOrganizationPlanLabel(plan?: string | null): string {
+  if (!plan) return ORGANIZATION_PLAN_LABELS.free
+  if (plan in ORGANIZATION_PLAN_LABELS) {
+    return ORGANIZATION_PLAN_LABELS[plan as OrganizationPlanId]
+  }
+  return ORGANIZATION_PLAN_LABELS.free
+}
+
+export function getWorkspacePlanLabel(plan?: string | null): string {
+  return getPersonalPlanLabel(plan)
 }

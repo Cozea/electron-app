@@ -1,6 +1,16 @@
 import { mutation, query, internalMutation } from "./_generated/server"
 import { v } from "convex/values"
-import { hasPermission, type Role } from "./lib/permissions"
+import type { Doc, Id } from "./_generated/dataModel"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
+import {
+  hasOrganizationPermission,
+  organizationPermissionValidator,
+  resolveCompatibleOrganizationRoleIdForBaseRole,
+  resolveInvitationAccess,
+  resolveOrganizationRole,
+  roleBaseValidator,
+} from "./lib/organizationRoles"
+import { PERMISSION_VALUES, type Permission } from "./lib/permissions"
 
 // Generate a cryptographically secure random token.
 function generateToken(): string {
@@ -11,6 +21,34 @@ function generateToken(): string {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
+}
+
+function sanitizePermissionOverrides(
+  grants: Permission[] | undefined,
+  denies: Permission[] | undefined
+) {
+  const normalizedGrants = [...new Set((grants ?? []).filter((permission) => PERMISSION_VALUES.includes(permission)))]
+  const normalizedDenies = [...new Set((denies ?? []).filter((permission) => PERMISSION_VALUES.includes(permission)))]
+
+  for (const permission of normalizedGrants) {
+    if (normalizedDenies.includes(permission)) {
+      throw new Error(`Permission ${permission} cannot be both granted and denied`)
+    }
+  }
+
+  return {
+    permissionGrants: normalizedGrants,
+    permissionDenies: normalizedDenies,
+  }
+}
+
+function normalizeWorkOSInvitationState(
+  state: string | null | undefined
+): "pending" | "accepted" | "expired" {
+  const normalized = state?.trim().toLowerCase()
+  if (normalized === "pending") return "pending"
+  if (normalized === "accepted") return "accepted"
+  return "expired"
 }
 
 function rolePriority(role: "admin" | "member" | "viewer"): number {
@@ -39,25 +77,34 @@ function pickCanonicalMembership<
   })[0]
 }
 
+async function getCanonicalOrgMembership(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  userId: Id<"users">
+): Promise<Doc<"members"> | null> {
+  const memberships = await ctx.db
+    .query("members")
+    .withIndex("by_organization_and_user", (q) =>
+      q.eq("organizationId", organizationId).eq("userId", userId)
+    )
+    .collect()
+  return pickCanonicalMembership(memberships)
+}
+
 // Invite a user to an organization.
 export const create = mutation({
   args: {
     orgId: v.id("organizations"),
     invitedBy: v.id("users"),
     email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("member"), v.literal("viewer")),
+    role: roleBaseValidator,
+    roleId: v.optional(v.id("organizationRoles")),
     workosInvitationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const inviterMemberships = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.orgId).eq("userId", args.invitedBy)
-      )
-      .collect()
-    const inviterMembership = pickCanonicalMembership(inviterMemberships)
-
-    if (!inviterMembership || !hasPermission(inviterMembership.role as Role, "invitations:send")) {
+    const inviterMembership = await getCanonicalOrgMembership(ctx, args.orgId, args.invitedBy)
+    const allowed = await hasOrganizationPermission(ctx, inviterMembership, "invitations:send")
+    if (!inviterMembership || !allowed) {
       throw new Error("Unauthorized to invite members")
     }
 
@@ -107,11 +154,18 @@ export const create = mutation({
 
     const now = Date.now()
     const token = generateToken()
+    const resolvedRole = await resolveOrganizationRole(
+      ctx,
+      args.orgId,
+      args.role,
+      args.roleId
+    )
 
     const invitationId = await ctx.db.insert("invitations", {
       organizationId: args.orgId,
       email: args.email,
-      role: args.role,
+      role: resolvedRole.baseRole,
+      roleId: resolvedRole.roleId ?? undefined,
       invitedBy: args.invitedBy,
       token,
       workosInvitationId: args.workosInvitationId,
@@ -126,7 +180,12 @@ export const create = mutation({
       action: "member.invited",
       resourceType: "invitation",
       resourceId: invitationId,
-      metadata: { email: args.email, role: args.role },
+      metadata: {
+        email: args.email,
+        role: resolvedRole.baseRole,
+        roleKey: resolvedRole.key,
+        roleName: resolvedRole.name,
+      },
       timestamp: now,
     })
 
@@ -152,13 +211,285 @@ export const listForOrganization = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
     const now = Date.now()
-    return await ctx.db
+    const invitations = await ctx.db
       .query("invitations")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
       .filter((q) =>
         q.and(q.eq(q.field("status"), "pending"), q.gt(q.field("expiresAt"), now))
       )
       .collect()
+
+    const members = await ctx.db
+      .query("members")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .collect()
+
+    const activeMemberEmails = new Set<string>()
+    for (const membership of members) {
+      const user = await ctx.db.get(membership.userId)
+      if (user?.email) {
+        activeMemberEmails.add(normalizeEmail(user.email))
+      }
+    }
+
+    const visibleInvitations = invitations.filter(
+      (invitation) => !activeMemberEmails.has(normalizeEmail(invitation.email))
+    )
+
+    return Promise.all(
+      visibleInvitations.map(async (invitation) => {
+        const role = await resolveOrganizationRole(
+          ctx,
+          args.orgId,
+          invitation.role,
+          invitation.roleId
+        )
+        return {
+          ...invitation,
+          roleId: role.roleId,
+          roleKey: role.key,
+          roleName: role.name,
+          roleBaseRole: role.baseRole,
+          inheritedPermissions: role.permissions,
+          directGrants: invitation.permissionGrants ?? [],
+          directDenies: invitation.permissionDenies ?? [],
+          permissions: (
+            await resolveInvitationAccess(ctx, invitation)
+          )?.permissions ?? role.permissions,
+        }
+      })
+    )
+  },
+})
+
+export const reconcileForOrganizationFromWorkOS = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    syncedBy: v.id("users"),
+    invitations: v.array(
+      v.object({
+        workosInvitationId: v.string(),
+        email: v.string(),
+        role: v.optional(roleBaseValidator),
+        state: v.string(),
+        expiresAt: v.optional(v.number()),
+        createdAt: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.syncedBy)
+    const allowed = await hasOrganizationPermission(ctx, membership, "invitations:revoke")
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized")
+    }
+
+    const existingInvitations = await ctx.db
+      .query("invitations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .collect()
+
+    const byWorkosId = new Map<string, (typeof existingInvitations)[number]>()
+    const byPendingEmail = new Map<string, (typeof existingInvitations)[number]>()
+
+    for (const invitation of existingInvitations) {
+      if (invitation.workosInvitationId) {
+        byWorkosId.set(invitation.workosInvitationId, invitation)
+      }
+      if (invitation.status === "pending") {
+        byPendingEmail.set(normalizeEmail(invitation.email), invitation)
+      }
+    }
+
+    const now = Date.now()
+
+    for (const workosInvitation of args.invitations) {
+      const normalizedEmail = normalizeEmail(workosInvitation.email)
+      const nextStatus = normalizeWorkOSInvitationState(workosInvitation.state)
+      const nextBaseRole = workosInvitation.role ?? "member"
+      const nextRole = await resolveOrganizationRole(
+        ctx,
+        args.orgId,
+        nextBaseRole
+      )
+      const existing =
+        byWorkosId.get(workosInvitation.workosInvitationId) ??
+        byPendingEmail.get(normalizedEmail) ??
+        null
+      const nextRoleId = await resolveCompatibleOrganizationRoleIdForBaseRole(
+        ctx,
+        args.orgId,
+        nextRole.baseRole,
+        existing?.roleId
+      )
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          email: workosInvitation.email,
+          role: nextRole.baseRole,
+          roleId: nextRoleId ?? existing.roleId,
+          workosInvitationId: workosInvitation.workosInvitationId,
+          status: nextStatus,
+          expiresAt: workosInvitation.expiresAt ?? existing.expiresAt,
+          createdAt: workosInvitation.createdAt ?? existing.createdAt,
+        })
+        continue
+      }
+
+      await ctx.db.insert("invitations", {
+        organizationId: args.orgId,
+        email: workosInvitation.email,
+        role: nextRole.baseRole,
+        roleId: nextRoleId ?? undefined,
+        invitedBy: args.syncedBy,
+        token: generateToken(),
+        workosInvitationId: workosInvitation.workosInvitationId,
+        status: nextStatus,
+        expiresAt: workosInvitation.expiresAt ?? now + 7 * 24 * 60 * 60 * 1000,
+        createdAt: workosInvitation.createdAt ?? now,
+      })
+    }
+
+    return { synced: args.invitations.length }
+  },
+})
+
+export const updateRoleByWorkOSInvitationId = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    workosInvitationId: v.string(),
+    role: roleBaseValidator,
+    roleId: v.optional(v.id("organizationRoles")),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const canAssignRoles =
+      (await hasOrganizationPermission(ctx, membership, "roles:assign")) ||
+      (await hasOrganizationPermission(ctx, membership, "members:update_role")) ||
+      (await hasOrganizationPermission(ctx, membership, "invitations:send"))
+
+    if (!membership || !canAssignRoles) {
+      throw new Error("Unauthorized")
+    }
+
+    const invitation = (
+      await ctx.db
+        .query("invitations")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+        .collect()
+    ).find((entry) => entry.workosInvitationId === args.workosInvitationId)
+
+    if (!invitation) {
+      throw new Error("Invitation not found")
+    }
+
+    if (invitation.status !== "pending") {
+      throw new Error("Only pending invitations can be updated")
+    }
+
+    const resolvedRole = await resolveOrganizationRole(
+      ctx,
+      args.orgId,
+      args.role,
+      args.roleId
+    )
+
+    await ctx.db.patch(invitation._id, {
+      role: resolvedRole.baseRole,
+      roleId: resolvedRole.roleId ?? invitation.roleId,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: invitation.organizationId,
+      userId: args.userId,
+      action: "invitation.role_updated",
+      resourceType: "invitation",
+      resourceId: invitation._id,
+      metadata: {
+        email: invitation.email,
+        role: resolvedRole.baseRole,
+        roleKey: resolvedRole.key,
+        roleName: resolvedRole.name,
+      },
+      timestamp: Date.now(),
+    })
+
+    return {
+      invitationId: invitation._id,
+      roleId: resolvedRole.roleId,
+      roleKey: resolvedRole.key,
+      roleName: resolvedRole.name,
+      roleBaseRole: resolvedRole.baseRole,
+      permissions: resolvedRole.permissions,
+    }
+  },
+})
+
+export const updatePermissionOverrides = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    invitationId: v.id("invitations"),
+    permissionGrants: v.array(organizationPermissionValidator),
+    permissionDenies: v.array(organizationPermissionValidator),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const canAssignRoles =
+      (await hasOrganizationPermission(ctx, membership, "roles:assign")) ||
+      (await hasOrganizationPermission(ctx, membership, "members:update_role")) ||
+      (await hasOrganizationPermission(ctx, membership, "invitations:send"))
+
+    if (!membership || !canAssignRoles) {
+      throw new Error("Unauthorized")
+    }
+
+    const invitation = await ctx.db.get(args.invitationId)
+    if (!invitation || invitation.organizationId !== args.orgId) {
+      throw new Error("Invitation not found")
+    }
+
+    if (invitation.status !== "pending") {
+      throw new Error("Only pending invitations can be updated")
+    }
+
+    const sanitized = sanitizePermissionOverrides(
+      args.permissionGrants,
+      args.permissionDenies
+    )
+
+    await ctx.db.patch(args.invitationId, {
+      permissionGrants: sanitized.permissionGrants,
+      permissionDenies: sanitized.permissionDenies,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: invitation.organizationId,
+      userId: args.userId,
+      action: "invitation.permissions_updated",
+      resourceType: "invitation",
+      resourceId: invitation._id,
+      metadata: {
+        email: invitation.email,
+        ...sanitized,
+      },
+      timestamp: Date.now(),
+    })
+
+    const access = await resolveInvitationAccess(ctx, {
+      ...invitation,
+      permissionGrants: sanitized.permissionGrants,
+      permissionDenies: sanitized.permissionDenies,
+    })
+
+    return {
+      invitationId: invitation._id,
+      directGrants: sanitized.permissionGrants,
+      directDenies: sanitized.permissionDenies,
+      inheritedPermissions: access?.inheritedPermissions ?? [],
+      permissions: access?.permissions ?? [],
+    }
   },
 })
 
@@ -193,14 +524,9 @@ export const revoke = mutation({
       throw new Error("Invitation not found")
     }
 
-    const memberships = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", invitation.organizationId).eq("userId", args.userId)
-      )
-      .collect()
-    const membership = pickCanonicalMembership(memberships)
-    if (!membership || !hasPermission(membership.role as Role, "invitations:revoke")) {
+    const membership = await getCanonicalOrgMembership(ctx, invitation.organizationId, args.userId)
+    const allowed = await hasOrganizationPermission(ctx, membership, "invitations:revoke")
+    if (!membership || !allowed) {
       throw new Error("Unauthorized")
     }
 

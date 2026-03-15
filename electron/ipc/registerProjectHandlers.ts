@@ -1,4 +1,4 @@
-import type { IpcMain } from 'electron'
+import { shell, type IpcMain } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -8,6 +8,7 @@ import type {
   CopyDirectorySnapshotResult,
   CreateProjectFolderResult,
   FileEntry,
+  StorageActionResult,
   ImportSourcePreflightIssue,
   ImportSourcePreflightResult,
   ListFilesResult,
@@ -429,6 +430,37 @@ npm-debug.log*
         return null
       }
       return resolveKnownProjectPath(settings.projectsDirectory, { slug, projectId })
+    },
+  )
+
+  ipcMain.handle(
+    'project:openFolder',
+    async (_event, { projectPath }: { projectPath: string }): Promise<StorageActionResult> => {
+      if (!projectPath || typeof projectPath !== 'string') {
+        return {
+          success: false,
+          error: 'Project path is required.',
+        }
+      }
+
+      try {
+        const resolvedPath = path.resolve(projectPath)
+        const stats = await fs.promises.stat(resolvedPath)
+        if (!stats.isDirectory()) {
+          return {
+            success: false,
+            error: 'Project folder does not exist.',
+          }
+        }
+
+        const errorMessage = await shell.openPath(resolvedPath)
+        return errorMessage ? { success: false, error: errorMessage } : { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to open project folder.',
+        }
+      }
     },
   )
 

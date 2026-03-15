@@ -11,7 +11,11 @@ import {
     Trash2,
     Cloud,
     Check,
-    ImageOff
+    ImageOff,
+    FolderOpen,
+    Settings,
+    Archive,
+    RotateCcw
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -56,6 +60,7 @@ interface ProjectSummary extends ProjectOpenGitProjectLike {
 interface ProjectCardProps {
     project: ProjectSummary
     userId?: Id<'users'>
+    workspaceScoped: boolean
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -77,13 +82,16 @@ type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
-export function ProjectCard({ project, userId }: ProjectCardProps) {
+export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const isInViewport = useInViewportOnce(cardRef)
-    const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isArchiving, setIsArchiving] = useState(false)
+  const [isRestoring, setIsRestoring] = useState(false)
+  const [isOpeningFolder, setIsOpeningFolder] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [syncMessage, setSyncMessage] = useState('')
   const [syncDetail, setSyncDetail] = useState<string | null>(null)
@@ -91,13 +99,15 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
-    const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-    const [localPath, setLocalPath] = useState<string | null>(null)
+  const archiveProject = useMutation(api.projects.archive)
+  const restoreProject = useMutation(api.projects.restore)
+  const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
+  const [localPath, setLocalPath] = useState<string | null>(null)
 
     // Get preview image URL
     const previewImageUrl = useQuery(
         api.projects.getPreviewImageUrl,
-        project.status !== 'draft' ? { projectId: project._id } : 'skip'
+        project.status !== 'draft' && userId ? { projectId: project._id, userId } : 'skip'
     )
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
@@ -194,7 +204,9 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
 
         } catch (error) {
             console.error('[ProjectCard] Sync check failed:', error)
-            const presentation = formatProjectCloudAccessError(error)
+            const presentation = formatProjectCloudAccessError(error, 'Failed to prepare project', {
+                workspaceScoped,
+            })
             setSyncState('error')
             setSyncMessage(presentation.summary)
             setSyncDetail(presentation.detail)
@@ -210,7 +222,7 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                 }, 2000)
             }
         }
-    }, [convex, localPath, navigate, preloadProjectDestination, project, syncState, updateMemberLocalPath, userId])
+    }, [convex, localPath, navigate, preloadProjectDestination, project, syncState, updateMemberLocalPath, userId, workspaceScoped])
 
     const handleDelete = async () => {
         if (!userId) return
@@ -254,9 +266,123 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
         }
     }
 
+  const handleArchive = async () => {
+    if (!userId || isArchiving) return
+
+    const result = await window.electronAPI.dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Cancel', 'Archive Project'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Archive Project',
+      message: `Archive ${project.name}?`,
+      detail: 'The project will be hidden from active views and can be restored later.',
+    })
+
+    if (result.response !== 1) {
+      return
+    }
+
+    setIsArchiving(true)
+    try {
+      await archiveProject({
+        projectId: project._id,
+        userId,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to archive project'
+      const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Archive Failed',
+        message: 'Failed to archive project',
+        detail: cleanMessage,
+      })
+    } finally {
+      setIsArchiving(false)
+    }
+  }
+
+  const handleRestore = async () => {
+    if (!userId || isRestoring) return
+
+    const result = await window.electronAPI.dialog.showMessageBox({
+      type: 'question',
+      buttons: ['Cancel', 'Restore Project'],
+      defaultId: 1,
+      cancelId: 0,
+      title: 'Restore Project',
+      message: `Restore ${project.name}?`,
+      detail: 'The project will return to active views.',
+    })
+
+    if (result.response !== 1) {
+      return
+    }
+
+    setIsRestoring(true)
+    try {
+      await restoreProject({
+        projectId: project._id,
+        userId,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to restore project'
+      const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Restore Failed',
+        message: 'Failed to restore project',
+        detail: cleanMessage,
+      })
+    } finally {
+      setIsRestoring(false)
+    }
+  }
+
+  const handleOpenFolder = async () => {
+    if (isOpeningFolder) return
+
+    setIsOpeningFolder(true)
+    try {
+      const resolvedLocalPath =
+        localPath ??
+        await window.electronAPI.project.getLocalPath({
+          slug: project.slug,
+          projectId: String(project._id),
+        })
+
+      if (!resolvedLocalPath) {
+        throw new Error('Project folder is not available on this device.')
+      }
+
+      setLocalPath(resolvedLocalPath)
+
+      const result = await window.electronAPI.project.openFolder({
+        projectPath: resolvedLocalPath,
+      })
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to open project folder.')
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to open project folder.'
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Open Folder Failed',
+        message: 'Failed to open project folder',
+        detail: message,
+      })
+    } finally {
+      setIsOpeningFolder(false)
+    }
+  }
+
     // Derived state
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
+    const isArchiveActionPending = isArchiving || isRestoring
     return (
         <div className="self-start">
                 <Card
@@ -385,24 +511,63 @@ export function ProjectCard({ project, userId }: ProjectCardProps) {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={(e) => {
-                                    e.stopPropagation()
-                                    void handleCardClick()
-                                }}>
-                                    Open Project
-                                </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={(e) => {
+                                        e.stopPropagation()
+                                        void handleCardClick()
+                                    }}>
+                                        <FileCode className="mr-2 h-4 w-4" />
+                                        Open Project
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            void handleOpenFolder()
+                                        }}
+                                        disabled={isOpeningFolder}
+                                    >
+                                        {isOpeningFolder ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <FolderOpen className="mr-2 h-4 w-4" />
+                                        )}
+                                        Open Folder
+                                    </DropdownMenuItem>
                                     <DropdownMenuItem onClick={(e) => {
                                         e.stopPropagation()
                                         navigate(buildProjectPath(String(project._id), 'settings'))
                                     }}>
+                                        <Settings className="mr-2 h-4 w-4" />
                                         Settings
                                     </DropdownMenuItem>
                                     {project.status === 'archived' ? (
-                                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                                        <DropdownMenuItem
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                void handleRestore()
+                                            }}
+                                            disabled={isArchiveActionPending || !userId}
+                                        >
+                                            {isRestoring ? (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <RotateCcw className="mr-2 h-4 w-4" />
+                                            )}
                                             Restore
                                         </DropdownMenuItem>
                                     ) : (
-                                        <DropdownMenuItem onClick={(e) => e.stopPropagation()} className="text-destructive focus:text-destructive">
+                                        <DropdownMenuItem
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                void handleArchive()
+                                            }}
+                                            className="text-destructive focus:text-destructive"
+                                            disabled={isArchiveActionPending || !userId}
+                                        >
+                                            {isArchiving ? (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <Archive className="mr-2 h-4 w-4" />
+                                            )}
                                             Archive
                                         </DropdownMenuItem>
                                     )}

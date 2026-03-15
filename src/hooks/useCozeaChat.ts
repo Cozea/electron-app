@@ -91,7 +91,9 @@ export function useCozeaChat({
     ...chatOptions,
     onError: (err: Error) => {
       console.error('Chat error:', err)
-      const parsedBillingErr = parseBillingError(err)
+      const parsedBillingErr = parseBillingError(err, {
+        workspaceScoped: Boolean(transportArgs.organizationId),
+      })
       if (parsedBillingErr) {
         setBillingError(parsedBillingErr)
         onBillingError?.(parsedBillingErr)

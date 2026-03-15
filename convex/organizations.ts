@@ -3,9 +3,19 @@ import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import { hasPermission, mapWorkOSRole, type Role } from "./lib/permissions"
+import { mapWorkOSRole, PERMISSION_VALUES, type Permission, type Role } from "./lib/permissions"
+import {
+  ensureSystemOrganizationRoles,
+  resolveCompatibleOrganizationRoleIdForBaseRole,
+  hasOrganizationPermission,
+  listOrganizationRoles,
+  organizationPermissionValidator,
+  resolveMemberAccess,
+  resolveOrganizationRole,
+  roleBaseValidator,
+} from "./lib/organizationRoles"
 import { checkSeatLimit } from "./lib/seatLimits"
-import { getWorkspacePlanLabel } from "./lib/planNames"
+import { getOrganizationPlanLabel } from "./lib/planNames"
 import {
   applyProjectStorageDeltas,
   checkProjectLimit,
@@ -20,10 +30,15 @@ import {
   syncProjectStorageUsage,
   syncProjectStorageUsageFromSource,
 } from "./lib/workspaceLimits"
+import { resolveOrganizationBillingSnapshot } from "./lib/accountEntitlements"
 import {
   getUtcDayStartTimestamp,
   getUtcMonthStartTimestamp,
 } from "./lib/usagePeriods"
+import {
+  sanitizeWorkspaceIdentityInput,
+  sanitizeWorkspaceIdentityUpdateInput,
+} from "../shared/workspaceIdentity"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 const DEFAULT_ALLOWED_PROVIDERS = ["openai", "anthropic", "google", "xai", "moonshotai"] as const
@@ -42,6 +57,35 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
   return base || "workspace"
+}
+
+async function resolveUniqueOrganizationRoleKey(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  desired: string,
+  excludeRoleId?: Id<"organizationRoles">
+): Promise<string> {
+  const base = slugify(desired).replace(/^workspace$/, "role")
+  let attempt = 1
+  let candidate = base
+
+  while (attempt <= 1000) {
+    const existing = await ctx.db
+      .query("organizationRoles")
+      .withIndex("by_organization_and_key", (q) =>
+        q.eq("organizationId", organizationId).eq("key", candidate)
+      )
+      .first()
+
+    if (!existing || (excludeRoleId && existing._id === excludeRoleId)) {
+      return candidate
+    }
+
+    attempt += 1
+    candidate = `${base}-${attempt}`
+  }
+
+  return `${base}-${Date.now()}`
 }
 
 function pickCanonicalOrganization(items: Doc<"organizations">[]): Doc<"organizations"> | null {
@@ -75,6 +119,37 @@ function rolePriority(role: Doc<"members">["role"]): number {
     default:
       return 1
   }
+}
+
+function sanitizePermissionOverrides(
+  grants: Permission[] | undefined,
+  denies: Permission[] | undefined
+) {
+  const normalizedGrants = [...new Set((grants ?? []).filter((permission) => PERMISSION_VALUES.includes(permission)))]
+  const normalizedDenies = [...new Set((denies ?? []).filter((permission) => PERMISSION_VALUES.includes(permission)))]
+
+  for (const permission of normalizedGrants) {
+    if (normalizedDenies.includes(permission)) {
+      throw new Error(`Permission ${permission} cannot be both granted and denied`)
+    }
+  }
+
+  return {
+    permissionGrants: normalizedGrants,
+    permissionDenies: normalizedDenies,
+  }
+}
+
+function hasAdministrativeWorkspaceAccess(
+  permissions: readonly Permission[] | null | undefined
+) {
+  if (!permissions) return false
+  return (
+    permissions.includes("members:update_role") ||
+    permissions.includes("roles:assign") ||
+    permissions.includes("billing:manage_subscription") ||
+    permissions.includes("org:delete")
+  )
 }
 
 function pickCanonicalMembership(items: Doc<"members">[]): Doc<"members"> | null {
@@ -126,6 +201,65 @@ async function getCanonicalOrgMembership(
   return pickCanonicalMembership(memberships)
 }
 
+async function applyAcceptedInvitationRoleToMembership(
+  ctx: Pick<MutationCtx, "db">,
+  organizationId: Id<"organizations">,
+  user: Doc<"users">,
+  membershipId: Id<"members">
+) {
+  const pendingInvitations = await ctx.db
+    .query("invitations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .filter((q) => q.eq(q.field("status"), "pending"))
+    .collect()
+
+  const matchingPendingInvitations = pendingInvitations
+    .filter((invitation) => normalizeEmail(invitation.email) === normalizeEmail(user.email))
+    .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0))
+
+  if (matchingPendingInvitations.length === 0) {
+    return
+  }
+
+  const latestInvitation = matchingPendingInvitations[0]
+  await ctx.db.patch(membershipId, {
+    role: latestInvitation.role,
+    roleId: latestInvitation.roleId,
+    permissionGrants: latestInvitation.permissionGrants,
+    permissionDenies: latestInvitation.permissionDenies,
+    updatedAt: Date.now(),
+  })
+
+  for (const pendingInvitation of matchingPendingInvitations) {
+    await ctx.db.patch(pendingInvitation._id, { status: "accepted" })
+  }
+}
+
+async function requireOrganizationPermission(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  userId: Id<"users">,
+  permission: Permission
+) {
+  const membership = await getCanonicalOrgMembership(ctx, organizationId, userId)
+  const allowed = await hasOrganizationPermission(ctx, membership, permission)
+  return { membership, allowed }
+}
+
+async function getCompatibleRoleIdForBaseRole(
+  ctx: Pick<MutationCtx | QueryCtx, "db">,
+  organizationId: Id<"organizations">,
+  role: Role,
+  currentRoleId?: Id<"organizationRoles"> | null
+) {
+  return await resolveCompatibleOrganizationRoleIdForBaseRole(
+    ctx,
+    organizationId,
+    role,
+    currentRoleId
+  )
+}
+
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
     throw new Error("AI_GATEWAY_SECRET is not configured")
@@ -170,9 +304,15 @@ export const syncFromWorkOS = mutation({
   args: {
     workosId: v.string(),
     name: v.string(),
+    iconKey: v.optional(v.union(v.string(), v.null())),
+    iconColor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const identity = sanitizeWorkspaceIdentityUpdateInput({
+      iconKey: args.iconKey,
+      iconColor: args.iconColor,
+    })
 
     // Check if org already exists.
     const orgMatches = await ctx.db
@@ -182,10 +322,20 @@ export const syncFromWorkOS = mutation({
     const existingOrg = pickCanonicalOrganization(orgMatches)
 
     if (existingOrg) {
+      const shouldPreserveExistingName =
+        existingOrg.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX) &&
+        existingOrg.name.trim().length > 0
       // Ensure new schema fields exist while preserving existing data
       const updates: Record<string, unknown> = {
-        name: args.name,
+        name: shouldPreserveExistingName ? existingOrg.name : args.name,
         updatedAt: now,
+      }
+
+      if (identity.iconKey !== undefined) {
+        updates.iconKey = identity.iconKey
+      }
+      if (identity.iconColor !== undefined) {
+        updates.iconColor = identity.iconColor
       }
 
       if (!existingOrg.aiSettings) {
@@ -222,6 +372,8 @@ export const syncFromWorkOS = mutation({
       workosId: args.workosId,
       name: args.name,
       slug,
+      iconKey: identity.iconKey ?? null,
+      iconColor: identity.iconColor ?? null,
       aiSettings: {
         allowedProviders: [...DEFAULT_ALLOWED_PROVIDERS],
         allowProviderTools: false,
@@ -238,6 +390,8 @@ export const syncFromWorkOS = mutation({
       createdAt: now,
       updatedAt: now,
     })
+
+    await ensureSystemOrganizationRoles(ctx, orgId)
 
     return orgId
   },
@@ -289,8 +443,6 @@ export const syncMembershipFromWorkOS = mutation({
       .collect()
 
     // Map WorkOS role to our internal role
-    const role = mapWorkOSRole(args.role)
-
     const combinedMemberships = new Map<string, Doc<"members">>()
     for (const membership of byWorkosMemberships) {
       combinedMemberships.set(String(membership._id), membership)
@@ -308,6 +460,13 @@ export const syncMembershipFromWorkOS = mutation({
     }
 
     const canonicalMembership = pickCanonicalMembership([...combinedMemberships.values()])
+    const role = mapWorkOSRole(args.role)
+    const roleId = await getCompatibleRoleIdForBaseRole(
+      ctx,
+      org._id,
+      role,
+      canonicalMembership?.roleId
+    )
 
     let membershipId: Id<"members">
     if (canonicalMembership) {
@@ -317,14 +476,16 @@ export const syncMembershipFromWorkOS = mutation({
         organizationId: org._id,
         userId: user._id,
         role,
-        updatedAt: now,
-      })
+          roleId: roleId ?? canonicalMembership.roleId,
+          updatedAt: now,
+        })
     } else {
       membershipId = await ctx.db.insert("members", {
         workosId: args.workosId,
         organizationId: org._id,
         userId: user._id,
         role,
+        roleId: roleId ?? undefined,
         joinedAt: now,
         updatedAt: now,
       })
@@ -336,22 +497,8 @@ export const syncMembershipFromWorkOS = mutation({
       await ctx.db.delete(membership._id)
     }
 
-    // Mark any pending invitation for this user's email as accepted
-    const normalizedEmail = normalizeEmail(user.email)
-    const pendingInvitations = await ctx.db
-      .query("invitations")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
-      .filter((q) =>
-        q.eq(q.field("status"), "pending")
-      )
-      .collect()
-    const pendingInvitation = pendingInvitations.find(
-      (invitation) => normalizeEmail(invitation.email) === normalizedEmail
-    )
-
-    if (pendingInvitation) {
-      await ctx.db.patch(pendingInvitation._id, { status: "accepted" })
-    }
+    // Mark any pending invitations for this user's email as accepted
+    await applyAcceptedInvitationRoleToMembership(ctx, org._id, user, membershipId)
 
     return membershipId
   },
@@ -385,6 +532,7 @@ export const reconcileMembershipSetFromWorkOS = mutation({
 
     const activeInputs = args.memberships.filter((membership) => membership.status === "active")
     const activeOrgIds = new Set<Id<"organizations">>()
+    const activeEmailByOrg = new Map<string, Set<string>>()
 
     for (const input of activeInputs) {
       const orgMatches = await ctx.db
@@ -396,7 +544,6 @@ export const reconcileMembershipSetFromWorkOS = mutation({
 
       activeOrgIds.add(org._id)
 
-      const role = mapWorkOSRole(input.role)
       const byWorkosMemberships = await ctx.db
         .query("members")
         .withIndex("by_workos_id", (q) => q.eq("workosId", input.workosId))
@@ -417,6 +564,13 @@ export const reconcileMembershipSetFromWorkOS = mutation({
       }
 
       const canonical = pickCanonicalMembership([...combinedMemberships.values()])
+      const role = mapWorkOSRole(input.role)
+      const roleId = await getCompatibleRoleIdForBaseRole(
+        ctx,
+        org._id,
+        role,
+        canonical?.roleId
+      )
       let canonicalId: Id<"members">
       if (canonical) {
         canonicalId = canonical._id
@@ -425,6 +579,7 @@ export const reconcileMembershipSetFromWorkOS = mutation({
           organizationId: org._id,
           userId: user._id,
           role,
+          roleId: roleId ?? canonical.roleId,
           updatedAt: now,
         })
       } else {
@@ -433,6 +588,7 @@ export const reconcileMembershipSetFromWorkOS = mutation({
           organizationId: org._id,
           userId: user._id,
           role,
+          roleId: roleId ?? undefined,
           joinedAt: now,
           updatedAt: now,
         })
@@ -442,6 +598,12 @@ export const reconcileMembershipSetFromWorkOS = mutation({
         if (membership._id === canonicalId) continue
         await ctx.db.delete(membership._id)
       }
+
+      await applyAcceptedInvitationRoleToMembership(ctx, org._id, user, canonicalId)
+
+      const emailSet = activeEmailByOrg.get(String(org._id)) ?? new Set<string>()
+      emailSet.add(normalizeEmail(user.email))
+      activeEmailByOrg.set(String(org._id), emailSet)
     }
 
     const currentMemberships = await ctx.db
@@ -458,6 +620,21 @@ export const reconcileMembershipSetFromWorkOS = mutation({
         }
         await ctx.db.delete(membership._id)
         removedCount += 1
+      }
+    }
+
+    for (const [orgKey, activeEmails] of activeEmailByOrg.entries()) {
+      const orgId = orgKey as Id<"organizations">
+      const pendingInvitations = await ctx.db
+        .query("invitations")
+        .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
+        .filter((q) => q.eq(q.field("status"), "pending"))
+        .collect()
+
+      for (const invitation of pendingInvitations) {
+        if (activeEmails.has(normalizeEmail(invitation.email))) {
+          await ctx.db.patch(invitation._id, { status: "accepted" })
+        }
       }
     }
 
@@ -534,15 +711,32 @@ export const getMemberRoleForServer = query({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
-    const memberships = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.userId)
-      )
-      .collect()
-    const membership = pickCanonicalMembership(memberships)
-
+    const membership = await getCanonicalOrgMembership(ctx, args.organizationId, args.userId)
     return membership?.role || null
+  },
+})
+
+export const getMemberAccessForServer = query({
+  args: {
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const membership = await getCanonicalOrgMembership(ctx, args.organizationId, args.userId)
+    const access = await resolveMemberAccess(ctx, membership)
+    if (!access) return null
+
+    return {
+      role: access.legacyRole,
+      roleId: access.roleId,
+      roleKey: access.key,
+      roleName: access.name,
+      baseRole: access.baseRole,
+      permissions: access.permissions,
+    }
   },
 })
 
@@ -554,9 +748,15 @@ export const create = mutation({
     slug: v.string(),
     createdBy: v.id("users"),
     memberWorkosId: v.string(), // WorkOS membership ID for the creator
+    iconKey: v.optional(v.union(v.string(), v.null())),
+    iconColor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const identity = sanitizeWorkspaceIdentityInput({
+      iconKey: args.iconKey,
+      iconColor: args.iconColor,
+    })
 
     const existingByWorkos = await ctx.db
       .query("organizations")
@@ -577,6 +777,8 @@ export const create = mutation({
       workosId: args.workosId,
       name: args.name,
       slug: resolvedSlug,
+      iconKey: identity.iconKey ?? null,
+      iconColor: identity.iconColor ?? null,
       aiSettings: {
         allowedProviders: [...DEFAULT_ALLOWED_PROVIDERS],
         allowProviderTools: false,
@@ -594,12 +796,16 @@ export const create = mutation({
       updatedAt: now,
     })
 
+    await ensureSystemOrganizationRoles(ctx, orgId)
+    const adminRoleId = await getCompatibleRoleIdForBaseRole(ctx, orgId, "admin")
+
     // Add creator as admin
     await ctx.db.insert("members", {
       workosId: args.memberWorkosId,
       organizationId: orgId,
       userId: args.createdBy,
       role: "admin",
+      roleId: adminRoleId ?? undefined,
       joinedAt: now,
       updatedAt: now,
     })
@@ -667,9 +873,13 @@ export const updateAiSettings = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-
-    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
+    const { allowed } = await requireOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      "settings:update"
+    )
+    if (!allowed) {
       throw new Error("Unauthorized")
     }
 
@@ -711,12 +921,18 @@ export const updateOrganization = mutation({
     name: v.optional(v.string()),
     slug: v.optional(v.string()),
     description: v.optional(v.string()),
+    iconKey: v.optional(v.union(v.string(), v.null())),
+    iconColor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     // Verify user is admin
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
-
-    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
+    const { allowed } = await requireOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      "settings:update"
+    )
+    if (!allowed) {
       throw new Error("Unauthorized")
     }
 
@@ -725,6 +941,10 @@ export const updateOrganization = mutation({
 
     const now = Date.now()
     const updates: Record<string, unknown> = { updatedAt: now }
+    const identity = sanitizeWorkspaceIdentityUpdateInput({
+      iconKey: args.iconKey,
+      iconColor: args.iconColor,
+    })
 
     if (args.name !== undefined) updates.name = args.name
     if (args.slug !== undefined) {
@@ -732,6 +952,8 @@ export const updateOrganization = mutation({
         args.slug === org.slug ? org.slug : await resolveUniqueSlug(ctx, args.slug, args.orgId)
     }
     if (args.description !== undefined) updates.description = args.description
+    if (identity.iconKey !== undefined) updates.iconKey = identity.iconKey
+    if (identity.iconColor !== undefined) updates.iconColor = identity.iconColor
 
     await ctx.db.patch(args.orgId, updates)
 
@@ -742,7 +964,13 @@ export const updateOrganization = mutation({
       action: "organization.updated",
       resourceType: "organization",
       resourceId: args.orgId,
-      metadata: { name: args.name, slug: args.slug, description: args.description },
+      metadata: {
+        name: args.name,
+        slug: args.slug,
+        description: args.description,
+        iconKey: identity.iconKey,
+        iconColor: identity.iconColor,
+      },
       timestamp: now,
     })
   },
@@ -770,8 +998,17 @@ export const getMembers = query({
     return await Promise.all(
       [...byUser.values()].map(async (m) => {
         const user = await ctx.db.get(m.userId)
+        const access = await resolveMemberAccess(ctx, m)
         return {
           ...m,
+          roleId: access?.roleId ?? null,
+          roleKey: access?.key ?? m.role,
+          roleName: access?.name ?? m.role,
+          roleBaseRole: access?.baseRole ?? m.role,
+          inheritedPermissions: access?.inheritedPermissions ?? [],
+          directGrants: access?.directGrants ?? [],
+          directDenies: access?.directDenies ?? [],
+          permissions: access?.permissions ?? [],
           user: user
             ? {
                 id: user._id,
@@ -801,9 +1038,18 @@ export const getMember = query({
     }
 
     const user = await ctx.db.get(membership.userId)
+    const access = await resolveMemberAccess(ctx, membership)
 
     return {
       ...membership,
+      roleId: access?.roleId ?? null,
+      roleKey: access?.key ?? membership.role,
+      roleName: access?.name ?? membership.role,
+      roleBaseRole: access?.baseRole ?? membership.role,
+      inheritedPermissions: access?.inheritedPermissions ?? [],
+      directGrants: access?.directGrants ?? [],
+      directDenies: access?.directDenies ?? [],
+      permissions: access?.permissions ?? [],
       user: user
         ? {
             id: user._id,
@@ -827,8 +1073,8 @@ export const removeMember = mutation({
   handler: async (ctx, args) => {
     // Verify remover has permission
     const removerMembership = await getCanonicalOrgMembership(ctx, args.orgId, args.removedBy)
-
-    if (!removerMembership || !hasPermission(removerMembership.role as Role, "members:remove")) {
+    const allowed = await hasOrganizationPermission(ctx, removerMembership, "members:remove")
+    if (!removerMembership || !allowed) {
       throw new Error("Unauthorized to remove members")
     }
 
@@ -881,13 +1127,14 @@ export const updateMemberRole = mutation({
     orgId: v.id("organizations"),
     memberId: v.id("members"),
     newRole: v.union(v.literal("admin"), v.literal("member"), v.literal("viewer")),
+    newRoleId: v.optional(v.id("organizationRoles")),
     updatedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
     // Verify updater has permission
     const updaterMembership = await getCanonicalOrgMembership(ctx, args.orgId, args.updatedBy)
-
-    if (!updaterMembership || !hasPermission(updaterMembership.role as Role, "members:update_role")) {
+    const allowed = await hasOrganizationPermission(ctx, updaterMembership, "members:update_role")
+    if (!updaterMembership || !allowed) {
       throw new Error("Unauthorized to change member roles")
     }
 
@@ -917,10 +1164,17 @@ export const updateMemberRole = mutation({
 
     const now = Date.now()
     const oldRole = targetMembership.role
+    const nextRole = await resolveOrganizationRole(
+      ctx,
+      args.orgId,
+      args.newRole,
+      args.newRoleId
+    )
 
     // Update the role
     await ctx.db.patch(args.memberId, {
-      role: args.newRole,
+      role: nextRole.baseRole,
+      roleId: nextRole.roleId ?? undefined,
       updatedAt: now,
     })
 
@@ -934,9 +1188,333 @@ export const updateMemberRole = mutation({
       action: "member.role_changed",
       resourceType: "member",
       resourceId: args.memberId,
-      metadata: { email: targetUser?.email, oldRole, newRole: args.newRole },
+      metadata: {
+        email: targetUser?.email,
+        oldRole,
+        newRole: nextRole.baseRole,
+        newRoleKey: nextRole.key,
+        newRoleName: nextRole.name,
+      },
       timestamp: now,
     })
+  },
+})
+
+export const updateMemberPermissionOverrides = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    memberId: v.id("members"),
+    permissionGrants: v.array(organizationPermissionValidator),
+    permissionDenies: v.array(organizationPermissionValidator),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const allowed =
+      await hasOrganizationPermission(ctx, membership, "roles:assign") ||
+      await hasOrganizationPermission(ctx, membership, "members:update_role")
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized to manage direct permissions")
+    }
+
+    const targetMembership = await ctx.db.get(args.memberId)
+    if (!targetMembership || targetMembership.organizationId !== args.orgId) {
+      throw new Error("Member not found")
+    }
+
+    if (targetMembership.userId === args.userId) {
+      throw new Error("Cannot change your own direct permissions")
+    }
+
+    const sanitized = sanitizePermissionOverrides(
+      args.permissionGrants,
+      args.permissionDenies
+    )
+
+    const currentAccess = await resolveMemberAccess(ctx, targetMembership)
+    const nextRole = await resolveOrganizationRole(
+      ctx,
+      args.orgId,
+      targetMembership.role,
+      targetMembership.roleId
+    )
+    const nextPermissions = [
+      ...new Set([
+        ...nextRole.permissions,
+        ...sanitized.permissionGrants,
+      ]),
+    ].filter((permission): permission is Permission => !sanitized.permissionDenies.includes(permission))
+
+    if (
+      currentAccess &&
+      hasAdministrativeWorkspaceAccess(currentAccess.permissions) &&
+      !hasAdministrativeWorkspaceAccess(nextPermissions)
+    ) {
+      const memberships = await ctx.db
+        .query("members")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+        .collect()
+
+      let otherAdmins = 0
+      for (const candidate of memberships) {
+        if (candidate._id === targetMembership._id) continue
+        const candidateAccess = await resolveMemberAccess(ctx, candidate)
+        if (hasAdministrativeWorkspaceAccess(candidateAccess?.permissions)) {
+          otherAdmins += 1
+        }
+      }
+
+      if (otherAdmins === 0) {
+        throw new Error("Cannot remove the last admin-equivalent access")
+      }
+    }
+
+    await ctx.db.patch(args.memberId, {
+      permissionGrants: sanitized.permissionGrants,
+      permissionDenies: sanitized.permissionDenies,
+      updatedAt: Date.now(),
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "member.permissions_updated",
+      resourceType: "member",
+      resourceId: args.memberId,
+      metadata: sanitized,
+      timestamp: Date.now(),
+    })
+  },
+})
+
+export const listRoles = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const roles = await listOrganizationRoles(ctx, args.orgId)
+    return roles.map((role) => ({
+      _id: role._id,
+      key: role.key,
+      name: role.name,
+      description: role.description,
+      baseRole: role.baseRole,
+      permissions: role.permissions,
+      isSystem: role.isSystem,
+      createdAt: role.createdAt,
+      updatedAt: role.updatedAt,
+    }))
+  },
+})
+
+export const createRole = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    name: v.string(),
+    description: v.string(),
+    baseRole: roleBaseValidator,
+    permissions: v.array(organizationPermissionValidator),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized to manage roles")
+    }
+
+    const now = Date.now()
+    const trimmedName = args.name.trim()
+    if (!trimmedName) {
+      throw new Error("Role name is required")
+    }
+
+    const key = await resolveUniqueOrganizationRoleKey(ctx, args.orgId, trimmedName)
+    const roleId = await ctx.db.insert("organizationRoles", {
+      organizationId: args.orgId,
+      key,
+      name: trimmedName,
+      description: args.description.trim(),
+      baseRole: args.baseRole,
+      permissions: [...new Set(args.permissions)],
+      isSystem: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "role.created",
+      resourceType: "organizationRole",
+      resourceId: roleId,
+      metadata: {
+        key,
+        name: trimmedName,
+        baseRole: args.baseRole,
+      },
+      timestamp: now,
+    })
+
+    return roleId
+  },
+})
+
+export const updateRole = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    roleId: v.id("organizationRoles"),
+    name: v.string(),
+    description: v.string(),
+    baseRole: roleBaseValidator,
+    permissions: v.array(organizationPermissionValidator),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized to manage roles")
+    }
+
+    const role = await ctx.db.get(args.roleId)
+    if (!role || role.organizationId !== args.orgId) {
+      throw new Error("Role not found")
+    }
+    if (role.isSystem) {
+      throw new Error("System roles cannot be edited")
+    }
+
+    const trimmedName = args.name.trim()
+    if (!trimmedName) {
+      throw new Error("Role name is required")
+    }
+
+    const now = Date.now()
+    await ctx.db.patch(args.roleId, {
+      name: trimmedName,
+      description: args.description.trim(),
+      baseRole: args.baseRole,
+      permissions: [...new Set(args.permissions)],
+      updatedAt: now,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "role.updated",
+      resourceType: "organizationRole",
+      resourceId: args.roleId,
+      metadata: {
+        key: role.key,
+        name: trimmedName,
+        baseRole: args.baseRole,
+      },
+      timestamp: now,
+    })
+  },
+})
+
+export const deleteRole = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    roleId: v.id("organizationRoles"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const allowed = await hasOrganizationPermission(ctx, membership, "members:update_role")
+    if (!membership || !allowed) {
+      throw new Error("Unauthorized to manage roles")
+    }
+
+    const role = await ctx.db.get(args.roleId)
+    if (!role || role.organizationId !== args.orgId) {
+      throw new Error("Role not found")
+    }
+    if (role.isSystem) {
+      throw new Error("System roles cannot be deleted")
+    }
+
+    const memberUsingRole = await ctx.db
+      .query("members")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .filter((q) => q.eq(q.field("roleId"), args.roleId))
+      .first()
+    if (memberUsingRole) {
+      throw new Error("Reassign members using this role before deleting it")
+    }
+
+    const inviteUsingRole = await ctx.db
+      .query("invitations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.orgId))
+      .filter((q) => q.eq(q.field("roleId"), args.roleId))
+      .first()
+    if (inviteUsingRole) {
+      throw new Error("Revoke or update pending invites using this role before deleting it")
+    }
+
+    await ctx.db.delete(args.roleId)
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "role.deleted",
+      resourceType: "organizationRole",
+      resourceId: args.roleId,
+      metadata: {
+        key: role.key,
+        name: role.name,
+      },
+      timestamp: Date.now(),
+    })
+  },
+})
+
+export const getCurrentMemberAccess = query({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const access = await resolveMemberAccess(ctx, membership)
+    if (!membership || !access) return null
+
+    return {
+      memberId: membership._id,
+      legacyRole: membership.role,
+      roleId: access.roleId,
+      roleKey: access.key,
+      roleName: access.name,
+      baseRole: access.baseRole,
+      inheritedPermissions: access.inheritedPermissions,
+      directGrants: access.directGrants,
+      directDenies: access.directDenies,
+      permissions: access.permissions,
+    }
+  },
+})
+
+export const getRoleForServer = query({
+  args: {
+    organizationId: v.id("organizations"),
+    roleId: v.id("organizationRoles"),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+
+    const role = await ctx.db.get(args.roleId)
+    if (!role || role.organizationId !== args.organizationId) {
+      return null
+    }
+
+    return {
+      _id: role._id,
+      key: role.key,
+      name: role.name,
+      baseRole: role.baseRole,
+      permissions: role.permissions,
+      isSystem: role.isSystem,
+    }
   },
 })
 
@@ -964,6 +1542,11 @@ export const getUsageSummary = query({
       .first()
 
     const org = await ctx.db.get(args.orgId)
+    const billingSnapshot = org
+      ? await resolveOrganizationBillingSnapshot(ctx, {
+          organization: org,
+        })
+      : null
     const aggregateWithTrackedUnits = aggregate
       ? {
           ...aggregate,
@@ -976,7 +1559,18 @@ export const getUsageSummary = query({
       trackedUsage: {
         totalTrackedUnits: aggregate?.totalTrackedUnits ?? 0,
       },
-      subscription: org?.subscription,
+      billingSnapshot,
+      subscription: org
+        ? {
+            ...org.subscription,
+            plan: billingSnapshot?.plan ?? org.subscription.plan,
+            status: billingSnapshot?.status ?? org.subscription.status,
+            currentPeriodStart:
+              billingSnapshot?.currentPeriodStart ?? org.subscription.currentPeriodStart,
+            currentPeriodEnd:
+              billingSnapshot?.currentPeriodEnd ?? org.subscription.currentPeriodEnd,
+          }
+        : null,
     }
   },
 })
@@ -989,10 +1583,10 @@ export const deleteOrganization = mutation({
     confirmName: v.string(), // Must match org name for safety
   },
   handler: async (ctx, args) => {
-    // Verify user is admin
     const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const canDeleteWorkspace = await hasOrganizationPermission(ctx, membership, "org:delete")
 
-    if (!membership || membership.role !== "admin") {
+    if (!canDeleteWorkspace) {
       throw new Error("Only admins can delete the workspace")
     }
 
@@ -1082,8 +1676,11 @@ export const getUsageLimits = query({
     const org = await ctx.db.get(args.orgId)
     if (!org) return null
 
-    const plan = org.subscription?.plan ?? "free"
-    const planDisplayName = getWorkspacePlanLabel(plan)
+    const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
+      organization: org,
+    })
+    const plan = billingSnapshot.plan
+    const planDisplayName = getOrganizationPlanLabel(plan)
 
     // Get all limits
     const projectStatus = await checkProjectLimit(ctx, args.orgId)
@@ -1262,10 +1859,14 @@ export const clearStorageCategory = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Verify user is admin
-    const membership = await getCanonicalOrgMembership(ctx, args.orgId, args.userId)
+    const { allowed } = await requireOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      "settings:update"
+    )
 
-    if (!membership || !hasPermission(membership.role as Role, "settings:update")) {
+    if (!allowed) {
       throw new Error("Unauthorized to clear storage")
     }
 

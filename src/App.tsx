@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent, useRef } from 'react'
+import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
@@ -6,12 +6,58 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SettingsDrawer } from './components/settings/SettingsDrawer'
+import { CreateWorkspaceDialogHost } from './components/workspaces/CreateWorkspaceDialogHost'
 import { UpdateMenu } from './components/updates/UpdateMenu'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
 import { clearModelCatalogCache, getModelCatalog } from './lib/ai/modelCatalogClient'
+import { useResolvedScope } from './hooks/useResolvedScope'
+
+const warmedModelCatalogOrganizations = new Set<string>()
+const attemptedModelCatalogWarmups = new Set<string>()
+const suppressedModelCatalogWarmupOrganizations = new Set<string>()
+let suppressModelCatalogWarmupForSession = false
+let loggedModelCatalogUnauthorizedTokenDebug = false
+
+interface DecodedTokenClaims {
+  aud?: string | string[]
+  exp?: number
+  iat?: number
+  iss?: string
+  org_id?: string
+  sub?: string
+}
+
+function decodeBase64Url(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return atob(padded)
+  } catch {
+    return null
+  }
+}
+
+function decodeTokenClaims(token: string): DecodedTokenClaims | null {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+
+  const rawPayload = decodeBase64Url(parts[1])
+  if (!rawPayload) return null
+
+  try {
+    return JSON.parse(rawPayload) as DecodedTokenClaims
+  } catch {
+    return null
+  }
+}
+
+function formatUnixTimestamp(value: number | undefined): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return new Date(value * 1000).toISOString()
+}
 
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })))
 const Onboarding = lazy(() =>
@@ -30,12 +76,11 @@ function FullscreenLoading() {
 }
 
 function AppWithOrganization() {
-  const { accessToken, organizations, refreshToken } = useAuth()
+  const { accessToken, refreshToken } = useAuth()
 
   return (
     <OrganizationProvider
       accessToken={accessToken}
-      initialOrganizations={organizations}
       onTokenExpired={async () => (await refreshToken()) === 'refreshed'}
     >
       <Suspense fallback={<FullscreenLoading />}>
@@ -127,25 +172,34 @@ function SettingsDrawerUrlBridge() {
 function AppContent() {
   const {
     accessToken,
-    currentOrganization,
-    refreshToken,
     isAuthenticated,
     isLoading,
     needsOnboarding,
     workspaceSelectionRequired,
   } = useAuth()
+  const { activeOrganizationId: workspaceOrganizationId } = useResolvedScope({ ignoreLocation: true })
   const location = useLocation()
   const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
-  const refreshedModelCatalogOrgRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) {
-      refreshedModelCatalogOrgRef.current = null
+      warmedModelCatalogOrganizations.clear()
+      attemptedModelCatalogWarmups.clear()
+      suppressedModelCatalogWarmupOrganizations.clear()
+      suppressModelCatalogWarmupForSession = false
+      loggedModelCatalogUnauthorizedTokenDebug = false
       return
     }
-    if (!accessToken || !currentOrganization?.organizationId) return
-    const organizationId = currentOrganization.organizationId
-    if (refreshedModelCatalogOrgRef.current === organizationId) return
+    if (!accessToken || !workspaceOrganizationId) return
+    const organizationId = workspaceOrganizationId
+
+    if (warmedModelCatalogOrganizations.has(organizationId)) return
+    if (suppressModelCatalogWarmupForSession) return
+    if (suppressedModelCatalogWarmupOrganizations.has(organizationId)) return
+
+    const warmupAttemptKey = `${organizationId}::${accessToken}`
+    if (attemptedModelCatalogWarmups.has(warmupAttemptKey)) return
+    attemptedModelCatalogWarmups.add(warmupAttemptKey)
 
     clearModelCatalogCache(organizationId)
     void getModelCatalog({
@@ -154,17 +208,40 @@ function AppContent() {
       forceRefresh: true,
     })
       .then(() => {
-        refreshedModelCatalogOrgRef.current = organizationId
+        warmedModelCatalogOrganizations.add(organizationId)
+        suppressedModelCatalogWarmupOrganizations.delete(organizationId)
       })
-      .catch(async (error) => {
+      .catch((error) => {
         const message = error instanceof Error ? error.message : String(error)
         if (message.toLowerCase().includes('unauthorized')) {
-          await refreshToken()
+          if (import.meta.env.DEV && !loggedModelCatalogUnauthorizedTokenDebug) {
+            loggedModelCatalogUnauthorizedTokenDebug = true
+            const decodedClaims = decodeTokenClaims(accessToken)
+            const debugPayload = {
+              organizationId,
+              now: new Date().toISOString(),
+              tokenFormat: decodedClaims ? 'jwt' : 'opaque_or_invalid_jwt',
+              claims: decodedClaims
+                ? {
+                    sub: decodedClaims.sub ?? null,
+                    iss: decodedClaims.iss ?? null,
+                    aud: decodedClaims.aud ?? null,
+                    org_id: decodedClaims.org_id ?? null,
+                    iat: formatUnixTimestamp(decodedClaims.iat),
+                    exp: formatUnixTimestamp(decodedClaims.exp),
+                  }
+                : null,
+            }
+            console.warn('[ModelCatalog][Debug] Unauthorized warmup token claims', debugPayload)
+            console.warn('[ModelCatalog][Debug] Unauthorized warmup token claims JSON', JSON.stringify(debugPayload))
+          }
+          suppressModelCatalogWarmupForSession = true
+          suppressedModelCatalogWarmupOrganizations.add(organizationId)
           return
         }
         console.warn('Failed to refresh model catalog on app start:', error)
       })
-  }, [accessToken, currentOrganization?.organizationId, isAuthenticated, isLoading, needsOnboarding, refreshToken])
+  }, [accessToken, isAuthenticated, isLoading, needsOnboarding, workspaceOrganizationId])
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
@@ -189,28 +266,40 @@ function AppContent() {
     }
   }, [isAuthenticated, isLoading, location.pathname, needsOnboarding])
 
-  if (!isAuthenticated) {
-    return <Login />
-  }
-
   if (isLoading) {
     return <FullscreenLoading />
-  }
-
-  if (needsOnboarding) {
-    return <Onboarding />
   }
 
   const isWorkspaceSelectRoute = location.pathname === '/workspaces/select'
   const isWorkspaceCreateRoute = location.pathname === '/workspaces/new'
   const isInviteRoute = location.pathname.startsWith('/invite/')
-  const isProjectJoinRoute = location.pathname.startsWith('/projects/join/')
+  const isProjectJoinRoute =
+    location.pathname.startsWith('/projects/join/') ||
+    location.pathname.startsWith('/join/project/')
+  const isProjectInviteRoute = location.pathname.startsWith('/projects/invite/')
+  const isPublicProjectAccessRoute = isProjectJoinRoute || isProjectInviteRoute
+
+  if (!isAuthenticated) {
+    if (isPublicProjectAccessRoute) {
+      return <Outlet />
+    }
+    return <Login />
+  }
+
+  if (needsOnboarding) {
+    return (
+      <>
+        <Onboarding />
+        <CreateWorkspaceDialogHost />
+      </>
+    )
+  }
   if (
     workspaceSelectionRequired &&
     !isWorkspaceSelectRoute &&
     !isWorkspaceCreateRoute &&
     !isInviteRoute &&
-    !isProjectJoinRoute
+    !isPublicProjectAccessRoute
   ) {
     return <Navigate to="/workspaces/select" replace />
   }
@@ -221,6 +310,7 @@ function AppContent() {
       <ElectronSettingsBridge />
       {!isSettingsWindow && <UpdateMenu />}
       <Outlet />
+      <CreateWorkspaceDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       {!isSettingsWindow && <SettingsDrawer />}
     </>

@@ -1,13 +1,6 @@
 "use client"
 
 import * as React from "react"
-import {
-  Users,
-  Shield,
-  FileText,
-  Wrench,
-  Cloud,
-} from "lucide-react"
 import { IconFolderCode } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -22,8 +15,11 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
-import { useAuth } from "@/contexts/AuthContext"
-import { isPersonalWorkspace } from "@/lib/workspaces"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
+import {
+  canAccessWorkspaceSurface,
+  listSettingsSurfaces,
+} from "@/lib/settings/settingsRegistry"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
@@ -39,28 +35,75 @@ const PLATFORM_ITEMS: NavMainItem[] = [
   { title: "Projects", url: "/projects", icon: IconFolderCode },
 ]
 
-const preloadRolesPage = () => import("@/pages/teams/Roles")
-
-const TEAM_ITEMS: NavMainItem[] = [
-  { title: "Members", url: "/teams", icon: Users },
-  { title: "Roles", url: "/teams/roles", icon: Shield, alpha: true, preload: preloadRolesPage },
-]
-
-const WORKSPACE_ITEMS: NavMainItem[] = [
-  { title: "General", url: "/workspace/general", icon: FileText },
-  { title: "CLI Tools", url: "/workspace/integrations", icon: Wrench },
-  { title: "Cloud Storage", url: "/workspace/sync", icon: Cloud, alpha: true },
-]
-
-const PERSONAL_WORKSPACE_ITEMS: NavMainItem[] = WORKSPACE_ITEMS.filter(
-  (item) => item.url !== "/workspace/general"
-)
-
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
-  const { currentOrganization } = useAuth()
-  const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
-  const teamItems = personalWorkspaceSelected ? [] : TEAM_ITEMS
-  const workspaceItems = personalWorkspaceSelected ? PERSONAL_WORKSPACE_ITEMS : WORKSPACE_ITEMS
+  const {
+    workspaceScoped: organizationWorkspaceSelected,
+    surfaceAccess,
+  } = useScopedAppContext()
+
+  const teamItems = organizationWorkspaceSelected
+    ? listSettingsSurfaces({
+        scopeKind: 'workspace',
+        placement: 'sidebar',
+        sidebarGroup: 'team',
+      })
+        .filter((surface) =>
+          canAccessWorkspaceSurface(surface, surfaceAccess)
+        )
+        .map(
+          (surface) =>
+            ({
+              title: surface.label,
+              url: surface.routes.workspace!,
+              icon: surface.icon,
+              alpha: surface.alpha,
+              preload: surface.preload,
+            }) satisfies NavMainItem
+        )
+    : []
+  const workspaceItems = organizationWorkspaceSelected
+    ? listSettingsSurfaces({
+        scopeKind: 'workspace',
+        placement: 'sidebar',
+        sidebarGroup: 'workspace',
+      })
+        .filter((surface) =>
+          canAccessWorkspaceSurface(surface, surfaceAccess)
+        )
+        .map(
+          (surface) =>
+            ({
+              title: surface.label,
+              url: surface.routes.workspace!,
+              icon: surface.icon,
+              alpha: surface.alpha,
+              preload: surface.preload,
+            }) satisfies NavMainItem
+        )
+        .sort((left, right) => {
+          if (left.title === 'General') return -1
+          if (right.title === 'General') return 1
+          return 0
+        })
+    : listSettingsSurfaces({
+        scopeKind: 'personal',
+        placement: 'sidebar',
+        sidebarGroup: 'personalWorkspace',
+      })
+        .map(
+        (surface) =>
+          ({
+            title: surface.label,
+            url: surface.routes.personal!,
+            icon: surface.icon,
+            alpha: surface.alpha,
+          }) satisfies NavMainItem
+      )
+        .sort((left, right) => {
+          if (left.title === 'General') return -1
+          if (right.title === 'General') return 1
+          return 0
+        })
 
   return (
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
@@ -77,10 +120,10 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
         </SidebarHeader>
         <SidebarContent className="titlebar-no-drag">
           <NavMain label="Platform" items={PLATFORM_ITEMS} />
-          {teamItems.length > 0 ? <NavMain label="Team" items={teamItems} /> : null}
+          {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}
           <NavMain label="Workspace" items={workspaceItems} />
         </SidebarContent>
-        <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+        <SidebarFooter className="titlebar-no-drag mt-auto pb-2 group-data-[collapsible=icon]:pb-2">
           <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
             <NavUser user={user} onLogout={onLogout} />
           </div>

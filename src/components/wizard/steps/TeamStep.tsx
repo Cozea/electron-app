@@ -36,6 +36,7 @@ interface TeamStepProps {
   onRemoveMember: (email: string) => void
   organizationMembers?: OrgMember[]
   currentUserEmail?: string
+  allowEmailInvites?: boolean
   onContinue?: () => void
   canContinue?: boolean
 }
@@ -53,6 +54,7 @@ export function TeamStep({
   onRemoveMember,
   organizationMembers = [],
   currentUserEmail,
+  allowEmailInvites = true,
   onContinue,
   canContinue = true,
 }: TeamStepProps) {
@@ -271,95 +273,100 @@ export function TeamStep({
           </div>
         )}
 
-        {/* Invite by Email Form */}
-        <div className="bg-secondary/80 dark:bg-secondary/40 p-6 rounded-xl space-y-4">
-          <Label className="text-base font-medium">
-            {availableOrgMembers.length > 0 ? 'Or Invite by Email' : 'Invite New Member'}
-          </Label>
+        {allowEmailInvites ? (
+          <div className="bg-secondary/80 dark:bg-secondary/40 p-6 rounded-xl space-y-4">
+            <Label className="text-base font-medium">
+              {availableOrgMembers.length > 0 ? 'Or Invite by Email' : 'Invite New Member'}
+            </Label>
 
-          {/* Email input */}
-          <Input
-            type="email"
-            placeholder="Enter email addresses (press Enter to add)"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            onKeyDown={handleAddEmail}
-            className="bg-background dark:bg-background/80"
-          />
+            <Input
+              type="email"
+              placeholder="Enter email addresses (press Enter to add)"
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              onKeyDown={handleAddEmail}
+              className="bg-background dark:bg-background/80"
+            />
 
-          {/* Pending invites list */}
-          {inviteMembers.length > 0 && (
-            <div className="rounded-lg divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
-              {inviteMembers.map((member, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between py-2.5 px-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="text-xs">
-                        {member.email.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm font-medium">{member.email.split('@')[0]}</span>
+            {inviteMembers.length > 0 && (
+              <div className="rounded-lg divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
+                {inviteMembers.map((member, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between py-2.5 px-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback className="text-xs">
+                          {member.email.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{member.email.split('@')[0]}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-muted-foreground gap-1 h-8">
+                            <span className="capitalize">{member.role.replace('_', ' ')}</span>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'project_manager')}>
+                            Project Manager
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'developer')}>
+                            Developer
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'designer')}>
+                            Designer
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'viewer')}>
+                            Viewer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFromInviteList(i)}
+                        className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1 h-8">
-                          <span className="capitalize">{member.role.replace('_', ' ')}</span>
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'project_manager')}>
-                          Project Manager
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'developer')}>
-                          Developer
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'designer')}>
-                          Designer
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdateInviteRole(i, 'viewer')}>
-                          Viewer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFromInviteList(i)}
-                      className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm text-muted-foreground">
+                {inviteMembers.length > 0 ? (
+                  <>
+                    <span className="font-semibold text-foreground">{inviteMembers.length}</span> member{inviteMembers.length !== 1 ? 's' : ''} to add
+                  </>
+                ) : (
+                  'Type an email and press Enter'
+                )}
+              </span>
+              <Button
+                onClick={handleAddAllInvites}
+                disabled={inviteMembers.length === 0}
+                className="gap-2"
+              >
+                <UserPlus className="h-4 w-4" />
+                Add to Team
+              </Button>
             </div>
-          )}
-
-          {/* Footer with count and add button */}
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-sm text-muted-foreground">
-              {inviteMembers.length > 0 ? (
-                <>
-                  <span className="font-semibold text-foreground">{inviteMembers.length}</span> member{inviteMembers.length !== 1 ? 's' : ''} to add
-                </>
-              ) : (
-                'Type an email and press Enter'
-              )}
-            </span>
-            <Button
-              onClick={handleAddAllInvites}
-              disabled={inviteMembers.length === 0}
-              className="gap-2"
-            >
-              <UserPlus className="h-4 w-4" />
-              Add to Team
-            </Button>
           </div>
-        </div>
+        ) : (
+          <Alert className="border-border/60 bg-secondary/80 dark:bg-secondary/40">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Workspace projects only allow adding existing workspace members here. Invite new people to the workspace first, then add them to the project.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Role Helper */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">

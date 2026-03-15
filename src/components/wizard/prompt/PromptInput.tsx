@@ -8,6 +8,7 @@ interface PromptInputProps {
   setReviewBeforeBuild: (value: boolean) => void
   customizeTeam: boolean
   setCustomizeTeam: (value: boolean) => void
+  allowCustomizeTeam?: boolean
 }
 
 export function PromptInput({
@@ -17,6 +18,7 @@ export function PromptInput({
   setReviewBeforeBuild,
   customizeTeam,
   setCustomizeTeam,
+  allowCustomizeTeam = true,
 }: PromptInputProps) {
   return (
     <div className="space-y-8">
@@ -67,16 +69,18 @@ Use Supabase for the backend and make it look modern with a dark theme option."
               Let me review the plan before building
             </Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="team"
-              checked={customizeTeam}
-              onCheckedChange={(checked) => setCustomizeTeam(checked as boolean)}
-            />
-            <Label htmlFor="team" className="text-sm font-normal cursor-pointer">
-              I want to customize team members
-            </Label>
-          </div>
+          {allowCustomizeTeam && (
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="team"
+                checked={customizeTeam}
+                onCheckedChange={(checked) => setCustomizeTeam(checked as boolean)}
+              />
+              <Label htmlFor="team" className="text-sm font-normal cursor-pointer">
+                I want to customize team members
+              </Label>
+            </div>
+          )}
         </div>
       </div>
     </div>

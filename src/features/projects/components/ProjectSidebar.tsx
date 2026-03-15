@@ -7,6 +7,7 @@ import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import {
     ListTodo,
     AppWindow,
@@ -170,7 +171,8 @@ export function ProjectSidebar({
     const navigate = useViewTransitionNavigate()
     const { slug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
     const location = useLocation()
-    const { currentOrganization, convexUserId } = useAuth()
+    const { convexUserId } = useAuth()
+    const { preferredConvexOrganizationId } = useScopedAppContext()
     const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
     const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
     const preloadedTabsRef = React.useRef<Set<string>>(new Set())
@@ -180,7 +182,6 @@ export function ProjectSidebar({
         if (slug) return buildLegacyProjectPath(slug)
         return null
     }, [routeProjectId, slug])
-    const showProjectTeamTab = currentOrganization?.workspaceType === 'personal'
 
     const routeActiveTab = React.useMemo(
         () => getActiveTabFromPathname(location.pathname, routeBasePath),
@@ -230,7 +231,7 @@ export function ProjectSidebar({
                 ? {
                     slug,
                     userId: convexUserId,
-                    preferredOrganizationId: currentOrganization?.convexOrgId as Id<"organizations"> | undefined,
+                    preferredOrganizationId: preferredConvexOrganizationId,
                 }
                 : 'skip'
     )
@@ -458,9 +459,6 @@ export function ProjectSidebar({
                                 <SidebarGroupContent>
                                     <SidebarMenu>
                                         {group.items.map((item) => {
-                                            if (item.title === 'Team' && !showProjectTeamTab) {
-                                                return null
-                                            }
                                             // Determine interaction type
                                             const hasSecondaryPanel = ['Files', 'Previews'].includes(item.title)
                                             const isActive = activeTab === item.title

@@ -9,7 +9,7 @@ import {
   ACCOUNT_TRIAL_LENGTH_MS,
 } from "./lib/accountEntitlements"
 import { grantIncludedWalletBalance } from "./aiWallets"
-import { hasPermission, type Role } from "./lib/permissions"
+import { hasOrganizationPermission } from "./lib/organizationRoles"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -20,6 +20,27 @@ function assertGatewaySecret(secret: string | undefined) {
   if (secret !== AI_GATEWAY_SECRET) {
     throw new Error("Unauthorized")
   }
+}
+
+function normalizeLegacySubscriptionPlan<
+  T extends "free" | "pro" | "max" | "startup" | "team" | "enterprise"
+>(plan: T): "free" | "pro" | "max" | "startup" | "enterprise" {
+  return plan === "team" ? "startup" : plan
+}
+
+function normalizeOrganizationSubscriptionPlan(
+  plan: "free" | "pro" | "max" | "startup" | "team" | "enterprise",
+  workosId: string
+): "free" | "pro" | "max" | "startup" | "enterprise" {
+  const normalized = normalizeLegacySubscriptionPlan(plan)
+  if (workosId.startsWith("personal:")) {
+    return normalized
+  }
+  if (normalized === "enterprise") return "enterprise"
+  if (normalized === "startup" || normalized === "pro" || normalized === "max") {
+    return "startup"
+  }
+  return "free"
 }
 
 export const getStripeCatalog = query({
@@ -169,16 +190,17 @@ async function updateSubscriptionHandler(
   }
 ) {
   const now = Date.now()
-
   const org = await ctx.db.get(args.organizationId)
   if (!org) {
     throw new Error("Organization not found")
   }
 
+  const normalizedPlan = normalizeOrganizationSubscriptionPlan(args.plan, org.workosId)
+
   await ctx.db.patch(args.organizationId, {
     subscription: {
       ...org.subscription,
-      plan: args.plan,
+      plan: normalizedPlan,
       status: args.status,
       stripeCustomerId: args.stripeCustomerId ?? org.subscription.stripeCustomerId,
       stripeSubscriptionId: args.stripeSubscriptionId ?? org.subscription.stripeSubscriptionId,
@@ -199,7 +221,7 @@ async function updateSubscriptionHandler(
     updatedAt: now,
   })
 
-  return { success: true, plan: args.plan }
+  return { success: true, plan: normalizedPlan }
 }
 
 type BillingReadCtx = Pick<QueryCtx | MutationCtx, "db">
@@ -614,11 +636,17 @@ export const getSeatManagement = query({
       billingAccountSubscription?.plan === "enterprise" ||
       entitlement.source === "trial"
 
+    const canManageBilling = await hasOrganizationPermission(
+      ctx,
+      membership,
+      "org:manage_billing"
+    )
+
     const canManageSeats = Boolean(
       seatAssignmentsEnabled &&
         billingAccount &&
         String(billingAccount.billingUserId) === String(args.userId) &&
-        hasPermission(membership.role as Role, "org:manage_billing")
+        canManageBilling
     )
 
     const accountSubscription = billingAccountSubscription ?? viewerAccountSubscription
@@ -690,10 +718,12 @@ export const setSeatAssignment = mutation({
       args.organizationId,
       args.actorUserId
     )
-    if (
-      !actorMembership ||
-      !hasPermission(actorMembership.role as Role, "org:manage_billing")
-    ) {
+    const canManageBilling = await hasOrganizationPermission(
+      ctx,
+      actorMembership,
+      "org:manage_billing"
+    )
+    if (!actorMembership || !canManageBilling) {
       throw new Error("Unauthorized")
     }
 

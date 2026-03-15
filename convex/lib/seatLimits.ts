@@ -1,9 +1,11 @@
 import type { QueryCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
+import { resolveOrganizationBillingSnapshot } from "./accountEntitlements"
 
 /**
- * Get the member limit for a given plan
- * Returns -1 for unlimited (team plan)
+ * Get the member limit for a given plan.
+ * Returns -1 for unlimited seat-based workspace plans.
+ * Legacy `team` is treated as a compatibility alias for `startup`.
  */
 export function getPlanMemberLimit(plan: string): number {
   switch (plan) {
@@ -17,13 +19,11 @@ export function getPlanMemberLimit(plan: string): number {
       // Max
       return 10
     case "startup":
-      // Startup uses explicit paid-seat assignment for AI/sync, not member limits.
       return -1
     case "team":
-      // Legacy alias for Startup.
+      // Legacy alias for Startup workspaces.
       return -1
     case "enterprise":
-      // Enterprise
       return -1
     default:
       return 1
@@ -88,7 +88,10 @@ export async function checkSeatLimit(
     }
   }
 
-  const plan = org.subscription?.plan ?? "free"
+  const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
+    organization: org,
+  })
+  const plan = billingSnapshot.plan
   const limit = getPlanMemberLimit(plan)
 
   // Team plan has unlimited members
@@ -132,9 +135,9 @@ export async function checkSeatLimit(
     limit,
     overLimit,
     message: overLimit
-      ? `Over limit (${current}/${limit}). Remove members or upgrade to invite more.`
+      ? `Over limit (${current}/${limit}). Remove members or upgrade your workspace plan to invite more.`
       : current >= limit
-        ? `Seat limit reached (${current}/${limit}). Upgrade your plan to add more members.`
+        ? `Seat limit reached (${current}/${limit}). Upgrade your workspace plan to add more members.`
         : undefined,
   }
 }

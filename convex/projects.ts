@@ -2,12 +2,24 @@ import { mutation, query } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
+import {
+  buildPendingProjectInviteRecord,
+  findPendingProjectInviteByEmail,
+  findUserByNormalizedEmail,
+  normalizeProjectInviteEmail,
+  PERSONAL_WORKSPACE_PREFIX,
+} from "./lib/projectSharing"
+import {
+  canAccessProjectByWorkspaceOrMembership,
+  canEditProjectByWorkspaceOrMembership,
+  canManageProjectByWorkspaceOrMembership,
+  getWorkspaceProjectAccess,
+  hasWorkspaceProjectPermission,
+} from "./lib/workspaceProjectAccess"
 import { applyProjectStorageDeltas, ensureProjectStorageUsage } from "./lib/workspaceLimits"
 
-const PERSONAL_WORKSPACE_PREFIX = "personal:"
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
-type OrganizationRole = "admin" | "member" | "viewer"
 type ProjectSyncMode = "replica" | "git"
 type GitAccessState = "unknown" | "pending" | "granted" | "missing" | "error"
 
@@ -31,6 +43,14 @@ interface GitSyncStateMetadata {
   migratedFromReplicaAt?: number
 }
 
+interface ProjectTeamSeedMember {
+  email: string
+  name?: string
+  role: "project_manager" | "developer" | "designer" | "viewer"
+  isCurrentUser?: boolean
+  profileImageUrl?: string | null
+}
+
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
     throw new Error("AI_GATEWAY_SECRET is not configured")
@@ -38,32 +58,6 @@ function assertGatewaySecret(secret: string | undefined) {
   if (secret !== AI_GATEWAY_SECRET) {
     throw new Error("Unauthorized")
   }
-}
-
-function organizationRolePriority(role: OrganizationRole): number {
-  switch (role) {
-    case "admin":
-      return 3
-    case "member":
-      return 2
-    default:
-      return 1
-  }
-}
-
-function pickCanonicalOrganizationMembership<
-  T extends { role: OrganizationRole; updatedAt?: number; joinedAt?: number; _id: unknown },
->(memberships: T[]): T | null {
-  if (memberships.length === 0) return null
-  return [...memberships].sort((a, b) => {
-    const roleDelta = organizationRolePriority(b.role) - organizationRolePriority(a.role)
-    if (roleDelta !== 0) return roleDelta
-    const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
-    if (updatedDelta !== 0) return updatedDelta
-    const joinedDelta = (b.joinedAt || 0) - (a.joinedAt || 0)
-    if (joinedDelta !== 0) return joinedDelta
-    return String(a._id).localeCompare(String(b._id))
-  })[0]
 }
 
 // Helper to generate URL-safe slug from project name
@@ -131,6 +125,120 @@ function buildGitRepositoryMetadata(args: {
     name: parsed.name,
     url: normalizeRepoUrl(repoUrl),
     defaultBranch: args.defaultBranch?.trim() || "main",
+  }
+}
+
+async function seedProjectTeamAccess(
+  ctx: { db: DatabaseWriter },
+  args: {
+    projectId: Id<"projects">
+    organizationId: Id<"organizations">
+    actorUserId: Id<"users">
+    team?: ProjectTeamSeedMember[]
+    now: number
+  }
+): Promise<void> {
+  const teamMembers = args.team ?? []
+  if (teamMembers.length === 0) {
+    return
+  }
+
+  const organization = await ctx.db.get(args.organizationId)
+  if (!organization) {
+    throw new Error("Organization not found")
+  }
+
+  const actor = await ctx.db.get(args.actorUserId)
+  if (!actor) {
+    throw new Error("Actor not found")
+  }
+
+  const isPersonalWorkspace = organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+  const seenEmails = new Set<string>([normalizeProjectInviteEmail(actor.email)])
+
+  const existingMembers = await ctx.db
+    .query("projectMembers")
+    .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+    .collect()
+  const existingMemberUserIds = new Set(existingMembers.map((member) => String(member.userId)))
+
+  const pendingInvites = await ctx.db
+    .query("projectInvites")
+    .withIndex("by_project_and_status", (q) =>
+      q.eq("projectId", args.projectId).eq("status", "pending")
+    )
+    .collect()
+  const pendingInviteEmails = new Set(
+    pendingInvites.map((invite) => normalizeProjectInviteEmail(invite.email))
+  )
+
+  for (const member of teamMembers) {
+    const normalizedEmail = normalizeProjectInviteEmail(member.email)
+    if (!normalizedEmail || seenEmails.has(normalizedEmail)) {
+      continue
+    }
+    seenEmails.add(normalizedEmail)
+
+    const existingUser = await findUserByNormalizedEmail(ctx, normalizedEmail)
+
+    if (existingUser && String(existingUser._id) === String(args.actorUserId)) {
+      continue
+    }
+
+    if (!isPersonalWorkspace && existingUser) {
+      const orgMembership = await ctx.db
+        .query("members")
+        .withIndex("by_organization_and_user", (q) =>
+          q.eq("organizationId", args.organizationId).eq("userId", existingUser._id)
+        )
+        .first()
+
+      if (orgMembership) {
+        if (existingMemberUserIds.has(String(existingUser._id))) {
+          continue
+        }
+
+        await ctx.db.insert("projectMembers", {
+          projectId: args.projectId,
+          userId: existingUser._id,
+          role: member.role,
+          addedAt: args.now,
+          addedBy: args.actorUserId,
+        })
+        existingMemberUserIds.add(String(existingUser._id))
+        continue
+      }
+    }
+
+    if (!isPersonalWorkspace) {
+      continue
+    }
+
+    if (pendingInviteEmails.has(normalizedEmail)) {
+      continue
+    }
+
+    const existingInvite = await findPendingProjectInviteByEmail(
+      ctx,
+      args.projectId,
+      normalizedEmail
+    )
+    if (existingInvite) {
+      pendingInviteEmails.add(normalizedEmail)
+      continue
+    }
+
+    await ctx.db.insert(
+      "projectInvites",
+      buildPendingProjectInviteRecord({
+        projectId: args.projectId,
+        email: normalizedEmail,
+        role: member.role,
+        invitedBy: args.actorUserId,
+        invitedAt: args.now,
+      })
+    )
+    pendingInviteEmails.add(normalizedEmail)
   }
 }
 
@@ -273,9 +381,41 @@ export const create = mutation({
         detectedStack: v.optional(v.any()),
       })
     ),
+    team: v.optional(
+      v.array(
+        v.object({
+          email: v.string(),
+          name: v.optional(v.string()),
+          role: v.union(
+            v.literal("project_manager"),
+            v.literal("developer"),
+            v.literal("designer"),
+            v.literal("viewer")
+          ),
+          isCurrentUser: v.optional(v.boolean()),
+          profileImageUrl: v.optional(v.union(v.string(), v.null())),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
+    const creator = await ctx.db.get(args.userId)
+    if (!creator) {
+      throw new Error("Creator not found")
+    }
+
+    const workspaceAccess = await getWorkspaceProjectAccess(
+      ctx,
+      args.organizationId,
+      args.userId
+    )
+    const requiredPermission =
+      args.creationPath === "repo" ? "projects:import" : "projects:create"
+
+    if (!hasWorkspaceProjectPermission(workspaceAccess, requiredPermission)) {
+      throw new Error("Unauthorized to create project in this workspace")
+    }
 
     // Generate unique slug
     const baseSlug = generateSlug(args.name)
@@ -343,6 +483,16 @@ export const create = mutation({
       localPath: memberLocalPath,
     })
 
+    if (args.creationPath !== "repo") {
+      await seedProjectTeamAccess(ctx, {
+        projectId,
+        organizationId: args.organizationId,
+        actorUserId: args.userId,
+        team: (args.team ?? []) as ProjectTeamSeedMember[],
+        now,
+      })
+    }
+
     await ensureProjectStorageUsage(ctx, args.organizationId, projectId)
 
     return { projectId, slug }
@@ -354,6 +504,54 @@ export const get = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.projectId)
+  },
+})
+
+export const applyInitialTeamSetup = mutation({
+  args: {
+    projectId: v.id("projects"),
+    actorUserId: v.id("users"),
+    team: v.array(
+      v.object({
+        email: v.string(),
+        name: v.optional(v.string()),
+        role: v.union(
+          v.literal("project_manager"),
+          v.literal("developer"),
+          v.literal("designer"),
+          v.literal("viewer")
+        ),
+        isCurrentUser: v.optional(v.boolean()),
+        profileImageUrl: v.optional(v.union(v.string(), v.null())),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) {
+      throw new Error("Project not found")
+    }
+
+    const actorMembership = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", args.actorUserId)
+      )
+      .first()
+
+    if (!actorMembership || actorMembership.role !== "project_manager") {
+      throw new Error("Only project managers can set up the initial team")
+    }
+
+    await seedProjectTeamAccess(ctx, {
+      projectId: args.projectId,
+      organizationId: project.organizationId,
+      actorUserId: args.actorUserId,
+      team: args.team as ProjectTeamSeedMember[],
+      now: Date.now(),
+    })
+
+    return { success: true }
   },
 })
 
@@ -390,6 +588,15 @@ export const listForOrganization = query({
     ),
   },
   handler: async (ctx, args) => {
+    const workspaceAccess = await getWorkspaceProjectAccess(
+      ctx,
+      args.organizationId,
+      args.userId
+    )
+    if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
+      return []
+    }
+
     const query = ctx.db
       .query("projects")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
@@ -491,14 +698,12 @@ export const getAccessibleById = query({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership) return null
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canAccess) return null
 
     const project = await ctx.db.get(args.projectId)
     if (!project || project.status === "deleted") return null
@@ -513,6 +718,31 @@ export const getAccessibleBySlug = query({
     preferredOrganizationId: v.optional(v.id("organizations")),
   },
   handler: async (ctx, args) => {
+    if (args.preferredOrganizationId !== undefined) {
+      const workspaceAccess = await getWorkspaceProjectAccess(
+        ctx,
+        args.preferredOrganizationId,
+        args.userId
+      )
+
+      if (hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
+        const scopedProject = await ctx.db
+          .query("projects")
+          .withIndex("by_organization_and_slug", (q) =>
+            q.eq("organizationId", args.preferredOrganizationId!).eq("slug", args.slug)
+          )
+          .first()
+
+        if (scopedProject && scopedProject.status !== "deleted") {
+          return {
+            status: "ok" as const,
+            project: scopedProject,
+            role: null,
+          }
+        }
+      }
+    }
+
     const memberships = await ctx.db
       .query("projectMembers")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -589,6 +819,15 @@ export const listForOrganizationWithMemberPath = query({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const workspaceAccess = await getWorkspaceProjectAccess(
+      ctx,
+      args.organizationId,
+      args.userId
+    )
+    if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
+      return []
+    }
+
     const projects = await ctx.db
       .query("projects")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
@@ -729,15 +968,12 @@ export const update = mutation({
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
 
-    // Verify user has permission (is a member with edit rights)
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || membership.role === "viewer") {
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
       throw new Error("Unauthorized to edit project")
     }
 
@@ -780,6 +1016,7 @@ export const update = mutation({
 export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     status: v.union(
       v.literal("draft"),
       v.literal("generating"),
@@ -793,6 +1030,15 @@ export const updateStatus = mutation({
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
 
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update project status")
+    }
+
     await ctx.db.patch(args.projectId, {
       status: args.status,
       updatedAt: Date.now(),
@@ -804,11 +1050,21 @@ export const updateStatus = mutation({
 export const updateWizardStep = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     step: v.number(),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update wizard progress")
+    }
 
     await ctx.db.patch(args.projectId, {
       wizardStep: args.step,
@@ -827,15 +1083,12 @@ export const archive = mutation({
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
 
-    // Verify user has permission
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || membership.role !== "project_manager") {
+    const canManage = await canManageProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canManage) {
       throw new Error("Only project managers can archive projects")
     }
 
@@ -860,15 +1113,12 @@ export const restore = mutation({
       throw new Error("Project is not archived")
     }
 
-    // Verify user has permission
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership || membership.role !== "project_manager") {
+    const canManage = await canManageProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canManage) {
       throw new Error("Only project managers can restore projects")
     }
 
@@ -907,18 +1157,20 @@ export const deleteProject = mutation({
       .first()
     const isProjectManager = membership?.role === "project_manager"
 
-    // Check org membership (admin can also delete)
-    const orgMemberships = await ctx.db
-      .query("members")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", project.organizationId).eq("userId", args.userId)
-      )
-      .collect()
-    const orgMembership = pickCanonicalOrganizationMembership(orgMemberships)
-    const isOrgAdmin = orgMembership?.role === "admin"
+    const workspaceAccess = await getWorkspaceProjectAccess(
+      ctx,
+      project.organizationId,
+      args.userId
+    )
+    const canDeleteFromWorkspace = hasWorkspaceProjectPermission(
+      workspaceAccess,
+      "projects:delete"
+    )
 
-    if (!isCreator && !isProjectManager && !isOrgAdmin) {
-      throw new Error("Only project creators, managers, or organization admins can delete projects")
+    if (!isCreator && !isProjectManager && !canDeleteFromWorkspace) {
+      throw new Error(
+        "Only project creators, managers, or authorized workspace members can delete projects"
+      )
     }
 
     // Delete all project members
@@ -966,6 +1218,7 @@ export const deleteProject = mutation({
 export const saveGeneratedPlan = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     plan: v.object({
       pages: v.array(
         v.object({
@@ -1005,6 +1258,15 @@ export const saveGeneratedPlan = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to save generated plan")
+    }
 
     const updates: Record<string, unknown> = {
       generatedPlan: args.plan,
@@ -1219,6 +1481,15 @@ export const updateSyncStatus = mutation({
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
 
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update sync status")
+    }
+
     const updates: Record<string, unknown> = {
       syncStatus: args.status,
       lastSyncAt: Date.now(),
@@ -1249,14 +1520,12 @@ export const getGitSyncMetadata = query({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const membership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
-      )
-      .first()
-
-    if (!membership) {
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canAccess) {
       return null
     }
 
@@ -1314,6 +1583,15 @@ export const updateGitSyncMetadata = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update git sync metadata")
+    }
 
     const membership = await ctx.db
       .query("projectMembers")
@@ -1553,11 +1831,21 @@ export const saveImportedFrom = mutation({
 export const updatePreviewImage = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update project preview image")
+    }
 
     // Delete old preview image if exists
     if (project.previewImageId) {
@@ -1581,10 +1869,20 @@ export const updatePreviewImage = mutation({
 export const generatePreviewUploadUrl = mutation({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to upload project preview image")
+    }
 
     return await ctx.storage.generateUploadUrl()
   },
@@ -1594,10 +1892,18 @@ export const generatePreviewUploadUrl = mutation({
 export const getPreviewImageUrl = query({
   args: {
     projectId: v.id("projects"),
+    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canAccess) return null
+
     const project = await ctx.db.get(args.projectId)
-    if (!project || !project.previewImageId) return null
+    if (!project || !project.previewImageId || project.status === "deleted") return null
 
     return await ctx.storage.getUrl(project.previewImageId)
   },

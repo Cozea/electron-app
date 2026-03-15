@@ -5,6 +5,7 @@ import { useQuery } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Doc, Id } from "../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 
 interface SlugResolutionCandidate {
   projectId: Id<"projects">
@@ -24,52 +25,49 @@ interface SlugResolutionResult {
 
 export function useAccessibleProject() {
   const { slug, projectId } = useParams<{ slug?: string; projectId?: string }>()
-  const { user, currentOrganization } = useAuth()
-
-  const convexUser = useQuery(
-    api.users.getByWorkosId,
-    user?.id ? { workosId: user.id } : "skip"
-  )
-
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : "skip"
-  )
+  const { convexUserId } = useAuth()
+  const { convexOrg, preferredConvexOrganizationId } = useScopedAppContext()
 
   const projectById = useQuery(
     api.projects.getAccessibleById,
-    projectId && convexUser?._id
-      ? { projectId: projectId as Id<"projects">, userId: convexUser._id }
+    projectId && convexUserId
+      ? { projectId: projectId as Id<"projects">, userId: convexUserId }
       : "skip"
   )
 
   const projectBySlugResult = useQuery(
     api.projects.getAccessibleBySlug,
-    !projectId && slug && convexUser?._id
+    !projectId && slug && convexUserId
       ? {
           slug,
-          userId: convexUser._id,
-          preferredOrganizationId: convexOrg?._id,
+          userId: convexUserId,
+          preferredOrganizationId: preferredConvexOrganizationId,
         }
       : "skip"
   ) as SlugResolutionResult | undefined
 
   const project = useMemo(() => {
     if (projectId) {
-      return projectById ?? null
+      return projectById
     }
-    if (!projectBySlugResult || projectBySlugResult.status !== "ok") {
+    if (!slug) {
+      return null
+    }
+    if (projectBySlugResult === undefined) {
+      return undefined
+    }
+    if (projectBySlugResult.status !== "ok") {
       return null
     }
     return projectBySlugResult.project ?? null
-  }, [projectById, projectBySlugResult, projectId])
+  }, [projectById, projectBySlugResult, projectId, slug])
 
   return {
     project,
     projectIdParam: projectId ?? null,
     slugParam: slug ?? null,
-    convexUser,
+    convexUserId,
     convexOrg,
-    slugResolution: projectBySlugResult ?? null,
+    slugResolution: projectBySlugResult,
   }
 }

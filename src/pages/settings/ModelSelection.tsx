@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { Button } from '@/components/ui/button'
@@ -13,16 +13,18 @@ import {
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { getProviderDisplayName } from '@/hooks/useConnectedProviders'
-import { getModelCatalog, type ModelApiModel } from '@/lib/ai/modelCatalogClient'
+import { useScopedModelSelectionData } from '@/hooks/useScopedModelSelectionData'
+import type { ModelApiModel } from '@/lib/ai/modelCatalogClient'
 import { getProviderLogoUrl } from '@/lib/ai/providerLogos'
 import { cn } from '@/lib/utils'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 import { Brain, ChevronDown, Loader2, Search, Star, X } from 'lucide-react'
 
 interface ModelSelectionProps {
   surface?: 'page' | 'drawer'
+  route?: string
 }
 
 interface ProviderModelGroup {
@@ -30,8 +32,6 @@ interface ProviderModelGroup {
   providerName: string
   models: ModelApiModel[]
 }
-
-const SAVED_MODELS_STORAGE_PREFIX = 'cozea.settings.modelSelection.savedModels.v1'
 
 function getProviderSortPriority(providerId: string): number {
   const normalized = providerId.trim().toLowerCase()
@@ -183,54 +183,23 @@ function getDefaultSavedModelId(models: ModelApiModel[]): string | null {
   return ranked[0]?.id ?? null
 }
 
-function getSavedModelsStorageKey(scope: string): string {
-  return `${SAVED_MODELS_STORAGE_PREFIX}:${scope}`
-}
-
-function loadSavedModelIds(scope: string): string[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const raw = window.localStorage.getItem(getSavedModelsStorageKey(scope))
-    if (!raw) return []
-
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-
-    return Array.from(new Set(
-      parsed
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .map((value) => value.trim())
-    ))
-  } catch {
-    return []
-  }
-}
-
-function saveSavedModelIds(scope: string, modelIds: string[]): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    const normalized = Array.from(new Set(
-      modelIds
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .map((value) => value.trim())
-    ))
-
-    window.localStorage.setItem(getSavedModelsStorageKey(scope), JSON.stringify(normalized))
-  } catch {
-    // Ignore storage errors to keep UI responsive if localStorage is unavailable.
-  }
-}
-
-export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
-  const { user, logout, accessToken, currentOrganization } = useAuth()
+export function ModelSelection({ surface = 'page', route }: ModelSelectionProps) {
+  const {
+    user,
+    logout,
+    settingsPage,
+    scopedOrganizationId,
+    workspaceScoped,
+    canManageWorkspaceAiModelPolicy,
+    availableModels,
+    isLoadingModels,
+    modelsError,
+    savedModelIds,
+    toggleSavedModel,
+    isSavingScopedModels,
+    saveScopedModelsError,
+  } = useScopedModelSelectionData({ route })
   const { theme } = useTheme()
-
-  const [availableModels, setAvailableModels] = useState<ModelApiModel[]>([])
-  const [isLoadingModels, setIsLoadingModels] = useState(false)
-  const [modelsError, setModelsError] = useState<string | null>(null)
-  const [savedModelIds, setSavedModelIds] = useState<string[]>([])
   const [modelSearchQuery, setModelSearchQuery] = useState('')
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
 
@@ -247,79 +216,22 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
 
   const providerLogoFilter = isDarkLikeTheme ? 'brightness(0) invert(1)' : 'brightness(0)'
 
-  const storageScope = useMemo(
-    () => currentOrganization?.organizationId ?? 'global',
-    [currentOrganization?.organizationId]
-  )
-
   useEffect(() => {
-    setSavedModelIds(loadSavedModelIds(storageScope))
-  }, [storageScope])
-
-  useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) {
-      setAvailableModels([])
-      setModelsError(null)
-      setIsLoadingModels(false)
+    if (!scopedOrganizationId || isLoadingModels || modelsError || availableModels.length === 0) {
       return
     }
 
-    let cancelled = false
-    setIsLoadingModels(true)
-    setModelsError(null)
-
-    getModelCatalog({
-      organizationId: currentOrganization.organizationId,
-      accessToken,
-    })
-      .then((data) => {
-        if (cancelled) return
-        setAvailableModels(Array.isArray(data.models) ? data.models : [])
-      })
-      .catch((error) => {
-        if (cancelled) return
-        const message = error instanceof Error && error.message
-          ? error.message
-          : 'Failed to load models'
-        setModelsError(message)
-        setAvailableModels([])
-      })
-      .finally(() => {
-        if (cancelled) return
-        setIsLoadingModels(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [accessToken, currentOrganization?.organizationId])
-
-  useEffect(() => {
-    if (!currentOrganization?.organizationId || isLoadingModels || modelsError || availableModels.length === 0) {
+    if (workspaceScoped || savedModelIds.some((modelId) => availableModels.some((model) => model.id === modelId))) {
       return
     }
 
-    setSavedModelIds((previous) => {
-      const availableSet = new Set(availableModels.map((model) => model.id))
-      const hasAvailableSavedModel = previous.some((modelId) => availableSet.has(modelId))
-      if (hasAvailableSavedModel) return previous
+    const defaultModelId = getDefaultSavedModelId(availableModels)
+    if (!defaultModelId) {
+      return
+    }
 
-      const defaultModelId = getDefaultSavedModelId(availableModels)
-      if (!defaultModelId || previous.includes(defaultModelId)) {
-        return previous
-      }
-
-      const next = [...previous, defaultModelId]
-      saveSavedModelIds(storageScope, next)
-      return next
-    })
-  }, [
-    availableModels,
-    currentOrganization?.organizationId,
-    isLoadingModels,
-    modelsError,
-    storageScope,
-  ])
+    toggleSavedModel(defaultModelId)
+  }, [availableModels, isLoadingModels, modelsError, savedModelIds, scopedOrganizationId, toggleSavedModel, workspaceScoped])
 
   const requiredSavedModelId = useMemo(() => {
     if (savedModelIds.length === 0 || availableModels.length === 0) return null
@@ -329,26 +241,6 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
     if (availableSaved.length !== 1) return null
     return availableSaved[0]
   }, [availableModels, savedModelIds])
-
-  const toggleSavedModel = useCallback((modelId: string) => {
-    setSavedModelIds((previous) => {
-      if (previous.includes(modelId)) {
-        const availableSet = new Set(availableModels.map((model) => model.id))
-        const availableSaved = previous.filter((id) => availableSet.has(id))
-        const isLastAvailableSaved =
-          availableSaved.length === 1 && availableSaved[0] === modelId
-        if (isLastAvailableSaved) {
-          return previous
-        }
-      }
-
-      const next = previous.includes(modelId)
-        ? previous.filter((id) => id !== modelId)
-        : [...previous, modelId]
-      saveSavedModelIds(storageScope, next)
-      return next
-    })
-  }, [availableModels, storageScope])
 
   const modelById = useMemo(() => (
     new Map(availableModels.map((model) => [model.id, model] as const))
@@ -511,23 +403,29 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h3 className="text-base font-medium">Saved Models</h3>
+            <h3 className="text-base font-medium">
+              {workspaceScoped ? 'Allowed Models' : 'Saved Models'}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              This is a global setting for your account workspace context.
+              {workspaceScoped
+                ? 'This workspace allowlist applies to everyone in the workspace.'
+                : 'This is a personal setting for your current account workspace context.'}
             </p>
           </div>
           <p className="rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground">
-            {filteredSavedModels.length} saved
+            {workspaceScoped ? `${filteredSavedModels.length} allowed` : `${filteredSavedModels.length} saved`}
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-2xl bg-secondary/80 px-2 py-1 dark:bg-secondary/40">
+        <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
           {filteredSavedModels.length === 0 ? (
             <div className="px-4 py-6">
               <p className="text-sm text-muted-foreground">
                 {normalizedModelSearchQuery
                   ? 'No saved models match your search.'
-                  : 'No saved models yet. Use the star button on the right side of a model to save it.'}
+                  : workspaceScoped
+                    ? 'No workspace model allowlist yet. Use the star button on the right side of a model to allow it.'
+                    : 'No saved models yet. Use the star button on the right side of a model to save it.'}
               </p>
             </div>
           ) : (
@@ -601,9 +499,12 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
 
         {unavailableSavedCount > 0 ? (
           <p className="text-xs text-muted-foreground">
-            {unavailableSavedCount} saved model
+            {unavailableSavedCount} {workspaceScoped ? 'allowed' : 'saved'} model
             {unavailableSavedCount === 1 ? '' : 's'} not shown because they are not currently available.
           </p>
+        ) : null}
+        {workspaceScoped && saveScopedModelsError ? (
+          <p className="text-xs text-destructive">{saveScopedModelsError}</p>
         ) : null}
       </section>
 
@@ -624,13 +525,13 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
           <p className="text-sm text-destructive">{modelsError}</p>
         ) : null}
 
-        {!isLoadingModels && !modelsError && !currentOrganization?.organizationId ? (
+        {!isLoadingModels && !modelsError && !scopedOrganizationId ? (
           <p className="text-sm text-muted-foreground">
             Select a workspace to load available models.
           </p>
         ) : null}
 
-        {!isLoadingModels && !modelsError && groupedModels.length === 0 && currentOrganization?.organizationId ? (
+        {!isLoadingModels && !modelsError && groupedModels.length === 0 && scopedOrganizationId ? (
           <p className="text-sm text-muted-foreground">
             No models available for this workspace.
           </p>
@@ -759,13 +660,17 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
                                     onClick={() => {
                                       toggleSavedModel(model.id)
                                     }}
-                                    disabled={isSaved && isRequiredSavedModel}
+                                    disabled={(workspaceScoped && !canManageWorkspaceAiModelPolicy) || (isSaved && isRequiredSavedModel)}
                                     aria-label={
                                       isSaved && isRequiredSavedModel
-                                        ? `${model.displayName} is required as at least one saved model`
+                                        ? `${model.displayName} is required as at least one ${workspaceScoped ? 'allowed' : 'saved'} model`
                                         : isSaved
-                                        ? `Remove ${model.displayName} from saved models`
-                                        : `Save ${model.displayName}`
+                                        ? workspaceScoped
+                                          ? `Remove ${model.displayName} from workspace allowlist`
+                                          : `Remove ${model.displayName} from saved models`
+                                        : workspaceScoped
+                                          ? `Allow ${model.displayName} for this workspace`
+                                          : `Save ${model.displayName}`
                                     }
                                   >
                                     <Star
@@ -795,16 +700,38 @@ export function ModelSelection({ surface = 'page' }: ModelSelectionProps) {
   )
 
   if (surface === 'drawer') {
-    return content
+    return settingsPage.isWorkspaceAccessDenied ? (
+      <WorkspaceAccessNotice
+        title="Model selection access required"
+        description="You do not have permission to view workspace model selection."
+      />
+    ) : content
   }
 
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'AI' }, { label: 'Model Selection' }]}
+      breadcrumbs={[...settingsPage.breadcrumbs.slice(0, 1), { label: 'AI' }, { label: 'Model Selection' }]}
     >
-      {content}
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="Model selection access required"
+          description="You do not have permission to view workspace model selection."
+        />
+      ) : (
+        <>
+          {workspaceScoped && isSavingScopedModels ? (
+            <div className="mx-auto w-full max-w-6xl px-6 pt-6">
+              <div className="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving workspace model selection...
+              </div>
+            </div>
+          ) : null}
+          {content}
+        </>
+      )}
     </DashboardLayout>
   )
 }

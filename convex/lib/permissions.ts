@@ -1,43 +1,77 @@
 /**
- * Centralized permission system for role-based access control
+ * Centralized legacy role and permission system.
  *
- * Roles hierarchy (highest to lowest):
- *   admin > member > viewer
- *
- * WorkOS Role Mapping:
- *   WorkOS "admin"  → Convex "admin"
- *   WorkOS "member" → Convex "member"
- *   WorkOS "viewer" → Convex "viewer"
+ * This remains the fallback permission model while persisted organization
+ * roles are rolled out. Persisted roles reuse the same permission keys and
+ * base-role hierarchy, but store explicit role records per organization.
  */
 
-export type Role = "admin" | "member" | "viewer"
+export const BASE_ROLE_VALUES = ["admin", "member", "viewer"] as const
 
-export type Permission =
+export type Role = (typeof BASE_ROLE_VALUES)[number]
+
+export const PERMISSION_VALUES = [
   // Organization
-  | "org:read"
-  | "org:update"
-  | "org:delete"
-  | "org:manage_billing"
+  "org:read",
+  "org:update",
+  "org:delete",
+  "org:manage_billing",
+  // Billing
+  "billing:view",
+  "billing:manage_subscription",
+  "billing:manage_seats",
+  "billing:view_invoices",
+  "billing:manage_payment_method",
   // Members
-  | "members:view"
-  | "members:invite"
-  | "members:remove"
-  | "members:update_role"
+  "members:view",
+  "members:invite",
+  "members:remove",
+  "members:update_role",
   // Invitations
-  | "invitations:view"
-  | "invitations:send"
-  | "invitations:revoke"
+  "invitations:view",
+  "invitations:send",
+  "invitations:revoke",
+  // Roles / IAM
+  "roles:view",
+  "roles:create",
+  "roles:update",
+  "roles:delete",
+  "roles:assign",
+  // Projects
+  "projects:view",
+  "projects:create",
+  "projects:import",
+  "projects:archive",
+  "projects:delete",
+  "projects:share",
+  // Project AI
+  "project_ai:use",
+  "project_ai:use_tools",
+  "project_ai:use_agents",
+  // Workspace AI
+  "workspace_ai:view",
+  "workspace_ai:manage_settings",
+  "workspace_ai:manage_model_policy",
+  "workspace_ai:manage_provider_policy",
+  "workspace_ai:view_usage",
+  // Tooling
+  "tooling:view",
+  "tooling:manage",
   // Settings
-  | "settings:view"
-  | "settings:update"
-  | "settings:manage_api_keys"
+  "settings:view",
+  "settings:update",
+  "settings:manage_api_keys",
   // Integrations
-  | "integrations:view"
-  | "integrations:connect"
-  | "integrations:disconnect"
+  "integrations:view",
+  "integrations:connect",
+  "integrations:disconnect",
   // Usage & Analytics
-  | "usage:view"
-  | "usage:export"
+  "usage:view",
+  "usage:export",
+  "audit:view",
+] as const
+
+export type Permission = (typeof PERMISSION_VALUES)[number]
 
 /**
  * Permission matrix: maps each permission to the roles that have it
@@ -48,6 +82,11 @@ const PERMISSION_MATRIX: Record<Permission, Role[]> = {
   "org:update": ["admin"],
   "org:delete": ["admin"],
   "org:manage_billing": ["admin"],
+  "billing:view": ["admin"],
+  "billing:manage_subscription": ["admin"],
+  "billing:manage_seats": ["admin"],
+  "billing:view_invoices": ["admin"],
+  "billing:manage_payment_method": ["admin"],
 
   // Members
   "members:view": ["admin", "member", "viewer"],
@@ -59,6 +98,37 @@ const PERMISSION_MATRIX: Record<Permission, Role[]> = {
   "invitations:view": ["admin"],
   "invitations:send": ["admin"],
   "invitations:revoke": ["admin"],
+
+  // Roles / IAM
+  "roles:view": ["admin", "member", "viewer"],
+  "roles:create": ["admin"],
+  "roles:update": ["admin"],
+  "roles:delete": ["admin"],
+  "roles:assign": ["admin"],
+
+  // Projects
+  "projects:view": ["admin", "member", "viewer"],
+  "projects:create": ["admin", "member"],
+  "projects:import": ["admin", "member"],
+  "projects:archive": ["admin"],
+  "projects:delete": ["admin"],
+  "projects:share": ["admin", "member"],
+
+  // Project AI
+  "project_ai:use": ["admin", "member"],
+  "project_ai:use_tools": ["admin", "member"],
+  "project_ai:use_agents": ["admin"],
+
+  // Workspace AI
+  "workspace_ai:view": ["admin", "member"],
+  "workspace_ai:manage_settings": ["admin"],
+  "workspace_ai:manage_model_policy": ["admin"],
+  "workspace_ai:manage_provider_policy": ["admin"],
+  "workspace_ai:view_usage": ["admin", "member"],
+
+  // Tooling
+  "tooling:view": ["admin", "member"],
+  "tooling:manage": ["admin"],
 
   // Settings
   "settings:view": ["admin", "member"],
@@ -73,7 +143,44 @@ const PERMISSION_MATRIX: Record<Permission, Role[]> = {
   // Usage
   "usage:view": ["admin", "member"],
   "usage:export": ["admin"],
+  "audit:view": ["admin"],
 }
+
+export interface SystemOrganizationRoleDefinition {
+  key: string
+  name: string
+  description: string
+  baseRole: Role
+  permissions: Permission[]
+  isSystem: boolean
+}
+
+export const SYSTEM_ORGANIZATION_ROLE_DEFINITIONS: SystemOrganizationRoleDefinition[] = [
+  {
+    key: "admin",
+    name: "Admin",
+    description: "Manage billing, members, invitations, integrations, and workspace settings.",
+    baseRole: "admin",
+    permissions: getPermissionsForRole("admin"),
+    isSystem: true,
+  },
+  {
+    key: "member",
+    name: "Member",
+    description: "Access projects, use workspace AI defaults, and collaborate across shared resources.",
+    baseRole: "member",
+    permissions: getPermissionsForRole("member"),
+    isSystem: true,
+  },
+  {
+    key: "viewer",
+    name: "Viewer",
+    description: "Read-only access to the workspace and shared resources.",
+    baseRole: "viewer",
+    permissions: getPermissionsForRole("viewer"),
+    isSystem: true,
+  },
+]
 
 /**
  * Check if a role has a specific permission

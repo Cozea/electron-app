@@ -13,10 +13,7 @@ import {
   Search,
   FolderOpen,
   Terminal,
-  Settings,
-  CreditCard,
-  Bot,
-  Users,
+  type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,9 +38,14 @@ import {
 } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
+import {
+  canAccessWorkspaceSurface,
+  getSettingsSurfaceDisplayLabel,
+  getSettingsSurfaceRoute,
+  listSettingsSurfaces,
+} from '@/lib/settings/settingsRegistry'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
-import { useAuth } from '@/contexts/AuthContext'
-import { isPersonalWorkspace } from '@/lib/workspaces'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 
 interface CommandSearchProps {
   className?: string
@@ -52,32 +54,19 @@ interface CommandSearchProps {
 interface NavigationItem {
   href: string
   label: string
-  icon: typeof FolderOpen
+  icon: LucideIcon
   keywords: string[]
-  requiresOrganizationWorkspace?: boolean
+  openInDrawer?: boolean
 }
 
-const navigationItems: NavigationItem[] = [
-  { href: '/projects', label: 'Projects', icon: FolderOpen, keywords: ['projects', 'apps', 'code', 'home', 'main'] },
-  { href: '/workspace/integrations', label: 'CLI Tools', icon: Terminal, keywords: ['cli', 'tools', 'integrations', 'connect', 'services', 'terminal'] },
-  { href: '/settings/billing', label: 'Billing', icon: CreditCard, keywords: ['billing', 'subscription', 'payment'] },
-  { href: '/settings/ai', label: 'AI Settings', icon: Bot, keywords: ['ai', 'providers', 'models', 'settings'] },
+const baseNavigationItems: NavigationItem[] = [
   {
-    href: '/teams',
-    label: 'Team Members',
-    icon: Users,
-    keywords: ['team', 'members', 'organization'],
-    requiresOrganizationWorkspace: true,
+    href: '/projects',
+    label: 'Projects',
+    icon: FolderOpen,
+    keywords: ['projects', 'apps', 'code', 'home', 'main'],
+    openInDrawer: false,
   },
-  {
-    href: '/workspace/general',
-    label: 'Workspace Settings',
-    icon: Settings,
-    keywords: ['workspace', 'settings', 'general'],
-    requiresOrganizationWorkspace: true,
-  },
-  { href: '/settings/account', label: 'Account Settings', icon: Settings, keywords: ['account', 'profile', 'settings'] },
-  { href: '/settings/tooling', label: 'Tooling Settings', icon: Terminal, keywords: ['tooling', 'runtime', 'framework', 'settings'] },
 ]
 
 const actionItems = [
@@ -89,17 +78,54 @@ export function CommandSearch({ className }: CommandSearchProps) {
   const [open, setOpen] = useState(false)
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
-  const { currentOrganization } = useAuth()
+  const {
+    workspaceScoped,
+    surfaceAccess,
+  } = useScopedAppContext()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
-  const personalWorkspaceSelected = isPersonalWorkspace(currentOrganization)
 
-  const visibleNavigationItems = useMemo(
-    () =>
-      navigationItems.filter(
-        (item) => !personalWorkspaceSelected || !item.requiresOrganizationWorkspace
-      ),
-    [personalWorkspaceSelected]
-  )
+  const navigationItems = useMemo(() => {
+    const personalSettingsItems = listSettingsSurfaces({
+      scopeKind: 'personal',
+      placement: 'command',
+    }).map((surface) => ({
+      href: surface.routes.personal!,
+      label: getSettingsSurfaceDisplayLabel(surface, 'personal', {
+        includeScopePrefix: workspaceScoped && Boolean(surface.routes.workspace),
+      }),
+      icon: surface.icon,
+      keywords: surface.commandKeywords,
+      openInDrawer: surface.placements.includes('drawer'),
+    }) satisfies NavigationItem)
+
+    const workspaceSettingsItems = workspaceScoped
+      ? listSettingsSurfaces({
+          scopeKind: 'workspace',
+          placement: 'command',
+        })
+          .filter((surface) =>
+            canAccessWorkspaceSurface(surface, surfaceAccess)
+          )
+          .map((surface) => ({
+            href: surface.routes.workspace!,
+            label: getSettingsSurfaceDisplayLabel(surface, 'workspace', {
+              includeScopePrefix: Boolean(surface.routes.personal),
+            }),
+            icon: surface.icon,
+            keywords: surface.commandKeywords,
+            openInDrawer: false,
+          }) satisfies NavigationItem)
+      : []
+
+    return [
+      baseNavigationItems[0],
+      ...workspaceSettingsItems,
+      ...personalSettingsItems,
+    ]
+  }, [
+    surfaceAccess,
+    workspaceScoped,
+  ])
 
   const runCommand = useCallback((command: () => unknown) => {
     setOpen(false)
@@ -143,7 +169,11 @@ export function CommandSearch({ className }: CommandSearchProps) {
         navigate('/projects/new')
         break
       case 'connect-integration':
-        handleNavigate('/workspace/integrations')
+        handleNavigate(
+          (workspaceScoped
+            ? getSettingsSurfaceRoute('cliTools', 'workspace')
+            : getSettingsSurfaceRoute('cliTools', 'personal')) ?? '/settings/cli-tools'
+        )
         break
     }
   }
@@ -180,14 +210,18 @@ export function CommandSearch({ className }: CommandSearchProps) {
               <CommandEmpty>No results found.</CommandEmpty>
 
               <CommandGroup heading="Navigation">
-                {visibleNavigationItems.map((item) => {
+                {navigationItems.map((item) => {
                   const Icon = item.icon
                   const isActive = location.pathname === item.href
                   return (
                     <CommandItem
                       key={item.href}
                       keywords={item.keywords}
-                      onSelect={() => runCommand(() => handleNavigate(item.href))}
+                      onSelect={() =>
+                        runCommand(() =>
+                          item.openInDrawer ? openSettingsDrawer(item.href) : handleNavigate(item.href)
+                        )
+                      }
                       className={cn(isActive && 'bg-accent')}
                     >
                       <Icon className="mr-2 h-4 w-4" />

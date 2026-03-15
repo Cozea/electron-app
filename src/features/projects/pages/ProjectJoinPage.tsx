@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
-import { useMutation } from "convex/react"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { useMutation, useQuery } from "convex/react"
+import { AlertCircle, Link2, Loader2, LogIn } from "lucide-react"
 
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -24,10 +24,22 @@ function cleanConvexError(error: unknown, fallback: string): string {
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()
   const { token } = useParams<{ token: string }>()
-  const { convexUserId } = useAuth()
+  const { convexUserId, isAuthenticated, isLoading, login } = useAuth()
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
+  const preview = useQuery(
+    api.projectJoinLinks.previewByToken,
+    token
+      ? convexUserId
+        ? {
+            token,
+            viewerUserId: convexUserId,
+          }
+        : {
+            token,
+          }
+      : "skip"
+  )
 
-  const [attempt, setAttempt] = useState(0)
   const [isJoining, setIsJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
 
@@ -55,15 +67,6 @@ export function ProjectJoinPage() {
     }
   }, [convexUserId, joinByToken, navigate, token])
 
-  useEffect(() => {
-    if (!token) {
-      setJoinError("Invalid project join link.")
-      return
-    }
-    if (!convexUserId) return
-    void runJoin()
-  }, [attempt, convexUserId, runJoin, token])
-
   if (!token) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -85,7 +88,7 @@ export function ProjectJoinPage() {
     )
   }
 
-  if (!convexUserId || isJoining) {
+  if (preview === undefined || (isLoading && !isAuthenticated)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-lg">
@@ -93,17 +96,15 @@ export function ProjectJoinPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <Loader2 className="h-7 w-7 animate-spin text-primary" />
             </div>
-            <CardTitle>Joining Project...</CardTitle>
-            <CardDescription>
-              {!convexUserId ? "Finishing sign-in..." : "Applying your project access now."}
-            </CardDescription>
+            <CardTitle>Loading Invite Link...</CardTitle>
+            <CardDescription>Checking the project access attached to this link.</CardDescription>
           </CardHeader>
         </Card>
       </div>
     )
   }
 
-  if (joinError) {
+  if (!preview) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-lg">
@@ -112,7 +113,7 @@ export function ProjectJoinPage() {
               <AlertCircle className="h-7 w-7 text-destructive" />
             </div>
             <CardTitle>Unable to Join Project</CardTitle>
-            <CardDescription>{joinError}</CardDescription>
+            <CardDescription>This invite link is invalid or no longer points to a project.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {shortToken ? (
@@ -122,15 +123,6 @@ export function ProjectJoinPage() {
             ) : null}
             <div className="flex gap-2">
               <Button
-                className="flex-1"
-                onClick={() => {
-                  setAttempt((value) => value + 1)
-                }}
-              >
-                Retry
-              </Button>
-              <Button
-                variant="outline"
                 className="flex-1"
                 onClick={() => navigate("/projects", { replace: true })}
               >
@@ -143,5 +135,134 @@ export function ProjectJoinPage() {
     )
   }
 
-  return null
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Link2 className="h-7 w-7 text-primary" />
+            </div>
+            <CardTitle>{preview.project.name}</CardTitle>
+            <CardDescription>
+              {preview.inviter?.firstName || preview.inviter?.lastName || preview.inviter?.email
+                ? "A collaborator shared a direct project link with you."
+                : "This project link gives access to a shared Cozea project."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              Sign in to preview and accept this project link.
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => {
+                void login()
+              }}
+            >
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign in to continue
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!convexUserId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+            </div>
+            <CardTitle>Finishing Sign-in...</CardTitle>
+            <CardDescription>Preparing your account for project access.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  if (preview.status !== "active") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <CardTitle>Link No Longer Active</CardTitle>
+            <CardDescription>
+              This share link has been revoked. Ask the project owner to generate a new one.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
+              Go to Projects
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-lg">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+            <Link2 className="h-7 w-7 text-primary" />
+          </div>
+          <CardTitle>{preview.project.name}</CardTitle>
+          <CardDescription>
+            Join this project as a {preview.role.replace(/_/g, " ")}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+            {preview.alreadyMember
+              ? `You already have access${preview.existingRole ? ` as ${preview.existingRole.replace(/_/g, " ")}` : ""}.`
+              : "Access will be granted as soon as you accept this link."}
+          </div>
+
+          {joinError ? (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {joinError}
+            </div>
+          ) : null}
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => navigate("/projects", { replace: true })}
+            >
+              Back to Projects
+            </Button>
+            {preview.alreadyMember ? (
+              <Button
+                className="flex-1"
+                onClick={() => navigate(buildProjectPath(String(preview.project.id)), { replace: true })}
+              >
+                Open project
+              </Button>
+            ) : (
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  void runJoin()
+                }}
+                disabled={isJoining}
+              >
+                {isJoining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Join project
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }

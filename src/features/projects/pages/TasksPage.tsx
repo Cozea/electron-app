@@ -20,6 +20,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import {
   type TaskOverlayLocationState,
@@ -833,7 +834,9 @@ function TaskTile({
 
 export function TasksPage() {
   const { project } = useAccessibleProject()
-  const { currentOrganization, convexUserId } = useAuth()
+  const projectWorkspace = useProjectWorkspaceContext(project)
+  const { convexUserId } = useAuth()
+  const hasResolvedWorkspaceContext = project !== undefined && !projectWorkspace.isLoading
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -856,19 +859,23 @@ export function TasksPage() {
   const [draftContextPagesLoading, setDraftContextPagesLoading] = useState(false)
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isSyncingLocalTasks, setIsSyncingLocalTasks] = useState(false)
-  const isOrganizationWorkspace = currentOrganization?.workspaceType === 'organization'
-  const currentConvexOrgId = (currentOrganization?.convexOrgId as Id<'organizations'> | undefined) ?? null
+  const currentProjectOrgId = projectWorkspace.organizationId
+  const isOrganizationWorkspace = projectWorkspace.isOrganizationWorkspace
   const createManualTask = useMutation(api.projectTasks.createManualTask)
   const setManualTaskCheckedMarkers = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
   const migrateLocalBoardState = useMutation(api.projectTasks.migrateLocalBoardState)
 
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    !isOrganizationWorkspace && project?._id ? { projectId: project._id } : 'skip',
+    hasResolvedWorkspaceContext && !isOrganizationWorkspace && project?._id && convexUserId
+      ? { projectId: project._id, viewerUserId: convexUserId }
+      : 'skip',
   )
   const workspaceMembers = useQuery(
     api.organizations.getMembers,
-    isOrganizationWorkspace && currentConvexOrgId ? { orgId: currentConvexOrgId } : 'skip',
+    hasResolvedWorkspaceContext && isOrganizationWorkspace && currentProjectOrgId
+      ? { orgId: currentProjectOrgId }
+      : 'skip',
   )
   const sharedManualTasks = useQuery(
     api.projectTasks.listForProject,
@@ -890,7 +897,7 @@ export function TasksPage() {
     }
   }, [project?.frameworkInfo])
   const claimantCandidatesLoading = isOrganizationWorkspace
-    ? currentConvexOrgId !== null && workspaceMembers === undefined
+    ? projectWorkspace.isLoading || (currentProjectOrgId !== null && workspaceMembers === undefined)
     : Boolean(project?._id) && projectMembers === undefined
   const claimantCandidates = useMemo(() => {
     const sourceMembers = (
@@ -1454,7 +1461,15 @@ export function TasksPage() {
     })
   }
 
-  if (!project) {
+  if (project === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center bg-content-surface p-6">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (project === null) {
     return (
       <div className="flex h-full items-center justify-center bg-content-surface p-6">
         <Empty>
@@ -1659,7 +1674,7 @@ export function TasksPage() {
                     disabled={
                       claimantCandidatesLoading
                         ? false
-                        : claimantCandidates.length === 0 && !currentConvexOrgId && isOrganizationWorkspace
+                        : claimantCandidates.length === 0 && !currentProjectOrgId && isOrganizationWorkspace
                     }
                   />
 
@@ -1672,7 +1687,7 @@ export function TasksPage() {
                           </div>
                         ) : claimantCandidates.length === 0 ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
-                            {isOrganizationWorkspace && !currentConvexOrgId
+                            {isOrganizationWorkspace && !currentProjectOrgId
                               ? 'People are unavailable right now.'
                               : 'No people available.'}
                           </div>

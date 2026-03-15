@@ -7,6 +7,7 @@ import {
   calculateSpendCents,
   getModelTier,
 } from "./lib/modelTiers"
+import { resolveOrganizationBillingSnapshot } from "./lib/accountEntitlements"
 import {
   getTrailingUtcDayRange,
   getUtcDayStartTimestamp,
@@ -466,6 +467,9 @@ export const getUsageSummary = query({
     if (!org) {
       return null
     }
+    const billingSnapshot = await resolveOrganizationBillingSnapshot(ctx, {
+      organization: org,
+    })
 
     const monthStart = getUtcMonthStartTimestamp(Date.now())
 
@@ -490,9 +494,10 @@ export const getUsageSummary = query({
       totalCompletionTokens: monthlyAggregate?.totalCompletionTokens ?? 0,
       trackedUnitsThisPeriod: trackedUnits,
       totalTrackedUnits: trackedUnits,
-      currentPeriodStart: org.subscription.currentPeriodStart,
-      currentPeriodEnd: org.subscription.currentPeriodEnd,
-      plan: org.subscription.plan,
+      currentPeriodStart: billingSnapshot.currentPeriodStart,
+      currentPeriodEnd: billingSnapshot.currentPeriodEnd,
+      plan: billingSnapshot.plan,
+      status: billingSnapshot.status,
       note: "Tracked units are visibility metrics. Cozea-managed providers debit from the shared AI wallet.",
     }
   },

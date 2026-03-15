@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation } from 'convex/react'
 import type { Id } from '../../../convex/_generated/dataModel'
 
-import { useAuth } from '../../contexts/AuthContext'
 import { api } from '../../../convex/_generated/api'
-import { useCachedQuery } from '../../stores/useQueryCache'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -38,12 +36,13 @@ import {
 import { fetchWithAbort } from '@/lib/abort'
 import { featureFlags } from '@/lib/featureFlags'
 import { cn } from '@/lib/utils'
+import { useScopedBillingData } from '@/hooks/useScopedBillingData'
+import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
 
 const AUTH_SERVER_URL =
   import.meta.env.VITE_AUTH_SERVER_URL ||
   'https://api.cozea.app'
 const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Plan'
-
 const STARTUP_MIN_SEATS = 2
 const STARTUP_MAX_SEATS = 10
 const MAX_TRIAL_INCLUDED_PERCENT = 5
@@ -51,7 +50,6 @@ const MAX_TRIAL_INCLUDED_PERCENT = 5
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
 type SelfServePlan = CheckoutPlan
-type PlanSubtype = 'individual' | 'workspace'
 type PlanTierId = 'free' | CheckoutPlan | 'enterprise'
 
 interface BillingProps {
@@ -136,19 +134,6 @@ const BILLING_CYCLE_OPTIONS: SegmentedControlOption<BillingCycle>[] = [
   },
 ]
 
-const PLAN_SUBTYPE_OPTIONS: SegmentedControlOption<PlanSubtype>[] = [
-  {
-    value: 'individual',
-    label: 'Individual',
-    ariaLabel: 'Individual plans',
-  },
-  {
-    value: 'workspace',
-    label: 'Enterprise',
-    ariaLabel: 'Enterprise plans',
-  },
-]
-
 const INDIVIDUAL_PLAN_CARDS: PlanCard[] = [
   {
     id: 'free',
@@ -217,9 +202,9 @@ const STARTUP_PLAN_CARD: PlanCard = {
     { text: 'Unlimited real-time collaboration', included: true },
     { text: '10× higher AI credits per seat', included: true },
     { text: 'All coding agents', included: true },
-    { text: 'Shared AI Memory (Coming in Version 0.2.0)', included: true },
+    { text: 'Workspace AI Memory (Coming in Version 0.2.0)', included: true },
     { text: 'Auto documentation (Coming in Version 0.2.0)', included: true },
-    { text: 'Centralized team billing', included: true },
+    { text: 'Centralized workspace billing', included: true },
     { text: 'Admin visibility & usage oversight', included: true },
     { text: '20+ integrations', included: true },
     { text: 'Bring Your Own API Keys (optional)', included: true },
@@ -446,7 +431,11 @@ function formatEntitlementStatus(status?: string): string {
 function isSeatManagedEntitlement(args: {
   source?: 'account' | 'legacy' | 'trial' | 'free'
   plan?: string
+  workspaceScoped?: boolean
 }): boolean {
+  if (args.workspaceScoped) {
+    return args.source === 'trial' || args.plan === 'startup' || args.plan === 'enterprise'
+  }
   return (
     args.source === 'trial' ||
     args.plan === 'startup' ||
@@ -458,8 +447,16 @@ function isSeatManagedEntitlement(args: {
 function planLabel(args: {
   source?: 'account' | 'legacy' | 'trial' | 'free'
   plan?: 'free' | 'pro' | 'max' | 'startup' | 'enterprise'
+  workspaceScoped?: boolean
 }): string {
   if (args.source === 'legacy') return 'Legacy Workspace'
+  if (args.workspaceScoped) {
+    if (args.plan === 'enterprise') return 'Enterprise'
+    if (args.plan === 'startup' || args.plan === 'pro' || args.plan === 'max' || args.source === 'trial') {
+      return 'Startup'
+    }
+    return 'Free'
+  }
   if (args.plan === 'pro') return 'Pro'
   if (args.plan === 'max') return 'Max'
   if (args.plan === 'enterprise') return 'Enterprise'
@@ -474,8 +471,22 @@ function normalizeSeatQuantity(value: number): number {
 
 function normalizeCurrentPlanForCards(
   source: 'account' | 'legacy' | 'trial' | 'free' | undefined,
-  plan: string | undefined
+  plan: string | undefined,
+  workspaceScoped: boolean
 ): PlanTierId {
+  if (workspaceScoped) {
+    if (source === 'trial') return 'startup'
+    if (
+      plan === 'startup' ||
+      plan === 'team' ||
+      plan === 'pro' ||
+      plan === 'max'
+    ) {
+      return 'startup'
+    }
+    if (plan === 'enterprise') return 'enterprise'
+    return 'free'
+  }
   if (source === 'trial') return 'startup'
   if (plan === 'team') return 'startup'
   if (plan === 'pro' || plan === 'max' || plan === 'startup' || plan === 'enterprise') {
@@ -712,44 +723,22 @@ function getPlanBadge(
 }
 
 export function Billing({ surface = 'page', route }: BillingProps) {
-  const { user, logout, currentOrganization, convexUserId, accessToken } = useAuth()
-
-  const freshOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId
-      ? { workosId: currentOrganization.organizationId }
-      : 'skip'
-  )
-  const convexOrg = useCachedQuery(
-    `billing-org-${currentOrganization?.organizationId}`,
-    freshOrg
-  )
-
-  const members = useQuery(
-    api.organizations.getMembers,
-    convexOrg?._id ? { orgId: convexOrg._id } : 'skip'
-  )
-
-  const seatManagement = useQuery(
-    api.billing.getSeatManagement,
-    convexOrg?._id && convexUserId
-      ? { organizationId: convexOrg._id, userId: convexUserId }
-      : 'skip'
-  )
-
-  const walletSummary = useQuery(
-    api.aiWallets.getWalletForViewer,
-    convexOrg?._id && convexUserId
-      ? { organizationId: convexOrg._id, userId: convexUserId }
-      : 'skip'
-  )
-
-  const seatWallets = useQuery(
-    api.aiWallets.getSeatWalletsForViewer,
-    convexOrg?._id && convexUserId
-      ? { organizationId: convexOrg._id, userId: convexUserId }
-      : 'skip'
-  )
+  const {
+    user,
+    logout,
+    convexUserId,
+    accessToken,
+    settingsPage,
+    convexOrg,
+    workspaceScoped,
+    canManageWorkspaceBilling,
+    billingOrganizationId,
+    billingRoute,
+    members,
+    seatManagement,
+    walletSummary,
+    seatWallets,
+  } = useScopedBillingData({ route })
 
   const setSeatAssignment = useMutation(api.billing.setSeatAssignment)
 
@@ -765,7 +754,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [isPortalPending, setIsPortalPending] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
   const [pendingDowngradeTargetPlanId, setPendingDowngradeTargetPlanId] = useState<PlanTierId | null>(null)
-  const [selectedPlanSubtype, setSelectedPlanSubtype] = useState<PlanSubtype>('individual')
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
 
@@ -798,7 +786,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     let cancelled = false
 
     const fetchScheduledCycleChange = async () => {
-      if (!currentOrganization?.organizationId || !accessToken) {
+      if (!billingOrganizationId || !accessToken) {
         if (!cancelled) {
           setScheduledCycleChange(null)
         }
@@ -807,7 +795,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
       try {
         const response = await fetchWithAbort(
-          `${AUTH_SERVER_URL}/stripe/scheduled-cycle-change?organizationId=${currentOrganization.organizationId}`,
+          `${AUTH_SERVER_URL}/stripe/scheduled-cycle-change?organizationId=${billingOrganizationId}`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -844,7 +832,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       cancelled = true
       controller.abort()
     }
-  }, [currentOrganization?.organizationId, accessToken])
+  }, [billingOrganizationId, accessToken])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -895,12 +883,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     let cancelled = false
 
     const fetchInvoices = async () => {
-      if (!currentOrganization?.organizationId || !accessToken) return
+      if (!billingOrganizationId || !accessToken) return
 
       setInvoicesLoading(true)
       try {
         const response = await fetchWithAbort(
-          `${AUTH_SERVER_URL}/stripe/invoices?organizationId=${currentOrganization.organizationId}&limit=10`,
+          `${AUTH_SERVER_URL}/stripe/invoices?organizationId=${billingOrganizationId}&limit=10`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -931,12 +919,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       cancelled = true
       controller.abort()
     }
-  }, [currentOrganization?.organizationId, accessToken])
+  }, [billingOrganizationId, accessToken])
 
   const entitlement = seatManagement?.entitlement
   const currentPlanName = planLabel({
     source: entitlement?.source,
     plan: entitlement?.plan,
+    workspaceScoped,
   })
   const entitlementStatusLabel = formatEntitlementStatus(entitlement?.status)
   const paidSeatTotal = entitlement?.seatCounts.total ?? 0
@@ -966,16 +955,21 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     ? String(seatManagement.billingAccount.billingUserId)
     : null
   const canManageSeats = seatManagement?.canManageSeats ?? false
-  const canOpenCheckout = currentOrganization?.role === 'admin'
+  const canOpenCheckout = workspaceScoped ? canManageWorkspaceBilling : true
   const hasPastDueEntitlement = entitlement?.status === 'past_due'
   const seatManagedEntitlement = isSeatManagedEntitlement({
     source: entitlement?.source,
     plan: entitlement?.plan,
+    workspaceScoped,
   })
   const showPaidSeatSummary = seatManagedEntitlement || paidSeatTotal > 0
   const hasBillingOverviewContent =
     showPaidSeatSummary || (seatManagedEntitlement && Boolean(seatManagement?.billingUser))
-  const currentPlanIdForCards = normalizeCurrentPlanForCards(entitlement?.source, entitlement?.plan)
+  const currentPlanIdForCards = normalizeCurrentPlanForCards(
+    entitlement?.source,
+    entitlement?.plan,
+    workspaceScoped
+  )
   const currentSubscriptionCycle =
     seatManagement?.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
   const currentSelfServePlan =
@@ -1045,17 +1039,11 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       }
     })
   }, [checkoutCycle, pricingCatalog])
-  const startupPlanCard = useMemo(() => {
-    return {
-      ...STARTUP_PLAN_CARD,
-    }
-  }, [])
-  const normalizedCheckoutSeatQuantity = normalizeSeatQuantity(checkoutSeatQuantity)
-  const startupPlanCtaLabel = getPlanCtaLabel('startup', currentPlanIdForCards, 'Startup')
+  const startupPlanCtaLabel = getPlanCtaLabel('startup', currentPlanIdForCards, STARTUP_PLAN_CARD.name)
   const enterprisePlanCtaLabel = getPlanCtaLabel('enterprise', currentPlanIdForCards, ENTERPRISE_PLAN_CARD.name)
 
   const handleManageBilling = useCallback(async () => {
-    if (!currentOrganization?.organizationId || !accessToken) return
+    if (!billingOrganizationId || !accessToken) return
 
     setIsPortalPending(true)
     try {
@@ -1068,8 +1056,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            organizationId: currentOrganization.organizationId,
-            returnUrl: `${window.location.origin}/settings/billing`,
+            organizationId: billingOrganizationId,
+            returnUrl: `${window.location.origin}${billingRoute}`,
           }),
         },
         { timeoutMs: 15000 }
@@ -1090,10 +1078,10 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     } finally {
       setIsPortalPending(false)
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [accessToken, billingOrganizationId, billingRoute])
 
   const handleActivatePaidMax = useCallback(async () => {
-    if (!currentOrganization?.organizationId || !accessToken) return
+    if (!billingOrganizationId || !accessToken) return
 
     setIsActivatingPaidMax(true)
     try {
@@ -1106,7 +1094,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            organizationId: currentOrganization.organizationId,
+            organizationId: billingOrganizationId,
           }),
         },
         { timeoutMs: 15000 }
@@ -1124,10 +1112,10 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     } finally {
       setIsActivatingPaidMax(false)
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [accessToken, billingOrganizationId])
 
   const handleCheckout = useCallback(async (requestedPlan: CheckoutPlan) => {
-    if (!currentOrganization?.organizationId || !accessToken) return
+    if (!billingOrganizationId || !accessToken) return
 
     const checkoutSeatManaged = requestedPlan === 'startup'
     const normalizedSeats = checkoutSeatManaged
@@ -1142,7 +1130,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       successUrl: string
       cancelUrl: string
     } = {
-      organizationId: currentOrganization.organizationId,
+      organizationId: billingOrganizationId,
       type: 'subscription',
       plan: requestedPlan,
       cycle: checkoutCycle,
@@ -1188,11 +1176,11 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     accessToken,
     checkoutCycle,
     checkoutSeatQuantity,
-    currentOrganization?.organizationId,
+    billingOrganizationId,
   ])
 
   const handleScheduleCycleChange = useCallback(async (requestedPlan: CheckoutPlan) => {
-    if (!currentOrganization?.organizationId || !accessToken) return
+    if (!billingOrganizationId || !accessToken) return
 
     setIsCycleChangePending(true)
     try {
@@ -1205,7 +1193,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            organizationId: currentOrganization.organizationId,
+            organizationId: billingOrganizationId,
             plan: requestedPlan,
             cycle: checkoutCycle,
           }),
@@ -1247,13 +1235,13 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     }
   }, [
     accessToken,
+    billingOrganizationId,
     checkoutCycle,
-    currentOrganization?.organizationId,
     seatManagement?.accountSubscription?.currentPeriodEnd,
   ])
 
   const handleCancelScheduledCycleChange = useCallback(async () => {
-    if (!currentOrganization?.organizationId || !accessToken) return
+    if (!billingOrganizationId || !accessToken) return
 
     setIsCancelScheduledCycleChangePending(true)
     try {
@@ -1266,7 +1254,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            organizationId: currentOrganization.organizationId,
+            organizationId: billingOrganizationId,
           }),
         },
         { timeoutMs: 15000 }
@@ -1288,7 +1276,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     } finally {
       setIsCancelScheduledCycleChangePending(false)
     }
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [accessToken, billingOrganizationId])
 
   const handlePlanCardCheckout = useCallback(
     (planId: CheckoutPlan) => {
@@ -1492,8 +1480,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               <Badge variant="secondary">{entitlementStatusLabel}</Badge>
             </div>
             <CardDescription>
-              Billing is account-scoped. Pro and Max are individual subscriptions. Startup and Enterprise use
-              centralized seat billing. Workspace limits are informational only.
+              {workspaceScoped
+                ? 'Workspace billing is centralized and seat-based. Manage Startup or Enterprise access, seat assignment, and included AI usage for this workspace here.'
+                : 'Billing is personal and account-scoped. Manage your plan, included AI usage, and invoices here.'}
             </CardDescription>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
@@ -1508,18 +1497,6 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 {showUpgradeOptions ? 'Hide Plans' : 'Change Plan'}
               </Button>
             </div>
-            {showUpgradeOptions ? (
-              <div className="mt-3 flex justify-center">
-                <SlidingSegmentedControl
-                  value={selectedPlanSubtype}
-                  options={PLAN_SUBTYPE_OPTIONS}
-                  onChange={setSelectedPlanSubtype}
-                  ariaLabel="Billing plan type"
-                  className="h-10 w-fit"
-                  buttonClassName="h-8 px-4"
-                />
-              </div>
-            ) : null}
           </CardHeader>
 
           {hasBillingOverviewContent ? (
@@ -1572,7 +1549,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
         {showUpgradeOptions && (
           <Card className="-mt-4 border-none bg-transparent shadow-none">
             <CardContent className="px-0 pt-0">
-              {selectedPlanSubtype === 'individual' ? (
+              {!workspaceScoped ? (
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {individualPlanCards.map((planCard, index) => {
                     const isCurrentPlan = currentPlanIdForCards === planCard.id
@@ -1693,76 +1670,38 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   })}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-foreground">{startupPlanCard.name}</h3>
+                        <h3 className="text-lg font-semibold text-foreground">{STARTUP_PLAN_CARD.name}</h3>
                       </div>
                       {renderCycleToggle()}
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{startupPlanCard.description}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.description}</p>
                     <div className="mt-4 flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-foreground">{startupPlanCard.price}</span>
-                      <span className="text-muted-foreground">{startupPlanCard.period}</span>
+                      <span className="text-3xl font-bold text-foreground">
+                        {resolvePlanPricing({
+                          catalog: pricingCatalog,
+                          plan: 'startup',
+                          cycle: checkoutCycle,
+                        }).price}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {resolvePlanPricing({
+                          catalog: pricingCatalog,
+                          plan: 'startup',
+                          cycle: checkoutCycle,
+                        }).period}
+                      </span>
                     </div>
-                    {startupPlanCard.priceSecondary ? (
-                      <p className="mt-1 text-sm text-muted-foreground">{startupPlanCard.priceSecondary}</p>
-                    ) : null}
-                    {startupPlanCard.yearlySavingsLabel ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{startupPlanCard.yearlySavingsLabel}</p>
-                    ) : null}
-                    {startupPlanCard.trial && shouldShowFreeTrialText ? (
-                      <p className="mt-1 text-sm text-green-600 dark:text-green-400">
-                        {startupPlanCard.trial}
-                      </p>
-                    ) : null}
-                    <div className="mt-4 rounded-xl border border-border/60 bg-background/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-muted-foreground">Team Seats</span>
-                        <span className="text-xs text-muted-foreground">{STARTUP_MIN_SEATS}-{STARTUP_MAX_SEATS} seats</span>
-                      </div>
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground">{normalizedCheckoutSeatQuantity} seats</span>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setCheckoutSeatQuantity((current) =>
-                                normalizeSeatQuantity(current - 1)
-                              )
-                            }
-                            disabled={normalizedCheckoutSeatQuantity <= STARTUP_MIN_SEATS}
-                          >
-                            -
-                          </Button>
-                          <span className="w-8 text-center text-sm font-medium">
-                            {normalizedCheckoutSeatQuantity}
-                          </span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setCheckoutSeatQuantity((current) =>
-                                normalizeSeatQuantity(current + 1)
-                              )
-                            }
-                            disabled={normalizedCheckoutSeatQuantity >= STARTUP_MAX_SEATS}
-                          >
-                            +
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    {startupPlanCard.featuresHeading ? (
-                      <p className="mt-4 text-sm font-medium text-foreground">{startupPlanCard.featuresHeading}</p>
-                    ) : null}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {STARTUP_PLAN_CARD.priceSecondary}
+                    </p>
+                    <p className="mt-4 text-sm font-medium text-foreground">{STARTUP_PLAN_CARD.featuresHeading}</p>
                     <ul className="mt-5 flex-1 space-y-2.5">
-                      {startupPlanCard.features.map((feature, featureIndex) => (
-                        <li key={`startup-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      {STARTUP_PLAN_CARD.features.map((feature, featureIndex) => (
+                        <li key={`${feature.text}-${featureIndex}`} className="flex items-center gap-2 text-sm text-muted-foreground">
                           {feature.included ? (
                             <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                           ) : (
@@ -1772,44 +1711,23 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                         </li>
                       ))}
                     </ul>
-                    {startupPlanCard.conclusion ? (
-                      <p className="mt-4 text-sm text-muted-foreground">{startupPlanCard.conclusion}</p>
-                    ) : null}
-                    {startupPlanCard.footerText ? (
-                      <p className="mt-5 text-center text-xs text-muted-foreground">{startupPlanCard.footerText}</p>
+                    {STARTUP_PLAN_CARD.footerText ? (
+                      <p className="mt-6 text-center text-xs text-muted-foreground">{STARTUP_PLAN_CARD.footerText}</p>
                     ) : null}
                     <Button
-                      className="mt-5 w-full rounded-lg"
-                      variant={
-                        (currentPlanIdForCards === 'startup' && currentSubscriptionCycle === checkoutCycle) ||
-                        (scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle)
-                          ? 'secondary'
-                          : 'default'
-                      }
+                      className="mt-6 w-full rounded-lg"
+                      variant={currentPlanIdForCards === 'startup' ? 'secondary' : 'default'}
                       onClick={() => handlePlanCtaClick('startup')}
-                      disabled={
-                        !canOpenCheckout ||
-                        isPortalPending ||
-                        isPlanActionPending ||
-                        (currentPlanIdForCards === 'startup' && currentSubscriptionCycle === checkoutCycle) ||
-                        (scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle)
-                      }
+                      disabled={currentPlanIdForCards === 'startup' || isPlanActionPending || isPortalPending}
                     >
-                      {isPlanActionPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {currentSelfServePlan === 'startup' && currentSubscriptionCycle !== checkoutCycle
-                        ? scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle
-                          ? `${formatBillingCycleLabel(checkoutCycle)} Scheduled`
-                          : `Switch to ${formatBillingCycleLabel(checkoutCycle)}`
-                        : startupPlanCtaLabel}
+                      {startupPlanCtaLabel}
                     </Button>
                   </div>
-
                   <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h3 className="text-lg font-semibold text-foreground">{ENTERPRISE_PLAN_CARD.name}</h3>
                       </div>
-                      {renderCycleToggle()}
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{ENTERPRISE_PLAN_CARD.description}</p>
                     <p className="mt-4 text-3xl font-bold text-foreground">{ENTERPRISE_PLAN_CARD.priceLabel}</p>
@@ -1901,7 +1819,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-0">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
@@ -2008,7 +1926,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+              <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
                 <Table className="[&_th]:px-4 [&_td]:px-4">
                   <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                     <TableRow>
@@ -2133,7 +2051,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0 px-0">
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
@@ -2193,16 +2111,34 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   )
 
   if (surface === 'drawer') {
-    return <div className="mx-auto w-full max-w-6xl">{content}</div>
+    return (
+      <div className="mx-auto w-full max-w-6xl">
+        {settingsPage.isWorkspaceAccessDenied ? (
+          <WorkspaceAccessNotice
+            title="Billing access required"
+            description="You do not have permission to view workspace billing and usage for this workspace."
+          />
+        ) : (
+          content
+        )}
+      </div>
+    )
   }
 
   return (
     <DashboardLayout
       user={user}
       onLogout={logout}
-      breadcrumbs={[{ label: 'Settings' }, { label: 'Billing' }]}
+      breadcrumbs={settingsPage.breadcrumbs}
     >
-      {content}
+      {settingsPage.isWorkspaceAccessDenied ? (
+        <WorkspaceAccessNotice
+          title="Billing access required"
+          description="You do not have permission to view workspace billing and usage for this workspace."
+        />
+      ) : (
+        content
+      )}
     </DashboardLayout>
   )
 }

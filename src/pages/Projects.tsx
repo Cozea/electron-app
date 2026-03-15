@@ -4,6 +4,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { useCachedQuery } from '../stores/useQueryCache'
 import { useAuth } from '../contexts/AuthContext'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
@@ -56,7 +57,8 @@ type SortOption = 'last_modified' | 'name' | 'created'
 type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
 
 export function Projects() {
-  const { user, logout, currentOrganization } = useAuth()
+  const { user, convexUserId, logout } = useAuth()
+  const { personalScoped, workspaceScoped, convexOrg, capabilities } = useScopedAppContext()
   const navigate = useViewTransitionNavigate()
   const [sortBy, setSortBy] = useState<SortOption>('last_modified')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -72,23 +74,6 @@ export function Projects() {
 
   const effectiveViewMode = isMobile ? 'list' : viewMode
   const ITEMS_PER_PAGE = 20
-  const isPersonalWorkspace = currentOrganization?.workspaceType === 'personal'
-
-  // Get Convex organization by WorkOS ID (with caching to prevent loading flash)
-  const freshOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
-  const convexOrg = useCachedQuery(
-    `projects-org-${currentOrganization?.organizationId}`,
-    freshOrg
-  )
-
-  // Get Convex user by WorkOS ID (needed for delete)
-  const convexUser = useQuery(
-    api.users.getByWorkosId,
-    user?.id ? { workosId: user.id } : 'skip'
-  )
 
   // Get organization members to display names
   const members = useQuery(
@@ -112,21 +97,19 @@ export function Projects() {
 
   // Query projects with source based on active workspace type (with caching)
   const freshProjects = useQuery(
-    isPersonalWorkspace
+    personalScoped
       ? api.projects.listForPersonalWorkspaceMemberView
       : api.projects.listForOrganization,
-    isPersonalWorkspace
-      ? convexUser?._id
-        ? { userId: convexUser._id }
+    personalScoped
+      ? convexUserId
+        ? { userId: convexUserId }
         : 'skip'
-      : convexOrg?._id && convexUser?._id
-        ? { organizationId: convexOrg._id, userId: convexUser._id }
+      : convexOrg?._id && convexUserId
+        ? { organizationId: convexOrg._id, userId: convexUserId }
         : 'skip'
   )
   const projects = useCachedQuery(
-    isPersonalWorkspace
-      ? `projects-list-personal-${convexUser?._id}`
-      : `projects-list-org-${convexOrg?._id}`,
+    personalScoped ? `projects-list-personal-${convexUserId}` : `projects-list-org-${convexOrg?._id}`,
     freshProjects
   )
   const normalizedProjects = useMemo(
@@ -136,11 +119,17 @@ export function Projects() {
     },
     [projects]
   )
+  const hasArchivedProjects = useMemo(
+    () => normalizedProjects.some((project) => project.status === 'archived'),
+    [normalizedProjects]
+  )
 
   const filteredProjects = useMemo(() => {
     let result = normalizedProjects
 
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'all') {
+      result = result.filter((project) => project.status !== 'archived')
+    } else {
       if (statusFilter === 'building') {
         result = result.filter((project) => project.status === 'building' || project.status === 'generating')
       } else {
@@ -173,11 +162,16 @@ export function Projects() {
     setCurrentPage(1)
   }, [statusFilter, sortBy])
 
-  const isLoading = isPersonalWorkspace
-    ? convexUser === undefined || projects === undefined
+  const isLoading = personalScoped
+    ? convexUserId === null || projects === undefined
     : convexOrg === undefined || (convexOrg && projects === undefined)
   const hasProjects = normalizedProjects.length > 0
   const showProjectControls = hasProjects || isLoading
+  const canCreateProjects = capabilities.canCreateProjects
+  const canStartProjectFlow = canCreateProjects || capabilities.canImportProjects
+  const allStatusEmptyMessage = hasArchivedProjects
+    ? 'No active projects. Switch to Archived to view archived projects.'
+    : 'No projects yet. Create your first project.'
 
   const breadcrumbAddon = hasProjects ? (
     <Badge variant="secondary" className="text-xs font-normal">
@@ -239,22 +233,24 @@ export function Projects() {
         </TooltipContent>
       </Tooltip>
 
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Button
-                className="gap-2 h-7 px-2 text-xs rounded-full"
-                onClick={() => navigate('/projects/new')}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New Project
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Create new project</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {canStartProjectFlow ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  className="gap-2 h-7 px-2 text-xs rounded-full"
+                  onClick={() => navigate('/projects/new')}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Project
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Create new project</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
     </div>
   ) : null
 
@@ -277,17 +273,29 @@ export function Projects() {
                   <EmptyMedia>
                     <FolderOpen className="h-8 w-8" />
                   </EmptyMedia>
-                  <EmptyTitle>Start your first project</EmptyTitle>
+                  <EmptyTitle>
+                    {canStartProjectFlow
+                      ? canCreateProjects
+                        ? 'Start your first project'
+                        : 'Import your first project'
+                      : 'No projects available'}
+                  </EmptyTitle>
                   <EmptyDescription>
-                    Create a project to generate a plan, scaffold code, and collaborate with your team.
+                    {canStartProjectFlow
+                      ? canCreateProjects
+                        ? 'Create a project to generate a plan, scaffold code, and collaborate with your team.'
+                        : 'Import an existing project to start working in this workspace.'
+                      : 'Projects will appear here when this workspace has active projects you can access.'}
                   </EmptyDescription>
                 </EmptyHeader>
-                <EmptyContent>
-                  <Button className="gap-2" onClick={() => navigate('/projects/new')}>
-                    <Plus className="h-4 w-4" />
-                    Create Project
-                  </Button>
-                </EmptyContent>
+                {canStartProjectFlow ? (
+                  <EmptyContent>
+                    <Button className="gap-2" onClick={() => navigate('/projects/new')}>
+                      <Plus className="h-4 w-4" />
+                      {canCreateProjects ? 'Create Project' : 'Import Project'}
+                    </Button>
+                  </EmptyContent>
+                ) : null}
               </Empty>
             </div>
           </div>
@@ -303,7 +311,8 @@ export function Projects() {
                 <ProjectCard
                   key={project._id}
                   project={project}
-                  userId={convexUser?._id}
+                  userId={convexUserId ?? undefined}
+                  workspaceScoped={workspaceScoped}
                 />
               ))
             ) : (
@@ -311,7 +320,7 @@ export function Projects() {
                 {isLoading
                   ? 'Loading projects...'
                   : statusFilter === 'all'
-                    ? 'No projects yet. Create your first project.'
+                    ? allStatusEmptyMessage
                     : 'No projects match the current filters.'}
               </div>
             )}
@@ -321,7 +330,7 @@ export function Projects() {
             <div
               className={cn(
                 featureFlags.contentVisibility && 'perf-contain-card',
-                'overflow-hidden rounded-2xl bg-secondary/80 px-2 py-1 dark:bg-secondary/40'
+                'overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40'
               )}
             >
               <Table className="[&_th]:px-4 [&_td]:px-4">
@@ -343,9 +352,10 @@ export function Projects() {
                         <ProjectListRow
                           key={project._id}
                           project={project}
-                          userId={convexUser?._id}
+                          userId={convexUserId ?? undefined}
                           creatorName={modifier?.name || 'Unknown'}
                           creatorImage={modifier?.image}
+                          workspaceScoped={workspaceScoped}
                         />
                       )
                     })
@@ -355,7 +365,7 @@ export function Projects() {
                         {isLoading
                           ? 'Loading projects...'
                           : statusFilter === 'all'
-                            ? 'No projects yet. Create your first project.'
+                            ? allStatusEmptyMessage
                             : 'No projects match the current filters.'}
                       </TableCell>
                     </TableRow>
@@ -363,11 +373,11 @@ export function Projects() {
                 </TableBody>
               </Table>
             </div>
-            {!isLoading && filteredProjects.length === 0 && statusFilter === 'all' && (
+            {!isLoading && filteredProjects.length === 0 && statusFilter === 'all' && canStartProjectFlow && (
               <div className="mt-3 flex justify-end">
                 <Button className="gap-2" onClick={() => navigate('/projects/new')}>
                   <Plus className="h-4 w-4" />
-                  Create Project
+                  {canCreateProjects ? 'Create Project' : 'Import Project'}
                 </Button>
               </div>
             )}

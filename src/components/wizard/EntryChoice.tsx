@@ -31,6 +31,7 @@ import {
 } from '@tabler/icons-react'
 import type { CreationPath } from '@/hooks/useWizardState'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import {
   getProviderDisplayName,
   isConnectedProvider,
@@ -99,7 +100,8 @@ export function EntryChoice({
   onPromptSubmit,
   isSubmitting
 }: EntryChoiceProps) {
-  const { accessToken, currentOrganization } = useAuth()
+  const { accessToken } = useAuth()
+  const { organizationId } = useAiExecutionScope()
   const { connectedProviders, providerAuthAvailable, providerStatusLoaded } = useConnectedProviders()
   const initialGlobalModelSettings = useMemo(() => loadGlobalModelSettings(), [])
   const initialModelId = initialGlobalModelSettings.model ?? ''
@@ -199,18 +201,18 @@ export function EntryChoice({
   }, [model, variantId, normalizedVariantId])
 
   useEffect(() => {
-    if (accessToken && currentOrganization?.organizationId) return
+    if (accessToken && organizationId) return
     setModelsLoaded(false)
-  }, [accessToken, currentOrganization?.organizationId])
+  }, [accessToken, organizationId])
 
   useEffect(() => {
-    if (!accessToken || !currentOrganization?.organizationId) return
+    if (!accessToken || !organizationId) return
 
     let cancelled = false
     setModelsLoaded(false)
 
     getModelCatalog({
-      organizationId: currentOrganization.organizationId,
+      organizationId,
       accessToken,
       connectedProviders:
         providerAuthAvailable && providerStatusLoaded ? connectedProviders : undefined,
@@ -255,7 +257,7 @@ export function EntryChoice({
   }, [
     accessToken,
     connectedProviders,
-    currentOrganization?.organizationId,
+    organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
   ])

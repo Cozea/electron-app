@@ -1,8 +1,7 @@
 import { AlertTriangle, ArrowRight, Clock3, XCircle } from 'lucide-react'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
+import { useScopedSettingsNavigation } from '@/hooks/useScopedSettingsNavigation'
 import type { AiSurfaceErrorData } from '@/lib/ai/surfaceErrors'
 
 interface AiSurfaceErrorCardProps {
@@ -32,22 +31,9 @@ export function AiSurfaceErrorCard({
   onDismiss,
   onAction,
 }: AiSurfaceErrorCardProps) {
-  const navigate = useViewTransitionNavigate()
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  const { openScopedHref } = useScopedSettingsNavigation()
   const Icon = errorIcons[error.code]
   const colorClass = errorColors[error.code]
-
-  const openHref = (href: string) => {
-    if (href.startsWith('/settings/')) {
-      openSettingsDrawer(href)
-      return
-    }
-    if (/^https?:\/\//i.test(href)) {
-      window.open(href, '_blank', 'noopener,noreferrer')
-      return
-    }
-    navigate(href)
-  }
 
   return (
     <div className={cn('rounded-lg p-3', colorClass, className)}>
@@ -77,7 +63,7 @@ export function AiSurfaceErrorCard({
                     if (onAction) {
                       onAction(actionHref)
                     } else {
-                      openHref(actionHref)
+                      openScopedHref(actionHref)
                     }
                   }}
                 >

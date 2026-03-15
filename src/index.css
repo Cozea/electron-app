@@ -26,8 +26,8 @@
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
-  --table-row-selected: color-mix(in oklch, var(--secondary) 80%, var(--foreground) 20%);
+  --table-row-hover: color-mix(in oklch, var(--secondary) 90%, var(--foreground) 10%);
+  --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -333,8 +333,8 @@ body {
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.28 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --table-row-hover: color-mix(in oklch, var(--secondary) 82%, var(--foreground) 18%);
-  --table-row-selected: color-mix(in oklch, var(--secondary) 76%, var(--foreground) 24%);
+  --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
+  --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -373,8 +373,8 @@ body {
   --muted-foreground: hsl(215 21% 70%);
   --accent: hsl(222 28% 13%);
   --accent-foreground: hsl(210 33% 96%);
-  --table-row-hover: color-mix(in oklch, var(--secondary) 82%, var(--foreground) 18%);
-  --table-row-selected: color-mix(in oklch, var(--secondary) 76%, var(--foreground) 24%);
+  --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
+  --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: hsl(0 65% 54%);
   --border: hsl(222 24% 30%);
   --input: hsl(222 24% 14%);
@@ -768,8 +768,8 @@ body {
 .forest,
 .clay {
   --content-surface: var(--background);
-  --table-row-hover: color-mix(in oklch, var(--secondary) 82%, var(--foreground) 18%);
-  --table-row-selected: color-mix(in oklch, var(--secondary) 76%, var(--foreground) 24%);
+  --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
+  --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
 }
 
 .bg-sidebar {

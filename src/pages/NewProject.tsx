@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../contexts/AuthContext'
+import { useProjectTargetScope } from '@/hooks/useProjectTargetScope'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
 import {
@@ -29,7 +30,7 @@ import {
   type PlanOption,
   type OrgMember,
 } from '../components/wizard'
-import { useWizardState, type CreationPath } from '../hooks/useWizardState'
+import { useWizardState, type CreationPath, type WizardTeamMember } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { getDefaultWebBuildContract, normalizeGeneratedPlan, validateWebOnlyPlanConfig } from '../lib/plan'
@@ -47,6 +48,7 @@ import { cn } from '@/lib/utils'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
+import { logDeferredTeamSetupDebug } from '@/lib/projects/deferredTeamSetupDebug'
 import {
   buildImportTerminalCommand,
   parseImportTerminalCompletionCode,
@@ -107,15 +109,25 @@ function buildImportPreflightIssueMessage(
   return 'Some iCloud files are not available locally. Download them in Finder first.'
 }
 
+function buildDeferredTeamSetup(team: WizardTeamMember[]): WizardTeamMember[] {
+  return team.filter((member) => !member.isCurrentUser)
+}
+
 export function NewProject() {
-  const { user, logout, convexUserId, currentOrganization } = useAuth()
+  const { user, logout, convexUserId } = useAuth()
+  const {
+    personalScoped: isPersonalWorkspace,
+    convexOrganizationId: organizationId,
+    includeTeamStep,
+    canCreateProjects,
+    canImportProjects,
+  } = useProjectTargetScope()
   const navigate = useViewTransitionNavigate()
   const convex = useConvex()
 
-  // Get Convex org ID from currentOrganization (populated after Convex sync)
-  const organizationId = currentOrganization?.convexOrgId as Id<"organizations"> | undefined
-
-  const wizard = useWizardState(organizationId, convexUserId ?? undefined)
+  const wizard = useWizardState(organizationId, convexUserId ?? undefined, {
+    includeTeamStep,
+  })
 
   // Prompt path options
   const [reviewBeforeBuild, setReviewBeforeBuild] = useState(true)
@@ -199,6 +211,29 @@ export function NewProject() {
       })
     }
   }, [currentStepDef?.id, state.team.length, user, addTeamMember])
+
+  useEffect(() => {
+    if (!isPersonalWorkspace || !user) {
+      return
+    }
+
+    const currentUserEmail = user.email.trim().toLowerCase()
+    const alreadyIncluded = state.team.some(
+      (member) => member.email.trim().toLowerCase() === currentUserEmail
+    )
+
+    if (alreadyIncluded) {
+      return
+    }
+
+    addTeamMember({
+      email: user.email,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+      role: 'project_manager',
+      isCurrentUser: true,
+      profileImageUrl: user.profileImageUrl,
+    })
+  }, [addTeamMember, isPersonalWorkspace, state.team, user])
 
   const handleBack = () => {
     if (isFirstStep) {
@@ -538,8 +573,12 @@ export function NewProject() {
   }
 
   const handlePlanSelected = async (plan: PlanOption) => {
-    if (!organizationId || !convexUserId) {
-      console.error('Missing organizationId or convexUserId', { organizationId, convexUserId, currentOrganization })
+    if (!organizationId || !convexUserId || !canCreateProjects) {
+      console.error('Missing project creation scope or permission', {
+        organizationId,
+        convexUserId,
+        canCreateProjects,
+      })
       alert('Unable to create project. Please try again or refresh the page.')
       return
     }
@@ -583,6 +622,7 @@ export function NewProject() {
       )
       await saveGeneratedPlan({
         projectId: result.projectId,
+        userId: convexUserId,
         plan: generatedPlan,
         selectedPlanTier: plan.tier,
         targetPlatform: plan.config.targetPlatform,
@@ -602,8 +642,12 @@ export function NewProject() {
 
   // Handle repo import from ReviewStep button
   const handleImportProject = async () => {
-    if (!organizationId || !convexUserId) {
-      console.error('[Import] Missing organizationId or convexUserId', { organizationId, convexUserId })
+    if (!organizationId || !convexUserId || !canImportProjects) {
+      console.error('[Import] Missing import scope or permission', {
+        organizationId,
+        convexUserId,
+        canImportProjects,
+      })
       return
     }
 
@@ -923,11 +967,23 @@ export function NewProject() {
         setImportSyncMessage(publishFailed ? 'Opening project locally...' : 'Opening project...')
         setTimeout(() => {
           const targetPath = buildProjectPath(String(result.projectId))
+          const deferredTeamSetup = !publishFailed ? buildDeferredTeamSetup(state.team) : []
+          logDeferredTeamSetupDebug('navigate_with_pending_team_setup', {
+            projectId: String(result.projectId),
+            targetPath,
+            publishFailed,
+            deferredTeamSetupCount: deferredTeamSetup.length,
+            deferredTeamSetup: deferredTeamSetup.map((member) => ({
+              email: member.email,
+              role: member.role,
+            })),
+          })
           console.log('[Import] Navigating to:', targetPath)
           void cleanupImportTerminal()
           navigate(targetPath, {
             state: {
               syncMode: 'git',
+              pendingTeamSetup: deferredTeamSetup.length > 0 ? deferredTeamSetup : undefined,
             },
           })
           setImportSyncState('idle')
@@ -1003,6 +1059,7 @@ export function NewProject() {
             onRemoveMember={removeTeamMember}
             organizationMembers={organizationMembers}
             currentUserEmail={user?.email}
+            allowEmailInvites={isPersonalWorkspace}
             onContinue={handleNext}
             canContinue={Boolean(canProceed)}
           />
@@ -1065,6 +1122,7 @@ export function NewProject() {
             setReviewBeforeBuild={setReviewBeforeBuild}
             customizeTeam={customizeTeam}
             setCustomizeTeam={setCustomizeTeam}
+            allowCustomizeTeam={!isPersonalWorkspace}
           />
         )
 

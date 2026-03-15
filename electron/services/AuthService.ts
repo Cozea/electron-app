@@ -446,10 +446,22 @@ export class AuthService {
             return { success: true }
         })
 
-        ipcMain.handle('auth:logout', async () => {
+        ipcMain.handle('auth:logout', async (_event, options?: { accessToken?: string | null }) => {
+            const session = this.loadSession()
+            const accessToken =
+                typeof options?.accessToken === 'string' && options.accessToken.length > 0
+                    ? options.accessToken
+                    : session?.accessToken
             this.clearSession()
             try {
-                await fetch(`${this.authServerUrl}/auth/logout`, { method: 'POST' })
+                await fetch(`${this.authServerUrl}/auth/logout`, {
+                    method: 'POST',
+                    headers: accessToken
+                        ? {
+                              Authorization: `Bearer ${accessToken}`,
+                          }
+                        : undefined,
+                })
             } catch {
                 // Ignore errors
             }

@@ -1,3 +1,5 @@
+import { resolveSettingsSurfaceFromRoute } from '@/lib/settings/settingsRegistry'
+
 const SETTINGS_DEEPLINK_KEY = 'settings'
 
 function decodeRouteValue(value: string): string {
@@ -17,7 +19,8 @@ function readRouteFromHash(hash: string): string | null {
   if (!rawHash) return null
 
   if (rawHash.startsWith('/settings/') || rawHash.startsWith('settings/')) {
-    return decodeRouteValue(rawHash)
+    const route = decodeRouteValue(rawHash)
+    return resolveSettingsSurfaceFromRoute(route, { placement: 'drawer' }) ? route : null
   }
 
   if (rawHash.startsWith(`${SETTINGS_DEEPLINK_KEY}=`)) {
@@ -31,14 +34,16 @@ function readRouteFromHash(hash: string): string | null {
   const params = new URLSearchParams(rawHash)
   const value = params.get(SETTINGS_DEEPLINK_KEY)
   if (!value) return null
-  return decodeRouteValue(value)
+  const route = decodeRouteValue(value)
+  return resolveSettingsSurfaceFromRoute(route, { placement: 'drawer' }) ? route : null
 }
 
 export function getSettingsRouteFromLocation(location: Pick<Location, 'search' | 'hash'>): string | null {
   const searchParams = new URLSearchParams(location.search)
   const fromQuery = searchParams.get(SETTINGS_DEEPLINK_KEY)
   if (fromQuery) {
-    return decodeRouteValue(fromQuery)
+    const route = decodeRouteValue(fromQuery)
+    return resolveSettingsSurfaceFromRoute(route, { placement: 'drawer' }) ? route : null
   }
 
   return readRouteFromHash(location.hash)

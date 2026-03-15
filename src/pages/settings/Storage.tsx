@@ -425,12 +425,11 @@ export function Storage({ surface = 'page' }: StorageProps) {
       }
     >
         {/* Storage Usage */}
-        <Card className="border-none shadow-none bg-transparent">
-          <CardHeader>
-            <CardTitle>Local Storage</CardTitle>
-            <CardDescription>Storage usage on this device</CardDescription>
-          </CardHeader>
-          <CardContent>
+          <Card className="border-none shadow-none bg-transparent">
+            <CardHeader>
+              <CardTitle>Local Storage</CardTitle>
+            </CardHeader>
+            <CardContent>
             {actionError && (
               <div className="mb-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {actionError}
@@ -616,7 +615,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+            <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>

@@ -1,4 +1,4 @@
-import { Bot, ChevronLeft, CreditCard, HardDrive, Palette, SlidersHorizontal, Terminal, UserCircle2 } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -8,49 +8,23 @@ import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
+import { Integrations } from '@/pages/workspace/Integrations'
 import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Billing } from '@/pages/workspace/Billing'
 import { AI } from '@/pages/workspace/AI'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
+import {
+  canAccessWorkspaceSurface,
+  getSettingsSurfaceDisplayLabel,
+  listSettingsSurfaces,
+  resolveSettingsSurfaceFromRoute,
+} from '@/lib/settings/settingsRegistry'
 import {
   useSettingsDrawerStore,
   type SettingsDrawerSection,
 } from '@/stores/useSettingsDrawerStore'
 
-interface SettingsDrawerItem {
-  section: SettingsDrawerSection
-  label: string
-  icon: typeof UserCircle2
-  route: string
-  isActive?: (routePath: string) => boolean
-}
-
-const SETTINGS_DRAWER_ITEMS: SettingsDrawerItem[] = [
-  { section: 'account', label: 'Account', icon: UserCircle2, route: '/settings/account' },
-  { section: 'billing', label: 'Billing', icon: CreditCard, route: '/settings/billing' },
-  {
-    section: 'ai',
-    label: 'AI',
-    icon: Bot,
-    route: '/settings/ai',
-    isActive: (routePath) => routePath === '/settings/ai' || routePath === '/workspace/ai',
-  },
-  {
-    section: 'ai',
-    label: 'Model Selection',
-    icon: SlidersHorizontal,
-    route: '/settings/ai/model-selection',
-    isActive: (routePath) =>
-      routePath.startsWith('/settings/ai/model-selection') ||
-      routePath.startsWith('/workspace/ai/model-selection'),
-  },
-  { section: 'appearance', label: 'Appearance', icon: Palette, route: '/settings/appearance' },
-  { section: 'storage', label: 'Storage', icon: HardDrive, route: '/settings/storage' },
-  { section: 'tooling', label: 'Tooling', icon: Terminal, route: '/settings/tooling' },
-]
-
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
-  const routePath = route.split('?')[0] || route
-
   if (section === 'account') {
     return <Account surface="drawer" />
   }
@@ -60,10 +34,11 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
   }
 
   if (section === 'ai') {
-    if (routePath.startsWith('/settings/ai/model-selection')) {
-      return <ModelSelection surface="drawer" />
-    }
-    return <AI surface="drawer" />
+    return <AI surface="drawer" route={route} />
+  }
+
+  if (section === 'modelSelection') {
+    return <ModelSelection surface="drawer" route={route} />
   }
 
   if (section === 'appearance') {
@@ -74,7 +49,11 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
     return <Storage surface="drawer" />
   }
 
-  return <Tooling surface="drawer" />
+  if (section === 'cliTools') {
+    return <Integrations surface="drawer" route={route} />
+  }
+
+  return <Tooling surface="drawer" route={route} />
 }
 
 export function SettingsDrawer() {
@@ -90,6 +69,23 @@ export function SettingsDrawer() {
   const [showContentTopFade, setShowContentTopFade] = useState(false)
   const [showContentBottomFade, setShowContentBottomFade] = useState(false)
   const routePath = route.split('?')[0] || route
+  const resolvedDrawerSurface = resolveSettingsSurfaceFromRoute(routePath, {
+    placement: 'drawer',
+  })
+  const {
+    workspaceScoped,
+    personalScoped,
+    surfaceAccess,
+  } = useScopedAppContext({
+    route: routePath || '/settings/account',
+  })
+  const settingsDrawerItems = listSettingsSurfaces({
+    scopeKind: workspaceScoped ? 'workspace' : 'personal',
+    placement: 'drawer',
+  }).filter((surface) => {
+    if (!workspaceScoped) return true
+    return canAccessWorkspaceSurface(surface, surfaceAccess)
+  })
 
   useEffect(() => {
     const updateFades = (
@@ -150,12 +146,13 @@ export function SettingsDrawer() {
     <Sheet open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <SheetContent
         side="right"
+        disableAnimation={personalScoped}
         className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
         closeClassName="hidden"
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Settings</SheetTitle>
-          <SheetDescription>Browse and update account, billing, AI, appearance, storage, and tooling settings.</SheetDescription>
+          <SheetDescription>Browse and update account, billing, AI, appearance, storage, CLI tools, and tooling settings.</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <aside
@@ -175,24 +172,27 @@ export function SettingsDrawer() {
               >
                 <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">Settings</div>
                 <div className="space-y-1">
-                  {SETTINGS_DRAWER_ITEMS.map((item) => {
+                  {settingsDrawerItems.map((item) => {
                     const Icon = item.icon
-                    const isActive = item.isActive
-                      ? item.isActive(routePath)
-                      : routePath === item.route || section === item.section
+                    const itemRoute = item.routes[workspaceScoped ? 'workspace' : 'personal']
+                    if (!itemRoute) {
+                      return null
+                    }
+                    const isActive =
+                      resolvedDrawerSurface?.surface.id === item.id || section === item.id
 
                     return (
                       <button
-                        key={item.route}
+                        key={itemRoute}
                         type="button"
                         data-active={isActive}
-                        onClick={() => openFromRoute(item.route)}
+                        onClick={() => openFromRoute(itemRoute)}
                         className={cn(
-                          'flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-foreground/10 hover:text-sidebar-foreground focus-visible:ring-2 active:bg-foreground/14 active:text-sidebar-foreground data-[active=true]:bg-foreground/14 data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
+                          'flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
                         )}
                       >
                         <Icon className="opacity-60" />
-                        <span>{item.label}</span>
+                        <span>{getSettingsSurfaceDisplayLabel(item, workspaceScoped ? 'workspace' : 'personal')}</span>
                       </button>
                     )
                   })}
@@ -215,7 +215,7 @@ export function SettingsDrawer() {
               <button
                 type="button"
                 onClick={close}
-                className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-foreground/10 hover:text-sidebar-foreground"
+                className="flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground"
               >
                 <ChevronLeft className="h-4 w-4 opacity-60" />
                 <span>Back</span>

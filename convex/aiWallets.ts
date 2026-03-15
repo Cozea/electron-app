@@ -20,6 +20,7 @@ const WALLET_CURRENCY = "USD"
 type WalletReadCtx = Pick<QueryCtx | MutationCtx, "db">
 type WalletDoc = Doc<"aiWallets">
 type WalletScopeType = "organization" | "user"
+const PERSONAL_WORKSPACE_PREFIX = "personal:"
 
 function assertGatewaySecret(secret: string | undefined) {
   if (!AI_GATEWAY_SECRET) {
@@ -43,6 +44,10 @@ function toPersonalScopeKey(ownerUserId: Id<"users">): string {
 
 function normalizeCurrency(): string {
   return WALLET_CURRENCY
+}
+
+function isPersonalWorkspaceOrganization(organization: Doc<"organizations">): boolean {
+  return organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
 }
 
 function getAvailableCents(wallet: WalletDoc): number {
@@ -562,6 +567,7 @@ export const reserveForServer = mutation({
     if (!organization || !actorUser) {
       throw new Error("Organization or user not found")
     }
+    const personalWorkspace = isPersonalWorkspaceOrganization(organization)
 
     const entitlement = await resolveAccountEntitlementForOrganization(ctx, {
       organization,
@@ -617,9 +623,11 @@ export const reserveForServer = mutation({
             ownerUserId: args.actorUserId,
           })
         : Promise.resolve(null),
-      getPersonalWallet(ctx, {
-        ownerUserId: personalOwnerUserId,
-      }),
+      personalWorkspace
+        ? getPersonalWallet(ctx, {
+            ownerUserId: personalOwnerUserId,
+          })
+        : Promise.resolve(null),
     ])
 
     const workspaceSeatWallet = workspaceSeatWalletRaw
@@ -644,7 +652,9 @@ export const reserveForServer = mutation({
     const payerUserId =
       selectedWallet && selectedWallet._id === workspaceSeatWallet?._id
         ? args.actorUserId
-        : personalOwnerUserId
+        : personalWorkspace
+          ? personalOwnerUserId
+          : args.actorUserId
 
     if (!selectedWallet) {
       return {
@@ -1036,6 +1046,7 @@ export const getWalletForViewer = query({
     if (memberships.length === 0) {
       throw new Error("Unauthorized")
     }
+    const personalWorkspace = isPersonalWorkspaceOrganization(organization)
 
     const entitlement = await resolveAccountEntitlementForOrganization(ctx, {
       organization,
@@ -1050,9 +1061,11 @@ export const getWalletForViewer = query({
             ownerUserId: args.userId,
           })
         : Promise.resolve(null),
-      getPersonalWallet(ctx, {
-        ownerUserId: personalOwnerUserId,
-      }),
+      personalWorkspace
+        ? getPersonalWallet(ctx, {
+            ownerUserId: personalOwnerUserId,
+          })
+        : Promise.resolve(null),
     ])
 
     const activeWalletContext = workspaceSeatWallet
@@ -1068,19 +1081,17 @@ export const getWalletForViewer = query({
           ? personalWallet
           : null
 
-    const activePlan =
-      activeWalletContext === "workspace_seat"
+    const activePlan = personalWorkspace
+      ? entitlement.plan === "pro" || entitlement.plan === "max"
         ? entitlement.plan
-        : entitlement.plan === "pro" || entitlement.plan === "max"
-          ? entitlement.plan
-          : "free"
+        : "free"
+      : entitlement.plan
 
-    const activeCycle =
-      activeWalletContext === "workspace_seat"
+    const activeCycle = personalWorkspace
+      ? entitlement.plan === "pro" || entitlement.plan === "max"
         ? entitlement.cycle
-        : entitlement.plan === "pro" || entitlement.plan === "max"
-          ? entitlement.cycle
-          : "monthly"
+        : "monthly"
+      : entitlement.cycle
 
     const includedCentsPerCycle = resolveEffectiveIncludedWalletCents({
       plan: activePlan,
@@ -1098,7 +1109,9 @@ export const getWalletForViewer = query({
 
     return {
       ownerUserId:
-        activeWalletContext === "workspace_seat" ? args.userId : personalOwnerUserId,
+        activeWalletContext === "workspace_seat" || !personalWorkspace
+          ? args.userId
+          : personalOwnerUserId,
       plan: entitlement.plan,
       source: entitlement.source,
       cycle: entitlement.cycle,
@@ -1118,18 +1131,20 @@ export const getWalletForViewer = query({
               wallet: toWalletSummary(workspaceSeatWallet),
             }
           : null,
-        personal: {
-          ownerUserId: personalOwnerUserId,
-          includedCentsPerCycle:
-            entitlement.plan === "pro" || entitlement.plan === "max"
-              ? resolveEffectiveIncludedWalletCents({
-                  plan: entitlement.plan,
-                  cycle: entitlement.cycle,
-                  status: entitlement.status,
-                })
-              : 0,
-          wallet: personalWallet ? toWalletSummary(personalWallet) : null,
-        },
+        personal: personalWorkspace
+          ? {
+              ownerUserId: personalOwnerUserId,
+              includedCentsPerCycle:
+                entitlement.plan === "pro" || entitlement.plan === "max"
+                  ? resolveEffectiveIncludedWalletCents({
+                      plan: entitlement.plan,
+                      cycle: entitlement.cycle,
+                      status: entitlement.status,
+                    })
+                  : 0,
+              wallet: personalWallet ? toWalletSummary(personalWallet) : null,
+            }
+          : null,
       },
     }
   },

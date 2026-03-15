@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowContext,
   auth: {
     login: () => ipcRenderer.invoke('auth:login'),
-    logout: () => ipcRenderer.invoke('auth:logout'),
+    logout: (options?: { accessToken?: string | null }) => ipcRenderer.invoke('auth:logout', options),
     getSession: () => ipcRenderer.invoke('auth:getSession'),
     refresh: () => ipcRenderer.invoke('auth:refresh'),
     updateOrganizations: (organizations: OrganizationMembership[]) => ipcRenderer.invoke('auth:updateOrganizations', organizations),
@@ -225,6 +225,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:cloneRepository', options),
     getLocalPath: (options: string | { slug: string; projectId?: string }) =>
       ipcRenderer.invoke('project:getLocalPath', options),
+    openFolder: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('project:openFolder', options),
     exists: (options: string | { slug: string; projectId?: string }) =>
       ipcRenderer.invoke('project:exists', options),
     pathExists: (projectPath: string) => ipcRenderer.invoke('project:pathExists', { projectPath }),

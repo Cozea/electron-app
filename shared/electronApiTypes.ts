@@ -1,6 +1,16 @@
-import type { OrganizationMembership, Session } from './types'
+import type {
+  OrganizationMembership,
+  Session,
+} from './types'
 
-export type { OrganizationMembership, Session, User } from './types'
+export type {
+  OrganizationMembership,
+  OrganizationWorkspaceMembership,
+  PersonalWorkspaceMembership,
+  Session,
+  User,
+  WorkspaceMembership,
+} from './types'
 
 export interface AppSettings {
   projectsDirectory: string
@@ -821,7 +831,7 @@ export interface ElectronAPI {
   windowContext: ElectronWindowContext
   auth: {
     login: () => Promise<{ success: boolean }>
-    logout: () => Promise<{ success: boolean }>
+    logout: (options?: { accessToken?: string | null }) => Promise<{ success: boolean }>
     getSession: () => Promise<Session | null>
     refresh: () => Promise<AuthRefreshResult>
     updateOrganizations: (
@@ -957,6 +967,7 @@ export interface ElectronAPI {
       keyId?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
+    openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
     exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (projectPath: string) => Promise<boolean>
     writeFile: (options: {

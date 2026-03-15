@@ -1,14 +1,16 @@
 import type { Id, Doc } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 
-type BillingCtx = QueryCtx | MutationCtx
+type BillingCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
 
 export type AccountSubscriptionPlan = "free" | "pro" | "max" | "startup" | "enterprise"
 export type AccountSubscriptionStatus = "active" | "canceled" | "past_due" | "trialing"
+type OrganizationSeatManagedPlan = "startup" | "enterprise"
 
 const PAST_DUE_GRACE_MS = 14 * 24 * 60 * 60 * 1000
 export type AccountBillingCycle = "monthly" | "yearly"
 export type EntitlementSource = "account" | "legacy" | "trial" | "free"
+const PERSONAL_WORKSPACE_PREFIX = "personal:"
 
 export const ACCOUNT_MIN_STARTUP_SEATS = 2
 export const ACCOUNT_TRIAL_LENGTH_MS = 7 * 24 * 60 * 60 * 1000
@@ -86,6 +88,23 @@ export interface AccountEntitlement {
   stripeCustomerId?: string
 }
 
+export interface OrganizationBillingSnapshot {
+  source: "account" | "legacy" | "free"
+  organizationId: Id<"organizations">
+  billingUserId: Id<"users"> | null
+  plan: AccountSubscriptionPlan
+  status: AccountSubscriptionStatus
+  cycle?: AccountBillingCycle
+  trialActive: boolean
+  trialEndsAt?: number
+  currentPeriodStart?: number
+  currentPeriodEnd?: number
+  stripeSubscriptionId?: string
+  stripeCustomerId?: string
+  seatQuantity?: number
+  legacyWorkspacePlan?: string
+}
+
 function queryTable(ctx: BillingCtx, tableName: string) {
   return (ctx.db.query as any)(tableName)
 }
@@ -100,14 +119,24 @@ function normalizeAccountPlan(plan: string | undefined | null): AccountSubscript
   return "free"
 }
 
-function isSeatManagedPlan(
-  plan: AccountSubscriptionPlan
-): plan is "startup" | "enterprise" {
-  return plan === "startup" || plan === "enterprise"
+function normalizeOrganizationSeatManagedPlan(
+  plan: AccountSubscriptionPlan | undefined | null
+): OrganizationSeatManagedPlan | null {
+  if (plan === "enterprise") {
+    return "enterprise"
+  }
+  if (plan === "startup" || plan === "pro" || plan === "max") {
+    return "startup"
+  }
+  return null
 }
 
 function isIndividualPlan(plan: AccountSubscriptionPlan): plan is "pro" | "max" {
   return plan === "pro" || plan === "max"
+}
+
+function isPersonalWorkspaceOrganization(organization: Doc<"organizations">): boolean {
+  return organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
 }
 
 function normalizeStartupSeats(value: number | undefined): number {
@@ -212,6 +241,17 @@ async function getAccountSubscriptionRecord(
   return canonical as AccountSubscriptionRecord
 }
 
+async function getUserByWorkosId(
+  ctx: BillingCtx,
+  workosId: string
+): Promise<Doc<"users"> | null> {
+  const user = await queryTable(ctx, "users")
+    .withIndex("by_workos_id", (q: any) => q.eq("workosId", workosId))
+    .first()
+
+  return (user as Doc<"users"> | null) ?? null
+}
+
 async function listActiveSeatAssignments(
   ctx: BillingCtx,
   billingUserId: Id<"users">,
@@ -263,7 +303,7 @@ function buildSeatEntitlement(args: {
   organizationId: Id<"organizations">
   userId: Id<"users">
   billingUserId: Id<"users">
-  plan: "startup" | "enterprise"
+  plan: OrganizationSeatManagedPlan
   status: AccountSubscriptionStatus
   cycle?: AccountBillingCycle
   totalSeats: number
@@ -365,6 +405,123 @@ function mapLegacyStatus(status: Doc<"organizations">["subscription"]["status"])
   return "active"
 }
 
+function resolveWorkspaceSnapshotPlan(
+  organization: Doc<"organizations">,
+  normalizedPlan: AccountSubscriptionPlan
+): AccountSubscriptionPlan {
+  if (isPersonalWorkspaceOrganization(organization)) {
+    return normalizedPlan
+  }
+
+  return normalizeOrganizationSeatManagedPlan(normalizedPlan) ?? "free"
+}
+
+export async function resolveOrganizationBillingSnapshot(
+  ctx: BillingCtx,
+  args: {
+    organization: Doc<"organizations">
+  }
+): Promise<OrganizationBillingSnapshot> {
+  const now = Date.now()
+  const { organization } = args
+  const organizationId = organization._id
+  const personalWorkspace = isPersonalWorkspaceOrganization(organization)
+  const billingAccount = await getOrganizationBillingAccountRecord(ctx, organizationId)
+
+  if (billingAccount) {
+    const billingSubscription = await getAccountSubscriptionRecord(ctx, billingAccount.billingUserId)
+    if (billingSubscription) {
+      const normalizedPlan = normalizeAccountPlan(billingSubscription.plan)
+      const resolvedPlan = resolveWorkspaceSnapshotPlan(organization, normalizedPlan)
+      const effectiveStatus = resolveEffectiveAccountStatus(billingSubscription, now)
+      const trialState = resolveSubscriptionTrialState(billingSubscription, now)
+
+      return {
+        source: "account",
+        organizationId,
+        billingUserId: billingAccount.billingUserId,
+        plan: resolvedPlan,
+        status: effectiveStatus,
+        cycle: billingSubscription.cycle,
+        trialActive: trialState.trialActive,
+        trialEndsAt: trialState.trialEndsAt,
+        currentPeriodStart: billingSubscription.currentPeriodStart,
+        currentPeriodEnd: billingSubscription.currentPeriodEnd,
+        stripeSubscriptionId: billingSubscription.stripeSubscriptionId,
+        stripeCustomerId: billingSubscription.stripeCustomerId,
+        seatQuantity:
+          !personalWorkspace && resolvedPlan !== "free"
+            ? normalizeStartupSeats(billingSubscription.seatQuantity)
+            : undefined,
+      }
+    }
+  }
+
+  if (personalWorkspace) {
+    const ownerWorkosId = organization.workosId.slice(PERSONAL_WORKSPACE_PREFIX.length)
+    if (ownerWorkosId) {
+      const ownerUser = await getUserByWorkosId(ctx, ownerWorkosId)
+      if (ownerUser) {
+        const ownerSubscription = await getAccountSubscriptionRecord(ctx, ownerUser._id)
+        if (ownerSubscription) {
+          const normalizedPlan = normalizeAccountPlan(ownerSubscription.plan)
+          const effectiveStatus = resolveEffectiveAccountStatus(ownerSubscription, now)
+          const trialState = resolveSubscriptionTrialState(ownerSubscription, now)
+
+          return {
+            source: "account",
+            organizationId,
+            billingUserId: ownerUser._id,
+            plan: normalizedPlan,
+            status: effectiveStatus,
+            cycle: ownerSubscription.cycle,
+            trialActive: trialState.trialActive,
+            trialEndsAt: trialState.trialEndsAt,
+            currentPeriodStart: ownerSubscription.currentPeriodStart,
+            currentPeriodEnd: ownerSubscription.currentPeriodEnd,
+            stripeSubscriptionId: ownerSubscription.stripeSubscriptionId,
+            stripeCustomerId: ownerSubscription.stripeCustomerId,
+          }
+        }
+      }
+    }
+  }
+
+  if (organization.subscription && organization.subscription.plan !== "free") {
+    const normalizedPlan = normalizeAccountPlan(organization.subscription.plan)
+    const resolvedPlan = resolveWorkspaceSnapshotPlan(organization, normalizedPlan)
+
+    return {
+      source: "legacy",
+      organizationId,
+      billingUserId: null,
+      plan: resolvedPlan,
+      status: mapLegacyStatus(organization.subscription.status),
+      trialActive: organization.subscription.status === "trialing",
+      currentPeriodStart: organization.subscription.currentPeriodStart,
+      currentPeriodEnd: organization.subscription.currentPeriodEnd,
+      stripeSubscriptionId: organization.subscription.stripeSubscriptionId,
+      stripeCustomerId: organization.subscription.stripeCustomerId,
+      seatQuantity:
+        !personalWorkspace &&
+        typeof organization.subscription.seatCount === "number" &&
+        Number.isFinite(organization.subscription.seatCount)
+          ? Math.max(1, Math.floor(organization.subscription.seatCount))
+          : undefined,
+      legacyWorkspacePlan: organization.subscription.plan,
+    }
+  }
+
+  return {
+    source: "free",
+    organizationId,
+    billingUserId: billingAccount?.billingUserId ?? null,
+    plan: "free",
+    status: "active",
+    trialActive: false,
+  }
+}
+
 export async function resolveAccountEntitlementForOrganization(
   ctx: BillingCtx,
   args: {
@@ -376,6 +533,7 @@ export async function resolveAccountEntitlementForOrganization(
   const { organization, user } = args
   const organizationId = organization._id
   const userId = user._id
+  const personalWorkspace = isPersonalWorkspaceOrganization(organization)
 
   const [billingAccount, userSubscription] = await Promise.all([
     getOrganizationBillingAccountRecord(ctx, organizationId),
@@ -392,18 +550,21 @@ export async function resolveAccountEntitlementForOrganization(
 
     if (billingSubscription) {
       const normalizedPlan = normalizeAccountPlan(billingSubscription.plan)
+      const organizationSeatPlan = personalWorkspace
+        ? null
+        : normalizeOrganizationSeatManagedPlan(normalizedPlan)
       const effectiveBillingStatus = resolveEffectiveAccountStatus(billingSubscription, now)
       const entitledStatus = isAccountStatusEntitled(effectiveBillingStatus)
       const trialState = resolveSubscriptionTrialState(billingSubscription, now)
 
       let workspaceEntitlement: AccountEntitlement
-      if (isSeatManagedPlan(normalizedPlan)) {
+      if (organizationSeatPlan) {
         workspaceEntitlement = buildSeatEntitlement({
           source: "account",
           organizationId,
           userId,
           billingUserId,
-          plan: normalizedPlan,
+          plan: organizationSeatPlan,
           status: effectiveBillingStatus,
           cycle: billingSubscription.cycle,
           totalSeats: normalizeStartupSeats(billingSubscription.seatQuantity),
@@ -415,7 +576,7 @@ export async function resolveAccountEntitlementForOrganization(
           stripeSubscriptionId: billingSubscription.stripeSubscriptionId,
           stripeCustomerId: billingSubscription.stripeCustomerId,
         })
-      } else if (isIndividualPlan(normalizedPlan)) {
+      } else if (personalWorkspace && isIndividualPlan(normalizedPlan)) {
         const isBillingUser = String(userId) === String(billingUserId)
         workspaceEntitlement = buildIndividualEntitlement({
           source: "account",
@@ -460,7 +621,7 @@ export async function resolveAccountEntitlementForOrganization(
         return workspaceEntitlement
       }
 
-      if (String(userId) !== String(billingUserId) && userSubscription) {
+      if (personalWorkspace && String(userId) !== String(billingUserId) && userSubscription) {
         const userPlan = normalizeAccountPlan(userSubscription.plan)
         if (isIndividualPlan(userPlan)) {
           const userTrialState = resolveSubscriptionTrialState(userSubscription, now)
@@ -513,7 +674,7 @@ export async function resolveAccountEntitlementForOrganization(
     }
   }
 
-  if (userSubscription) {
+  if (personalWorkspace && userSubscription) {
     const userPlan = normalizeAccountPlan(userSubscription.plan)
     if (isIndividualPlan(userPlan)) {
       const trialState = resolveSubscriptionTrialState(userSubscription, now)
@@ -540,10 +701,13 @@ export async function resolveAccountEntitlementForOrganization(
   if (organization.subscription && organization.subscription.plan !== "free") {
     const memberCount = await countOrganizationMembers(ctx, organizationId)
     const legacyPlan = normalizeAccountPlan(organization.subscription.plan)
+    const legacyOrganizationSeatPlan = personalWorkspace
+      ? null
+      : normalizeOrganizationSeatManagedPlan(legacyPlan)
     const legacyStatus = mapLegacyStatus(organization.subscription.status)
     const legacyEntitled = isLegacySubscriptionEntitled(organization.subscription)
 
-    if (isSeatManagedPlan(legacyPlan)) {
+    if (legacyOrganizationSeatPlan) {
       const legacySeatCount =
         typeof organization.subscription.seatCount === "number" &&
         Number.isFinite(organization.subscription.seatCount)
@@ -555,7 +719,7 @@ export async function resolveAccountEntitlementForOrganization(
         organizationId,
         userId,
         billingUserId: null,
-        plan: legacyPlan,
+        plan: legacyOrganizationSeatPlan,
         status: legacyStatus,
         trialActive: organization.subscription.status === "trialing",
         hasPaidSeat: legacyEntitled,
@@ -577,7 +741,7 @@ export async function resolveAccountEntitlementForOrganization(
       }
     }
 
-    if (legacyPlan === "pro" || legacyPlan === "max") {
+    if (personalWorkspace && (legacyPlan === "pro" || legacyPlan === "max")) {
       return {
         source: "legacy",
         organizationId,

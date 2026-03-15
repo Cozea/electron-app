@@ -4,12 +4,14 @@
  * Shows workspace AI token usage summary.
  */
 
-import { useAuth } from '@/contexts/AuthContext'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { cn } from '@/lib/utils'
 import { IconActivity } from '@tabler/icons-react'
-import { getWorkspacePlanLabel } from '@/lib/billing/planLabels'
+import { getOrganizationPlanLabel } from '@/lib/billing/planLabels'
+import { useScopedAppContext } from '@/hooks/useScopedAppContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { useCachedQuery } from '@/stores/useQueryCache'
 
 function formatCompactNumber(num: number): string {
   if (num >= 1_000_000_000) {
@@ -30,27 +32,37 @@ interface CreditDisplayProps {
 }
 
 export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayProps) {
-  const { currentOrganization } = useAuth()
-
-  const convexOrg = useQuery(
-    api.organizations.getByWorkosId,
-    currentOrganization?.organizationId ? { workosId: currentOrganization.organizationId } : 'skip'
-  )
+  const { convexOrg } = useScopedAppContext()
+  const { convexUserId } = useAuth()
 
   const usageSummary = useQuery(
     api.organizations.getUsageSummary,
     convexOrg?._id ? { orgId: convexOrg._id, period: 'monthly' } : 'skip'
+  )
+  const cachedUsageSummary = useCachedQuery(
+    `credit-display-usage-${convexOrg?._id ?? 'none'}`,
+    usageSummary
+  )
+  const seatManagement = useQuery(
+    api.billing.getSeatManagement,
+    convexOrg?._id && convexUserId
+      ? { organizationId: convexOrg._id, userId: convexUserId }
+      : 'skip'
+  )
+  const cachedSeatManagement = useCachedQuery(
+    `credit-display-seat-management-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
+    seatManagement
   )
 
   if (!convexOrg) {
     return null
   }
 
-  const aggregate = usageSummary?.aggregate
+  const aggregate = cachedUsageSummary?.aggregate
   const totalTokens = aggregate?.totalTokens ?? 0
   const requestCount = aggregate?.requestCount ?? 0
-  const plan = convexOrg.subscription?.plan || 'free'
-  const planLabel = getWorkspacePlanLabel(plan)
+  const plan = cachedSeatManagement?.entitlement?.plan ?? 'free'
+  const planLabel = getOrganizationPlanLabel(plan)
 
   if (variant === 'compact') {
     return (
