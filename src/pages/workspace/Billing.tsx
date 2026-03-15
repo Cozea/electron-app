@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
 import { Progress } from '../../components/ui/progress'
+import { Checkbox } from '../../components/ui/checkbox'
+import { Input } from '../../components/ui/input'
 import {
   Table,
   TableBody,
@@ -27,11 +29,15 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import {
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Check,
   CheckCircle2,
-  XCircle,
   Loader2,
+  Minus,
+  Plus,
+  XCircle,
 } from 'lucide-react'
 import { fetchWithAbort } from '@/lib/abort'
 import { NO_ACTIVE_PLAN_LABEL } from '@/lib/billing/planLabels'
@@ -46,6 +52,7 @@ const AUTH_SERVER_URL =
 const ENTERPRISE_SALES_MAILTO = 'mailto:sales@cozea.com?subject=Enterprise%20Plan'
 const STARTUP_MIN_SEATS = 2
 const STARTUP_MAX_SEATS = 10
+const SEAT_ASSIGNMENTS_PAGE_SIZE = 5
 const MAX_TRIAL_INCLUDED_PERCENT = 5
 const INACTIVE_PLAN_STATUS_LABEL = 'Inactive'
 
@@ -452,6 +459,27 @@ function normalizeSeatQuantity(value: number): number {
   return Math.min(STARTUP_MAX_SEATS, Math.max(STARTUP_MIN_SEATS, Math.floor(value)))
 }
 
+function getPageNumbers(currentPage: number, totalPages: number): Array<number | '...'> {
+  const pages: Array<number | '...'> = []
+
+  if (totalPages <= 7) {
+    for (let page = 1; page <= totalPages; page += 1) {
+      pages.push(page)
+    }
+    return pages
+  }
+
+  if (currentPage <= 3) {
+    return [1, 2, 3, '...', totalPages]
+  }
+
+  if (currentPage >= totalPages - 2) {
+    return [1, '...', totalPages - 2, totalPages - 1, totalPages]
+  }
+
+  return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages]
+}
+
 function normalizeCurrentPlanForCards(
   source: 'account' | 'legacy' | 'trial' | 'free' | undefined,
   plan: string | undefined,
@@ -750,17 +778,18 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const [isCancelScheduledCycleChangePending, setIsCancelScheduledCycleChangePending] = useState(false)
   const [isActivatingPaidMax, setIsActivatingPaidMax] = useState(false)
   const [isPortalPending, setIsPortalPending] = useState(false)
+  const [isSeatQuantityUpdating, setIsSeatQuantityUpdating] = useState(false)
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false)
   const [pendingDowngradeTargetPlanId, setPendingDowngradeTargetPlanId] = useState<PlanTierId | null>(null)
   const [seatMutationUserId, setSeatMutationUserId] = useState<string | null>(null)
   const [seatMutationError, setSeatMutationError] = useState<string | null>(null)
+  const [seatAssignmentsPage, setSeatAssignmentsPage] = useState(1)
 
   const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle>('monthly')
   const [checkoutSeatQuantity, setCheckoutSeatQuantity] = useState<number>(STARTUP_MIN_SEATS)
-  const checkoutDefaultsInitializedRef = useRef(false)
 
   useEffect(() => {
-    if (!seatManagement || checkoutDefaultsInitializedRef.current) return
+    if (!seatManagement) return
 
     const cycle =
       seatManagement.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
@@ -772,12 +801,22 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       typeof seatManagement.entitlement?.seatCounts?.total === 'number'
         ? seatManagement.entitlement.seatCounts.total
         : undefined
-    setCheckoutCycle(cycle)
-    setCheckoutSeatQuantity(
-      normalizeSeatQuantity(subscriptionSeats ?? entitlementSeats ?? STARTUP_MIN_SEATS)
+
+    const syncedSeatQuantity = normalizeSeatQuantity(
+      subscriptionSeats ?? entitlementSeats ?? STARTUP_MIN_SEATS
     )
-    checkoutDefaultsInitializedRef.current = true
-  }, [seatManagement])
+
+    setCheckoutCycle(cycle)
+    setCheckoutSeatQuantity((current) => (
+      current === syncedSeatQuantity ? current : syncedSeatQuantity
+    ))
+  }, [
+    seatManagement,
+    seatManagement?.accountSubscription?.cycle,
+    seatManagement?.accountSubscription?.seatQuantity,
+    seatManagement?.accountSubscription?.updatedAt,
+    seatManagement?.entitlement?.seatCounts?.total,
+  ])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -1017,6 +1056,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     entitlement?.status === 'canceled' && currentPlanIdForCards !== 'free'
   const currentSubscriptionCycle =
     seatManagement?.accountSubscription?.cycle === 'yearly' ? 'yearly' : 'monthly'
+  const currentSeatQuantity =
+    typeof seatManagement?.accountSubscription?.seatQuantity === 'number'
+      ? normalizeSeatQuantity(seatManagement.accountSubscription.seatQuantity)
+      : typeof entitlement?.seatCounts?.total === 'number' && entitlement.seatCounts.total > 0
+        ? normalizeSeatQuantity(entitlement.seatCounts.total)
+        : STARTUP_MIN_SEATS
   const currentSelfServePlan =
     currentPlanIdForCards === 'pro' ||
     currentPlanIdForCards === 'max' ||
@@ -1028,7 +1073,10 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       ? scheduledCycleChange
       : null
   const isPlanActionPending =
-    isCheckoutPending || isCycleChangePending || isCancelScheduledCycleChangePending
+    isCheckoutPending ||
+    isCycleChangePending ||
+    isCancelScheduledCycleChangePending ||
+    isSeatQuantityUpdating
   const hasConsumedMaxTrial = Boolean(
     seatManagement?.accountSubscription?.trialStart &&
     seatManagement?.accountSubscription?.stripeSubscriptionId
@@ -1096,12 +1144,104 @@ export function Billing({ surface = 'page', route }: BillingProps) {
     STARTUP_PLAN_CARD.name,
     entitlement?.status
   )
+  const selectedStartupSeatQuantity = normalizeSeatQuantity(checkoutSeatQuantity)
+  const startupSeatQuantityChanged =
+    workspaceScoped &&
+    currentPlanIdForCards === 'startup' &&
+    !currentPlanIsCanceled &&
+    selectedStartupSeatQuantity !== currentSeatQuantity
+  const startupCycleSwitchRequested =
+    currentSelfServePlan === 'startup' && currentSubscriptionCycle !== checkoutCycle
+  const startupCycleSwitchScheduled =
+    scheduledCycleChange?.plan === 'startup' && scheduledCycleChange.cycle === checkoutCycle
+  const startupExactCurrentSelection =
+    currentPlanIdForCards === 'startup' &&
+    !currentPlanIsCanceled &&
+    !startupSeatQuantityChanged &&
+    !startupCycleSwitchRequested
+  const startupSeatUnitAmountCents = resolvePlanAmountCents(pricingCatalog, 'startup', checkoutCycle)
+  const startupSeatCurrency = resolvePlanCurrency(pricingCatalog, 'startup', checkoutCycle)
+  const startupSelectedTotalPrice = formatDisplayCurrencyFromCents(
+    startupSeatUnitAmountCents * selectedStartupSeatQuantity,
+    startupSeatCurrency
+  )
+  const startupSelectedPeriodLabel = `/ ${selectedStartupSeatQuantity} seat${selectedStartupSeatQuantity === 1 ? '' : 's'} / ${checkoutCycle === 'yearly' ? 'year' : 'month'}`
+  const startupPerSeatPriceLabel = `${formatDisplayCurrencyFromCents(startupSeatUnitAmountCents, startupSeatCurrency)} / seat / ${checkoutCycle === 'yearly' ? 'year' : 'month'}`
+  const startupYearlySavingsCents = Math.max(
+    0,
+    resolvePlanAmountCents(pricingCatalog, 'startup', 'monthly') * 12 * selectedStartupSeatQuantity -
+      resolvePlanAmountCents(pricingCatalog, 'startup', 'yearly') * selectedStartupSeatQuantity
+  )
+  const startupYearlySavingsLabel =
+    checkoutCycle === 'yearly' && startupYearlySavingsCents > 0
+      ? `Save ${formatDisplayCurrencyFromCents(startupYearlySavingsCents, startupSeatCurrency)}`
+      : undefined
+  const startupPrimaryActionLabel =
+    startupSeatQuantityChanged
+      ? 'Update Seats'
+      : startupCycleSwitchRequested
+        ? startupCycleSwitchScheduled
+          ? `${formatBillingCycleLabel(checkoutCycle)} Scheduled`
+          : `Switch to ${formatBillingCycleLabel(checkoutCycle)}`
+        : startupPlanCtaLabel
   const enterprisePlanCtaLabel = getPlanCtaLabel(
     'enterprise',
     currentPlanIdForCards,
     ENTERPRISE_PLAN_CARD.name,
     entitlement?.status
   )
+  const seatAssignmentRows = useMemo(() => {
+    const workspaceMembers = [...(members ?? [])]
+
+    return workspaceMembers.sort((left, right) => {
+      const leftIsBillingOwner = billingOwnerId !== null && billingOwnerId === String(left.userId)
+      const rightIsBillingOwner = billingOwnerId !== null && billingOwnerId === String(right.userId)
+      if (leftIsBillingOwner !== rightIsBillingOwner) {
+        return leftIsBillingOwner ? -1 : 1
+      }
+
+      const leftHasSeat =
+        leftIsBillingOwner || activeAssignmentsByUserId.has(String(left.userId))
+      const rightHasSeat =
+        rightIsBillingOwner || activeAssignmentsByUserId.has(String(right.userId))
+      if (leftHasSeat !== rightHasSeat) {
+        return leftHasSeat ? -1 : 1
+      }
+
+      const leftName = left.user?.firstName
+        ? `${left.user.firstName} ${left.user.lastName || ''}`.trim()
+        : left.user?.email || ''
+      const rightName = right.user?.firstName
+        ? `${right.user.firstName} ${right.user.lastName || ''}`.trim()
+        : right.user?.email || ''
+
+      return leftName.localeCompare(rightName)
+    })
+  }, [activeAssignmentsByUserId, billingOwnerId, members])
+  const seatAssignmentsTotalPages = Math.max(
+    1,
+    Math.ceil(seatAssignmentRows.length / SEAT_ASSIGNMENTS_PAGE_SIZE)
+  )
+  const seatAssignmentsStartIndex = (seatAssignmentsPage - 1) * SEAT_ASSIGNMENTS_PAGE_SIZE
+  const seatAssignmentsEndIndex = seatAssignmentsStartIndex + SEAT_ASSIGNMENTS_PAGE_SIZE
+  const paginatedSeatAssignmentRows = useMemo(
+    () => seatAssignmentRows.slice(seatAssignmentsStartIndex, seatAssignmentsEndIndex),
+    [seatAssignmentRows, seatAssignmentsEndIndex, seatAssignmentsStartIndex]
+  )
+  const seatAssignmentsPageNumbers = useMemo(
+    () => getPageNumbers(seatAssignmentsPage, seatAssignmentsTotalPages),
+    [seatAssignmentsPage, seatAssignmentsTotalPages]
+  )
+  const showSeatAssignmentsTable =
+    workspaceScoped &&
+    entitlement?.source !== 'legacy' &&
+    seatManagedEntitlement &&
+    paidSeatTotal > 0 &&
+    entitlement?.status !== 'canceled'
+
+  useEffect(() => {
+    setSeatAssignmentsPage((current) => Math.min(current, seatAssignmentsTotalPages))
+  }, [seatAssignmentsTotalPages])
 
   const handleManageBilling = useCallback(async () => {
     if (!billingOrganizationId || !accessToken) return
@@ -1174,6 +1314,47 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       setIsActivatingPaidMax(false)
     }
   }, [accessToken, billingOrganizationId])
+
+  const handleUpdateSeatQuantity = useCallback(async () => {
+    if (!billingOrganizationId || !accessToken) return
+
+    const normalizedSeatQuantity = normalizeSeatQuantity(checkoutSeatQuantity)
+    if (normalizedSeatQuantity === currentSeatQuantity) return
+
+    setIsSeatQuantityUpdating(true)
+    try {
+      const response = await fetchWithAbort(
+        `${AUTH_SERVER_URL}/stripe/update-seat-quantity`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            organizationId: billingOrganizationId,
+            seatQuantity: normalizedSeatQuantity,
+          }),
+        },
+        { timeoutMs: 15000 }
+      )
+
+      const data = (await response.json().catch(() => null)) as
+        | { message?: string; error?: string }
+        | null
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to update paid seat quantity')
+      }
+
+      alert(`Paid seats updated to ${normalizedSeatQuantity}.`)
+    } catch (err) {
+      console.error('Seat quantity update error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to update paid seat quantity')
+    } finally {
+      setIsSeatQuantityUpdating(false)
+    }
+  }, [accessToken, billingOrganizationId, checkoutSeatQuantity, currentSeatQuantity])
 
   const handleCheckout = useCallback(async (requestedPlan: CheckoutPlan) => {
     if (!billingOrganizationId || !accessToken) return
@@ -1739,24 +1920,69 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{STARTUP_PLAN_CARD.description}</p>
                     <div className="mt-4 flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-foreground">
-                        {resolvePlanPricing({
-                          catalog: pricingCatalog,
-                          plan: 'startup',
-                          cycle: checkoutCycle,
-                        }).price}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {resolvePlanPricing({
-                          catalog: pricingCatalog,
-                          plan: 'startup',
-                          cycle: checkoutCycle,
-                        }).period}
-                      </span>
+                      <span className="text-3xl font-bold text-foreground">{startupSelectedTotalPrice}</span>
+                      <span className="text-muted-foreground">{startupSelectedPeriodLabel}</span>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {STARTUP_PLAN_CARD.priceSecondary}
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{startupPerSeatPriceLabel}</p>
+                    {startupYearlySavingsLabel ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{startupYearlySavingsLabel}</p>
+                    ) : null}
+                    <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Paid seats</p>
+                          <p className="text-xs text-muted-foreground">
+                            {currentPlanIdForCards === 'startup' && !currentPlanIsCanceled
+                              ? `${currentSeatQuantity} seats currently purchased`
+                              : `Choose ${STARTUP_MIN_SEATS}-${STARTUP_MAX_SEATS} paid seats`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon-sm"
+                            className="rounded-full"
+                            onClick={() =>
+                              setCheckoutSeatQuantity((current) => normalizeSeatQuantity(current - 1))
+                            }
+                            disabled={selectedStartupSeatQuantity <= STARTUP_MIN_SEATS || isPlanActionPending}
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min={STARTUP_MIN_SEATS}
+                            max={STARTUP_MAX_SEATS}
+                            value={selectedStartupSeatQuantity}
+                            onChange={(event) => {
+                              const parsedValue = Number.parseInt(event.target.value, 10)
+                              if (!Number.isFinite(parsedValue)) {
+                                setCheckoutSeatQuantity(STARTUP_MIN_SEATS)
+                                return
+                              }
+                              setCheckoutSeatQuantity(normalizeSeatQuantity(parsedValue))
+                            }}
+                            className="h-9 w-20 rounded-full bg-background text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="icon-sm"
+                            className="rounded-full"
+                            onClick={() =>
+                              setCheckoutSeatQuantity((current) => normalizeSeatQuantity(current + 1))
+                            }
+                            disabled={selectedStartupSeatQuantity >= STARTUP_MAX_SEATS || isPlanActionPending}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Seat changes apply immediately. Monthly and yearly billing switches are scheduled separately.
+                      </p>
+                    </div>
                     <p className="mt-4 text-sm font-medium text-foreground">{STARTUP_PLAN_CARD.featuresHeading}</p>
                     <ul className="mt-5 flex-1 space-y-2.5">
                       {STARTUP_PLAN_CARD.features.map((feature, featureIndex) => (
@@ -1776,18 +2002,30 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                     <Button
                       className="mt-6 w-full rounded-lg"
                       variant={
-                        currentPlanIdForCards === 'startup' && !currentPlanIsCanceled
+                        startupExactCurrentSelection || startupCycleSwitchScheduled
                           ? 'secondary'
                           : 'default'
                       }
-                      onClick={() => handlePlanCtaClick('startup')}
+                      onClick={() => {
+                        if (startupSeatQuantityChanged) {
+                          void handleUpdateSeatQuantity()
+                          return
+                        }
+
+                        handlePlanCtaClick('startup')
+                      }}
                       disabled={
-                        (currentPlanIdForCards === 'startup' && !currentPlanIsCanceled) ||
+                        !canOpenCheckout ||
+                        startupExactCurrentSelection ||
                         isPlanActionPending ||
-                        isPortalPending
+                        isPortalPending ||
+                        startupCycleSwitchScheduled
                       }
                     >
-                      {startupPlanCtaLabel}
+                      {isPlanActionPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      {startupPrimaryActionLabel}
                     </Button>
                   </div>
                   <div className="relative flex h-full flex-col rounded-2xl bg-secondary/80 p-5 transition-all duration-300 dark:bg-secondary/40">
@@ -1884,13 +2122,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           </DialogContent>
         </Dialog>
 
-        {seatManagedEntitlement && (
+        {showSeatAssignmentsTable && (
           <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0 px-0 pb-4">
             <CardTitle>Seat Assignments</CardTitle>
             <CardDescription>
-              Purchased seats cap workspace access. Assign paid seats explicitly so members can use AI
-              and sync.
+              Purchased seats cap workspace access. Select which workspace members receive a paid seat.
             </CardDescription>
           </CardHeader>
           <CardContent className="px-0">
@@ -1900,25 +2137,26 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   <TableRow>
                     <TableHead>Member</TableHead>
                     <TableHead>Role</TableHead>
-                    <TableHead>Seat</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="text-right">Paid Seat</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {(members ?? []).length > 0 ? (
-                    (members ?? []).map((member) => {
+                  {members === undefined ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
+                        Loading workspace members...
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedSeatAssignmentRows.length > 0 ? (
+                    paginatedSeatAssignmentRows.map((member) => {
                       const isBillingOwner =
                         billingOwnerId !== null &&
                         billingOwnerId === String(member.userId)
                       const hasSeat =
-                        entitlement?.source === 'legacy'
-                          ? true
-                          : isBillingOwner || activeAssignmentsByUserId.has(String(member.userId))
+                        isBillingOwner || activeAssignmentsByUserId.has(String(member.userId))
                       const isBusy = seatMutationUserId === String(member.userId)
-                      const canToggle =
-                        canManageSeats &&
-                        entitlement?.source !== 'legacy' &&
-                        !isBillingOwner
+                      const canToggle = canManageSeats && !isBillingOwner
+                      const hasAvailableSeat = hasSeat || paidSeatAvailable > 0
 
                       const displayName =
                         member.user?.firstName
@@ -1946,35 +2184,36 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                               {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            {isBillingOwner ? (
-                              <Badge variant="secondary">Owner Seat</Badge>
-                            ) : hasSeat ? (
-                              <Badge variant="secondary">Assigned</Badge>
-                            ) : (
-                              <Badge variant="outline">Not Assigned</Badge>
-                            )}
-                          </TableCell>
                           <TableCell className="text-right">
-                            {isBillingOwner ? (
-                              <span className="text-xs text-muted-foreground">Always included</span>
-                            ) : (
-                              <Button
-                                variant={hasSeat ? 'outline' : 'default'}
-                                size="sm"
-                                disabled={!canToggle || isBusy}
-                                onClick={() => void handleSeatToggle(member.userId, !hasSeat)}
-                              >
-                                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : hasSeat ? 'Revoke' : 'Assign'}
-                              </Button>
-                            )}
+                            <div className="flex items-center justify-end gap-3">
+                              <span className="text-xs text-muted-foreground">
+                                {isBillingOwner
+                                  ? 'Always included'
+                                  : hasSeat
+                                    ? 'Assigned'
+                                    : 'Not assigned'}
+                              </span>
+                              {isBusy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Checkbox
+                                  checked={hasSeat}
+                                  disabled={!canToggle || !hasAvailableSeat}
+                                  onCheckedChange={(checked) => {
+                                    const nextActive = checked === true
+                                    if (nextActive === hasSeat) return
+                                    void handleSeatToggle(member.userId, nextActive)
+                                  }}
+                                />
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
+                      <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
                         No workspace members found.
                       </TableCell>
                     </TableRow>
@@ -1982,6 +2221,68 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 </TableBody>
               </Table>
             </div>
+
+            {seatAssignmentRows.length > 0 ? (
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing{' '}
+                  <span className="font-medium">
+                    {seatAssignmentsStartIndex + 1}-
+                    {Math.min(seatAssignmentsEndIndex, seatAssignmentRows.length)}
+                  </span>{' '}
+                  of <span className="font-medium">{seatAssignmentRows.length}</span> members
+                </div>
+                {seatAssignmentsTotalPages > 1 ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() => setSeatAssignmentsPage((current) => Math.max(1, current - 1))}
+                      disabled={seatAssignmentsPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    {seatAssignmentsPageNumbers.map((pageNumber, index) => (
+                      typeof pageNumber === 'number' ? (
+                        <Button
+                          key={`${pageNumber}-${index}`}
+                          variant={seatAssignmentsPage === pageNumber ? 'default' : 'secondary'}
+                          size="icon"
+                          className="h-8 w-8 rounded-full"
+                          onClick={() => setSeatAssignmentsPage(pageNumber)}
+                        >
+                          {pageNumber}
+                        </Button>
+                      ) : (
+                        <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                          ...
+                        </span>
+                      )
+                    ))}
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      onClick={() =>
+                        setSeatAssignmentsPage((current) =>
+                          Math.min(seatAssignmentsTotalPages, current + 1)
+                        )
+                      }
+                      disabled={seatAssignmentsPage === seatAssignmentsTotalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {canManageSeats && paidSeatAvailable <= 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                All purchased seats are assigned. Increase the seat count above to assign another member.
+              </p>
+            ) : null}
 
             {!canManageSeats && seatManagement?.billingUser && entitlement?.source !== 'legacy' && (
               <p className="mt-3 text-xs text-muted-foreground">
