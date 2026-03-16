@@ -109,6 +109,7 @@ export function useCozeaChat({
 
   const retryHint = useMemo(() => {
     // useChat types aren't perfectly aligned with our parts, so we cast to check parts safely
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return readLatestRetryHint(dedupedMessages as any)
   }, [dedupedMessages])
 

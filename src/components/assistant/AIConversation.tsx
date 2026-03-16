@@ -1850,7 +1850,7 @@ export function AIConversation({
         >
           {billingError ? (
             <BillingError
-              error={billingError as any}
+              error={billingError!}
               className="border-0 border-b rounded-none p-3"
             />
           ) : showRetrySurfaceError && retrySurfaceError ? (

@@ -42,7 +42,7 @@ const ShimmerComponent = ({
     [children, spread]
   );
 
-  const motionProps: any = {
+  const motionProps: Record<string, unknown> = {
     animate: { backgroundPosition: "0% center" },
     className: cn(
       "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",

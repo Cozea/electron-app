@@ -1349,11 +1349,11 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
     if (result && result.success && request.projectPath && ['write', 'edit', 'multiedit'].includes(request.name)) {
       try {
         const modifiedFiles: string[] = []
-        const out = result.output as any
+        const out = result.output as { filePath?: string; results?: { filePath: string }[] } | undefined
         if (out?.filePath) {
           modifiedFiles.push(out.filePath)
         } else if (out?.results && Array.isArray(out.results)) {
-          modifiedFiles.push(...out.results.map((r: any) => r.filePath).filter(Boolean))
+          modifiedFiles.push(...out.results.map((r) => r.filePath).filter(Boolean))
         }
 
         if (modifiedFiles.length > 0) {

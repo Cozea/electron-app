@@ -96,9 +96,9 @@ export class DevServerService {
       console.log(`[DevServerService] Ready on port ${actualPort}`)
       return { success: true, port: actualPort }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('[DevServerService] Failed to start:', error)
-      return { success: false, error: error.message || 'Unknown error starting dev server' }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error starting dev server' }
     }
   }
 
@@ -127,9 +127,9 @@ export class DevServerService {
 
       this.processes.delete(projectPath)
       return { success: true }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[DevServerService] Error stopping process:', error)
-      return { success: false, error: error.message }
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
 
