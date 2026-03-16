@@ -1,4 +1,4 @@
-import type { Id, Doc } from "../_generated/dataModel"
+import type { Id, Doc, TableNames } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 
 type BillingCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">
@@ -105,8 +105,8 @@ export interface OrganizationBillingSnapshot {
   legacyWorkspacePlan?: string
 }
 
-function queryTable(ctx: BillingCtx, tableName: string) {
-  return (ctx.db.query as any)(tableName)
+function queryTable<TableName extends TableNames>(ctx: BillingCtx, tableName: TableName) {
+  return ctx.db.query(tableName)
 }
 
 function normalizeAccountPlan(plan: string | undefined | null): AccountSubscriptionPlan {
@@ -208,7 +208,7 @@ async function getOrganizationBillingAccountRecord(
   organizationId: Id<"organizations">
 ): Promise<OrganizationBillingAccountRecord | null> {
   const rows = await queryTable(ctx, "organizationBillingAccounts")
-    .withIndex("by_organization", (q: any) => q.eq("organizationId", organizationId))
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .collect()
 
   if (rows.length === 0) return null
@@ -227,7 +227,7 @@ async function getAccountSubscriptionRecord(
   accountUserId: Id<"users">
 ): Promise<AccountSubscriptionRecord | null> {
   const rows = await queryTable(ctx, "accountSubscriptions")
-    .withIndex("by_account_user", (q: any) => q.eq("accountUserId", accountUserId))
+    .withIndex("by_account_user", (q) => q.eq("accountUserId", accountUserId))
     .collect()
 
   if (rows.length === 0) return null
@@ -246,7 +246,7 @@ async function getUserByWorkosId(
   workosId: string
 ): Promise<Doc<"users"> | null> {
   const user = await queryTable(ctx, "users")
-    .withIndex("by_workos_id", (q: any) => q.eq("workosId", workosId))
+    .withIndex("by_workos_id", (q) => q.eq("workosId", workosId))
     .first()
 
   return (user as Doc<"users"> | null) ?? null
@@ -258,7 +258,7 @@ async function listActiveSeatAssignments(
   organizationId: Id<"organizations">
 ): Promise<AccountSeatAssignmentRecord[]> {
   const rows = await queryTable(ctx, "accountSeatAssignments")
-    .withIndex("by_billing_user_and_organization", (q: any) =>
+    .withIndex("by_billing_user_and_organization", (q) =>
       q.eq("billingUserId", billingUserId).eq("organizationId", organizationId)
     )
     .collect()

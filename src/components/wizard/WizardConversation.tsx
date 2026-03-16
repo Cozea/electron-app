@@ -663,7 +663,7 @@ export function WizardConversation({
     chatOptions: {
       onToolCall: handleToolCall,
     },
-    onBillingError: (err) => setBillingError(err as any),
+    onBillingError: (err) => setBillingError(err),
   })
 
   const failedUserMessageId = useMemo(() => {
@@ -1073,7 +1073,7 @@ export function WizardConversation({
         >
           {billingError ? (
             <BillingError
-              error={billingError as any}
+              error={billingError!}
               onAction={(href) => navigate(href)}
               className="border-0 border-b rounded-none p-3"
             />

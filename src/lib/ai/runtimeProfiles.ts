@@ -219,7 +219,7 @@ export function normalizeVariantForModel(
     if (requested && isVariantId(requested)) {
       return requested
     }
-    return undefined as any // Fallback to undefined for unknown models
+    return undefined as unknown as VariantId // Fallback to undefined for unknown models
   }
 
   const supported = getSupportedVariantsForModel(args)
