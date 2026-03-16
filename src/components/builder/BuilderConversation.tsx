@@ -1549,8 +1549,7 @@ Now begin by defining your task list with todowrite, then start working through 
       onToolCall: handleToolCall,
     },
     onBillingError: (err) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onBillingError?.(err as any)
+      onBillingError?.(err)
       onError(err.title || 'Billing Error')
     },
   })
