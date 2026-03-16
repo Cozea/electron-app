@@ -5,7 +5,6 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { cancelToolRuns, disposeToolRuntime, runTool } from './tools'
 import { autoUpdater } from 'electron-updater'
-import * as pty from 'node-pty' // Still used for DevServer PTY
 import type { AppSettings, PreviewHeaderDiagnostic } from '../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
@@ -30,18 +29,7 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
 import { loadSyncState } from './services/syncReplicaStore'
 
-interface DevServerProcessEntry {
-  runId: string
-  projectPath: string
-  command: string
-  port: number
-  startedAt: number
-  ptyProcess: pty.IPty
-}
-
-// Dev server process management
-// Maps projectPath to running PTY-backed dev server metadata.
-const devServerProcesses = new Map<string, DevServerProcessEntry>()
+import { DevServerService } from './services/DevServerService'
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -898,14 +886,10 @@ function createWindow() {
     win.webContents.send('window:fullscreen-change', nextValue)
   }
 
-  win.on('will-enter-full-screen', () => emitPendingFullScreenChange(true))
-  win.on('enter-full-screen', emitFullScreenChange)
-  win.on('will-leave-full-screen', () => emitPendingFullScreenChange(false))
-  win.on('leave-full-screen', emitFullScreenChange)
-  win.on('will-enter-html-full-screen', () => emitPendingFullScreenChange(true))
-  win.on('enter-html-full-screen', emitFullScreenChange)
-  win.on('will-leave-html-full-screen', () => emitPendingFullScreenChange(false))
-  win.on('leave-html-full-screen', emitFullScreenChange)
+  win.on('enter-full-screen', () => emitPendingFullScreenChange(true))
+  win.on('leave-full-screen', () => emitPendingFullScreenChange(false))
+  win.on('enter-html-full-screen', () => emitPendingFullScreenChange(true))
+  win.on('leave-html-full-screen', () => emitPendingFullScreenChange(false))
 
   if (isReleaseBuild) {
     // Prevent browser-style navigations/popups in packaged builds.
@@ -1032,7 +1016,6 @@ registerRuntimeHandlers(ipcMain)
 registerSyncHandlers(ipcMain)
 
 registerDevServerHandlers(ipcMain, {
-  devServerProcesses,
   getMainWindow: () => win,
 })
 
@@ -1043,16 +1026,8 @@ registerContextMenuHandlers(ipcMain, {
 app.on('window-all-closed', () => {
   win = null
 
-  // Kill all running dev servers when app closes
-  for (const [projectPath, processEntry] of devServerProcesses) {
-    console.log(`[DevServer] Killing PTY for ${projectPath} (runId=${processEntry.runId})`)
-    try {
-      processEntry.ptyProcess.kill()
-    } catch {
-      // Ignore errors when killing on shutdown
-    }
-  }
-  devServerProcesses.clear()
+  // Kill all DevServer background processes
+  DevServerService.getInstance().killAll()
 
   // Kill all terminal instances when app closes
   TerminalService.getInstance().killAll()

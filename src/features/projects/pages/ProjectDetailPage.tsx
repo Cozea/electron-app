@@ -44,6 +44,26 @@ export function ProjectDetailPage() {
     }
   }, [locationState?.taskOverlay])
 
+  const handleOpenFile = useCallback((file: string, line?: number, column?: number) => {
+    const normalizedFile = file.replace(/\\/g, '/')
+    const normalizedProject = projectPath
+      ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
+      : null
+    const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
+
+    const pathForUrl = normalizedProject
+      ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
+        ? normalizedFile
+        : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
+      : normalizedFile
+
+    const params = new URLSearchParams()
+    params.set('path', pathForUrl)
+    if (line) params.set('line', String(line))
+    if (column) params.set('column', String(column))
+    setSearchParams(params)
+  }, [projectPath, setSearchParams])
+
   // File tabs store
   const fileTabsStore = useFileTabsStore()
   const { activeFile } = projectKey
@@ -69,26 +89,6 @@ export function ProjectDetailPage() {
 
   // Ensure stores are initialized even if project is loading (we have the slug)
   if (!projectKey) return null
-
-  const handleOpenFile = useCallback((file: string, line?: number, column?: number) => {
-    const normalizedFile = file.replace(/\\/g, '/')
-    const normalizedProject = projectPath
-      ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
-      : null
-    const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
-
-    const pathForUrl = normalizedProject
-      ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
-        ? normalizedFile
-        : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
-      : normalizedFile
-
-    const params = new URLSearchParams()
-    params.set('path', pathForUrl)
-    if (line) params.set('line', String(line))
-    if (column) params.set('column', String(column))
-    setSearchParams(params)
-  }, [projectPath, setSearchParams])
 
   // Editor Layout - always shown, with tabs when files are open
   return (

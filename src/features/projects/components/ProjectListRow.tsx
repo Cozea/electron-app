@@ -133,7 +133,7 @@ export function ProjectListRow({
         return () => {
             cancelled = true
         }
-    }, [project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
+    }, [project._id, project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
         setSyncHydrationRequested(true)

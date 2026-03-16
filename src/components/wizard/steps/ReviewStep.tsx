@@ -318,7 +318,7 @@ export function ReviewStep({
         )}
       </div>
     </>
-  ), [fillHeight, onEditStep, state.repoSource?.branch, state.repoSource?.detectedStack, state.team])
+  ), [fillHeight, onEditStep, state.repoSource, state.team])
 
   const freshReviewBody = useMemo(() => (
     <>

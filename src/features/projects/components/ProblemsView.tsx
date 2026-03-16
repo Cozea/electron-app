@@ -1,4 +1,5 @@
-import { useMemo, useState, useCallback } from "react"
+ 
+import { useMemo, useState, useCallback, createElement } from "react"
 import {
     AlertTriangle,
     Info,
@@ -277,7 +278,7 @@ function ProblemRow({
     showLocation = true,
     showSource = true,
 }: ProblemRowProps) {
-    const Icon = getSeverityIcon(error.severity)
+    const severityIcon = getSeverityIcon(error.severity)
     const location = formatLocation(error)
     const fileLabel = error.file ? toRelativePath(error.file, projectPath) : null
     const clickable = Boolean(error.file)
@@ -303,14 +304,14 @@ function ProblemRow({
                 clickable ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
             )}
         >
-            <Icon
-                className={cn(
+            {createElement(severityIcon, {
+                className: cn(
                     "h-3.5 w-3.5 mt-0.5",
                     error.severity === "error" && "text-destructive",
                     error.severity === "warning" && "text-yellow-500",
                     error.severity === "info" && "text-blue-400"
-                )}
-            />
+                )
+            })}
             <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="text-foreground/90 truncate">{error.message}</div>
                 {hasMeta ? (

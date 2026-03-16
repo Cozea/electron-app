@@ -39,8 +39,8 @@ export function InlineInput({
  placeholder = '—',
  onPreview,
 }: InlineInputProps) {
- const { selectedElement, getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const rawValue = getPendingOrOriginal(property) || ''
+ const { selectedElement, pendingChanges, updatePendingChange } = useVisualEditorStore()
+ const rawValue = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property] || ''
  const { num, unit } = useMemo(() => parseValueAndUnit(rawValue), [rawValue])
  const selectionKey = selectedElement?.path?.join('.') ?? selectedElement?.selector ?? 'none'
 
@@ -121,8 +121,8 @@ export function InlineTextInput({
  placeholder = '—',
  onPreview,
 }: InlineTextInputProps) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const value = getPendingOrOriginal(property) || ''
+ const { selectedElement, pendingChanges, updatePendingChange } = useVisualEditorStore()
+ const value = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property] || ''
  const handleChange = (newValue: string) => {
  updatePendingChange(property, newValue)
  onPreview(property, newValue)
@@ -187,8 +187,8 @@ export function InlineColorInput({
  property,
  onPreview,
 }: InlineColorInputProps) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const rawValue = getPendingOrOriginal(property) || ''
+ const { selectedElement, pendingChanges, updatePendingChange } = useVisualEditorStore()
+ const rawValue = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property] || ''
  const hexValue = toHex(rawValue)
 
  const [isEditing, setIsEditing] = useState(false)
@@ -258,10 +258,10 @@ export function InlineSelectInput({
  options,
  onPreview,
 }: InlineSelectInputProps) {
- const { selectedElement, getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
+ const { selectedElement, pendingChanges, updatePendingChange } = useVisualEditorStore()
  const UNSET_VALUE = '__unset__'
  const CURRENT_VALUE = '__current__'
- const rawValue = getPendingOrOriginal(property)
+ const rawValue = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property]
  const optionValues = useMemo(() => new Set(options.map((o) => o.value)), [options])
  const selectionKey = selectedElement?.path?.join('.') ?? selectedElement?.selector ?? 'none'
 

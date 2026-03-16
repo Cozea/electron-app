@@ -570,7 +570,7 @@ export const maybeCompactProject = mutation({
       .take(SNAPSHOT_RETAIN_COUNT)
     const retainedSnapshotIds = new Set(retainedSnapshots.map((entry) => entry._id))
 
-    let retainedSnapshotCount = retainedSnapshots.length
+    const retainedSnapshotCount = retainedSnapshots.length
     let removedSnapshotBytes = 0
     while (true) {
       const batch = await ctx.db

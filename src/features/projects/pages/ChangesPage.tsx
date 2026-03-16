@@ -182,78 +182,6 @@ function formatRelativeTime(timestamp: number) {
   return new Date(timestamp).toLocaleDateString()
 }
 
-function FeedLoadingRows() {
-  return (
-    <div className="space-y-6">
-      {Array.from({ length: 2 }).map((_, groupIndex) => (
-        <div key={groupIndex}>
-          <div className="flex items-center gap-3 mb-3">
-            <Shimmer className="text-sm">Loading feed</Shimmer>
-            <div className="flex-1 h-px bg-border/70" />
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 4 }).map((__, rowIndex) => (
-              <div
-                key={`${groupIndex}-${rowIndex}`}
-                className="flex items-start gap-3 py-2 px-3 rounded-full"
-              >
-                <div className="w-20 shrink-0 pt-1 mr-2">
-                  <Shimmer className="text-xs">00:00</Shimmer>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-muted/70 shrink-0" />
-                <div className="flex-1 min-w-0 flex items-center gap-2 pt-1.5">
-                  <Shimmer className="text-sm">Username</Shimmer>
-                  <Shimmer className="text-xs">+/-</Shimmer>
-                  <Shimmer className="text-sm">src/components/Example.tsx</Shimmer>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function DiffPanelLoadingShell() {
-  return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center gap-3 px-4 h-12 bg-background">
-        <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary" />
-        <Shimmer className="text-sm">src/components/Example.tsx</Shimmer>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="h-5 w-5 rounded-full bg-muted/70" />
-          <Shimmer className="text-xs">just now</Shimmer>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-hidden relative p-4 bg-background">
-        <div className="space-y-2">
-          <Shimmer className="text-sm">Loading diff preview...</Shimmer>
-          <Shimmer className="text-sm">Preparing hunks...</Shimmer>
-          <Shimmer className="text-sm">Rendering comments...</Shimmer>
-        </div>
-      </div>
-
-      <div className="p-4 bg-background">
-        <div className="rounded-xl bg-background overflow-hidden shadow-sm">
-          <div className="min-h-[80px] px-3 py-2">
-            <Shimmer className="text-sm">Add comment</Shimmer>
-          </div>
-          <div className="flex items-center justify-between px-3 py-2">
-            <div className="flex items-center gap-1">
-              <div className="h-8 w-8 rounded-full bg-muted/60" />
-              <div className="h-8 w-8 rounded-full bg-muted/60" />
-              <div className="h-8 w-8 rounded-full bg-muted/60" />
-            </div>
-            <div className="h-8 w-16 rounded-full bg-muted/60" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Component to display comments for a change
 const ChangeComments = memo(function ChangeComments({
   changeId,
@@ -608,8 +536,7 @@ export function ChangesPage() {
     api.activity.getChangeWithContent,
     selectedChangeId ? { changeId: selectedChangeId } : 'skip'
   ) as SelectedChangeSummary | null | undefined
-  const isFeedLoading = !project?._id || activity === undefined
-  const showSplitPane = Boolean(selectedChangeId) || isFeedLoading
+  const showSplitPane = Boolean(selectedChangeId)
   const [cachedSelectedChange, setCachedSelectedChange] = useState<SelectedChangeSummary | null>(null)
   const displayedSelectedChange = selectedChange ?? cachedSelectedChange
   const isSelectedChangeLoading = Boolean(selectedChangeId) && selectedChange === undefined
@@ -809,9 +736,9 @@ export function ChangesPage() {
           <ScrollArea className="h-full">
             <div className="p-4">
               {!project?._id ? (
-                <FeedLoadingRows />
+                null
               ) : filteredActivity === undefined ? (
-                <FeedLoadingRows />
+                null
               ) : filteredActivity.length === 0 ? (
                 <Card className="p-12 text-center">
                   <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -971,9 +898,7 @@ export function ChangesPage() {
               onClose={() => setSelectedChangeId(null)}
               showHeader={false}
             />
-          ) : (
-            <DiffPanelLoadingShell />
-          )}
+          ) : null}
         </div>
       )}
       {showSplitPane && (

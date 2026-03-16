@@ -1,3 +1,4 @@
+ 
 "use client";
 
 import {
@@ -29,7 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { isValidElement } from "react";
+import { isValidElement, createElement } from "react";
 import { CodeBlock } from "./code-block";
 
 // Tool name to icon mapping (matching VS Code Codicons)
@@ -349,9 +350,9 @@ export const ToolStatic = ({
     >
       <div className="inline-flex max-w-full items-center gap-2 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex size-4 items-center justify-center shrink-0">
-            <Icon className="size-4 text-muted-foreground" />
-          </span>
+        <span className="flex size-4 items-center justify-center shrink-0">
+          {createElement(Icon, { className: "size-4 text-muted-foreground" })}
+        </span>
           {renderHeaderContent()}
           {getStatusIcon(state)}
         </div>
@@ -482,7 +483,7 @@ export const ToolHeader = ({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex size-4 items-center justify-center shrink-0">
-          <Icon className="size-4 text-muted-foreground" />
+          {createElement(Icon, { className: "size-4 text-muted-foreground" })}
         </span>
         {isFileWriteTool ? (
           <>

@@ -920,10 +920,12 @@ class PreviewInspectorService {
       {
         objectId,
         functionDeclaration: `function() {
-          const normalizeText = (value) => {
-            if (typeof value !== 'string') return undefined;
+          const normalizeText = (value, tagName) => {
+            const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+            if (tagName && voidElements.has(tagName.toLowerCase())) return undefined;
+            if (typeof value !== 'string') return '';
             const normalized = value.replace(/\\s+/g, ' ').trim();
-            return normalized ? normalized.slice(0, 800) : undefined;
+            return normalized.slice(0, 800);
           };
           const getPath = (el) => {
             const path = [];
@@ -945,16 +947,14 @@ class PreviewInspectorService {
               const tag = current.tagName.toLowerCase();
               let part = tag;
               if (current.id) {
-                part += '#' + current.id;
+                part += '#' + CSS.escape(current.id);
                 parts.unshift(part);
                 break;
               }
               if (typeof current.className === 'string' && current.className.trim()) {
-                const classes = current.className.trim().split(/\\s+/).slice(0, 2).map((token) =>
-                  token.replace(/[^a-zA-Z0-9_-]/g, '\\\\$&')
-                );
+                const classes = current.className.trim().split(/\\s+/).slice(0, 2);
                 if (classes.length) {
-                  part += '.' + classes.join('.');
+                  part += '.' + classes.map(c => CSS.escape(c)).join('.');
                 }
               }
               const parent = current.parentElement;
@@ -976,7 +976,7 @@ class PreviewInspectorService {
             id: this.id || undefined,
             selector: getSelector(this),
             path: getPath(this),
-            textContent: normalizeText(typeof this.innerText === 'string' && this.innerText.trim().length > 0 ? this.innerText : this.textContent),
+            textContent: normalizeText(typeof this.innerText === 'string' && this.innerText.trim().length > 0 ? this.innerText : this.textContent, this.tagName),
             htmlSnippet: typeof this.outerHTML === 'string' ? this.outerHTML.slice(0, 500) : '',
             boundingRect: {
               x: rect.x,
@@ -1651,6 +1651,25 @@ export function registerPreviewHandlers(
   )
 
   // Capture a screenshot of a URL using a hidden BrowserWindow
+  ipcMain.handle(
+    'preview:captureVisibleRegion',
+    async (
+      event,
+      { x, y, width, height }: { x: number; y: number; width: number; height: number }
+    ): Promise<PreviewCaptureScreenshotResult> => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (!win) return { success: false, error: 'No active window' }
+      
+      try {
+        const image = await win.webContents.capturePage({ x, y, width, height })
+        const base64 = image.toPNG().toString('base64')
+        return { success: true, base64 }
+      } catch (error) {
+        return { success: false, error: String(error) }
+      }
+    }
+  )
+
   ipcMain.handle(
     'preview:captureScreenshot',
     async (

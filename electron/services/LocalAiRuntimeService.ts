@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import {
   createUIMessageStream,
   pipeUIMessageStreamToResponse,
@@ -15,6 +15,7 @@ import {
 } from '../../shared/aiProviderAvailability'
 import type { ProviderAuthProvider } from '../../shared/electronApiTypes'
 import { ProviderAuthService } from './ProviderAuthService'
+import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
 
 interface LocalAiRuntimeStatus {
   enabled: boolean
@@ -68,6 +69,7 @@ interface ChatRequestBody {
   conversationId?: string
   providerOptions?: Record<string, unknown>
   projectContext?: unknown
+  latestDomSnapshot?: string | null
   agentId?: string
   surface?: string
   variantId?: string
@@ -1146,7 +1148,7 @@ export class LocalAiRuntimeService {
           scopedId: string
           provider: string
           providerModelId: string
-          capabilities?: Record<string, unknown>
+          capabilities: Record<string, unknown> | undefined
         } => entry !== null)
 
       const exactScopedMatch = normalizedRows.find((row) => {
@@ -1582,7 +1584,7 @@ export class LocalAiRuntimeService {
         }
 
         const parsedBody = contract.value
-        const messages = parsedBody.messages
+        const messages = Array.isArray(parsedBody.messages) ? [...parsedBody.messages] : []
         const model = parsedBody.model
         const scopedModel = parseScopedModelId(model)
         const organizationId = parsedBody.organizationId
@@ -1647,13 +1649,13 @@ export class LocalAiRuntimeService {
             organizationId,
             provider: scopedModel.provider,
           })
-          modelInfo = await this.fetchModelInfoFromRemoteCatalog({
+          modelInfo = (await this.fetchModelInfoFromRemoteCatalog({
             authorization,
             organizationId: parsedBody.organizationId,
             model,
             preferredProvider: scopedModel.provider,
             aiBaseUrlHeader,
-          })
+          })) || undefined
           if (modelInfo) {
             modelResolutionSource = 'remote'
           }
@@ -1781,7 +1783,7 @@ export class LocalAiRuntimeService {
           return
         }
 
-        const resolvedPolicyBase = policyResult.value
+        const resolvedPolicyBase = (policyResult.value || {}) as { variantId?: string; feature?: string; agentId?: string }
         const resolvedVariantId = runtimeDeps.normalizeModelVariant({
           requestedVariant: resolvedPolicyBase.variantId,
           provider: modelInfo.provider,
@@ -1896,6 +1898,47 @@ export class LocalAiRuntimeService {
           throw error
         }
 
+        const localPath =
+          isRecord(parsedBody.projectContext) &&
+          typeof parsedBody.projectContext.localPath === 'string' &&
+          parsedBody.projectContext.localPath.trim().length > 0
+            ? parsedBody.projectContext.localPath.trim()
+            : undefined
+
+        if (localPath) {
+          try {
+            const pluginContent = "export function cozeaBridgePlugin() {\n" +
+              "  return {\n" +
+              "    name: 'cozea-bridge-plugin',\n" +
+              "    transformIndexHtml(html) {\n" +
+              "      if (process.env.NODE_ENV === 'production') return html;\n" +
+              "      const script = `<script>" + BRIDGE_SCRIPT.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\\$/g, '\\\\$') + "</script>`;\n" +
+              "      return html.replace('</head>', script + '\\n</head>');\n" +
+              "    }\n" +
+              "  }\n" +
+              "}\n";
+            writeFileSync(path.join(localPath, 'vite-plugin-cozea.js'), pluginContent, 'utf-8');
+            
+            // Add system instruction to use the plugin
+            if (messages.length > 0) {
+              const lastMessage = messages[messages.length - 1] as Record<string, unknown>
+              if (lastMessage && lastMessage.role === 'user' && typeof lastMessage.content === 'string') {
+                lastMessage.content += `\n\n[SYSTEM DIRECTIVE: You MUST import \`{ cozeaBridgePlugin }\` from \`./vite-plugin-cozea.js\` in your \`vite.config.ts\` and add it to the \`plugins\` array. This is absolutely required for the preview to work.]`
+              }
+            }
+          } catch (e) {
+            console.error('[LocalAiRuntime] Failed to inject Vite plugin:', e);
+          }
+        }
+
+        // Inject latest DOM snapshot into the final user message if present
+        if (parsedBody.latestDomSnapshot && messages.length > 0) {
+          const lastMessage = messages[messages.length - 1] as Record<string, unknown>
+          if (lastMessage && lastMessage.role === 'user' && typeof lastMessage.content === 'string') {
+            lastMessage.content = `${lastMessage.content}\n\n<system_hidden_context>\n[Current DOM Snapshot]\n\`\`\`html\n${parsedBody.latestDomSnapshot}\n\`\`\`\n</system_hidden_context>`
+          }
+        }
+
         const compactionSummarizer = this.resolveCompactionSummarizer({
           runtimeDeps,
           activeModelInfo: modelInfo,
@@ -1909,7 +1952,7 @@ export class LocalAiRuntimeService {
         const shouldStreamBuilderTasks =
           parsedBody.surface === 'builder' || parsedBody.agentId === 'build'
         const stream = createUIMessageStream<UIMessage>({
-          originalMessages: messages,
+          originalMessages: messages as UIMessage[],
           execute: async ({ writer }) => {
             try {
               const pipeline = await runtimeDeps.executeChatPipeline({

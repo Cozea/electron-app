@@ -304,7 +304,7 @@ export function ProjectLayout({
         setPathResolutionError(null)
     }, [project?._id, convexUserId, projectSlug])
 
-    const pendingTeamSetup = locationState?.pendingTeamSetup ?? []
+    const pendingTeamSetup = useMemo(() => locationState?.pendingTeamSetup ?? [], [locationState?.pendingTeamSetup])
     const pendingTeamSetupReady =
         pendingTeamSetup.length > 0 &&
         project?._id &&
@@ -376,17 +376,25 @@ export function ProjectLayout({
         project?._id,
     ])
 
-    const resolvePathPreference = useCallback(async () => {
+    const resolvedMemberPathRef = useRef<string | null | undefined>(undefined)
+
+    const resolvePathPreference = useCallback(async (force = false) => {
         if (!project?._id || !convexUserId || !projectSlug) {
             setEffectiveLocalPath(null)
             setPathRecoveryChoice(null)
             setPathResolutionError(null)
+            resolvedMemberPathRef.current = undefined
             return
         }
 
         if (memberLocalPath === undefined) {
             return
         }
+
+        if (!force && resolvedMemberPathRef.current === memberLocalPath) {
+            return
+        }
+        resolvedMemberPathRef.current = memberLocalPath
 
         setIsResolvingPath(true)
         setPathResolutionError(null)
@@ -884,7 +892,7 @@ export function ProjectLayout({
                 targetPathExists={pathRecoveryChoice.targetPathExists}
                 onUsePreviousPath={handleUsePreviousDirectory}
                 onUseTargetPath={handleUseCurrentDirectory}
-                onRetry={() => void resolvePathPreference()}
+                onRetry={() => void resolvePathPreference(true)}
                 isBusy={isResolvingPath}
                 error={pathResolutionError}
             />

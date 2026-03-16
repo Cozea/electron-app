@@ -379,7 +379,7 @@ export async function prepareGitProjectForOpen({
     }
   }
 
-  let effectivelyEmptyWorkspace = await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)
+  const effectivelyEmptyWorkspace = await isEffectivelyEmptyLocalWorkspace(effectiveLocalPath)
 
   if (
     !remoteHeadCommit &&

@@ -30,6 +30,7 @@ interface ProblemsState {
     addRuntimeProblem: (projectPath: string, item: ProblemInput) => void
     dismissProblem: (projectPath: string, id: string) => void
     clearProblems: (projectPath: string) => void
+    clearProblemsBySource: (projectPath: string, source: ProblemSource) => void
     markRead: (projectPath: string) => void
   }
 }
@@ -103,6 +104,11 @@ export const useProblemsStore = create<ProblemsState>()(
       clearProblems: (projectPath) =>
         set((state) => {
           state.problemsByProject[projectPath] = []
+        }),
+      clearProblemsBySource: (projectPath, source) =>
+        set((state) => {
+          const current = state.problemsByProject[projectPath] ?? []
+          state.problemsByProject[projectPath] = current.filter((problem) => problem.source !== source)
         }),
       markRead: (projectPath) =>
         set((state) => {

@@ -35,8 +35,9 @@ export function IconGridInput({
  onPreview,
  className,
 }: IconGridInputProps) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const currentValue = normalizeOptionValue(property, getPendingOrOriginal(property) || '')
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const rawValue = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property]
+ const currentValue = normalizeOptionValue(property, rawValue || '')
 
  const handleSelect = (value: string) => {
  updatePendingChange(property, value)

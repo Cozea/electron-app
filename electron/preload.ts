@@ -210,6 +210,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     probeUrl: (options: { url: string; timeoutMs?: number }) => ipcRenderer.invoke('preview:probeUrl', options),
     captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
       ipcRenderer.invoke('preview:captureScreenshot', options),
+    captureVisibleRegion: (options: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke('preview:captureVisibleRegion', options),
     inspectSelection: (options: {
       url: string
       frameName?: string
@@ -579,6 +581,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('contextMenu:showTerminalSelection', options),
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showFileTreeMenu', options),
+    showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) =>
+      ipcRenderer.invoke('contextMenu:showVisualEditorMenu', options),
     showNative: (options: {
       x: number
       y: number

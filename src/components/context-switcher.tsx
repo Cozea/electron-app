@@ -269,7 +269,7 @@ export function ContextSwitcher() {
         }, 2000)
       }
     }
-  }, [convex, convexUserId, navigate, resetSyncState, syncState, updateMemberLocalPath])
+  }, [convex, convexUserId, isSharedWorkspace, navigate, resetSyncState, syncState, updateMemberLocalPath])
 
   const handleGoHome = useCallback(() => {
     setOpen(false)
