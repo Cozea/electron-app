@@ -64,7 +64,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
   const inProgressTask = buildTasks.find(t => t.status === 'in_progress')
 
   // Determine which status icon to show
-  const StatusIcon = () => {
+  const renderStatusIcon = () => {
     if (isPulling) {
       return (
         <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -111,7 +111,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
         {/* Main pill content */}
         <div className="flex items-center gap-3 px-4 py-3">
           {/* Status icon */}
-          <StatusIcon />
+          {renderStatusIcon()}
 
           {/* Status message and progress */}
           <div className="flex-1 min-w-0">
