@@ -245,7 +245,7 @@ export function RepoScanStep({
   // Auto-start scan when component mounts
   useEffect(() => {
     if (phase === 'idle' && repoSource.repoUrl) {
-      runScan()
+      setTimeout(() => runScan(), 0)
     }
   }, [phase, repoSource.repoUrl, runScan])
 

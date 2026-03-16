@@ -28,10 +28,17 @@ export function useConvexUser(workosUser: User | null) {
 
   const syncFromWorkOS = useMutation(api.users.syncFromWorkOS)
 
+  const [prevWorkosUser, setPrevWorkosUser] = useState(workosUser)
+  if (workosUser !== prevWorkosUser) {
+    setPrevWorkosUser(workosUser)
+    if (!workosUser) {
+      setConvexUserId(null)
+    }
+  }
+
   // Sync user when workosUser changes
   useEffect(() => {
     if (!workosUser) {
-      setConvexUserId(null)
       return
     }
 

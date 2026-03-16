@@ -179,37 +179,52 @@ export function EntryChoice({
     modelSettingsRef.current = modelSettings
   }, [modelSettings])
 
-  useEffect(() => {
-    if (!model) return
-    const nextSettings: StoredModelSettings = {
-      agentId: 'plan',
-      surface: 'wizard',
+  const [prevModel, setPrevModel] = useState(model)
+  if (model !== prevModel) {
+    setPrevModel(model)
+    if (model) {
+      const nextSettings: StoredModelSettings = {
+        agentId: 'plan',
+        surface: 'wizard',
+      }
+      setModelSettings((prev) => {
+        const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
+        saveModelSettings(updated)
+        return updated
+      })
+      updateGlobalModelSettings({
+        model,
+        variantId: variantId ?? normalizedVariantId,
+      })
     }
-    setModelSettings((prev) => {
-      const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
-      saveModelSettings(updated)
-      return updated
-    })
-  }, [model])
+  }
 
-  useEffect(() => {
-    if (!model) return
-    updateGlobalModelSettings({
-      model,
-      variantId: variantId ?? normalizedVariantId,
-    })
-  }, [model, variantId, normalizedVariantId])
+  const [prevVariantId, setPrevVariantId] = useState(variantId)
+  if (variantId !== prevVariantId) {
+    setPrevVariantId(variantId)
+    if (model) {
+      updateGlobalModelSettings({
+        model,
+        variantId: variantId ?? normalizedVariantId,
+      })
+    }
+  }
 
-  useEffect(() => {
-    if (accessToken && organizationId) return
-    setModelsLoaded(false)
-  }, [accessToken, organizationId])
+  const authDepsKey = `${accessToken}:${organizationId}`
+  const [prevAuthDepsKey, setPrevAuthDepsKey] = useState(authDepsKey)
+  if (authDepsKey !== prevAuthDepsKey) {
+    setPrevAuthDepsKey(authDepsKey)
+    if (!accessToken || !organizationId) {
+      setModelsLoaded(false)
+    } else {
+      setModelsLoaded(false)
+    }
+  }
 
   useEffect(() => {
     if (!accessToken || !organizationId) return
 
     let cancelled = false
-    setModelsLoaded(false)
 
     getModelCatalog({
       organizationId,
@@ -262,12 +277,13 @@ export function EntryChoice({
     providerStatusLoaded,
   ])
 
-  useEffect(() => {
-    if (providerScopedModels.length === 0) return
-    if (!providerScopedModels.some((item) => item.id === model)) {
+  const [prevProviderScopedModels, setPrevProviderScopedModels] = useState(providerScopedModels)
+  if (providerScopedModels !== prevProviderScopedModels) {
+    setPrevProviderScopedModels(providerScopedModels)
+    if (providerScopedModels.length > 0 && !providerScopedModels.some((item) => item.id === model)) {
       setModel(providerScopedModels[0].id)
     }
-  }, [providerScopedModels, model])
+  }
 
   const getSettings = (): PromptSettings => ({
     model,

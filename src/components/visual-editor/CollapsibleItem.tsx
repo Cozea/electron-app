@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useEffect } from 'react'
+import { type ReactNode, useState } from 'react'
 import { ChevronDown, ChevronUp, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -166,9 +166,13 @@ export function BoxShadowItem({ value, onChange, onRemove }: BoxShadowItemProps)
   const [colorEditing, setColorEditing] = useState(false)
   const [colorBuffer, setColorBuffer] = useState(hexValue)
 
-  useEffect(() => {
+  const [prevHexValue, setPrevHexValue] = useState(hexValue)
+  const [prevColorEditing, setPrevColorEditing] = useState(colorEditing)
+  if (hexValue !== prevHexValue || colorEditing !== prevColorEditing) {
+    setPrevHexValue(hexValue)
+    setPrevColorEditing(colorEditing)
     if (!colorEditing) setColorBuffer(hexValue)
-  }, [hexValue, colorEditing])
+  }
 
   const buildShadow = (updates: Partial<typeof parsed>) => {
     const next = { ...parsed, ...updates }

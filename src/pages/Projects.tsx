@@ -64,6 +64,12 @@ export function Projects() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [currentPage, setCurrentPage] = useState(1)
+  const [prevFilters, setPrevFilters] = useState({ statusFilter, sortBy })
+  if (statusFilter !== prevFilters.statusFilter || sortBy !== prevFilters.sortBy) {
+    setCurrentPage(1)
+    setPrevFilters({ statusFilter, sortBy })
+  }
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
   useEffect(() => {
@@ -161,11 +167,6 @@ export function Projects() {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
     return filteredProjects.slice(startIndex, startIndex + ITEMS_PER_PAGE)
   }, [filteredProjects, currentPage])
-
-  // Reset page when filter/sort changes
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [statusFilter, sortBy])
 
   const isLoading = personalScoped
     ? convexUserId === null || projects === undefined
