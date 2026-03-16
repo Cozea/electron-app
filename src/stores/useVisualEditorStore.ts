@@ -324,8 +324,10 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     getPendingOrOriginalText: () => {
       const state = get()
       if (state.pendingTextChange !== null) {
+        console.log('[VisualEditor][getPendingOrOriginalText] returning pendingTextChange:', state.pendingTextChange)
         return state.pendingTextChange
       }
+      console.log('[VisualEditor][getPendingOrOriginalText] returning selectedElement.textContent:', state.selectedElement?.textContent)
       return state.selectedElement?.textContent || ''
     },
 

@@ -240,7 +240,12 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
     if (!shouldKeepPreviewAlive) return
     if (devServer.isRunning) return
-    if (devServer.status !== 'idle' && devServer.status !== 'error' && devServer.status !== 'stopped') {
+    
+    // If the dev server is in a stopped state, do not auto-restart.
+    // The user manually clicked stop, or it was intentionally shut down.
+    if (devServer.status === 'stopped') return
+
+    if (devServer.status !== 'idle' && devServer.status !== 'error') {
       return
     }
 
@@ -266,6 +271,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     return () => {
       window.clearTimeout(timeout)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     builderMutationTick,
     dependencyInstallComplete,
@@ -911,6 +917,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     localPath,
     project,
     updateMemberLocalPath,
+    navigate,
   ])
 
   useEffect(() => {
@@ -1184,6 +1191,17 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
                     timeline={devServer.timeline}
                     refreshToken={previewRefreshToken}
                     onRefresh={devServer.restart}
+                    onEmbedModeChange={(mode, reason) => {
+                      addLog(`Preview embed mode changed to ${mode} (reason: ${reason})`)
+                    }}
+                    onBridgeMessage={(event) => {
+                      if (event.data?.type === 'bridge:dom-snapshot') {
+                        const payload = event.data.payload as { html?: string }
+                        if (payload?.html) {
+                          devServer.setLatestDomSnapshot(payload.html)
+                        }
+                      }
+                    }}
                     className="h-full relative panel-fade-border panel-fade-border-left build-preview-header-bleed [--build-preview-header-bleed:2.75rem]"
                   />
                 </ResizablePanel>

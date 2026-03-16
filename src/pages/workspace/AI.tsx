@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   isManagedProviderInApp,
   isProviderEnabledInApp,
@@ -369,7 +369,7 @@ export function AI({ surface = 'page', route }: AIProps) {
     }))
   }
 
-  const refreshProviderStatuses = async () => {
+  const refreshProviderStatuses = useCallback(async () => {
     if (workspaceScoped) return
     if (!window.electronAPI?.providerAuth) return
     try {
@@ -382,7 +382,7 @@ export function AI({ surface = 'page', route }: AIProps) {
     } catch (err) {
       console.error('Failed to load provider status:', err)
     }
-  }
+  }, [workspaceScoped])
 
   useEffect(() => {
     if (!accessToken || !canViewWorkspaceAiPage) return
@@ -440,7 +440,7 @@ export function AI({ surface = 'page', route }: AIProps) {
   useEffect(() => {
     if (workspaceScoped) return
     void refreshProviderStatuses()
-  }, [workspaceScoped])
+  }, [workspaceScoped, refreshProviderStatuses])
 
   // Refresh status on focus so expired tokens show as disconnected (matches useConnectedProviders used by chat)
   useEffect(() => {
@@ -448,7 +448,7 @@ export function AI({ surface = 'page', route }: AIProps) {
     const onFocus = () => void refreshProviderStatuses()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [workspaceScoped])
+  }, [workspaceScoped, refreshProviderStatuses])
 
   const handleOpenConnectDialog = (provider: string) => {
     if (!provider) return

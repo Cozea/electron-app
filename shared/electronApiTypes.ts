@@ -738,6 +738,7 @@ export interface DevServerStartOptions {
 
 export interface DevServerStartResult {
   success: boolean
+  port?: number
   pid?: number
   runId?: string
   existing?: boolean
@@ -1062,6 +1063,7 @@ export interface ElectronAPI {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
+    captureVisibleRegion: (options: { x: number; y: number; width: number; height: number }) => Promise<PreviewCaptureScreenshotResult>
     inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
@@ -1338,6 +1340,7 @@ export interface ElectronAPI {
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
     showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
+    showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) => Promise<{ action: string | null }>
     showNative: (options: {
       x: number
       y: number

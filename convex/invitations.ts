@@ -377,7 +377,7 @@ export const reconcileForOrganizationFromWorkOS = mutation({
         await ctx.db.patch(existing._id, {
           email: workosInvitation.email,
           role: nextRole.baseRole,
-          roleId: nextRoleId ?? existing.roleId,
+          roleId: nextRoleId ?? undefined,
           workosInvitationId: workosInvitation.workosInvitationId,
           status: nextStatus,
           expiresAt: workosInvitation.expiresAt ?? existing.expiresAt,

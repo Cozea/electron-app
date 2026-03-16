@@ -16,8 +16,6 @@ import type { PreviewFailureReason } from '@shared/electronApiTypes'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 
-const STARTUP_SOFT_TIMEOUT_MS = 20_000
-const STARTUP_HARD_TIMEOUT_MS = 120_000
 const RESTART_DELAY_MS = 500
 
 interface UseDevServerManagerOptions {
@@ -39,6 +37,7 @@ interface DevServerState {
   error: string | null
   output: string[]
   timeline: DevServerTimelineEvent[]
+  latestDomSnapshot: string | null
 }
 
 interface DevServerTimelineEvent {
@@ -61,25 +60,6 @@ interface DevServerTimelineEvent {
 
 const MAX_TIMELINE_EVENTS = 80
 
-interface ReadyPattern {
-  regex: RegExp
-}
-
-// Only treat output as "ready" when it exposes a concrete local URL/port.
-const READY_PATTERNS = [
-  { regex: /Local:\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i },
-  { regex: /ready on.*(?:localhost|127\.0\.0\.1):(\d+)/i },
-  { regex: /listening on.*(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/i },
-  { regex: /started.*(?:localhost|127\.0\.0\.1):(\d+)/i },
-  { regex: /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i },
-  { regex: /➜\s+Local:\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/i }, // Vite format
-] satisfies ReadyPattern[]
-
-function stripAnsi(input: string): string {
-  // eslint-disable-next-line no-control-regex
-  return input.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
-}
-
 export function useDevServerManager({
   projectPath,
   autoStart = false,
@@ -98,26 +78,13 @@ export function useDevServerManager({
     error: null,
     output: [],
     timeline: [],
+    latestDomSnapshot: null,
   })
 
   const lifecycleRef = useRef(initialDevServerLifecycle())
   const activeRunIdRef = useRef<string | null>(null)
-  const expectedPortRef = useRef<number | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
-  const startupSoftTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const startupHardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restartSchedulerRef = useRef(createDevServerRestartScheduler(RESTART_DELAY_MS))
-
-  const clearWatchdogs = useCallback(() => {
-    if (startupSoftTimeoutRef.current) {
-      clearTimeout(startupSoftTimeoutRef.current)
-      startupSoftTimeoutRef.current = null
-    }
-    if (startupHardTimeoutRef.current) {
-      clearTimeout(startupHardTimeoutRef.current)
-      startupHardTimeoutRef.current = null
-    }
-  }, [])
 
   const transitionLifecycle = useCallback((event: Parameters<typeof transitionDevServerLifecycle>[1]) => {
     const result = transitionDevServerLifecycle(lifecycleRef.current, event)
@@ -215,7 +182,6 @@ export function useDevServerManager({
       message: `Ready signal validated for port ${port}`,
     })
     transitionLifecycle({ type: 'ready', runId })
-    clearWatchdogs()
     setState((prev) => ({
       ...prev,
       status: 'ready',
@@ -232,33 +198,7 @@ export function useDevServerManager({
       message: `Reachability probe succeeded for ${url}`,
     })
     onReady?.(url)
-  }, [appendTimeline, clearWatchdogs, isStaleRunEvent, markUnhealthy, onReady, transitionLifecycle])
-
-  const scheduleStartupWatchdogs = useCallback((runId: string) => {
-    clearWatchdogs()
-    startupSoftTimeoutRef.current = setTimeout(() => {
-      if (isStaleRunEvent(runId)) return
-      const status = lifecycleRef.current.state
-      if (status === 'starting') {
-        markUnhealthy('Dev server startup is taking longer than expected. Waiting for output...', 'server_unreachable')
-      }
-    }, STARTUP_SOFT_TIMEOUT_MS)
-
-    startupHardTimeoutRef.current = setTimeout(() => {
-      if (isStaleRunEvent(runId)) return
-      const status = lifecycleRef.current.state
-      if (status === 'starting' || status === 'unhealthy') {
-        transitionLifecycle({ type: 'error', runId, reason: 'Dev server startup timed out' })
-        setState((prev) => ({
-          ...prev,
-          status: 'error',
-          error: 'Dev server startup timed out',
-          failureReason: 'server_unreachable',
-        }))
-        onError?.('Dev server startup timed out')
-      }
-    }, STARTUP_HARD_TIMEOUT_MS)
-  }, [clearWatchdogs, isStaleRunEvent, markUnhealthy, onError, transitionLifecycle])
+  }, [appendTimeline, isStaleRunEvent, markUnhealthy, onReady, transitionLifecycle])
 
   // Start the dev server
   const start = useCallback(async () => {
@@ -292,7 +232,6 @@ export function useDevServerManager({
       if (config.requiresUserSelection) {
         throw new Error('Dev server command selection is required. Open Project Pages and choose a command first.')
       }
-      expectedPortRef.current = config.port
 
       let command = config.command
       const packageJsonExists = await hasPackageJson(projectPath)
@@ -324,24 +263,24 @@ export function useDevServerManager({
         throw new Error(result.error || 'Failed to start dev server')
       }
 
-      scheduleStartupWatchdogs(resolvedRunId)
       setState((prev) => ({
         ...prev,
         runId: resolvedRunId,
       }))
-      console.log('[DevServer] Started with PID:', result.pid, `runId=${resolvedRunId}`)
+      console.log('[DevServer] Started successfully:', `runId=${resolvedRunId}`)
       appendTimeline({
         runId: resolvedRunId,
         type: 'start_succeeded',
         message: 'Dev server process started',
         details: {
-          pid: result.pid,
           existing: Boolean(result.existing),
         },
       })
 
-      if (result.existing && config.port) {
-        void markReadyFromPort(resolvedRunId, config.port)
+      if (result.port) {
+         void markReadyFromPort(resolvedRunId, result.port)
+      } else if (result.existing && config.port) {
+         void markReadyFromPort(resolvedRunId, config.port)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -360,10 +299,9 @@ export function useDevServerManager({
         type: 'error',
         message: errorMessage,
       })
-      clearWatchdogs()
       onError?.(errorMessage)
     }
-  }, [appendTimeline, clearWatchdogs, markReadyFromPort, onError, projectPath, scheduleStartupWatchdogs, state.status, transitionLifecycle])
+  }, [appendTimeline, markReadyFromPort, onError, projectPath, state.status, transitionLifecycle])
 
   // Stop the dev server
   const stop = useCallback(async () => {
@@ -377,7 +315,6 @@ export function useDevServerManager({
         transitionLifecycle({ type: 'stopped', runId: currentRunId })
       }
       activeRunIdRef.current = null
-      clearWatchdogs()
       setState((prev) => ({
         ...prev,
         status: 'stopped',
@@ -400,7 +337,7 @@ export function useDevServerManager({
     } catch (err) {
       console.error('[DevServer] Failed to stop:', err)
     }
-  }, [appendTimeline, clearWatchdogs, projectPath, transitionLifecycle])
+  }, [appendTimeline, projectPath, transitionLifecycle])
 
   // Restart the dev server
   const restart = useCallback(async () => {
@@ -409,22 +346,6 @@ export function useDevServerManager({
       void start()
     })
   }, [stop, start])
-
-  // Check if a line indicates the server is ready and extract port
-  const checkForReady = useCallback(
-    (line: string): number | null => {
-      const cleaned = stripAnsi(line)
-      for (const pattern of READY_PATTERNS) {
-        const match = cleaned.match(pattern.regex)
-        if (match) {
-          const port = Number.parseInt(match[1] || '', 10)
-          return Number.isFinite(port) ? port : null
-        }
-      }
-      return null
-    },
-    []
-  )
 
   // Listen for dev server output
   useEffect(() => {
@@ -453,21 +374,6 @@ export function useDevServerManager({
       })
 
       onOutput?.(output)
-
-      // Check if server is ready (for starting or unhealthy recovery)
-      if (state.status === 'starting' || state.status === 'unhealthy') {
-        const port = checkForReady(output)
-        if (port && resolvedRunId) {
-          console.log('[DevServer] Candidate ready signal detected at port:', port)
-          void markReadyFromPort(resolvedRunId, port)
-        } else if (port) {
-          setState((prev) => ({
-            ...prev,
-            port,
-            url: `http://localhost:${port}`,
-          }))
-        }
-      }
     })
 
     const unsubExit = window.electronAPI.devServer.onExit(({ projectPath: path, code, runId }) => {
@@ -477,7 +383,7 @@ export function useDevServerManager({
       console.log('[DevServer] Exited with code:', code)
       const resolvedRunId = runId ?? activeRunIdRef.current
       if (resolvedRunId) {
-        if (code === 0) {
+        if (code === 0 || code === null) {
           transitionLifecycle({ type: 'stopped', runId: resolvedRunId })
         } else {
           transitionLifecycle({
@@ -488,20 +394,19 @@ export function useDevServerManager({
         }
       }
       activeRunIdRef.current = null
-      clearWatchdogs()
 
       setState((prev) => ({
         ...prev,
-        status: code === 0 ? 'stopped' : 'error',
+        status: (code === 0 || code === null) ? 'stopped' : 'error',
         runId: null,
-        error: code !== 0 ? `Dev server exited with code ${code}` : null,
-        failureReason: code !== 0 ? 'server_unreachable' : null,
+        error: (code !== 0 && code !== null) ? `Dev server exited with code ${code}` : null,
+        failureReason: (code !== 0 && code !== null) ? 'server_unreachable' : null,
         reachable: false,
       }))
       appendTimeline({
         runId: resolvedRunId ?? null,
         type: 'exited',
-        message: code === 0 ? 'Dev server exited cleanly' : `Dev server exited with code ${code}`,
+        message: (code === 0 || code === null) ? 'Dev server exited cleanly' : `Dev server exited with code ${code}`,
       })
     })
 
@@ -513,7 +418,6 @@ export function useDevServerManager({
       if (runId) {
         transitionLifecycle({ type: 'error', runId, reason: error })
       }
-      clearWatchdogs()
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -537,7 +441,7 @@ export function useDevServerManager({
     return () => {
       cleanupRef.current?.()
     }
-  }, [appendTimeline, clearWatchdogs, isStaleRunEvent, markReadyFromPort, onError, onOutput, projectPath, state.status, checkForReady, transitionLifecycle])
+  }, [appendTimeline, isStaleRunEvent, onError, onOutput, projectPath, transitionLifecycle])
 
   // Auto-start if enabled
   useEffect(() => {
@@ -548,21 +452,26 @@ export function useDevServerManager({
 
   // Cleanup on unmount
   useEffect(() => {
+    const scheduler = restartSchedulerRef.current
     return () => {
-      restartSchedulerRef.current.cancel()
+      scheduler.cancel()
       if (activeRunIdRef.current && projectPath) {
         console.log('[DevServer] Cleaning up on unmount')
         window.electronAPI.devServer.stop({ projectPath }).catch(console.error)
       }
-      clearWatchdogs()
     }
-  }, [clearWatchdogs, projectPath])
+  }, [projectPath])
+
+  const setLatestDomSnapshot = useCallback((snapshot: string | null) => {
+    setState((prev) => ({ ...prev, latestDomSnapshot: snapshot }))
+  }, [])
 
   return {
     ...state,
     start,
     stop,
     restart,
+    setLatestDomSnapshot,
     isRunning: state.status === 'starting' || state.status === 'ready' || state.status === 'unhealthy',
   }
 }

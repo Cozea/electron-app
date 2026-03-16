@@ -180,6 +180,68 @@ export function registerContextMenuHandlers(
   )
 
   ipcMain.handle(
+    'contextMenu:showVisualEditorMenu',
+    async (
+      event,
+      { hasReactSource, hasReactStack, x, y }: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }
+    ): Promise<{ action: string | null }> => {
+      return new Promise((resolve) => {
+        let resolved = false
+        const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
+
+        const template: Electron.MenuItemConstructorOptions[] = [
+          {
+            label: 'Ask AI about this element',
+            click: () => {
+              resolved = true
+              resolve({ action: 'ask-ai' })
+            },
+          },
+          {
+            label: 'Copy selector',
+            click: () => {
+              resolved = true
+              resolve({ action: 'copy-selector' })
+            },
+          },
+        ]
+
+        if (hasReactSource) {
+          template.push({
+            label: 'Open source file in editor',
+            click: () => {
+              resolved = true
+              resolve({ action: 'open-source' })
+            },
+          })
+        }
+
+        if (hasReactStack) {
+          template.push({
+            label: 'Copy React component stack',
+            click: () => {
+              resolved = true
+              resolve({ action: 'copy-stack' })
+            },
+          })
+        }
+
+        const menu = Menu.buildFromTemplate(template)
+        menu.popup({
+          window: window || undefined,
+          x,
+          y,
+          callback: () => {
+            if (!resolved) {
+              resolve({ action: null })
+            }
+          },
+        })
+      })
+    }
+  )
+
+  ipcMain.handle(
     'contextMenu:showNative',
     async (
       event,

@@ -221,7 +221,7 @@ function normalizeSnapshotText(snapshot: string): SnapshotRow[] {
 
     const refMatch = trimmed.match(/\[ref=([^\]]+)\]/i)
     const quotedMatch = trimmed.match(/"([^"]+)"/)
-    const roleMatch = trimmed.match(/^[-*]\s*([^"[{:\[]+)/)
+    const roleMatch = trimmed.match(/^[-*]\s*([^"[{:]+)/)
     const textMatch = trimmed.match(/:\s*(.+)$/)
     rows.push({
       ref: refMatch?.[1]?.trim(),

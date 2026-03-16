@@ -1,128 +1,11 @@
 import type { BrowserWindow, IpcMain } from 'electron'
-import * as pty from 'node-pty'
-import * as fs from 'node:fs'
-import path from 'node:path'
-import { spawnSync } from 'node:child_process'
-import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
-import { getRuntimePathPrefixes, resolveCommandWithRuntime } from '../runtime/runtimeResolver'
+import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
 import type { DevServerStartResult } from '../../shared/electronApiTypes'
-
-interface DevServerProcessEntry {
-  runId: string
-  projectPath: string
-  command: string
-  port: number
-  startedAt: number
-  ptyProcess: pty.IPty
-}
+import { DevServerService } from '../services/DevServerService'
 
 interface RegisterDevServerHandlersDeps {
-  devServerProcesses: Map<string, DevServerProcessEntry>
   getMainWindow: () => BrowserWindow | null
-}
-
-const SPAWN_HELPER_EXEC_MODE = 0o755
-const spawnHelperFixCache = new Map<string, boolean>()
-const windowsExecutableCache = new Map<string, boolean>()
-
-function getNodePtySpawnHelperCandidates(): string[] {
-  const target = `${process.platform}-${process.arch}`
-  const appRoot = process.env.APP_ROOT || process.cwd()
-  return [
-    path.join(appRoot, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-    path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-    path.join(process.resourcesPath, 'node_modules', 'node-pty', 'prebuilds', target, 'spawn-helper'),
-  ]
-}
-
-function ensureNodePtySpawnHelperExecutable(): void {
-  if (process.platform === 'win32') return
-  const cacheKey = `${process.platform}-${process.arch}`
-  if (spawnHelperFixCache.get(cacheKey)) return
-
-  for (const candidate of getNodePtySpawnHelperCandidates()) {
-    try {
-      if (!fs.existsSync(candidate)) continue
-      const stat = fs.statSync(candidate)
-      const hasExecBit = (stat.mode & 0o111) !== 0
-      if (!hasExecBit) {
-        fs.chmodSync(candidate, SPAWN_HELPER_EXEC_MODE)
-      }
-      spawnHelperFixCache.set(cacheKey, true)
-      return
-    } catch {
-      // Continue trying other candidate paths.
-    }
-  }
-}
-
-function isWindowsExecutableAvailable(executable: string): boolean {
-  if (process.platform !== 'win32') return false
-  const cached = windowsExecutableCache.get(executable)
-  if (cached !== undefined) return cached
-
-  try {
-    const result = spawnSync('where', [executable], { stdio: 'ignore' })
-    const available = result.status === 0
-    windowsExecutableCache.set(executable, available)
-    return available
-  } catch {
-    const available = executable !== 'pwsh.exe'
-    windowsExecutableCache.set(executable, available)
-    return available
-  }
-}
-
-function resolveUnixPtyShell(): string {
-  if (process.platform === 'win32') return 'cmd.exe'
-
-  const envShell = process.env.SHELL?.trim()
-  const candidates = [
-    envShell,
-    '/bin/zsh',
-    '/bin/bash',
-    '/bin/sh',
-  ].filter((value): value is string => Boolean(value))
-
-  for (const candidate of candidates) {
-    if (candidate.startsWith('/')) {
-      if (fs.existsSync(candidate)) return candidate
-      continue
-    }
-
-    const normalized = candidate.replace(/^.*\//, '')
-    const binCandidate = `/bin/${normalized}`
-    if (fs.existsSync(binCandidate)) return binCandidate
-  }
-
-  return '/bin/sh'
-}
-
-function resolvePtyInvocation(command: string): { shell: string; args: string[] } {
-  if (process.platform === 'win32') {
-    if (isWindowsExecutableAvailable('cmd.exe')) {
-      // Deterministic automation shell on Windows.
-      return { shell: 'cmd.exe', args: ['/d', '/s', '/c', command] }
-    }
-    if (isWindowsExecutableAvailable('pwsh.exe')) {
-      return { shell: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-Command', command] }
-    }
-    return { shell: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-Command', command] }
-  }
-
-  const shell = resolveUnixPtyShell()
-  return { shell, args: ['-c', command] }
-}
-
-function toPtyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const normalized: Record<string, string> = {}
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === 'string') {
-      normalized[key] = value
-    }
-  }
-  return normalized
 }
 
 function createRunId(): string {
@@ -132,11 +15,13 @@ function createRunId(): string {
   return `devsrv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-// Start, stop, and manage per-project dev servers using PTY-backed terminals.
+// Start, stop, and manage per-project dev servers.
 export function registerDevServerHandlers(
   ipcMain: IpcMain,
   deps: RegisterDevServerHandlersDeps
 ): void {
+  const service = DevServerService.getInstance()
+
   ipcMain.handle(
     'devServer:start',
     async (
@@ -145,8 +30,6 @@ export function registerDevServerHandlers(
         projectPath,
         command,
         port,
-        cols = 80,
-        rows = 24,
         runId,
       }: {
         projectPath: string
@@ -157,113 +40,53 @@ export function registerDevServerHandlers(
         runId?: string
       }
     ): Promise<DevServerStartResult> => {
-      const activeEntry = deps.devServerProcesses.get(projectPath)
-      if (activeEntry) {
-        const normalizedRequestedRunId = typeof runId === 'string' && runId.trim().length > 0 ? runId.trim() : null
-        const isSameRun = normalizedRequestedRunId !== null && normalizedRequestedRunId === activeEntry.runId
-        const isSameCommand = activeEntry.command === command && activeEntry.port === port
-
-        if (isSameRun || isSameCommand) {
-          return {
-            success: true,
-            pid: activeEntry.ptyProcess.pid,
-            runId: activeEntry.runId,
-            existing: true,
-          }
-        }
-
+      // 1. Resolve command with runtime wrapper if necessary (e.g., node versions)
+      const resolved = resolveCommandWithRuntime(command)
+      if (resolved.status === 'failed') {
+        return { success: false, error: resolved.error || 'Command is not supported in this release.' }
+      }
+      if (resolved.status === 'needs_user_approval') {
         return {
           success: false,
-          error: 'Dev server already running for this project',
-          runId: activeEntry.runId,
-          existing: true,
+          error: resolved.approvalPayload?.reason || resolved.error || 'Command requires user approval before execution.',
+        }
+      }
+      if (resolved.runtime) {
+        const ensured = await ensureRuntimeInstalled(resolved.runtime)
+        if (!ensured.success) {
+          return { success: false, error: ensured.error || 'Failed to install required runtime.' }
         }
       }
 
-      try {
-        const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
-          ? runId.trim()
-          : createRunId()
+      const finalCommand = resolved.status === 'completed' && resolved.command 
+        ? resolved.command 
+        : command
 
-        const resolved = resolveCommandWithRuntime(command)
-        if (resolved.status === 'failed') {
-          return { success: false, error: resolved.error || 'Command is not supported in this release.' }
-        }
-        if (resolved.status === 'needs_user_approval') {
-          return {
-            success: false,
-            error: resolved.approvalPayload?.reason || resolved.error || 'Command requires user approval before execution.',
-          }
-        }
-        if (resolved.runtime) {
-          const ensured = await ensureRuntimeInstalled(resolved.runtime)
-          if (!ensured.success) {
-            return { success: false, error: ensured.error || `Runtime ${resolved.runtime} is unavailable.` }
-          }
-        }
+      const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
+        ? runId.trim()
+        : createRunId()
 
-        console.log(`[DevServer] Starting PTY: ${command} in ${projectPath} (${cols}x${rows})`)
-        ensureNodePtySpawnHelperExecutable()
-        const invocation = resolvePtyInvocation(command)
-        const runtimeEnv = createRuntimeEnv(
-          getRuntimePathPrefixes(),
-          {
-            ...process.env,
-            PORT: String(port),
-            FORCE_COLOR: '1',
-            TERM: 'xterm-256color',
-          }
-        )
-
-        const ptyProcess = pty.spawn(invocation.shell, invocation.args, {
-          name: 'xterm-256color',
-          cols,
-          rows,
-          cwd: projectPath,
-          env: toPtyEnv(runtimeEnv),
-        })
-
-        const processEntry: DevServerProcessEntry = {
-          runId: resolvedRunId,
-          projectPath,
-          command,
-          port,
-          startedAt: Date.now(),
-          ptyProcess,
-        }
-
-        deps.devServerProcesses.set(projectPath, processEntry)
-
-        ptyProcess.onData((data: string) => {
+      return await service.start({
+        projectPath,
+        command: finalCommand,
+        preferredPort: port,
+        runId: resolvedRunId,
+        onOutput: (output, stream) => {
           deps.getMainWindow()?.webContents.send('devServer:output', {
             projectPath,
-            output: data,
-            stream: 'stdout',
+            output,
+            stream,
             runId: resolvedRunId,
           })
-        })
-
-        ptyProcess.onExit(({ exitCode }) => {
-          console.log(`[DevServer] PTY exited with code ${exitCode}`)
-          const currentEntry = deps.devServerProcesses.get(projectPath)
-          if (currentEntry?.runId === resolvedRunId) {
-            deps.devServerProcesses.delete(projectPath)
-          }
+        },
+        onExit: (code) => {
           deps.getMainWindow()?.webContents.send('devServer:exit', {
             projectPath,
-            code: exitCode,
+            code,
             runId: resolvedRunId,
           })
-        })
-
-        return { success: true, pid: ptyProcess.pid, runId: resolvedRunId }
-      } catch (err) {
-        console.error('[DevServer] Failed to start PTY:', err)
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : 'Failed to start dev server',
-        }
-      }
+        },
+      })
     }
   )
 
@@ -273,54 +96,23 @@ export function registerDevServerHandlers(
       _event,
       { projectPath }: { projectPath: string }
     ): Promise<{ success: boolean; error?: string }> => {
-      const processEntry = deps.devServerProcesses.get(projectPath)
-      if (!processEntry) {
-        return { success: true }
-      }
-
-      try {
-        console.log(`[DevServer] Stopping PTY for ${projectPath}`)
-        processEntry.ptyProcess.kill()
-        const currentEntry = deps.devServerProcesses.get(projectPath)
-        if (currentEntry?.runId === processEntry.runId) {
-          deps.devServerProcesses.delete(projectPath)
-        }
-        return { success: true }
-      } catch (err) {
-        console.error('[DevServer] Failed to stop PTY:', err)
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : 'Failed to stop dev server',
-        }
-      }
+      return await service.stop(projectPath)
     }
   )
 
   ipcMain.handle(
     'devServer:resize',
-    (
-      _event,
-      { projectPath, cols, rows }: { projectPath: string; cols: number; rows: number }
-    ): { success: boolean } => {
-      const processEntry = deps.devServerProcesses.get(projectPath)
-      if (!processEntry) {
-        return { success: false }
-      }
-
-      try {
-        processEntry.ptyProcess.resize(cols, rows)
-        return { success: true }
-      } catch (err) {
-        console.error('[DevServer] Failed to resize PTY:', err)
-        return { success: false }
-      }
+    (): { success: boolean } => {
+      // No-op for process-based server
+      return { success: true }
     }
   )
 
   ipcMain.handle(
     'devServer:isRunning',
     (_event, { projectPath }: { projectPath: string }): boolean => {
-      return deps.devServerProcesses.has(projectPath)
+      return service.isRunning(projectPath)
     }
   )
 }
+

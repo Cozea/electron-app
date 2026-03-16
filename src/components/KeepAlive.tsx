@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -22,7 +22,8 @@ interface KeepAliveProps {
  */
 export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps) {
   const location = useLocation()
-  const cachedRoutes = useRef<CachedRoute[]>([])
+  const [cachedRoutes, setCachedRoutes] = useState<CachedRoute[]>([])
+  const [lastPath, setLastPath] = useState(location.pathname)
   const currentPath = location.pathname
 
   // Check if this path should be cached
@@ -36,25 +37,35 @@ export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps)
     })
   }, [include])
 
-  // Update cached routes
-  useEffect(() => {
-    if (!shouldCache(currentPath)) return
+  // Update cached routes safely during render
+  if (currentPath !== lastPath) {
+    setLastPath(currentPath)
+    if (shouldCache(currentPath)) {
+      setCachedRoutes(prev => {
+        const existingIndex = prev.findIndex(r => r.path === currentPath)
 
-    const existingIndex = cachedRoutes.current.findIndex(r => r.path === currentPath)
-
-    if (existingIndex === -1) {
-      // Add new route to cache
-      cachedRoutes.current = [
-        { path: currentPath, element: children },
-        ...cachedRoutes.current.slice(0, maxCached - 1)
-      ]
-    } else {
-      // Update existing route and move to front
-      cachedRoutes.current[existingIndex].element = children
-      const [route] = cachedRoutes.current.splice(existingIndex, 1)
-      cachedRoutes.current.unshift(route)
+        if (existingIndex === -1) {
+          // Add new route to cache
+          return [
+            { path: currentPath, element: children },
+            ...prev.slice(0, maxCached - 1)
+          ]
+        } else {
+          // Update existing route and move to front
+          const next = [...prev]
+          next[existingIndex] = { path: currentPath, element: children }
+          const [route] = next.splice(existingIndex, 1)
+          next.unshift(route)
+          return next
+        }
+      })
     }
-  }, [currentPath, children, maxCached, shouldCache])
+  }
+
+  // Update children for the active cached route if they change while path is the same
+  // We do this inside the render loop by rendering the new children instead of the cached ones
+  // We don't strictly need to mutate the cache for the active route because it will
+  // be updated in the cache the next time the path changes.
 
   // If current path shouldn't be cached, just render normally
   if (!shouldCache(currentPath)) {
@@ -64,18 +75,18 @@ export function KeepAlive({ children, include, maxCached = 10 }: KeepAliveProps)
   // Render all cached routes, showing only the active one
   return (
     <>
-      {cachedRoutes.current.map(route => (
+      {cachedRoutes.map(route => (
         <div
           key={route.path}
           style={{
             display: route.path === currentPath ? 'contents' : 'none',
           }}
         >
-          {route.element}
+          {route.path === currentPath ? children : route.element}
         </div>
       ))}
       {/* Render current if not yet cached */}
-      {!cachedRoutes.current.some(r => r.path === currentPath) && children}
+      {!cachedRoutes.some(r => r.path === currentPath) && children}
     </>
   )
 }

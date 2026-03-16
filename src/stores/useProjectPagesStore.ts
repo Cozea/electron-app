@@ -99,6 +99,7 @@ interface ProjectPagesState {
     previewTimeline: PreviewTimelineEvent[]
     consolePanelHeight: number
     serverOutput: string[]
+    latestDomSnapshot: string | null
     /** When on the page view, whether the left Pages list panel is open. Default false so it stays closed. */
     pagesListOpen: boolean
 
@@ -107,6 +108,7 @@ interface ProjectPagesState {
         setServerStatus: (status: ServerStatus) => void
         setServerPort: (port: number | null) => void
         setServerPid: (pid: number | null) => void
+        setLatestDomSnapshot: (snapshot: string | null) => void
         beginServerRun: (runId: string, command?: string | null) => void
         setServerLifecycle: (next: Partial<ServerLifecycle>) => void
         setPreviewReadiness: (next: Partial<PreviewReadiness>) => void
@@ -134,6 +136,7 @@ export const useProjectPagesStore = create<ProjectPagesState>()(
             previewTimeline: [],
             consolePanelHeight: DEFAULT_PANEL_HEIGHT,
             serverOutput: [],
+            latestDomSnapshot: null,
             pagesListOpen: false,
 
             actions: {
@@ -141,6 +144,7 @@ export const useProjectPagesStore = create<ProjectPagesState>()(
                 setServerStatus: (status) => set({ serverStatus: status }),
                 setServerPort: (port) => set({ serverPort: port }),
                 setServerPid: (pid) => set({ serverPid: pid }),
+                setLatestDomSnapshot: (snapshot) => set({ latestDomSnapshot: snapshot }),
                 beginServerRun: (runId, command = null) => set((state) => ({
                     serverLifecycle: {
                         ...state.serverLifecycle,

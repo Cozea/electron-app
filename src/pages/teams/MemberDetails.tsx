@@ -201,7 +201,7 @@ export function MemberDetails() {
       .filter(isPresent)
       .filter((project) => !convexOrg?._id || project.organizationId === convexOrg._id)
       .sort((a, b) => b.updatedAt - a.updatedAt)
-  }, [memberProjects, convexOrg?._id])
+  }, [memberProjects, convexOrg])
 
   const usageSummary = useMemo(() => {
     const records = usageRecords ?? []

@@ -156,6 +156,7 @@ interface BuilderConversationProps {
   localPath: string
   previewUrl: string | null
   previewStatus: DevServerStatus
+  latestDomSnapshot?: string | null
   stopRequestCount?: number
   onTasksUpdate: (tasks: BuildTask[]) => void
   onFileCreated: (file: { path: string; content: string }) => void
@@ -369,6 +370,7 @@ export function BuilderConversation({
   localPath,
   previewUrl,
   previewStatus,
+  latestDomSnapshot,
   stopRequestCount = 0,
   onTasksUpdate,
   onFileCreated,
@@ -1531,6 +1533,7 @@ Now begin by defining your task list with todowrite, then start working through 
       enableWebSearch,
       extraBody: {
         projectContext: projectContextPayload,
+        latestDomSnapshot,
         ...(providerOptions ? { providerOptions } : {}),
       },
       providerAuthHeader,

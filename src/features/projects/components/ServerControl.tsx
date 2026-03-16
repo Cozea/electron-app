@@ -71,6 +71,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const { addTerminal, removeTerminal, updateTerminalDisplay, updateTerminalStatus, setPanelOpen } = useTerminalActions()
     const terminals = useTerminalStore((state) => state.terminals)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
+    const clearProblemsBySource = useProblemsStore((state) => state.actions.clearProblemsBySource)
     const [isUpdating, setIsUpdating] = useState(false)
     const [showCommandPicker, setShowCommandPicker] = useState(false)
     const [commandSuggestions, setCommandSuggestions] = useState<DevCommandSuggestion[]>([])
@@ -232,7 +233,14 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         if (!projectPath) return
         const cleaned = stripAnsi(data)
         const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+
         for (const line of lines) {
+            // Vite indicates successful build/rebuild or HMR updates with these phrases.
+            // When we see these, we clear existing build errors.
+            if (/built in \d+(?:ms|s)|hmr update|page reload/i.test(line)) {
+                clearProblemsBySource(projectPath, 'build')
+            }
+
             const severity = toSeverity(line)
             if (isProblemHeader(line)) {
                 pendingProblemRef.current = {
@@ -267,7 +275,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 })
             }
         }
-    }, [addRuntimeProblem, projectPath])
+    }, [addRuntimeProblem, clearProblemsBySource, projectPath])
 
     // Stop the previous project's dev server only when project path changes while mounted.
     useEffect(() => {

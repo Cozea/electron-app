@@ -110,7 +110,7 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip',
   )
-  const organizationRoles = canReadRoles ? (organizationRolesQuery ?? []) : []
+  const organizationRoles = useMemo(() => canReadRoles ? (organizationRolesQuery ?? []) : [], [canReadRoles, organizationRolesQuery])
 
   const seatManagement = useQuery(
     api.billing.getSeatManagement,

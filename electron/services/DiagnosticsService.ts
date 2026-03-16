@@ -595,7 +595,7 @@ export class DiagnosticsService {
     return this.buildSnapshotDiagnostics(ctx, options)
   }
 
-  private async checkFiles(
+  public async checkFiles(
     projectPath: string,
     options: CheckFilesOptions
   ): Promise<DiagnosticItem[]> {

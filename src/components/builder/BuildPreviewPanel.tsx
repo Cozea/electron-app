@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import type { DevServerStatus } from '@/hooks/useDevServerManager'
+import { PreviewIframe } from '@/components/shared/PreviewIframe'
+
+import type { PreviewEmbedMode } from '@/components/shared/PreviewIframe'
+import type { BridgeMessage } from '@/utils/previewBridge'
 
 interface BuildPreviewPanelProps {
   status: DevServerStatus
@@ -16,6 +20,8 @@ interface BuildPreviewPanelProps {
   timeline?: Array<{ id: string; at: number; type: string; message: string }>
   refreshToken?: number
   onRefresh?: () => void
+  onEmbedModeChange?: (mode: PreviewEmbedMode, reason: string) => void
+  onBridgeMessage?: (event: MessageEvent<BridgeMessage>) => void
   className?: string
 }
 
@@ -29,6 +35,8 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
   timeline,
   refreshToken = 0,
   onRefresh,
+  onEmbedModeChange,
+  onBridgeMessage,
   className,
 }: BuildPreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -63,11 +71,14 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
 
         {/* Ready state - show iframe */}
         {status === 'ready' && url && (
-          <iframe
+          <PreviewIframe
             ref={iframeRef}
-            key={`${url}-${refreshToken}`}
-            src={url}
-            className="h-full w-full border-0 bg-white"
+            url={url}
+            reloadToken={refreshToken}
+            onEmbedModeChange={onEmbedModeChange}
+            onBridgeMessage={onBridgeMessage}
+            shouldInjectBridge={true}
+            className="h-full w-full bg-white"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-modals"
             title="Project Preview"
           />

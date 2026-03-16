@@ -193,9 +193,9 @@ function TextStyleToggle({
  tooltip: string
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const currentValue = getPendingOrOriginal(property) || ''
- const isActive = isToggleActive(property, currentValue, activeValue)
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const currentValue = property in pendingChanges ? pendingChanges[property] : selectedElement?.computedStyles?.[property] || ''
+ const isActive = isToggleActive(property, currentValue || '', activeValue)
 
  const handleToggle = () => {
  const newValue = isActive ? inactiveValue : activeValue
@@ -231,8 +231,8 @@ function FontSizeStepper({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const raw = getPendingOrOriginal('fontSize') || ''
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const raw = ('fontSize' in pendingChanges ? pendingChanges['fontSize'] : selectedElement?.computedStyles?.['fontSize']) || ''
  const { value: num, unit } = useMemo(() => {
  return parseNumericCssValue(raw, {
  defaultValue: FONT_SIZE_MIN,
@@ -295,8 +295,8 @@ function LineHeightStepper({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const raw = getPendingOrOriginal('lineHeight') || ''
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const raw = ('lineHeight' in pendingChanges ? pendingChanges['lineHeight'] : selectedElement?.computedStyles?.['lineHeight']) || ''
  const { value: num, unit } = useMemo(() => {
  return parseNumericCssValue(raw, {
  defaultValue: 0,
@@ -358,11 +358,11 @@ function FillControl({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
  const [fillMode, setFillMode] = useState<'color' | 'image'>('color')
 
  // Color input state (hex buffer when editing)
- const bgColorRaw = getPendingOrOriginal('backgroundColor') || ''
+ const bgColorRaw = ('backgroundColor' in pendingChanges ? pendingChanges['backgroundColor'] : selectedElement?.computedStyles?.['backgroundColor']) || ''
  const hexValue = toHex(bgColorRaw)
  const [colorEditing, setColorEditing] = useState(false)
  const [colorBuffer, setColorBuffer] = useState(hexValue)
@@ -378,7 +378,7 @@ function FillControl({
  [onPreview, updatePendingChange]
  )
 
- const backgroundImageValue = getPendingOrOriginal('backgroundImage') || ''
+ const backgroundImageValue = ('backgroundImage' in pendingChanges ? pendingChanges['backgroundImage'] : selectedElement?.computedStyles?.['backgroundImage']) || ''
  const commitBackgroundImage = useCallback(
  (value: string) => {
  updatePendingChange('backgroundImage', value)
@@ -488,7 +488,7 @@ function SpacingControl({
  propertyPrefix: 'padding' | 'margin'
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
 
  const sides = ['Top', 'Bottom', 'Left', 'Right'] as const
  const properties = sides.map(
@@ -518,7 +518,7 @@ function SpacingControl({
  </Label>
  {sides.map((side, i) => {
  const prop = properties[i]
- const value = parseNumericValue(getPendingOrOriginal(prop))
+ const value = parseNumericValue(prop in pendingChanges ? pendingChanges[prop] : selectedElement?.computedStyles?.[prop])
  return (
  <div key={side} className="flex items-center gap-2 h-9 min-w-0">
  <Label className="text-[11px] text-sidebar-foreground/70 w-6 shrink-0 truncate">
@@ -583,8 +583,8 @@ function StrokeWidthStepper({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const raw = getPendingOrOriginal('borderWidth') || ''
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const raw = ('borderWidth' in pendingChanges ? pendingChanges['borderWidth'] : selectedElement?.computedStyles?.['borderWidth']) || ''
  const num = useMemo(() => {
  const match = raw.match(/^([\d.]+)/)
  return match ? Math.min(BORDER_WIDTH_MAX, Math.max(0, parseFloat(match[1]))) : 0
@@ -648,8 +648,8 @@ function OpacityStepper({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const raw = getPendingOrOriginal('opacity') || ''
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const raw = ('opacity' in pendingChanges ? pendingChanges['opacity'] : selectedElement?.computedStyles?.['opacity']) || ''
  const num = useMemo(() => {
  const match = raw.match(/^([\d.]+)/)
  if (match) {
@@ -715,8 +715,8 @@ function StrokeRadiusSlider({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
- const raw = getPendingOrOriginal('borderRadius') || ''
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
+ const raw = ('borderRadius' in pendingChanges ? pendingChanges['borderRadius'] : selectedElement?.computedStyles?.['borderRadius']) || ''
  const num = useMemo(() => {
  const match = raw.match(/^([\d.]+)/)
  return match ? Math.min(100, Math.max(0, parseFloat(match[1]))) : 0
@@ -824,7 +824,7 @@ function BorderRadiusControl({
 }: {
  onPreview: (prop: keyof ElementStyles, value: string) => void
 }) {
- const { getPendingOrOriginal, updatePendingChange } = useVisualEditorStore()
+ const { pendingChanges, selectedElement, updatePendingChange } = useVisualEditorStore()
 
  const corners = [
  { label: 'TL', prop: 'borderTopLeftRadius' as keyof ElementStyles },
@@ -854,7 +854,7 @@ function BorderRadiusControl({
  Corner Radius
  </Label>
  {corners.map((corner) => {
- const value = parseNumericValue(getPendingOrOriginal(corner.prop))
+ const value = parseNumericValue(corner.prop in pendingChanges ? pendingChanges[corner.prop] : selectedElement?.computedStyles?.[corner.prop])
  return (
  <div key={corner.label} className="flex items-center gap-2 h-9 min-w-0">
  <Label className="text-[11px] text-sidebar-foreground/70 w-6 shrink-0 truncate">
@@ -931,8 +931,6 @@ export function VisualEditorSidebar({
  close,
  clearPendingChanges,
  updatePendingText,
- getPendingOrOriginalText,
- getPendingOrOriginal,
  updatePendingChange,
  setStyleState,
  setActiveTab,
@@ -984,9 +982,10 @@ export function VisualEditorSidebar({
  const dragStartX = useRef(0)
  const dragStartWidth = useRef(0)
 
- const hasChanges = Object.keys(pendingChanges).length > 0 || pendingTextChange !== null
- const contentValue = getPendingOrOriginalText()
- const selectedElementKey = selectedElement?.path?.join('.') ?? selectedElement?.selector ?? 'none'
+  const hasChanges = Object.keys(pendingChanges).length > 0 || pendingTextChange !== null
+  const contentValue = pendingTextChange !== null ? pendingTextChange : (selectedElement?.textContent || '')
+  console.log('[VisualEditor][sidebar:render] contentValue:', contentValue, 'pendingTextChange:', pendingTextChange, 'selectedElement.textContent:', selectedElement?.textContent)
+  const selectedElementKey = selectedElement?.path?.join('.') ?? selectedElement?.selector ?? 'none'
 
  const sections = useMemo(
  () => getRelevantSections(selectedElement?.tagName),
@@ -1270,7 +1269,7 @@ export function VisualEditorSidebar({
  <div className="space-y-1.5">
  <Label className="text-[11px] text-sidebar-foreground/70">Font</Label>
  {(() => {
- const currentFontValue = getPendingOrOriginal('fontFamily') || ''
+ const currentFontValue = ('fontFamily' in pendingChanges ? pendingChanges['fontFamily'] : selectedElement?.computedStyles?.['fontFamily']) || ''
  const foundFont = FONT_OPTIONS.find((option) => option.value === currentFontValue)
  const selectValue = foundFont
  ? foundFont.value
@@ -1292,7 +1291,7 @@ export function VisualEditorSidebar({
  <SelectValue
  placeholder={
  (() => {
- const v = getPendingOrOriginal('fontFamily') || ''
+ const v = ('fontFamily' in pendingChanges ? pendingChanges['fontFamily'] : selectedElement?.computedStyles?.['fontFamily']) || ''
  return getFontDisplayLabel(v)
  })()
  }

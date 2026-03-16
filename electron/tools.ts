@@ -6,6 +6,7 @@ import { markInternalFsChange } from './projectWatcher'
 import { ensureRuntimeInstalled } from './runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from './runtime/runtimeResolver'
 import { LocalMcpToolRuntime } from './services/LocalMcpToolRuntime'
+import { DiagnosticsService } from './services/DiagnosticsService'
 
 export interface ToolRequest {
   name: string
@@ -233,8 +234,8 @@ function buildReadFileOutput(args: {
   const totalLines = lines.length
   const maxLines = 2000
 
-  let offset = Math.max(1, args.offset ?? 1)
-  let limit = args.limit ? Math.max(1, args.limit) : totalLines
+  const offset = Math.max(1, args.offset ?? 1)
+  const limit = args.limit ? Math.max(1, args.limit) : totalLines
 
   const startIndex = Math.min(totalLines, offset) - 1
   const boundedLimit = Math.min(limit, maxLines)
@@ -1265,68 +1266,124 @@ export async function runTool(request: ToolRequest): Promise<ToolResult> {
   const shouldNotify = Boolean(request.projectPath)
 
   try {
+    let result: ToolResult | null = null
+
     switch (request.name) {
       case 'read': {
-        const input = request.input as ReadFileInput
+        const input = request.input as unknown as ReadFileInput
         const mcpOutput = await readFileViaMcp(input, workingDir)
         if (mcpOutput) {
-          return { success: true, output: mcpOutput }
+          result = { success: true, output: mcpOutput }
+        } else {
+          result = { success: false, error: 'Filesystem MCP read tool is unavailable.' }
         }
-        return { success: false, error: 'Filesystem MCP read tool is unavailable.' }
+        break
       }
       case 'list': {
-        const input = request.input as ListDirInput
+        const input = request.input as unknown as ListDirInput
         const mcpOutput = await listDirViaMcp(input, workingDir)
         if (mcpOutput) {
-          return { success: true, output: mcpOutput }
+          result = { success: true, output: mcpOutput }
+        } else {
+          result = { success: false, error: 'Filesystem MCP list tool is unavailable.' }
         }
-        return { success: false, error: 'Filesystem MCP list tool is unavailable.' }
+        break
       }
       case 'glob':
       {
-        const input = request.input as FindFilesInput
+        const input = request.input as unknown as FindFilesInput
         const mcpOutput = await findFilesViaMcp(input, workingDir)
         if (mcpOutput) {
-          return { success: true, output: mcpOutput }
+          result = { success: true, output: mcpOutput }
+        } else {
+          result = { success: false, error: 'Filesystem/Search MCP glob tool is unavailable.' }
         }
-        return { success: false, error: 'Filesystem/Search MCP glob tool is unavailable.' }
+        break
       }
       case 'grep':
       {
-        const input = request.input as GrepSearchInput
+        const input = request.input as unknown as GrepSearchInput
         const mcpOutput = await grepSearchViaMcp(input, workingDir)
         if (mcpOutput) {
-          return { success: true, output: mcpOutput }
+          result = { success: true, output: mcpOutput }
+        } else {
+          result = { success: false, error: 'Repo/Shell MCP grep tool is unavailable.' }
         }
-        return { success: false, error: 'Repo/Shell MCP grep tool is unavailable.' }
+        break
       }
       case 'write':
-        return { success: true, output: await createFile(request.input as CreateFileInput, workingDir, { notify: shouldNotify }) }
+        result = { success: true, output: await createFile(request.input as unknown as CreateFileInput, workingDir, { notify: shouldNotify }) }
+        break
       case 'edit':
-        return {
+        result = {
           success: true,
-          output: await replaceStringInFile(request.input as ReplaceStringInput, workingDir, { notify: shouldNotify }),
+          output: await replaceStringInFile(request.input as unknown as ReplaceStringInput, workingDir, { notify: shouldNotify }),
         }
+        break
       case 'multiedit':
-        return {
+        result = {
           success: true,
-          output: await multiReplaceString(request.input as MultiReplaceInput, workingDir, { notify: shouldNotify }),
+          output: await multiReplaceString(request.input as unknown as MultiReplaceInput, workingDir, { notify: shouldNotify }),
         }
+        break
       case 'bash':
-        return {
+        result = {
           success: true,
-          output: await runInTerminal(request.input as RunInTerminalInput, workingDir),
+          output: await runInTerminal(request.input as unknown as RunInTerminalInput, workingDir),
         }
+        break
       case 'preview_browser':
-        return {
+        result = {
           success: true,
-          output: await runPreviewBrowser(request.input as PreviewBrowserInput, workingDir),
+          output: await runPreviewBrowser(request.input as unknown as PreviewBrowserInput, workingDir),
         }
+        break
       case 'apply_patch':
-        return { success: false, error: 'apply_patch is not yet enabled in this runtime' }
+        result = { success: false, error: 'apply_patch is not yet enabled in this runtime' }
+        break
       default:
-        return { success: false, error: `Unknown tool: ${request.name}` }
+        result = { success: false, error: `Unknown tool: ${request.name}` }
+        break
     }
+
+    if (result && result.success && request.projectPath && ['write', 'edit', 'multiedit'].includes(request.name)) {
+      try {
+        const modifiedFiles: string[] = []
+        const out = result.output as any
+        if (out?.filePath) {
+          modifiedFiles.push(out.filePath)
+        } else if (out?.results && Array.isArray(out.results)) {
+          modifiedFiles.push(...out.results.map((r: any) => r.filePath).filter(Boolean))
+        }
+
+        if (modifiedFiles.length > 0) {
+          const diagnosticsService = DiagnosticsService.getInstance()
+          const diagnostics = await diagnosticsService.checkFiles(request.projectPath, {
+            filePaths: modifiedFiles,
+            timeoutMs: 5000,
+          })
+          
+          const problems = diagnostics.filter(d => d.severity === 'error' || d.severity === 'warning')
+          if (problems.length > 0) {
+            result.output = {
+              ...(typeof result.output === 'object' && result.output !== null ? result.output : {}),
+              diagnostics: problems.map(p => ({
+                file: p.file,
+                line: p.line,
+                severity: p.severity,
+                message: p.message,
+                source: p.source,
+              })),
+              diagnosticSummary: `Warning: ${problems.length} problem(s) detected after this edit.`
+            }
+          }
+        }
+      } catch (diagErr) {
+        console.warn('[ToolRuntime] Post-edit diagnostics check failed:', diagErr)
+      }
+    }
+
+    return result || { success: false, error: 'Unknown tool execution state' }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Tool failed' }
   }

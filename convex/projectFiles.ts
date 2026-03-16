@@ -347,7 +347,7 @@ export const markFilesDeleted = mutation({
     const replicaState = await getReplicaStorageAccountingState(ctx, args.projectId)
     let deletedCount = 0
     let sourceAndConfigDelta = 0
-    let gitHistoryDelta = 0
+    const gitHistoryDelta = 0
 
     for (const filePath of args.filePaths) {
       const file = await ctx.db

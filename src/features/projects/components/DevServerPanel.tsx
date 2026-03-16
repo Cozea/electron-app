@@ -297,10 +297,10 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     // Auto-expand when server starts
     useEffect(() => {
         if (serverStatus === 'starting' || serverStatus === 'running') {
-            setIsCollapsed(false)
+            setTimeout(() => setIsCollapsed(false), 0)
         }
         if (serverStatus === 'stopped') {
-            setHasOutput(false)
+            setTimeout(() => setHasOutput(false), 0)
         }
     }, [serverStatus])
 
@@ -308,7 +308,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     useEffect(() => {
         if (serverStatus === 'starting' && xtermRef.current) {
             xtermRef.current.clear()
-            setHasOutput(false)
+            setTimeout(() => setHasOutput(false), 0)
         }
     }, [serverStatus])
 

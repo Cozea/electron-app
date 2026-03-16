@@ -14,6 +14,7 @@ import type {
 export type BridgeMessageType =
   // iframe → host
   | 'bridge:ready'
+  | 'bridge:dom-snapshot'
   | 'bridge:close-inspector'
   | 'bridge:shift-keydown'
   | 'bridge:shift-keyup'
@@ -30,6 +31,8 @@ export type BridgeMessageType =
   | 'host:enable-inspector'
   | 'host:disable-inspector'
   | 'host:request-screenshot'
+  | 'host:hide-overlays'
+  | 'host:show-overlays'
   | 'host:update-style'
   | 'host:update-text'
   | 'host:clear-selection'

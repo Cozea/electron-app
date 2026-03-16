@@ -173,19 +173,10 @@ export function ProjectPagesPage() {
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const [zoom, setZoom] = useState(100)
     const [zoomInputValue, setZoomInputValue] = useState('100')
-    const [inspectorContextMenu, setInspectorContextMenu] = useState<{
-        open: boolean
-        x: number
-        y: number
-        element: SelectedElementData
-        reactComponentStack?: string[]
-        reactSource?: { fileName?: string; lineNumber?: number; columnNumber?: number } | null
-    } | null>(null)
     const thumbnailStripRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const headerRef = useRef<HTMLDivElement>(null)
     const [headerWidth, setHeaderWidth] = useState<number>(0)
-    const isMacClient = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
     const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
@@ -605,7 +596,6 @@ export function ProjectPagesPage() {
         manualInspectorEnabled.current = false // allow Shift-to-inspect to work again
         setSelectedElement(null)
         setInspectedElement(null)
-        setInspectorContextMenu(null)
         closeVisualEditor()
     }, [setSelectedElement, setInspectedElement, closeVisualEditor])
 
@@ -1166,6 +1156,14 @@ export function ProjectPagesPage() {
                     }
                     break
 
+                case 'bridge:dom-snapshot': {
+                    const data = payload as { html?: string }
+                    if (data.html) {
+                        actions.setLatestDomSnapshot(data.html)
+                    }
+                    break
+                }
+
                 case 'bridge:element-selected':
                     logVisualEditorSelectionPayload(
                         'bridge:element-selected',
@@ -1186,7 +1184,6 @@ export function ProjectPagesPage() {
                     setSelectedElement(null)
                     selectedElementBridgeMetaRef.current = null
                     setInspectedElement(null)
-                    setInspectorContextMenu(null)
                     closeVisualEditor()
                     break
 
@@ -1206,6 +1203,7 @@ export function ProjectPagesPage() {
                     )
 
                     // Keep visual editor selection in sync
+                    closeVisualEditor()
                     closeAssistantPanel()
                     void hydrateSelectedElementFromInspector(data as unknown as SelectedElementData, bridgeMeta)
 
@@ -1230,14 +1228,45 @@ export function ProjectPagesPage() {
                     const x = rect ? rect.left + data.clientX * scaleX : data.clientX
                     const y = rect ? rect.top + data.clientY * scaleY : data.clientY
 
-                    setInspectorContextMenu({
-                        open: true,
-                        x,
-                        y,
-                        element: data,
-                        reactComponentStack: data.react?.componentStack ?? undefined,
-                        reactSource: data.react?.source ?? undefined,
-                    })
+                    if (window.electronAPI?.contextMenu?.showVisualEditorMenu) {
+                        void window.electronAPI.contextMenu.showVisualEditorMenu({
+                            x: Math.round(x),
+                            y: Math.round(y),
+                            hasReactSource: !!data.react?.source?.fileName,
+                            hasReactStack: !!data.react?.componentStack?.length,
+                        }).then(({ action }) => {
+                            if (action === 'ask-ai') {
+                                const stack = data.react?.componentStack?.join(' > ')
+                                const pageInfo = focusedRoute ? `${focusedRoute.path} (${focusedRoute.file})` : undefined
+                                const selector = data.selector
+                                const prompt = [
+                                    'I right-clicked an element in the preview inspector.',
+                                    pageInfo ? `Page: ${pageInfo}` : null,
+                                    `Selector: ${selector}`,
+                                    stack ? `React component stack: ${stack}` : null,
+                                    '',
+                                    'What I want to change:',
+                                ].filter(Boolean).join('\n')
+                                useAssistantPanelStore.getState().openWithPrompt(prompt)
+                            } else if (action === 'copy-selector') {
+                                void navigator.clipboard.writeText(data.selector)
+                            } else if (action === 'copy-stack') {
+                                const stack = data.react?.componentStack?.join(' > ')
+                                if (stack) void navigator.clipboard.writeText(stack)
+                            } else if (action === 'open-source') {
+                                const fileName = data.react?.source?.fileName
+                                if (!fileName || !projectBasePath || !projectPath) return
+                                void resolveProjectSourcePath(fileName, projectPath).then(resolvedPath => {
+                                    if (!resolvedPath) return
+                                    const params = new URLSearchParams()
+                                    params.set('path', resolvedPath)
+                                    if (data.react?.source?.lineNumber) params.set('line', String(data.react?.source.lineNumber))
+                                    if (data.react?.source?.columnNumber) params.set('column', String(data.react?.source.columnNumber))
+                                    navigate(`${projectBasePath}?${params.toString()}`)
+                                })
+                            }
+                        })
+                    }
 
                     break
                 }
@@ -1322,7 +1351,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, navigate, projectBasePath])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -1641,7 +1670,7 @@ export function ProjectPagesPage() {
     }, [focusedPreviewUrl, previewReady, probeFocusedPreviewReachability, retryBridgeInjection])
 
     // Handle screenshot capture
-    const handleCaptureScreenshot = useCallback(() => {
+    const handleCaptureScreenshot = useCallback(async () => {
         if (!iframeRef.current || serverStatus !== 'running') return
 
         if (!previewReady) {
@@ -1652,18 +1681,52 @@ export function ProjectPagesPage() {
 
         setIsCapturingScreenshot(true)
         setBridgeError(null)
-        sendBridgeMessage(iframeRef.current, { type: 'host:request-screenshot' })
 
-        // Timeout in case bridge doesn't respond
-        setTimeout(() => {
-            setIsCapturingScreenshot(capturing => {
-                if (capturing) {
-                    setBridgeError('Screenshot timed out. Try refreshing the preview.')
-                }
-                return false
+        try {
+            sendBridgeMessage(iframeRef.current, { type: 'host:hide-overlays' })
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            
+            const iframe = iframeRef.current
+            const rect = iframe.getBoundingClientRect()
+            
+            const result = await window.electronAPI.preview.captureVisibleRegion({
+                x: Math.round(rect.left),
+                y: Math.round(rect.top),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
             })
-        }, 10000)
-    }, [serverStatus, previewReady, ensureBridgeReady])
+            
+            sendBridgeMessage(iframeRef.current, { type: 'host:show-overlays' })
+            
+            if (!result.success || !result.base64) {
+                setBridgeError(result.error || 'Failed to capture native screenshot')
+                setIsCapturingScreenshot(false)
+                return
+            }
+            
+            const dataUrl = `data:image/png;base64,${result.base64}`
+            if (focusedRoute) {
+                const attachment: PendingAttachment = {
+                    type: 'image',
+                    data: dataUrl,
+                    name: `screenshot-${focusedRoute.path.replace(/\//g, '-') || 'preview'}.png`,
+                    mediaType: 'image/png',
+                    context: {
+                        pagePath: focusedRoute.path,
+                        pageFile: focusedRoute.file,
+                        projectName: project?.name,
+                        serverPort: serverPort ?? undefined,
+                    }
+                }
+                openWithScreenshot(attachment)
+            }
+        } catch (error) {
+            setBridgeError(error instanceof Error ? error.message : String(error))
+            if (iframeRef.current) sendBridgeMessage(iframeRef.current, { type: 'host:show-overlays' })
+        } finally {
+            setIsCapturingScreenshot(false)
+        }
+    }, [serverStatus, previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, project?.name, serverPort])
 
     // Toggle inspector mode (manual toggle via button)
     const toggleInspector = useCallback(() => {
@@ -1790,70 +1853,6 @@ export function ProjectPagesPage() {
         // Open assistant with the prompt
         useAssistantPanelStore.getState().openWithPrompt(prompt)
     }, [])
-
-    const closeInspectorContextMenu = useCallback(() => {
-        setInspectorContextMenu(null)
-    }, [])
-
-    const handleAskAIAboutInspectedElement = useCallback(() => {
-        if (!inspectorContextMenu) return
-
-        const stack = inspectorContextMenu.reactComponentStack?.join(' > ')
-        const pageInfo = focusedRoute ? `${focusedRoute.path} (${focusedRoute.file})` : undefined
-        const selector = inspectorContextMenu.element.selector
-
-        const prompt = [
-            'I right-clicked an element in the preview inspector.',
-            pageInfo ? `Page: ${pageInfo}` : null,
-            `Selector: ${selector}`,
-            stack ? `React component stack: ${stack}` : null,
-            '',
-            'What I want to change:',
-        ].filter(Boolean).join('\n')
-
-        useAssistantPanelStore.getState().openWithPrompt(prompt)
-        closeInspectorContextMenu()
-    }, [inspectorContextMenu, focusedRoute, closeInspectorContextMenu])
-
-    const handleCopyInspectedSelector = useCallback(async () => {
-        if (!inspectorContextMenu) return
-        try {
-            await navigator.clipboard.writeText(inspectorContextMenu.element.selector)
-        } finally {
-            closeInspectorContextMenu()
-        }
-    }, [inspectorContextMenu, closeInspectorContextMenu])
-
-    const handleCopyInspectedComponentStack = useCallback(async () => {
-        const stack = inspectorContextMenu?.reactComponentStack?.join(' > ')
-        if (!stack) return
-        try {
-            await navigator.clipboard.writeText(stack)
-        } finally {
-            closeInspectorContextMenu()
-        }
-    }, [inspectorContextMenu, closeInspectorContextMenu])
-
-    const handleOpenInspectedSource = useCallback(async () => {
-        const reactSource = inspectorContextMenu?.reactSource
-        const fileName = reactSource?.fileName
-        if (!fileName || !projectBasePath || !projectPath) return
-
-        const resolvedPath = await resolveProjectSourcePath(fileName, projectPath)
-        if (!resolvedPath) return
-
-        const params = new URLSearchParams()
-        params.set('path', resolvedPath)
-        if (reactSource?.lineNumber) {
-            params.set('line', String(reactSource.lineNumber))
-        }
-        if (reactSource?.columnNumber) {
-            params.set('column', String(reactSource.columnNumber))
-        }
-
-        navigate(`${projectBasePath}?${params.toString()}`)
-        closeInspectorContextMenu()
-    }, [closeInspectorContextMenu, inspectorContextMenu, navigate, projectBasePath, projectPath])
 
     const handleOpenCode = useCallback(async (file: string, line?: number, column?: number) => {
         const normalizedFile = file.replace(/\\/g, '/')
@@ -2266,7 +2265,6 @@ export function ProjectPagesPage() {
         </TooltipProvider>
     ), [
         focusedPageIndex,
-        isMacClient,
         toolbarDensity,
         device,
         zoom,
@@ -2278,9 +2276,6 @@ export function ProjectPagesPage() {
         previewReady,
         previewEmbedBlocked,
         useCredentiallessPreview,
-        projectPath,
-        storedFrameworkInfo?.devCommand,
-        storedFrameworkInfo?.devPort,
         refreshRoutes,
         retryBridgeInjection,
         handleCaptureScreenshot,
@@ -2420,6 +2415,7 @@ export function ProjectPagesPage() {
                                                                             key={`grid-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
                                                                             src={routePreviewUrl}
                                                                             credentialless={credentiallessAttribute}
+                                                                            loading="lazy"
                                                                             className="w-[200%] h-[200%] origin-top-left scale-50 border-none pointer-events-none select-none block"
                                                                             tabIndex={-1}
                                                                         />
@@ -2665,6 +2661,7 @@ export function ProjectPagesPage() {
                                                                                     key={`thumb-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
                                                                                     src={routePreviewUrl}
                                                                                     credentialless={credentiallessAttribute}
+                                                                                    loading="lazy"
                                                                                     className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
                                                                                     tabIndex={-1}
                                                                                 />
@@ -2757,51 +2754,7 @@ export function ProjectPagesPage() {
                 )}
             </div>
 
-            {/* Inspector right-click menu */}
-            {inspectorContextMenu && (
-                <DropdownMenu
-                    open={inspectorContextMenu.open}
-                    onOpenChange={(open) => {
-                        if (!open) setInspectorContextMenu(null)
-                    }}
-                >
-                    <DropdownMenuTrigger asChild>
-                        <button
-                            type="button"
-                            tabIndex={-1}
-                            aria-hidden="true"
-                            className="fixed"
-                            style={{
-                                left: inspectorContextMenu.x,
-                                top: inspectorContextMenu.y,
-                                width: 1,
-                                height: 1,
-                                opacity: 0,
-                                pointerEvents: 'none',
-                            }}
-                        />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-64">
-                        <DropdownMenuItem onClick={handleAskAIAboutInspectedElement}>
-                            Ask AI about this element
-                        </DropdownMenuItem>
-                        {inspectorContextMenu.reactSource?.fileName && (
-                            <DropdownMenuItem onClick={handleOpenInspectedSource}>
-                                Open component source
-                            </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => void handleCopyInspectedSelector()}>
-                            Copy selector
-                        </DropdownMenuItem>
-                        {inspectorContextMenu.reactComponentStack?.length ? (
-                            <DropdownMenuItem onClick={() => void handleCopyInspectedComponentStack()}>
-                                Copy component stack
-                            </DropdownMenuItem>
-                        ) : null}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            )}
+            {/* (Removed custom inspector context menu in favor of native Electron menu) */}
 
         </div>
     )

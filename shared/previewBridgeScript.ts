@@ -281,6 +281,53 @@ export const BRIDGE_SCRIPT = `
     lastSelectedRect = null;
   }
 
+  // Live DOM Shadowing via MutationObserver
+  let domSnapshotObserver = null;
+  let domSnapshotTimeout = null;
+
+  function sendDomSnapshot() {
+    if (!document.body) return;
+    
+    // Simple lightweight snapshot: clone body and remove scripts/styles to save space
+    try {
+      const clone = document.body.cloneNode(true);
+      const scripts = clone.querySelectorAll('script, style, link, [data-cozea-bridge-instance-id]');
+      scripts.forEach(s => s.remove());
+      
+      const html = clone.innerHTML;
+      postToParent({
+        type: 'bridge:dom-snapshot',
+        payload: { html }
+      });
+    } catch (_err) {
+      // ignore
+    }
+  }
+
+  function startDomObserver() {
+    if (domSnapshotObserver) return;
+    
+    domSnapshotObserver = new MutationObserver(() => {
+      // Debounce snapshot streaming to avoid overwhelming the IPC channel
+      if (domSnapshotTimeout) clearTimeout(domSnapshotTimeout);
+      domSnapshotTimeout = setTimeout(() => {
+        sendDomSnapshot();
+      }, 500); // 500ms debounce
+    });
+    
+    if (document.body) {
+      domSnapshotObserver.observe(document.body, { 
+        childList: true, 
+        subtree: true, 
+        characterData: true, 
+        attributes: true,
+        attributeFilter: ['class', 'id', 'style', 'src', 'href']
+      });
+      // Send initial snapshot
+      sendDomSnapshot();
+    }
+  }
+
   // Generate CSS selector for element
   function getSelector(el) {
     if (!el || el === document.body) return 'body';
@@ -334,6 +381,10 @@ export const BRIDGE_SCRIPT = `
 
   function getVisibleText(el) {
     if (!el) return undefined;
+
+    const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+    if (el.tagName && voidElements.has(el.tagName.toLowerCase())) return undefined;
+
     const rawText =
       typeof el.innerText === 'string' && el.innerText.trim().length > 0
         ? el.innerText
@@ -341,7 +392,7 @@ export const BRIDGE_SCRIPT = `
           ? el.textContent
           : '';
     const normalized = rawText.replace(/\\s+/g, ' ').trim();
-    return normalized ? normalized.slice(0, 800) : undefined;
+    return normalized.slice(0, 800);
   }
 
   // Get element path (indices) for re-selection
@@ -882,8 +933,19 @@ export const BRIDGE_SCRIPT = `
         break;
 
       case 'host:request-screenshot':
-        bridgeLog('Screenshot requested by host');
-        captureScreenshot();
+        bridgeLog('Screenshot requested by host (deprecated, ignored)');
+        break;
+
+      case 'host:hide-overlays':
+        hideIndicator(highlightOverlay, highlightLabel);
+        hideIndicator(selectedOverlay, selectedLabel);
+        postToParent({ type: 'bridge:overlays-hidden' });
+        break;
+
+      case 'host:show-overlays':
+        if (currentSelectedElement) {
+          updateSelectedOverlay();
+        }
         break;
 
       case 'host:update-style':
@@ -1056,6 +1118,7 @@ export const BRIDGE_SCRIPT = `
   // Signal bridge is ready
   bridgeLog('Bridge ready, notifying parent');
   postToParent({ type: 'bridge:ready' });
+  startDomObserver();
   console.log('[Cozea] Preview bridge initialized');
 })();
 `;

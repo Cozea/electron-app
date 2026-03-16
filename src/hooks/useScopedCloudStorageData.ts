@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 
 import { api } from '../../convex/_generated/api'
@@ -33,7 +33,7 @@ export function useScopedCloudStorageData(options: UseScopedCloudStorageDataOpti
     convexOrgId && canLoadCloudStorageData ? { orgId: convexOrgId } : 'skip',
   )
 
-  const totalUsed = useMemo(() => {
+  const totalUsed = (() => {
     if (usageLimits?.storage.currentBytes) {
       return bytesToGB(usageLimits.storage.currentBytes)
     }
@@ -46,7 +46,7 @@ export function useScopedCloudStorageData(options: UseScopedCloudStorageDataOpti
       (sum, value) => sum + bytesToGB(value ?? 0),
       0,
     )
-  }, [usageLimits?.storage.breakdown, usageLimits?.storage.currentBytes])
+  })()
   const totalLimit = usageLimits?.storage.limitGB ?? 1
   const isUnlimited = usageLimits?.storage.isUnlimited ?? false
 

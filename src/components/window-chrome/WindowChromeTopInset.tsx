@@ -3,7 +3,7 @@ import * as React from "react"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { cn } from "@/lib/utils"
 
-interface WindowChromeTopInsetProps extends React.HTMLAttributes<HTMLDivElement> {}
+type WindowChromeTopInsetProps = React.HTMLAttributes<HTMLDivElement>
 
 export function WindowChromeTopInset({
   className,

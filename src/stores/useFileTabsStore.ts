@@ -78,10 +78,10 @@ export const useFileTabsStore = create<FileTabsState>()(
                 }),
                 closeFile: (projectId, path) => set((state) => {
                     const tabs = state.projectTabs[projectId] || defaultTabs
-                    const newFiles = tabs.openFiles.filter(p => p !== path)
+                    const newFiles = tabs.openFiles.filter(p => !pathsReferToSameFile(p, path))
                     let newActive = tabs.activeFile
 
-                    if (tabs.activeFile === path) {
+                    if (tabs.activeFile && pathsReferToSameFile(tabs.activeFile, path)) {
                         // If closing active file, switch to last one or null
                         newActive = newFiles.length > 0 ? newFiles[newFiles.length - 1] : null
                     }

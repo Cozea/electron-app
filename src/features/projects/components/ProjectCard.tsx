@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import { useCachedQuery } from '@/stores/useQueryCache'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
     Clock,
@@ -105,16 +106,18 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
   const [localPath, setLocalPath] = useState<string | null>(null)
 
     // Get preview image URL
-    const previewImageUrl = useQuery(
+    const freshPreviewImageUrl = useQuery(
         api.projects.getPreviewImageUrl,
         project.status !== 'draft' && userId ? { projectId: project._id, userId } : 'skip'
     )
-  const [imageLoaded, setImageLoaded] = useState(false)
+    const previewImageUrl = useCachedQuery(
+        `project-preview-img-${project._id}`,
+        freshPreviewImageUrl
+    )
   const [imageError, setImageError] = useState(false)
   const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
   useEffect(() => {
-    setImageLoaded(false)
     setImageError(false)
   }, [previewImageUrl, project._id])
 
@@ -140,7 +143,7 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
     return () => {
       cancelled = true
     }
-  }, [project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
+  }, [project._id, project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
 
     const preloadProjectDestination = useCallback(() => {
     setSyncHydrationRequested(true)
@@ -422,19 +425,10 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
                     {/* Preview Image or Placeholder */}
                     {previewImageUrl && !imageError ? (
                         <>
-                            {!imageLoaded && (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/40" />
-                                </div>
-                            )}
                             <img
                                 src={previewImageUrl}
                                 alt={`${project.name} preview`}
-                                className={cn(
-                                    "w-full h-full object-cover object-top transition-opacity",
-                                    imageLoaded ? "opacity-100" : "opacity-0"
-                                )}
-                                onLoad={() => setImageLoaded(true)}
+                                className="w-full h-full object-cover object-top"
                                 onError={() => setImageError(true)}
                             />
                         </>

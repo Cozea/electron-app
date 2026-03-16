@@ -1333,6 +1333,7 @@ export function TasksPage() {
         ) : null}
       </div>
     ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [boardItems.length, convexUserId, isCreatingTask, isSyncingLocalTasks, statusStats],
   )
 
