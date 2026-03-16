@@ -151,11 +151,11 @@ export function RepoSourceStep({
   onContinue,
   canContinue = true,
 }: RepoSourceStepProps) {
-  const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(null)
+  const folderPath = repoSource?.repoUrl ?? ''
+  
+  const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(folderPath || null)
   const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([])
   const [isLoadingGrid, setIsLoadingGrid] = useState(false)
-
-  const folderPath = repoSource?.repoUrl ?? ''
   const hasLocalFolderSelected = Boolean(folderPath)
   const selectedFolderName = folderPath ? folderPath.split(/[/\\]/).pop() : null
 
