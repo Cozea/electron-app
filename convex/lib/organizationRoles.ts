@@ -44,6 +44,8 @@ export const organizationPermissionValidator = v.union(
   v.literal("projects:view"),
   v.literal("projects:create"),
   v.literal("projects:import"),
+  v.literal("projects:edit"),
+  v.literal("projects:manage"),
   v.literal("projects:archive"),
   v.literal("projects:delete"),
   v.literal("projects:share"),

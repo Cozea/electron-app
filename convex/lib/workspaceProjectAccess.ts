@@ -17,6 +17,7 @@ export type WorkspaceProjectPermission =
   | "projects:archive"
   | "projects:share"
   | "projects:delete"
+  | "projects:manage"
 
 export interface WorkspaceProjectAccess {
   organization: Doc<"organizations"> | null
@@ -109,7 +110,7 @@ export function hasWorkspaceProjectPermission(
   workspaceAccess: WorkspaceProjectAccess,
   permission: WorkspaceProjectPermission
 ): boolean {
-  if (workspaceAccess.isPersonalOwner) {
+  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
     return true
   }
 
@@ -174,7 +175,7 @@ export async function canEditProjectByWorkspaceOrMembership(
     userId
   )
 
-  if (workspaceAccess.isPersonalOwner) {
+  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
     return true
   }
 
@@ -202,7 +203,7 @@ export async function canManageProjectByWorkspaceOrMembership(
     userId
   )
 
-  if (workspaceAccess.isPersonalOwner) {
+  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
     return true
   }
 

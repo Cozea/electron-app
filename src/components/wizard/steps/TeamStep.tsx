@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Users, X, AlertCircle, UserPlus, ChevronDown, Trash2, ArrowRight } from 'lucide-react'
+import { Users, X, AlertCircle, UserPlus, ChevronDown, Trash2, ArrowRight, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DropdownMenu,
@@ -63,13 +63,54 @@ export function TeamStep({
   // Invite flow state (like Members page)
   const [inviteMembers, setInviteMembers] = useState<{ email: string; role: ProjectRole }[]>([])
   const [emailInput, setEmailInput] = useState('')
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('')
 
   const hasPM = team.some((m) => m.role === 'project_manager')
 
-  // Filter out members already in the team
+  // Filter out members already in the team and match search query
   const availableOrgMembers = organizationMembers.filter(
-    (orgMember) => !team.some((t) => t.email.toLowerCase() === orgMember.email.toLowerCase())
+    (orgMember) => {
+      if (team.some((t) => t.email.toLowerCase() === orgMember.email.toLowerCase())) {
+        return false
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const nameMatch = `${orgMember.firstName || ''} ${orgMember.lastName || ''}`.toLowerCase().includes(q)
+        const emailMatch = orgMember.email.toLowerCase().includes(q)
+        return nameMatch || emailMatch
+      }
+      return true
+    }
   )
+
+  // Pagination logic
+  const pageSize = 5
+  const totalPages = Math.ceil(availableOrgMembers.length / pageSize)
+  const validCurrentPage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages))
+  const startIndex = (validCurrentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedMembers = availableOrgMembers.slice(startIndex, endIndex)
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = []
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i)
+    } else {
+      if (validCurrentPage <= 3) {
+        pages.push(1, 2, 3, '...', totalPages)
+      } else if (validCurrentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages)
+      } else {
+        pages.push(1, '...', validCurrentPage - 1, validCurrentPage, validCurrentPage + 1, '...', totalPages)
+      }
+    }
+    return pages
+  }
 
   const handleAddOrgMember = (orgMember: OrgMember, role: ProjectRole) => {
     const name = `${orgMember.firstName || ''} ${orgMember.lastName || ''}`.trim()
@@ -210,9 +251,9 @@ export function TeamStep({
         </div>
 
         {/* Add from Organization Members */}
-        {availableOrgMembers.length > 0 && (
+        {(organizationMembers.length - team.length > 0) && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Label className="text-base font-medium">Add from Workspace</Label>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Add as:</span>
@@ -232,8 +273,25 @@ export function TeamStep({
                 </Select>
               </div>
             </div>
-            <div className="app-scrollbar rounded-xl divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden max-h-48 overflow-y-auto">
-              {availableOrgMembers.map((orgMember) => {
+            
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search workspace members..."
+                className="pl-8 bg-background dark:bg-background/80 h-8 text-sm"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </div>
+            
+            {availableOrgMembers.length > 0 ? (
+              <>
+            <div className="rounded-xl divide-y bg-secondary/80 dark:bg-secondary/40 overflow-hidden">
+              {paginatedMembers.map((orgMember) => {
                 const name = `${orgMember.firstName || ''} ${orgMember.lastName || ''}`.trim()
                 const displayName = name || orgMember.email.split('@')[0]
                 const initials = name
@@ -270,6 +328,56 @@ export function TeamStep({
                 )
               })}
             </div>
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <div className="text-xs text-muted-foreground">
+                  Showing <span className="font-medium">{startIndex + 1}-{Math.min(endIndex, availableOrgMembers.length)}</span> of <span className="font-medium">{availableOrgMembers.length}</span> members
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7 rounded-full"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={validCurrentPage === 1}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  {getPageNumbers().map((page, i) => (
+                    typeof page === 'number' ? (
+                      <Button
+                        key={i}
+                        variant={validCurrentPage === page ? 'default' : 'secondary'}
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-xs"
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Button>
+                    ) : (
+                      <span key={i} className="px-1 text-xs text-muted-foreground">...</span>
+                    )
+                  ))}
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7 rounded-full"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={validCurrentPage === totalPages}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+              </>
+            ) : (
+              <div className="text-center py-6 text-sm text-muted-foreground bg-muted/20 rounded-xl border border-dashed">
+                No workspace members match your search
+              </div>
+            )}
           </div>
         )}
 

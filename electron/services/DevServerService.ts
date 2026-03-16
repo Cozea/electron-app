@@ -1,5 +1,4 @@
-// @ts-expect-error execa esModuleInterop missing
-import { execa, type ExecaChildProcess } from 'execa'
+import execa, { type ExecaChildProcess } from 'execa'
 import getPort from 'get-port'
 import net from 'node:net'
 

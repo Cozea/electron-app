@@ -923,6 +923,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
   useEffect(() => {
     if (!project || autoPullTriggeredRef.current) return
     if (!convexUserId) return
+    if (latestBuilderRun === undefined) return
     if (isAIGenerating || isPulling || runStatus !== 'idle') return
 
     let cancelled = false
@@ -938,10 +939,18 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
         if (!folderExists) {
           addLog('No local folder found - fetching project from git...')
           autoPullTriggeredRef.current = true
-          const hasFiles = await pullFilesFromCloud()
-          if (cancelled) return
-          if (!hasFiles) {
-            addLog('No files found on main - starting new build...')
+          try {
+            const hasFiles = await pullFilesFromCloud()
+            if (cancelled) return
+            if (!hasFiles) {
+              addLog('No files found on main - starting new build...')
+              await startAIBuild()
+            }
+          } catch (e) {
+            if (cancelled) return
+            const errorMsg = e instanceof Error ? e.message : String(e)
+            addLog(`Pull failed, assuming new empty project: ${errorMsg}`)
+            setHasError(false)
             await startAIBuild()
           }
           return
@@ -957,7 +966,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     return () => {
       cancelled = true
     }
-  }, [project, convexUserId, isAIGenerating, isPulling, runStatus, addLog, pullFilesFromCloud, startAIBuild])
+  }, [project, convexUserId, isAIGenerating, isPulling, runStatus, addLog, pullFilesFromCloud, startAIBuild, latestBuilderRun])
 
   const handleRetry = () => {
     setHasError(false)
