@@ -366,9 +366,14 @@ function FillControl({
  const hexValue = toHex(bgColorRaw)
  const [colorEditing, setColorEditing] = useState(false)
  const [colorBuffer, setColorBuffer] = useState(hexValue)
- useEffect(() => {
- if (!colorEditing) setColorBuffer(hexValue)
- }, [hexValue, colorEditing])
+
+ const [prevHexValue, setPrevHexValue] = useState(hexValue)
+ const [prevColorEditing, setPrevColorEditing] = useState(colorEditing)
+ if (hexValue !== prevHexValue || colorEditing !== prevColorEditing) {
+   setPrevHexValue(hexValue)
+   setPrevColorEditing(colorEditing)
+   if (!colorEditing) setColorBuffer(hexValue)
+ }
 
  const handleColorChange = useCallback(
  (hex: string) => {

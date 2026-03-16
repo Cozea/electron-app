@@ -67,7 +67,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     const [activeTab, setActiveTab] = useState<TabType>("console")
     const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
     const [isDragging, setIsDragging] = useState(false)
-    const [hasOutput, setHasOutput] = useState(false)
+    const hasOutput = serverOutput.length > 0
     const [showSearch, setShowSearch] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [terminalInitRetry, setTerminalInitRetry] = useState(0)
@@ -187,7 +187,6 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
         const history = serverOutputRef.current
         if (history.length > 0) {
             term.write(history.join(''))
-            setHasOutput(true)
         }
         prevOutputLengthRef.current = history.length
 
@@ -253,11 +252,9 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
             newLines.forEach(line => {
                 xtermRef.current?.write(line)
             })
-            setHasOutput(true)
         } else if (currentLength === 0 && prevLength > 0) {
             // Output was cleared
             xtermRef.current?.clear()
-            setHasOutput(false)
         }
 
         prevOutputLengthRef.current = currentLength
@@ -300,7 +297,7 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
             setTimeout(() => setIsCollapsed(false), 0)
         }
         if (serverStatus === 'stopped') {
-            setTimeout(() => setHasOutput(false), 0)
+            // Output derived from state
         }
     }, [serverStatus])
 
@@ -308,7 +305,6 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     useEffect(() => {
         if (serverStatus === 'starting' && xtermRef.current) {
             xtermRef.current.clear()
-            setTimeout(() => setHasOutput(false), 0)
         }
     }, [serverStatus])
 
@@ -339,7 +335,6 @@ export function DevServerPanel({ className, defaultCollapsed = false, projectPat
     const handleClear = useCallback(() => {
         xtermRef.current?.clear()
         actions.clearServerOutput()
-        setHasOutput(false)
     }, [actions])
 
     // Search functions

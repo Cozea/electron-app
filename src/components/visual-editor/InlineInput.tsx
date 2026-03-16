@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -194,9 +194,13 @@ export function InlineColorInput({
  const [isEditing, setIsEditing] = useState(false)
  const [buffer, setBuffer] = useState(hexValue)
 
- useEffect(() => {
- if (!isEditing) setBuffer(hexValue)
- }, [hexValue, isEditing])
+ const [prevHexValue, setPrevHexValue] = useState(hexValue)
+ const [prevIsEditing, setPrevIsEditing] = useState(isEditing)
+ if (hexValue !== prevHexValue || isEditing !== prevIsEditing) {
+   setPrevHexValue(hexValue)
+   setPrevIsEditing(isEditing)
+   if (!isEditing) setBuffer(hexValue)
+ }
 
  const handleChange = (hex: string) => {
  updatePendingChange(property, hex)

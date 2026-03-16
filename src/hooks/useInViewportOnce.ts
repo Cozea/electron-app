@@ -18,17 +18,12 @@ export function useInViewportOnce<T extends Element>(
     threshold = 0,
   }: UseInViewportOnceOptions = {}
 ): boolean {
-  const [hasIntersected, setHasIntersected] = useState(false)
+  const [hasIntersected, setHasIntersected] = useState(() => typeof IntersectionObserver === 'undefined')
 
   useEffect(() => {
     if (hasIntersected) return
     const element = ref.current
     if (!element) return
-
-    if (typeof IntersectionObserver === 'undefined') {
-      setHasIntersected(true)
-      return
-    }
 
     const observer = new IntersectionObserver(
       (entries) => {

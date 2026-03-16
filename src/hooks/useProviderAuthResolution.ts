@@ -55,45 +55,50 @@ export function useProviderAuthResolution(
 
   const managedProvider = Boolean(provider && isManagedProvider(provider))
   const requiresLocalAuth = Boolean(provider && !managedProvider)
+  const normalizedOrgId = typeof organizationId === 'string' ? organizationId.trim() : ''
+  const depsKey = `${normalizedOrgId}:${provider}:${managedProvider}:${refreshKey}`
+
   const [header, setHeader] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [resolved, setResolved] = useState(false)
+  const [loading, setLoading] = useState(() => {
+    if (!normalizedOrgId || !provider || managedProvider) return false
+    return true
+  })
+  const [resolved, setResolved] = useState(() => {
+    if (!normalizedOrgId || !provider) return false
+    if (managedProvider) return true
+    return false
+  })
   const [error, setError] = useState<string | null>(null)
+  const [prevDepsKey, setPrevDepsKey] = useState(depsKey)
 
-  useEffect(() => {
-    let cancelled = false
-    const normalizedOrgId = typeof organizationId === 'string' ? organizationId.trim() : ''
-    const attempts = Math.max(1, Math.floor(retries))
-    const baseDelay = Math.max(50, Math.floor(retryDelayMs))
-
-    if (!normalizedOrgId) {
+  if (depsKey !== prevDepsKey) {
+    setPrevDepsKey(depsKey)
+    if (!normalizedOrgId || !provider) {
       setHeader(null)
       setLoading(false)
       setResolved(false)
       setError(null)
-      return
-    }
-
-    if (!provider) {
-      setHeader(null)
-      setLoading(false)
-      setResolved(false)
-      setError(null)
-      return
-    }
-
-    if (managedProvider) {
+    } else if (managedProvider) {
       setHeader(null)
       setLoading(false)
       setResolved(true)
       setError(null)
+    } else {
+      setHeader(null)
+      setLoading(true)
+      setResolved(false)
+      setError(null)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const attempts = Math.max(1, Math.floor(retries))
+    const baseDelay = Math.max(50, Math.floor(retryDelayMs))
+
+    if (!normalizedOrgId || !provider || managedProvider) {
       return
     }
-
-    setHeader(null)
-    setLoading(true)
-    setResolved(false)
-    setError(null)
 
     void (async () => {
       let finalError = 'Provider authentication is not ready on this device.'

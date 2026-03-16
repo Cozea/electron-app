@@ -1150,9 +1150,16 @@ export function UnifiedHeader({
     setVisibleBreadcrumbStartIndex(startIndex)
   }, [breadcrumbAddon, breadcrumbs])
 
-  useEffect(() => {
+  const [prevBreadcrumbsLength, setPrevBreadcrumbsLength] = useState(breadcrumbs.length)
+  if (breadcrumbs.length !== prevBreadcrumbsLength) {
+    setPrevBreadcrumbsLength(breadcrumbs.length)
     if (!breadcrumbs.length) {
       setVisibleBreadcrumbStartIndex(0)
+    }
+  }
+
+  useEffect(() => {
+    if (!breadcrumbs.length) {
       return
     }
 

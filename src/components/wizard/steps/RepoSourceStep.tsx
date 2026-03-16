@@ -165,21 +165,23 @@ export function RepoSourceStep({
     }
   }, [onUpdate, repoSource?.branch, repoSource?.provider])
 
-  useEffect(() => {
+  const [prevFolderPath, setPrevFolderPath] = useState(folderPath)
+  if (folderPath !== prevFolderPath) {
+    setPrevFolderPath(folderPath)
     if (!folderPath) {
       setSelectedDirectoryPath(null)
       setDirectoryEntries([])
-      return
+    } else {
+      setSelectedDirectoryPath(folderPath)
     }
-    setSelectedDirectoryPath(folderPath)
-  }, [folderPath])
+  }
 
   useEffect(() => {
     const dirPath = selectedDirectoryPath
     if (!dirPath) return
 
     let canceled = false
-    setIsLoadingGrid(true)
+    setTimeout(() => setIsLoadingGrid(true), 0)
 
     window.electronAPI.fs.readDir(dirPath)
       .then((entries) => {
@@ -344,12 +346,13 @@ function FileGridItem({
     return THUMBNAIL_EXTENSIONS.has(ext)
   }, [entry.name, isImage])
 
-  useEffect(() => {
-    // Entry changed: reset thumbnail state.
+  const [prevEntryPath, setPrevEntryPath] = useState(entry.path)
+  if (entry.path !== prevEntryPath) {
+    setPrevEntryPath(entry.path)
     setThumbnailOk(true)
     setThumbnailDataUrl(null)
     setThumbnailRequested(false)
-  }, [entry.path])
+  }
 
   useEffect(() => {
     const element = buttonRef.current
@@ -372,7 +375,7 @@ function FileGridItem({
     if (thumbnailRequested) return
     if (entry.isDirectory || entry.kind === 'up') return
 
-    setThumbnailRequested(true)
+    setTimeout(() => setThumbnailRequested(true), 0)
 
     const projectPath = getParentDirectoryPath(entry.path)
     void window.electronAPI.project.readFileBase64({

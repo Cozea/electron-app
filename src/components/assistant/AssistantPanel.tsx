@@ -1,4 +1,4 @@
-import { Activity, lazy, Suspense, useRef, useCallback, useState, useEffect } from 'react'
+import { Activity, lazy, Suspense, useRef, useCallback, useState } from 'react'
 import { Plus, History, Menu, Maximize2, Minimize2 } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -59,13 +59,10 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
 
   const [hasMountedConversation, setHasMountedConversation] = useState(isOpen)
+  if (isOpen && !hasMountedConversation) {
+    setHasMountedConversation(true)
+  }
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false)
-
-  useEffect(() => {
-    if (isOpen) {
-      setHasMountedConversation(true)
-    }
-  }, [isOpen])
 
   // Get project ID for chat history
   const shouldResolveProjectForHistory = Boolean(
@@ -101,13 +98,17 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
   const isFullscreen = mode === 'fullscreen'
   const panelWidthValue = isFullscreen ? '100%' : `${storedWidth}px`
 
-  useEffect(() => {
-    if (!isFullscreen) return
-    if (isHistoryOpen) {
-      closeHistory()
+  const [prevIsFullscreen, setPrevIsFullscreen] = useState(isFullscreen)
+  const [prevIsHistoryOpen, setPrevIsHistoryOpen] = useState(isHistoryOpen)
+  
+  if (isFullscreen !== prevIsFullscreen || isHistoryOpen !== prevIsHistoryOpen) {
+    setPrevIsFullscreen(isFullscreen)
+    setPrevIsHistoryOpen(isHistoryOpen)
+    if (isFullscreen) {
+      if (isHistoryOpen) closeHistory()
+      setIsActionsMenuOpen(false)
     }
-    setIsActionsMenuOpen(false)
-  }, [closeHistory, isFullscreen, isHistoryOpen])
+  }
 
   // Resize handle event handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
