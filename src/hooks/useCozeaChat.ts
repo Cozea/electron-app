@@ -145,6 +145,83 @@ export function useCozeaChat({
   })
 
   useEffect(() => {
+    if (!autoRetrySettings.enabled) {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      scheduledRetryKeyRef.current = null
+    } else if (chatHook.status !== 'error') {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      scheduledRetryKeyRef.current = null
+      if (
+        autoRetryState.scheduled ||
+        autoRetryState.nextRetryAt !== null ||
+        autoRetryState.maxAttempts !== autoRetrySettings.maxAttempts ||
+        autoRetryState.exhausted !== false
+      ) {
+        queueMicrotask(() => {
+          setAutoRetryState((prev) => ({
+            ...prev,
+            attempt: 0,
+            scheduled: false,
+            nextRetryAt: null,
+            maxAttempts: autoRetrySettings.maxAttempts,
+            exhausted: false,
+            reasonCode: undefined,
+          }))
+        })
+      }
+    } else if (shouldAutoRetryFromHint(retryHint)) {
+      const maxAttemptsForHint =
+        retryHint.code === 'duplicate_response_item_id'
+          ? Math.min(1, autoRetrySettings.maxAttempts)
+          : autoRetrySettings.maxAttempts
+
+      if (maxAttemptsForHint <= 0) {
+        queueMicrotask(() => {
+          setAutoRetryState((prev) => ({
+            ...prev,
+            scheduled: false,
+            nextRetryAt: null,
+            maxAttempts: maxAttemptsForHint,
+            exhausted: true,
+            reasonCode: retryHint.code,
+          }))
+        })
+      } else {
+        const completedAttempts = retryAttemptsByScopeRef.current.get(retryScopeKey) ?? 0
+        if (completedAttempts >= maxAttemptsForHint) {
+          queueMicrotask(() => {
+            setAutoRetryState((prev) => ({
+              ...prev,
+              scheduled: false,
+              nextRetryAt: null,
+              attempt: completedAttempts,
+              maxAttempts: maxAttemptsForHint,
+              exhausted: true,
+              reasonCode: retryHint.code,
+            }))
+          })
+        }
+      }
+    }
+  }, [
+    chatHook.status,
+    autoRetrySettings.enabled,
+    autoRetrySettings.maxAttempts,
+    retryHint,
+    retryScopeKey,
+    autoRetryState.scheduled,
+    autoRetryState.nextRetryAt,
+    autoRetryState.maxAttempts,
+    autoRetryState.exhausted
+  ])
+
+  useEffect(() => {
     return () => {
       if (!retryTimerRef.current) return
       clearTimeout(retryTimerRef.current)
@@ -158,44 +235,7 @@ export function useCozeaChat({
   const regenerate = chatHook.regenerate
 
   useEffect(() => {
-    if (!autoRetrySettings.enabled) {
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current)
-        retryTimerRef.current = null
-      }
-      scheduledRetryKeyRef.current = null
-      return
-    }
-
-    if (chatStatus !== 'error') {
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current)
-        retryTimerRef.current = null
-      }
-      scheduledRetryKeyRef.current = null
-      setAutoRetryState((current) => {
-        if (
-          current.scheduled ||
-          current.nextRetryAt !== null ||
-          current.maxAttempts !== autoRetrySettings.maxAttempts ||
-          current.exhausted !== false
-        ) {
-          return {
-            ...current,
-            attempt: 0,
-            scheduled: false,
-            nextRetryAt: null,
-            maxAttempts: autoRetrySettings.maxAttempts,
-            exhausted: false,
-            reasonCode: undefined,
-          }
-        }
-        return current
-      })
-      return
-    }
-
-    if (!shouldAutoRetryFromHint(retryHint)) {
+    if (!autoRetrySettings.enabled || chatStatus !== 'error' || !shouldAutoRetryFromHint(retryHint)) {
       return
     }
 
@@ -204,31 +244,10 @@ export function useCozeaChat({
         ? Math.min(1, autoRetrySettings.maxAttempts)
         : autoRetrySettings.maxAttempts
 
-    if (maxAttemptsForHint <= 0) {
-      setAutoRetryState((current) => ({
-        ...current,
-        scheduled: false,
-        nextRetryAt: null,
-        maxAttempts: maxAttemptsForHint,
-        exhausted: true,
-        reasonCode: retryHint.code,
-      }))
-      return
-    }
+    if (maxAttemptsForHint <= 0) return
 
     const completedAttempts = retryAttemptsByScopeRef.current.get(retryScopeKey) ?? 0
-    if (completedAttempts >= maxAttemptsForHint) {
-      setAutoRetryState((current) => ({
-        ...current,
-        scheduled: false,
-        nextRetryAt: null,
-        attempt: completedAttempts,
-        maxAttempts: maxAttemptsForHint,
-        exhausted: true,
-        reasonCode: retryHint.code,
-      }))
-      return
-    }
+    if (completedAttempts >= maxAttemptsForHint) return
 
     const nextAttempt = completedAttempts + 1
     const scheduledRetryKey = `${retryScopeKey}:${retryHint.code}:${nextAttempt}`

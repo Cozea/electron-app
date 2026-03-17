@@ -531,7 +531,16 @@ export async function prepareGitProjectForOpen({
   })
 
   if (effectivelyEmptyWorkspace && !remoteHeadCommit && !status.headCommit) {
-    throw new Error('Cloud project history is unavailable and this local workspace is empty.')
+    // This is a new project that hasn't received its initial commit yet.
+    // We return gracefully here so the AI builder can populate the files first.
+    // The final initial commit will be triggered later via syncLocalSnapshotToCloud.
+    recordOutcome('opened')
+    return {
+      localPath: effectiveLocalPath,
+      skipInitialSyncCheck: true,
+      changed,
+      currentBranch: status.currentBranch ?? undefined,
+    }
   }
 
   if (shouldRestoreWorkspace) {

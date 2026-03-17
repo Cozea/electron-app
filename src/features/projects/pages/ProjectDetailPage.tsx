@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { FileViewer } from '../components/FileViewer'
 import { useFileTabsStore } from '@/stores/useFileTabsStore'
@@ -38,11 +38,13 @@ export function ProjectDetailPage() {
     () => locationState?.taskOverlay ?? null,
   )
 
-  useEffect(() => {
+  const [prevTaskOverlay, setPrevTaskOverlay] = useState(locationState?.taskOverlay)
+  if (locationState?.taskOverlay !== prevTaskOverlay) {
+    setPrevTaskOverlay(locationState?.taskOverlay)
     if (locationState?.taskOverlay) {
       setTaskOverlay(locationState.taskOverlay)
     }
-  }, [locationState?.taskOverlay])
+  }
 
   const handleOpenFile = useCallback((file: string, line?: number, column?: number) => {
     const normalizedFile = file.replace(/\\/g, '/')

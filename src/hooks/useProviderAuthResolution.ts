@@ -137,6 +137,7 @@ export function useProviderAuthResolution(
     }
   }, [
     organizationId,
+    normalizedOrgId,
     modelId,
     provider,
     managedProvider,

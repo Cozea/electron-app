@@ -16,6 +16,7 @@ import type * as aiWallets from "../aiWallets.js";
 import type * as billing from "../billing.js";
 import type * as builderRuns from "../builderRuns.js";
 import type * as crons from "../crons.js";
+import type * as debug from "../debug.js";
 import type * as deployments from "../deployments.js";
 import type * as fileTombstones from "../fileTombstones.js";
 import type * as identityRepair from "../identityRepair.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   billing: typeof billing;
   builderRuns: typeof builderRuns;
   crons: typeof crons;
+  debug: typeof debug;
   deployments: typeof deployments;
   fileTombstones: typeof fileTombstones;
   identityRepair: typeof identityRepair;

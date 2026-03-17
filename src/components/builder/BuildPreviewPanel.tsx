@@ -14,11 +14,12 @@ import type { PreviewEmbedMode } from '@/components/shared/PreviewIframe'
 import type { BridgeMessage } from '@/utils/previewBridge'
 
 interface BuildPreviewPanelProps {
-  status: DevServerStatus
+  status: DevServerStatus | 'preparing'
   url: string | null
   error: string | null
   timeline?: Array<{ id: string; at: number; type: string; message: string }>
   refreshToken?: number
+  preparingMessage?: string
   onRefresh?: () => void
   onEmbedModeChange?: (mode: PreviewEmbedMode, reason: string) => void
   onBridgeMessage?: (event: MessageEvent<BridgeMessage>) => void
@@ -34,6 +35,7 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
   error,
   timeline,
   refreshToken = 0,
+  preparingMessage,
   onRefresh,
   onEmbedModeChange,
   onBridgeMessage,
@@ -54,6 +56,16 @@ export const BuildPreviewPanel = memo(function BuildPreviewPanel({
               <Shimmer className="text-xs text-muted-foreground/70">
                 Waiting for dependencies to install...
               </Shimmer>
+            </div>
+          </div>
+        )}
+
+        {/* Preparing state - before dev server even attempts to start */}
+        {status === 'preparing' && (
+          <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+            <AppWindow className="h-16 w-16 opacity-50 animate-pulse" />
+            <div className="text-center space-y-1">
+              <Shimmer className="text-sm font-medium">{preparingMessage || 'Preparing workspace...'}</Shimmer>
             </div>
           </div>
         )}

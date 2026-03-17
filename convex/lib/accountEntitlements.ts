@@ -224,11 +224,24 @@ async function getOrganizationBillingAccountRecord(
 
 async function getAccountSubscriptionRecord(
   ctx: BillingCtx,
-  accountUserId: Id<"users">
+  accountUserId: Id<"users">,
+  organizationId?: Id<"organizations">
 ): Promise<AccountSubscriptionRecord | null> {
   const rows = await queryTable(ctx, "accountSubscriptions")
     .withIndex("by_account_user", (q) => q.eq("accountUserId", accountUserId))
     .collect()
+
+  if (organizationId) {
+    const filtered = rows.filter((r) => r.legacyOrganizationId === organizationId)
+    if (filtered.length > 0) {
+      const canonical = [...filtered].sort((a, b) => {
+        const updatedDelta = (b.updatedAt || 0) - (a.updatedAt || 0)
+        if (updatedDelta !== 0) return updatedDelta
+        return String(a._id).localeCompare(String(b._id))
+      })[0]
+      return canonical as AccountSubscriptionRecord
+    }
+  }
 
   if (rows.length === 0) return null
 
@@ -429,7 +442,7 @@ export async function resolveOrganizationBillingSnapshot(
   const billingAccount = await getOrganizationBillingAccountRecord(ctx, organizationId)
 
   if (billingAccount) {
-    const billingSubscription = await getAccountSubscriptionRecord(ctx, billingAccount.billingUserId)
+    const billingSubscription = await getAccountSubscriptionRecord(ctx, billingAccount.billingUserId, organizationId)
     if (billingSubscription) {
       const normalizedPlan = normalizeAccountPlan(billingSubscription.plan)
       const resolvedPlan = resolveWorkspaceSnapshotPlan(organization, normalizedPlan)
@@ -462,7 +475,7 @@ export async function resolveOrganizationBillingSnapshot(
     if (ownerWorkosId) {
       const ownerUser = await getUserByWorkosId(ctx, ownerWorkosId)
       if (ownerUser) {
-        const ownerSubscription = await getAccountSubscriptionRecord(ctx, ownerUser._id)
+        const ownerSubscription = await getAccountSubscriptionRecord(ctx, ownerUser._id, organizationId)
         if (ownerSubscription) {
           const normalizedPlan = normalizeAccountPlan(ownerSubscription.plan)
           const effectiveStatus = resolveEffectiveAccountStatus(ownerSubscription, now)

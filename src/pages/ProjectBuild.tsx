@@ -1171,11 +1171,11 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
                       />
                     ) : null}
                     <BuilderControlsPill
-                      statusMessage={statusMessage}
+                      statusMessage={isPulling ? 'Creating project folder & workspace...' : statusMessage}
                       isAIGenerating={isAIGenerating}
                       isAIComplete={isAIComplete}
                       hasError={hasError}
-                      isPulling={isPulling}
+                      isPulling={false}
                       buildTasks={buildTasks}
                       onStop={handleAIStop}
                       onRetry={handleRetry}
@@ -1194,7 +1194,8 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={60} minSize={30} id="builder-preview" className="min-w-0">
                   <BuildPreviewPanel
-                    status={devServer.status}
+                    status={isPulling ? 'preparing' : devServer.status}
+                    preparingMessage="Creating project folder..."
                     url={devServer.url}
                     error={devServer.error}
                     timeline={devServer.timeline}

@@ -1389,8 +1389,10 @@ Now begin by defining your task list with todowrite, then start working through 
       })
     }
   }, [
+    commitTaskUpdate,
     conversationId,
     enrichToolOutputWithDiagnostics,
+    finalizeIfTasksCompleted,
     logGeminiTodowrite,
     localPath,
     localRuntime,
@@ -1728,6 +1730,7 @@ Now begin by defining your task list with todowrite, then start working through 
     onError,
     onSurfaceError,
     retrySurfaceError,
+    workspaceScoped,
   ])
 
   // Fallback: extract todowrite updates directly from streamed messages

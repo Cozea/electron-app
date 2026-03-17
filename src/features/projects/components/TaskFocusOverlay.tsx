@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { ChevronDown, X } from 'lucide-react'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -46,14 +46,24 @@ export function TaskFocusOverlay({ task, className }: TaskFocusOverlayProps) {
     applyTaskOverlayCheckedMarkerIds(task, overlayState?.checkedMarkerIds),
   )
 
-  useEffect(() => {
+  const [prevTask, setPrevTask] = useState(task)
+  if (task !== prevTask) {
+    setPrevTask(task)
     setIsOpen(true)
     setIsDismissed(false)
-  }, [task])
+  }
 
-  useEffect(() => {
+  const [prevOverlayStateIds, setPrevOverlayStateIds] = useState(overlayState?.checkedMarkerIds)
+  const [prevTaskForMarkers, setPrevTaskForMarkers] = useState(task)
+  
+  if (
+    task !== prevTaskForMarkers ||
+    overlayState?.checkedMarkerIds !== prevOverlayStateIds
+  ) {
+    setPrevTaskForMarkers(task)
+    setPrevOverlayStateIds(overlayState?.checkedMarkerIds)
     setMarkers(applyTaskOverlayCheckedMarkerIds(task, overlayState?.checkedMarkerIds))
-  }, [overlayState?.checkedMarkerIds, task])
+  }
 
   if (!task || isDismissed) return null
   const activeTask = task
