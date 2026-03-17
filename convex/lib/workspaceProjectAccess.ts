@@ -110,7 +110,7 @@ export function hasWorkspaceProjectPermission(
   workspaceAccess: WorkspaceProjectAccess,
   permission: WorkspaceProjectPermission
 ): boolean {
-  if (workspaceAccess.isPersonalOwner || hasWorkspaceProjectPermission(workspaceAccess, "projects:manage")) {
+  if (workspaceAccess.isPersonalOwner) {
     return true
   }
 

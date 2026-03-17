@@ -89,6 +89,17 @@ export function YjsProjectProvider({
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [wsCircuitOpen, setWsCircuitOpen] = useState(false)
+  const [prevCircuitDeps, setPrevCircuitDeps] = useState({ enabled, projectId, roomId: collabSession?.roomId, collabWsUrl: collabSession?.collabWsUrl })
+
+  if (
+    enabled !== prevCircuitDeps.enabled ||
+    projectId !== prevCircuitDeps.projectId ||
+    collabSession?.roomId !== prevCircuitDeps.roomId ||
+    collabSession?.collabWsUrl !== prevCircuitDeps.collabWsUrl
+  ) {
+    setPrevCircuitDeps({ enabled, projectId, roomId: collabSession?.roomId, collabWsUrl: collabSession?.collabWsUrl })
+    setWsCircuitOpen(false)
+  }
 
   const convexProviderRef = useRef<YConvexProvider | null>(null)
   const awarenessProviderRef = useRef<YConvexAwarenessProvider | null>(null)
@@ -122,10 +133,6 @@ export function YjsProjectProvider({
   )
   const shouldUseWsTransport = enabled && collabTransport === 'ws' && !!wsSession && !wsCircuitOpen
   const shouldUseConvexTail = enabled && !shouldUseWsTransport
-
-  useEffect(() => {
-    setWsCircuitOpen(false)
-  }, [enabled, projectId, wsSession?.roomId, wsSession?.collabWsUrl])
 
   useEffect(() => {
     const nextSession = wsSessionRef.current
@@ -182,14 +189,6 @@ export function YjsProjectProvider({
     let persistenceInstance: ProjectFilesPersistence | null = null
 
     if (!enabled) {
-      destroyTransportProviders()
-      persistenceRef.current?.destroy()
-      persistenceRef.current = null
-      indexedDBProviderRef.current?.destroy()
-      indexedDBProviderRef.current = null
-      setIsConnected(false)
-      setYjsDoc(null)
-      setLastSyncTime(null)
       return
     }
 
@@ -293,8 +292,6 @@ export function YjsProjectProvider({
 
   useEffect(() => {
     if (!enabled || !yjsDoc) {
-      destroyTransportProviders()
-      setIsConnected(false)
       return
     }
 
@@ -385,7 +382,9 @@ export function YjsProjectProvider({
       convexProviderRef.current.applyRemoteUpdates(toApply)
       lastAppliedTimestampRef.current = lastTimestamp
       seenUpdateIdsAtLastTimestampRef.current = seenIds
-      setLastSyncTime(lastTimestamp)
+      setTimeout(() => {
+        setLastSyncTime(lastTimestamp)
+      }, 0)
     }
   }, [enabled, shouldUseConvexTail, updates])
 

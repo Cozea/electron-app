@@ -1747,6 +1747,16 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
           {hasBillingOverviewContent ? (
             <CardContent className="space-y-5 px-0">
+              {!workspaceScoped && (currentPlanIdForCards === 'startup' || currentPlanIdForCards === 'enterprise') && (
+                <Alert className="bg-primary/5 border-primary/20">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <AlertTitle>Covered by Workspace Plan</AlertTitle>
+                  <AlertDescription>
+                    Your personal workspace is automatically upgraded because you manage an active <strong>{currentPlanIdForCards === 'enterprise' ? 'Enterprise' : 'Startup'}</strong> subscription. You have full access to all Pro features here at no additional cost.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               {showPaidSeatSummary && (
                 <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2 rounded-2xl bg-secondary/80 p-4 dark:bg-secondary/40">

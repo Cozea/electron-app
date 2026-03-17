@@ -275,6 +275,7 @@ export function EntryChoice({
     organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
+    model,
   ])
 
   const [prevProviderScopedModels, setPrevProviderScopedModels] = useState(providerScopedModels)

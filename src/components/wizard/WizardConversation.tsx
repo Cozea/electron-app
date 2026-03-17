@@ -291,10 +291,9 @@ export function WizardConversation({
   const [pendingAttachments, setPendingAttachments] = useState<ChatComposerAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
-  const initialConversationIdRef = useRef<string>(
-    projectId ? `wizard:${projectId}` : crypto.randomUUID()
+  const [conversationId] = useState<string>(
+    () => projectId ? `wizard:${projectId}` : crypto.randomUUID()
   )
-  const conversationId = initialConversationIdRef.current
   const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
   const [dismissedError, setDismissedError] = useState<string | null>(null)
   const hasSentInitialMessageRef = useRef(false)
@@ -402,10 +401,12 @@ export function WizardConversation({
       agentId: 'plan',
       surface: 'wizard',
     }
-    setModelSettings((prev) => {
-      const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
-      saveModelSettings(updated)
-      return updated
+    queueMicrotask(() => {
+      setModelSettings((prev) => {
+        const updated = writeStoredModelSettings(prev, model, 'wizard', nextSettings)
+        saveModelSettings(updated)
+        return updated
+      })
     })
   }, [model])
 
@@ -420,7 +421,9 @@ export function WizardConversation({
   useEffect(() => {
     if (providerScopedModels.length === 0) return
     if (!providerScopedModels.some((item) => item.id === model)) {
-      setModel(providerScopedModels[0].id)
+      queueMicrotask(() => {
+        setModel(providerScopedModels[0].id)
+      })
     }
   }, [providerScopedModels, model])
 
@@ -431,9 +434,11 @@ export function WizardConversation({
 
   useEffect(() => {
     if (accessToken && organizationId) return
-    setModelsError(null)
-    setToolsError(null)
-    setModelsLoaded(false)
+    queueMicrotask(() => {
+      setModelsError(null)
+      setToolsError(null)
+      setModelsLoaded(false)
+    })
   }, [accessToken, organizationId])
 
   const toolsByName = useMemo(() => {
@@ -455,7 +460,6 @@ export function WizardConversation({
   useEffect(() => {
     if (!accessToken || !organizationId) return
     let cancelled = false
-    setModelsLoaded(false)
 
     getModelCatalog({
       organizationId,
@@ -507,6 +511,7 @@ export function WizardConversation({
     organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
+    model,
   ])
 
   // Fetch tools
@@ -677,7 +682,9 @@ export function WizardConversation({
     return null
   }, [messages, status])
 
-  addToolOutputRef.current = addToolOutput
+  useEffect(() => {
+    addToolOutputRef.current = addToolOutput
+  }, [addToolOutput])
 
   const cancelPendingToolOutputs = useCallback(() => {
     const addToolOutput = addToolOutputRef.current
@@ -883,7 +890,7 @@ export function WizardConversation({
         }
       }
     }
-  }, [dedupedMessages])
+  }, [dedupedMessages, messages])
 
   // Compute token usage
   const accumulatedUsage = useMemo(() => {

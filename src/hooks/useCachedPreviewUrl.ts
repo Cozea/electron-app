@@ -40,34 +40,37 @@ export function useCachedPreviewUrl(
   const [error, setError] = useState(false)
   const fetchingRef = useRef<string | null>(null)
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({ projectId, sourceUrl })
+  if (projectId !== prevDeps.projectId || sourceUrl !== prevDeps.sourceUrl) {
+    setPrevDeps({ projectId, sourceUrl })
+    
     if (!projectId) {
       setState({ blobUrl: null, forProjectId: null })
       setError(false)
-      return
-    }
-
-    // Convex still loading: show cached URL only for this projectId
-    if (sourceUrl === undefined) {
+    } else if (sourceUrl === undefined) {
       const cached = getCachedPreviewUrl(projectId)
       setState({ blobUrl: cached ?? null, forProjectId: projectId })
       setError(false)
-      return
-    }
-
-    // No preview in Convex: leave empty, clear cache for this project
-    if (sourceUrl === null) {
+    } else if (sourceUrl === null) {
       invalidatePreviewImageCache(projectId)
       setState({ blobUrl: null, forProjectId: projectId })
       setError(false)
+    } else {
+      const cached = getCachedPreviewUrl(projectId)
+      if (cached) {
+        setState({ blobUrl: cached, forProjectId: projectId })
+        setError(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!projectId || sourceUrl === undefined || sourceUrl === null) {
       return
     }
 
-    // Convex returned a URL
     const cached = getCachedPreviewUrl(projectId)
     if (cached) {
-      setState({ blobUrl: cached, forProjectId: projectId })
-      setError(false)
       return
     }
 

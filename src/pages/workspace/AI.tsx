@@ -264,10 +264,12 @@ const ProviderIcon = ({
   className?: string
 }) => {
   const [imageFailed, setImageFailed] = useState(false)
+  const [prevDeps, setPrevDeps] = useState({ provider, logoUrl })
 
-  useEffect(() => {
+  if (provider !== prevDeps.provider || logoUrl !== prevDeps.logoUrl) {
+    setPrevDeps({ provider, logoUrl })
     setImageFailed(false)
-  }, [provider, logoUrl])
+  }
 
   if (imageFailed) {
     return <Sparkles className={className} />
@@ -727,7 +729,7 @@ export function AI({ surface = 'page', route }: AIProps) {
         setGoogleMethod(supported[0])
       }
     }
-  }, [anthropicMethod, googleMethod, openaiMethod, selectedProvider, selectedProviderMethods])
+  }, [anthropicMethod, googleMethod, openaiMethod, selectedProvider, selectedProviderMethods, providerSupportsMethod])
 
   const pagedProviderRows = providerRows.slice(
     providerPage * providerPageSize,

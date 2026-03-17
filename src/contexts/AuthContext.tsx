@@ -872,7 +872,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cleanupSuccess()
       cleanupError()
     }
-  }, [applySession, clearLoginTimeout])
+  }, [applySession, clearLoginTimeout, handleSession, queueRefreshRetry])
 
   const login = useCallback(async () => {
     setAuthError(null)

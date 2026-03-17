@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -25,12 +25,14 @@ export function DevCommandPickerDialog({
   onConfirm,
 }: DevCommandPickerDialogProps) {
   const [command, setCommand] = useState(defaultCommand ?? '')
+  const [prevOpen, setPrevOpen] = useState(open)
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       setCommand(defaultCommand ?? '')
     }
-  }, [defaultCommand, open])
+  }
 
   const orderedSuggestions = useMemo(
     () => [...suggestions].sort((a, b) => b.confidence - a.confidence).slice(0, 6),

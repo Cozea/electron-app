@@ -203,6 +203,70 @@ export function ModelSelection({ surface = 'page', route }: ModelSelectionProps)
   const [modelSearchQuery, setModelSearchQuery] = useState('')
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
 
+  const groupedModels = useMemo<ProviderModelGroup[]>(() => {
+    const grouped = new Map<string, ModelApiModel[]>()
+
+    for (const model of availableModels) {
+      const providerId = model.provider.trim().toLowerCase()
+      if (!providerId) continue
+      const existing = grouped.get(providerId)
+      if (existing) {
+        existing.push(model)
+      } else {
+        grouped.set(providerId, [model])
+      }
+    }
+
+    const groups: ProviderModelGroup[] = Array.from(grouped.entries()).map(([providerId, models]) => ({
+      providerId,
+      providerName: getProviderDisplayName(providerId),
+      models: [...models].sort(compareModelsByRecency),
+    }))
+
+    return groups.sort((a, b) => {
+      const aPriority = getProviderSortPriority(a.providerId)
+      const bPriority = getProviderSortPriority(b.providerId)
+      if (aPriority !== bPriority) return aPriority - bPriority
+      return a.providerName.localeCompare(b.providerName)
+    })
+  }, [availableModels])
+
+  const [prevGroupedModels, setPrevGroupedModels] = useState(groupedModels)
+  if (groupedModels !== prevGroupedModels) {
+    setPrevGroupedModels(groupedModels)
+    setExpandedProviders((previous) => {
+      if (groupedModels.length === 0) {
+        return Object.keys(previous).length === 0 ? previous : {}
+      }
+
+      const validProviderIds = new Set(groupedModels.map((group) => group.providerId))
+      let changed = false
+      const next: Record<string, boolean> = {}
+
+      for (const group of groupedModels) {
+        if (typeof previous[group.providerId] === 'boolean') {
+          next[group.providerId] = previous[group.providerId]
+        } else {
+          next[group.providerId] = false
+          changed = true
+        }
+      }
+
+      for (const providerId of Object.keys(previous)) {
+        if (!validProviderIds.has(providerId)) {
+          changed = true
+          break
+        }
+      }
+
+      if (!changed && Object.keys(previous).length === Object.keys(next).length) {
+        return previous
+      }
+
+      return next
+    })
+  }
+
   const isDarkLikeTheme = useMemo(() => {
     if (theme === 'dark' || theme === 'navy' || theme === 'wine' || theme === 'forest' || theme === 'clay') {
       return true
@@ -256,34 +320,6 @@ export function ModelSelection({ surface = 'page', route }: ModelSelectionProps)
   const unavailableSavedCount = savedModelIds.length - savedModels.length
   const normalizedModelSearchQuery = modelSearchQuery.trim().toLowerCase()
 
-  const groupedModels = useMemo<ProviderModelGroup[]>(() => {
-    const grouped = new Map<string, ModelApiModel[]>()
-
-    for (const model of availableModels) {
-      const providerId = model.provider.trim().toLowerCase()
-      if (!providerId) continue
-      const existing = grouped.get(providerId)
-      if (existing) {
-        existing.push(model)
-      } else {
-        grouped.set(providerId, [model])
-      }
-    }
-
-    const groups: ProviderModelGroup[] = Array.from(grouped.entries()).map(([providerId, models]) => ({
-      providerId,
-      providerName: getProviderDisplayName(providerId),
-      models: [...models].sort(compareModelsByRecency),
-    }))
-
-    return groups.sort((a, b) => {
-      const aPriority = getProviderSortPriority(a.providerId)
-      const bPriority = getProviderSortPriority(b.providerId)
-      if (aPriority !== bPriority) return aPriority - bPriority
-      return a.providerName.localeCompare(b.providerName)
-    })
-  }, [availableModels])
-
   const filteredSavedModels = useMemo(() => {
     if (!normalizedModelSearchQuery) return savedModels
 
@@ -320,40 +356,6 @@ export function ModelSelection({ surface = 'page', route }: ModelSelectionProps)
 
     return filtered
   }, [groupedModels, normalizedModelSearchQuery])
-
-  useEffect(() => {
-    setExpandedProviders((previous) => {
-      if (groupedModels.length === 0) {
-        return Object.keys(previous).length === 0 ? previous : {}
-      }
-
-      const validProviderIds = new Set(groupedModels.map((group) => group.providerId))
-      let changed = false
-      const next: Record<string, boolean> = {}
-
-      for (const group of groupedModels) {
-        if (typeof previous[group.providerId] === 'boolean') {
-          next[group.providerId] = previous[group.providerId]
-        } else {
-          next[group.providerId] = false
-          changed = true
-        }
-      }
-
-      for (const providerId of Object.keys(previous)) {
-        if (!validProviderIds.has(providerId)) {
-          changed = true
-          break
-        }
-      }
-
-      if (!changed && Object.keys(previous).length === Object.keys(next).length) {
-        return previous
-      }
-
-      return next
-    })
-  }, [groupedModels])
 
   const content = (
     <div

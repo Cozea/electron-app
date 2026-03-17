@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -77,15 +77,19 @@ export function ProjectDependenciesPage() {
   }, [filteredDeps, currentPage])
 
   // Reset page when filter changes
-  useEffect(() => {
+  const [prevFilterDeps, setPrevFilterDeps] = useState({ filter, statusFilter })
+  if (filter !== prevFilterDeps.filter || statusFilter !== prevFilterDeps.statusFilter) {
+    setPrevFilterDeps({ filter, statusFilter })
     setCurrentPage(1)
-  }, [filter, statusFilter])
+  }
 
-  useEffect(() => {
+  const [prevTotalPagesDeps, setPrevTotalPagesDeps] = useState({ currentPage, totalPages })
+  if (currentPage !== prevTotalPagesDeps.currentPage || totalPages !== prevTotalPagesDeps.totalPages) {
+    setPrevTotalPagesDeps({ currentPage, totalPages })
     if (totalPages > 0 && currentPage > totalPages) {
       setCurrentPage(totalPages)
     }
-  }, [currentPage, totalPages])
+  }
 
   const inspectNow = useCallback(async () => {
     if (!projectPath || !window.electronAPI?.dependencies) return

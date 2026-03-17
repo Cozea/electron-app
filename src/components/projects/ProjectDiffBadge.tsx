@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState } from 'react'
 
 import type { Id } from '../../../convex/_generated/dataModel'
 import { useProjectDiffStatus } from '@/hooks/useProjectDiffStatus'
@@ -34,33 +34,38 @@ export function ProjectDiffBadge({
     lastSyncAt,
   })
 
-  const lastRenderableStatusRef = useRef<{
+  const [lastRenderableStatus, setLastRenderableStatus] = useState<{
     downloads: number
     uploads: number
     conflicts: number
   } | null>(null)
-  const wasVisibleRef = useRef(false)
+  
+  const [prevStatus, setPrevStatus] = useState(diffStatus)
+
+  if (diffStatus !== prevStatus) {
+    setPrevStatus(diffStatus)
+    if (diffStatus && !diffStatus.isChecking) {
+      const currentTotalChanges = diffStatus.downloads + diffStatus.uploads + diffStatus.conflicts
+      if (currentTotalChanges > 0) {
+        setLastRenderableStatus({
+          downloads: diffStatus.downloads,
+          uploads: diffStatus.uploads,
+          conflicts: diffStatus.conflicts,
+        })
+      } else {
+        setLastRenderableStatus(null)
+      }
+    }
+  }
 
   const currentTotalChanges = diffStatus
     ? diffStatus.downloads + diffStatus.uploads + diffStatus.conflicts
     : 0
 
-  if (diffStatus && !diffStatus.isChecking) {
-    if (currentTotalChanges > 0) {
-      lastRenderableStatusRef.current = {
-        downloads: diffStatus.downloads,
-        uploads: diffStatus.uploads,
-        conflicts: diffStatus.conflicts,
-      }
-    } else {
-      lastRenderableStatusRef.current = null
-    }
-  }
-
   const visibleStatus = !diffStatus
     ? null
     : diffStatus.isChecking
-      ? lastRenderableStatusRef.current
+      ? lastRenderableStatus
       : currentTotalChanges > 0
         ? {
             downloads: diffStatus.downloads,
@@ -70,11 +75,17 @@ export function ProjectDiffBadge({
         : null
 
   const isVisible = visibleStatus !== null
-  const shouldAnimateIn = isVisible && !wasVisibleRef.current
+  const [shouldAnimateIn, setShouldAnimateIn] = useState(false)
+  const [prevIsVisible, setPrevIsVisible] = useState(false)
 
-  useEffect(() => {
-    wasVisibleRef.current = isVisible
-  }, [isVisible])
+  if (isVisible !== prevIsVisible) {
+    setPrevIsVisible(isVisible)
+    if (isVisible) {
+      setShouldAnimateIn(true)
+    } else {
+      setShouldAnimateIn(false)
+    }
+  }
 
   const iconClassName = size === 'compact' ? 'h-3 w-3' : 'h-3.5 w-3.5'
   const countClassName = size === 'compact' ? 'text-[11px] leading-none' : 'text-xs leading-none'

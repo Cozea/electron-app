@@ -174,12 +174,12 @@ export function EditorTabs() {
         const el = scrollerRef.current
         if (!el) return
 
-        updateScrollFades()
+        requestAnimationFrame(() => updateScrollFades())
 
-        const onScroll = () => updateScrollFades()
+        const onScroll = () => requestAnimationFrame(() => updateScrollFades())
         el.addEventListener('scroll', onScroll, { passive: true })
 
-        const resizeObserver = new ResizeObserver(() => updateScrollFades())
+        const resizeObserver = new ResizeObserver(() => requestAnimationFrame(() => updateScrollFades()))
         resizeObserver.observe(el)
 
         return () => {

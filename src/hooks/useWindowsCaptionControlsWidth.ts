@@ -60,11 +60,13 @@ function readWindowsCaptionControlsWidth(): number {
 }
 
 export function useWindowsCaptionControlsWidth(): number {
-  const [width, setWidth] = useState<number>(() => readWindowsCaptionControlsWidth())
+  const [width, setWidth] = useState<number>(() => {
+    if (!isWindowsElectronClient()) return 0
+    return readWindowsCaptionControlsWidth()
+  })
 
   useEffect(() => {
     if (!isWindowsElectronClient()) {
-      setWidth(0)
       return
     }
 

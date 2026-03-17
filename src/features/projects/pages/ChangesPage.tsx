@@ -550,43 +550,57 @@ export function ChangesPage() {
     [backgroundPreloadIds]
   )
 
-  useEffect(() => {
+  const [prevSelectedChangeDeps, setPrevSelectedChangeDeps] = useState({ selectedChange, selectedChangeId })
+  if (selectedChange !== prevSelectedChangeDeps.selectedChange || selectedChangeId !== prevSelectedChangeDeps.selectedChangeId) {
+    setPrevSelectedChangeDeps({ selectedChange, selectedChangeId })
     if (!selectedChangeId) {
       setCachedSelectedChange(null)
-      return
-    }
-
-    if (selectedChange) {
+    } else if (selectedChange) {
       setCachedSelectedChange(selectedChange)
-      return
-    }
-
-    if (selectedChange === null) {
+    } else if (selectedChange === null) {
       setCachedSelectedChange(null)
     }
-  }, [selectedChange, selectedChangeId])
+  }
 
   // Auto-select the most recent change when activity loads
-  useEffect(() => {
+  const [prevActivityDeps, setPrevActivityDeps] = useState({ filteredActivity, selectedChangeId })
+  if (filteredActivity !== prevActivityDeps.filteredActivity || selectedChangeId !== prevActivityDeps.selectedChangeId) {
+    setPrevActivityDeps({ filteredActivity, selectedChangeId })
     if (!filteredActivity || filteredActivity.length === 0) {
       setSelectionWasUserDriven(false)
       setSelectedChangeId(null)
-      return
-    }
+    } else {
+      const selectedStillVisible = selectedChangeId
+        ? filteredActivity.some((item) => item.id === selectedChangeId)
+        : false
 
-    const selectedStillVisible = selectedChangeId
-      ? filteredActivity.some((item) => item.id === selectedChangeId)
-      : false
-
-    if (selectedChangeId === null || !selectedStillVisible) {
-      setSelectionWasUserDriven(false)
-      setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
+      if (selectedChangeId === null || !selectedStillVisible) {
+        setSelectionWasUserDriven(false)
+        setSelectedChangeId(filteredActivity[0].id as Id<"fileChanges">)
+      }
     }
-  }, [filteredActivity, selectedChangeId])
+  }
+
+  const [prevPreloadDeps, setPrevPreloadDeps] = useState({ filteredActivity, latestChangeId })
+  if (filteredActivity !== prevPreloadDeps.filteredActivity || latestChangeId !== prevPreloadDeps.latestChangeId) {
+    setPrevPreloadDeps({ filteredActivity, latestChangeId })
+    if (!filteredActivity || filteredActivity.length === 0 || !latestChangeId) {
+      setBackgroundPreloadIds([])
+    } else {
+      const deferredIds = filteredActivity
+        .map((item) => item.id as Id<"fileChanges">)
+        .filter((id) => id !== latestChangeId)
+
+      if (deferredIds.length === 0) {
+        setBackgroundPreloadIds([])
+      } else {
+        setBackgroundPreloadIds([])
+      }
+    }
+  }
 
   useEffect(() => {
     if (!filteredActivity || filteredActivity.length === 0 || !latestChangeId) {
-      setBackgroundPreloadIds([])
       return
     }
 
@@ -595,11 +609,8 @@ export function ChangesPage() {
       .filter((id) => id !== latestChangeId)
 
     if (deferredIds.length === 0) {
-      setBackgroundPreloadIds([])
       return
     }
-
-    setBackgroundPreloadIds([])
 
     const preloadBatchSize = 6
     let cursor = 0

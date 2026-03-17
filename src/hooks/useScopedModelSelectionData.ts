@@ -63,27 +63,55 @@ export function useScopedModelSelectionData(options: UseScopedModelSelectionData
   const [isSavingScopedModels, setIsSavingScopedModels] = useState(false)
   const [saveScopedModelsError, setSaveScopedModelsError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const [prevSavedDeps, setPrevSavedDeps] = useState({ allowedModels: convexOrg?.aiSettings?.allowedModels, storageMode, storageScope })
+  if (
+    prevSavedDeps.storageMode !== storageMode ||
+    prevSavedDeps.storageScope !== storageScope ||
+    prevSavedDeps.allowedModels !== convexOrg?.aiSettings?.allowedModels
+  ) {
+    setPrevSavedDeps({ allowedModels: convexOrg?.aiSettings?.allowedModels, storageMode, storageScope })
     if (storageMode === 'cloud') {
       const allowedModels = convexOrg?.aiSettings?.allowedModels ?? []
       setSavedModelIds(Array.from(new Set(allowedModels)))
-      return
+    } else {
+      setSavedModelIds(loadSavedModelIds(storageScope))
     }
+  }
 
-    setSavedModelIds(loadSavedModelIds(storageScope))
-  }, [convexOrg?.aiSettings?.allowedModels, storageMode, storageScope])
-
-  useEffect(() => {
+  const [prevAvailableDeps, setPrevAvailableDeps] = useState({ accessToken, scopedOrganizationId, isWorkspaceAccessDenied: settingsPage.isWorkspaceAccessDenied })
+  if (
+    prevAvailableDeps.accessToken !== accessToken ||
+    prevAvailableDeps.scopedOrganizationId !== scopedOrganizationId ||
+    prevAvailableDeps.isWorkspaceAccessDenied !== settingsPage.isWorkspaceAccessDenied
+  ) {
+    setPrevAvailableDeps({ accessToken, scopedOrganizationId, isWorkspaceAccessDenied: settingsPage.isWorkspaceAccessDenied })
     if (!accessToken || !scopedOrganizationId || settingsPage.isWorkspaceAccessDenied) {
       setAvailableModels([])
       setModelsError(null)
       setIsLoadingModels(false)
+    }
+  }
+
+  const [prevDeps, setPrevDeps] = useState({ accessToken, scopedOrganizationId, isDenied: settingsPage.isWorkspaceAccessDenied })
+
+  if (
+    accessToken !== prevDeps.accessToken ||
+    scopedOrganizationId !== prevDeps.scopedOrganizationId ||
+    settingsPage.isWorkspaceAccessDenied !== prevDeps.isDenied
+  ) {
+    setPrevDeps({ accessToken, scopedOrganizationId, isDenied: settingsPage.isWorkspaceAccessDenied })
+    if (accessToken && scopedOrganizationId && !settingsPage.isWorkspaceAccessDenied) {
+      setIsLoadingModels(true)
+      setModelsError(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!accessToken || !scopedOrganizationId || settingsPage.isWorkspaceAccessDenied) {
       return
     }
 
     let cancelled = false
-    setIsLoadingModels(true)
-    setModelsError(null)
 
     getModelCatalog({
       organizationId: scopedOrganizationId,

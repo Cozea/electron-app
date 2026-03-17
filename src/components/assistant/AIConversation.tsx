@@ -622,6 +622,7 @@ export function AIConversation({
     organizationId,
     providerAuthAvailable,
     providerStatusLoaded,
+    model,
   ])
 
   // Fetch enabled tools from AI Gateway

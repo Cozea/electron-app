@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -55,14 +55,16 @@ export function Account({ surface = 'page' }: AccountProps) {
   })
 
   // Initialize notification prefs from Convex profile
-  useEffect(() => {
+  const [prevProfile, setPrevProfile] = useState(profile)
+  if (profile !== prevProfile) {
+    setPrevProfile(profile)
     if (profile) {
       setNotificationPrefs({
         emailNotifications: profile.preferences?.emailNotifications ?? true,
         pushNotifications: profile.preferences?.pushNotifications ?? true,
       })
     }
-  }, [profile])
+  }
 
   // Derived state
   const displayName = profile?.firstName

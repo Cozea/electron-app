@@ -293,12 +293,21 @@ async function getCanonicalBillingAccountByOrganization(
 
 async function getCanonicalAccountSubscription(
   ctx: BillingReadCtx,
-  accountUserId: Id<"users">
+  accountUserId: Id<"users">,
+  organizationId?: Id<"organizations">
 ): Promise<Doc<"accountSubscriptions"> | null> {
   const records = await ctx.db
     .query("accountSubscriptions")
     .withIndex("by_account_user", (q) => q.eq("accountUserId", accountUserId))
     .collect()
+    
+  if (organizationId) {
+    const filtered = records.filter(r => r.legacyOrganizationId === organizationId)
+    if (filtered.length > 0) {
+      return pickCanonicalRecord(filtered)
+    }
+  }
+  
   return pickCanonicalRecord(records)
 }
 
@@ -450,7 +459,19 @@ export const upsertAccountSubscriptionForServer = mutation({
     assertGatewaySecret(args.serverSecret)
 
     const now = Date.now()
-    const existing = await getCanonicalAccountSubscription(ctx, args.accountUserId)
+    
+    let existing: Doc<"accountSubscriptions"> | null = null
+    if (args.stripeSubscriptionId) {
+      existing = await ctx.db
+        .query("accountSubscriptions")
+        .withIndex("by_stripe_subscription", (q) => q.eq("stripeSubscriptionId", args.stripeSubscriptionId as string))
+        .first()
+    }
+    
+    if (!existing) {
+      existing = await getCanonicalAccountSubscription(ctx, args.accountUserId, args.legacyOrganizationId)
+    }
+    
     const normalizedSeatQuantity =
       args.plan === "startup" || args.plan === "enterprise"
         ? normalizeStartupSeatQuantity(args.seatQuantity)
@@ -606,9 +627,9 @@ export const getSeatManagement = query({
     const [billingUser, billingAccountSubscription, viewerAccountSubscription, assignmentRows] = await Promise.all([
       billingAccount ? ctx.db.get(billingAccount.billingUserId) : Promise.resolve(null),
       billingAccount
-        ? getCanonicalAccountSubscription(ctx, billingAccount.billingUserId)
+        ? getCanonicalAccountSubscription(ctx, billingAccount.billingUserId, args.organizationId)
         : Promise.resolve(null),
-      getCanonicalAccountSubscription(ctx, args.userId),
+      getCanonicalAccountSubscription(ctx, args.userId, args.organizationId),
       billingAccount
         ? ctx.db
             .query("accountSeatAssignments")

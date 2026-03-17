@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import type { UIMessage } from 'ai'
 
 import type { PlanOption } from './PlanSelector'
@@ -38,16 +38,16 @@ function validatePlans(plans: unknown[]): PlanOption[] {
 }
 
 export function usePlanOptionsExtraction(messages: UIMessage[]): PlanOption[] | null {
-  const [planOptions, setPlanOptions] = useState<PlanOption[] | null>(null)
-  const extractedPlanCountRef = useRef(0)
-
-  useEffect(() => {
-    if (extractedPlanCountRef.current >= 3) return
+  return useMemo(() => {
+    let extractedPlans: PlanOption[] | null = null
+    let extractedCount = 0
 
     for (const message of messages) {
+      if (extractedCount >= 3) break
       if (message.role !== 'assistant') continue
 
       for (const part of message.parts) {
+        if (extractedCount >= 3) break
         const partType = part.type as string
         const toolPart = part as ToolPart
         const isPresentPlans =
@@ -66,10 +66,9 @@ export function usePlanOptionsExtraction(messages: UIMessage[]): PlanOption[] | 
               const output = typeof rawOutput === 'string' ? JSON.parse(rawOutput) : rawOutput
               if (isRecord(output) && Array.isArray(output.plans)) {
                 const validPlans = validatePlans(output.plans)
-                if (validPlans.length > extractedPlanCountRef.current) {
-                  extractedPlanCountRef.current = validPlans.length
-                  setPlanOptions(validPlans)
-                  if (validPlans.length >= 3) return
+                if (validPlans.length > extractedCount) {
+                  extractedCount = validPlans.length
+                  extractedPlans = validPlans
                 }
               }
             } catch (error) {
@@ -77,17 +76,15 @@ export function usePlanOptionsExtraction(messages: UIMessage[]): PlanOption[] | 
             }
           } else if (isRecord(rawInput) && Array.isArray(rawInput.plans)) {
             const validPlans = validatePlans(rawInput.plans)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
+            if (validPlans.length > extractedCount) {
+              extractedCount = validPlans.length
+              extractedPlans = validPlans
             }
           } else if (Array.isArray(toolPart.plans)) {
             const validPlans = validatePlans(toolPart.plans)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
+            if (validPlans.length > extractedCount) {
+              extractedCount = validPlans.length
+              extractedPlans = validPlans
             }
           }
         }
@@ -96,16 +93,14 @@ export function usePlanOptionsExtraction(messages: UIMessage[]): PlanOption[] | 
           const data = (part as { data?: unknown }).data
           if (Array.isArray(data)) {
             const validPlans = validatePlans(data)
-            if (validPlans.length > extractedPlanCountRef.current) {
-              extractedPlanCountRef.current = validPlans.length
-              setPlanOptions(validPlans)
-              if (validPlans.length >= 3) return
+            if (validPlans.length > extractedCount) {
+              extractedCount = validPlans.length
+              extractedPlans = validPlans
             }
           }
         }
       }
     }
+    return extractedPlans
   }, [messages])
-
-  return planOptions
 }
