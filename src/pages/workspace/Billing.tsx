@@ -2181,9 +2181,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
-                    <TableHead>Member</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-right">Paid Seat</TableHead>
+                    <TableHead className="w-[42%]">Member</TableHead>
+                    <TableHead className="w-[18%]">Role</TableHead>
+                    <TableHead className="w-[40%] text-right">Paid Seat</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -2211,28 +2211,30 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
                       return (
                         <TableRow key={member._id}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
+                          <TableCell className="overflow-hidden">
+                            <div className="flex min-w-0 items-center gap-3">
                               <Avatar className="h-8 w-8">
                                 <AvatarImage src={member.user?.profileImageUrl || undefined} />
                                 <AvatarFallback>
                                   {(displayName || '?').slice(0, 2).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">{displayName}</p>
-                                <p className="text-xs text-muted-foreground">{member.user?.email || '-'}</p>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{displayName}</p>
+                                <p className="truncate text-xs text-muted-foreground">{member.user?.email || '-'}</p>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge className="border-0 bg-primary/10 text-primary">
-                              {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                          <TableCell className="overflow-hidden">
+                            <Badge className="max-w-full shrink justify-start border-0 bg-primary/10 text-primary">
+                              <span className="truncate">
+                                {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                              </span>
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-3">
-                              <span className="text-xs text-muted-foreground">
+                          <TableCell className="overflow-hidden text-right">
+                            <div className="flex min-w-0 items-center justify-end gap-3 overflow-hidden">
+                              <span className="truncate text-xs text-muted-foreground">
                                 {isBillingOwner
                                   ? 'Always included'
                                   : hasSeat
@@ -2240,11 +2242,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                                     : 'Not assigned'}
                               </span>
                               {isBusy ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                               ) : (
                                 <Checkbox
                                   checked={hasSeat}
                                   disabled={!canToggle || !hasAvailableSeat}
+                                  className="shrink-0"
                                   onCheckedChange={(checked) => {
                                     const nextActive = checked === true
                                     if (nextActive === hasSeat) return
@@ -2352,10 +2355,10 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                 <Table className="[&_th]:px-4 [&_td]:px-4">
                   <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                     <TableRow>
-                      <TableHead>Seat User</TableHead>
-                      <TableHead>Available</TableHead>
-                      <TableHead>Included / Cycle</TableHead>
-                      <TableHead className="text-right">Updated</TableHead>
+                      <TableHead className="w-[42%]">Seat User</TableHead>
+                      <TableHead className="w-[18%]">Available</TableHead>
+                      <TableHead className="w-[20%]">Included / Cycle</TableHead>
+                      <TableHead className="w-[20%] text-right">Updated</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -2368,20 +2371,20 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
                         return (
                           <TableRow key={String(entry.userId)}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
+                            <TableCell className="overflow-hidden">
+                              <div className="flex min-w-0 items-center gap-3">
                                 <Avatar className="h-8 w-8">
                                   <AvatarImage src={entry.profileImageUrl || undefined} />
                                   <AvatarFallback>
                                     {(displayName || '?').slice(0, 2).toUpperCase()}
                                   </AvatarFallback>
                                 </Avatar>
-                                <div>
-                                  <p className="text-sm font-medium">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">
                                     {displayName}
                                     {entry.isBillingOwner ? ' (Owner)' : ''}
                                   </p>
-                                  <p className="text-xs text-muted-foreground">{entry.email}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{entry.email}</p>
                                 </div>
                               </div>
                             </TableCell>

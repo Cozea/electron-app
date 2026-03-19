@@ -42,6 +42,7 @@ import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { formatProjectDeleteError } from '../lib/projectMutationPresentation'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
@@ -148,14 +149,13 @@ export const ProjectListRow = memo(function ProjectListRow({
             })
         } catch (error) {
             console.error('Failed to delete project:', error)
-            const message = error instanceof Error ? error.message : 'Failed to delete project'
-            const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+            const presentation = formatProjectDeleteError(error)
             
             await window.electronAPI.dialog.showMessageBox({
                 type: 'error',
-                title: 'Delete Failed',
-                message: 'Failed to delete project',
-                detail: cleanMessage
+                title: presentation.title,
+                message: presentation.message,
+                detail: presentation.detail ?? undefined,
             })
         } finally {
             setIsDeleting(false)

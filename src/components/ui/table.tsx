@@ -2,6 +2,20 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+function wrapPlainTableText(children: React.ReactNode): React.ReactNode {
+  const childArray = React.Children.toArray(children)
+  if (childArray.length !== 1) {
+    return children
+  }
+
+  const [child] = childArray
+  if (typeof child !== "string" && typeof child !== "number") {
+    return children
+  }
+
+  return <span className="block min-w-0 max-w-full truncate">{child}</span>
+}
+
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
@@ -63,29 +77,33 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+function TableHead({ className, children, ...props }: React.ComponentProps<"th">) {
   return (
     <th
       data-slot="table-head"
       className={cn(
-        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "text-foreground h-10 overflow-hidden px-2 text-left align-middle font-medium whitespace-nowrap text-ellipsis [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] [&>div]:max-w-full [&>div]:min-w-0 [&>div]:overflow-hidden",
         className
       )}
       {...props}
-    />
+    >
+      {wrapPlainTableText(children)}
+    </th>
   )
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({ className, children, ...props }: React.ComponentProps<"td">) {
   return (
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "overflow-hidden p-2 align-middle whitespace-nowrap text-ellipsis [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] [&>div]:max-w-full [&>div]:min-w-0 [&>div]:overflow-hidden [&>div>div]:max-w-full [&>div>div]:min-w-0",
         className
       )}
       {...props}
-    />
+    >
+      {wrapPlainTableText(children)}
+    </td>
   )
 }
 

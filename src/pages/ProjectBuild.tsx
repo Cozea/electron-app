@@ -40,6 +40,7 @@ import {
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { prepareGitProjectForOpen } from '@/features/projects/lib/projectOpenGitSync'
 import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
 import {
@@ -1004,7 +1005,8 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       navigate('/projects')
     } catch (error) {
       console.error('Failed to delete project:', error)
-      setStatusMessage('Failed to delete project')
+      const presentation = formatProjectDeleteError(error)
+      setStatusMessage(presentation.message)
     }
   }
 

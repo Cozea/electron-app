@@ -6,6 +6,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { buildLegacyProjectPath, buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -160,7 +161,12 @@ export function ProjectSettingsPage() {
       setDeleteConfirmName('')
       navigate('/projects')
     } catch (error) {
-      setDeleteError(cleanConvexError(error, 'Failed to delete project'))
+      const presentation = formatProjectDeleteError(error)
+      setDeleteError(
+        presentation.detail
+          ? `${presentation.message} ${presentation.detail}`
+          : presentation.message
+      )
     } finally {
       setIsDeleting(false)
     }
