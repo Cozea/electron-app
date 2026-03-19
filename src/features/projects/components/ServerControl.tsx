@@ -59,6 +59,27 @@ const isWindowsClient = (): boolean => {
     return /win/i.test(platformHint)
 }
 
+interface AutoStartState {
+    hasAttempted: boolean
+    suppressed: boolean
+}
+
+const autoStartStateByProjectPath = new Map<string, AutoStartState>()
+
+function getAutoStartState(projectPath: string): AutoStartState {
+    const existing = autoStartStateByProjectPath.get(projectPath)
+    if (existing) {
+        return existing
+    }
+
+    const created: AutoStartState = {
+        hasAttempted: false,
+        suppressed: false,
+    }
+    autoStartStateByProjectPath.set(projectPath, created)
+    return created
+}
+
 interface ServerControlProps {
     projectPath?: string | null
     // Optional stored framework info from Convex (uses detection as fallback)
@@ -661,6 +682,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
         try {
             setIsUpdating(true)
+            const autoStartState = getAutoStartState(projectPath)
+            autoStartState.hasAttempted = true
+            autoStartState.suppressed = false
             const runId = createRunId()
             devServerRunIdRef.current = runId
             actions.beginServerRun(runId)
@@ -768,13 +792,13 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     }, [actions, addTimelineEvent, createRunId, launchDevServerTerminal, projectPath])
 
     // Auto-start dev server when entering the pages page (runs after handleStart is defined)
-    const hasAutoStartedRef = useRef(false)
     useEffect(() => {
         if (!projectPath) return
-        if (hasAutoStartedRef.current) return
+        const autoStartState = getAutoStartState(projectPath)
+        if (autoStartState.hasAttempted || autoStartState.suppressed) return
         const status = useProjectPagesStore.getState().serverStatus
         if (status !== 'stopped' && status !== 'error') return
-        hasAutoStartedRef.current = true
+        autoStartState.hasAttempted = true
         void (async () => {
             try {
                 await handleStart()
@@ -786,10 +810,13 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     const handleStop = useCallback(async () => {
         const terminalId = devServerTerminalIdRef.current
-        if (!terminalId) return
+        if (!terminalId || !projectPath) return
 
         try {
             setIsUpdating(true)
+            const autoStartState = getAutoStartState(projectPath)
+            autoStartState.hasAttempted = true
+            autoStartState.suppressed = true
             clearReadyTimeout()
             pendingReadyProbeKeyRef.current = null
             const activeRunId = devServerRunIdRef.current
@@ -823,7 +850,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         } finally {
             setIsUpdating(false)
         }
-    }, [actions, addTimelineEvent, clearReadyTimeout, removeTerminal])
+    }, [actions, addTimelineEvent, clearReadyTimeout, projectPath, removeTerminal])
 
     return (
         <>

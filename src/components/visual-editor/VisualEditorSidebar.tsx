@@ -33,7 +33,14 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { useVisualEditorStore, type ElementStyles, type EditorTab, type StyleState } from '@/stores/useVisualEditorStore'
+import {
+ useVisualEditorStore,
+ type DirectEditableAttributeName,
+ type DirectEditableAttributes,
+ type EditorTab,
+ type ElementStyles,
+ type StyleState,
+} from '@/stores/useVisualEditorStore'
 import { IconGridInput } from './IconGridInput'
 import {
  FLEX_DIRECTION_OPTIONS,
@@ -57,9 +64,14 @@ import { matchesSearch } from './propertySearchUtils'
 interface VisualEditorSidebarProps {
  onPreviewStyle: (styles: Partial<ElementStyles>) => void
  onPreviewText: (text: string) => void
- onApplyChanges: () => void
- onClose?: () => void
- className?: string
+ onApplyChanges: () => Promise<void> | void
+  onClose?: () => void
+  saveFeedback?: {
+  message: string | null
+  tone: 'default' | 'destructive' | 'success' | 'warning'
+  }
+  savePending?: boolean
+  className?: string
 }
 
 const MIN_PANEL_WIDTH = 240
@@ -175,6 +187,71 @@ function getRelevantSections(tagName: string | undefined): {
  return { showSize: true, showLayout: true, showText: false, showContent: false }
  }
  return { showSize: true, showLayout: true, showText: true, showContent: TEXT_EDITABLE_ELEMENTS.includes(tag) }
+}
+
+const ATTRIBUTE_FIELD_CONFIG: Record<
+ DirectEditableAttributeName,
+ { label: string; placeholder: string }
+> = {
+ alt: { label: 'alt', placeholder: 'Accessible image description' },
+ 'aria-label': { label: 'aria-label', placeholder: 'Accessible label' },
+ className: { label: 'class', placeholder: 'class-names' },
+ href: { label: 'href', placeholder: '/path or https://…' },
+ id: { label: 'id', placeholder: 'element-id' },
+ src: { label: 'src', placeholder: '/image.png or https://…' },
+ title: { label: 'title', placeholder: 'Tooltip title' },
+}
+
+function parseSelectedElementAttributes(htmlSnippet: string | undefined, selectedElementId?: string, selectedClassName?: string): DirectEditableAttributes {
+ if (!htmlSnippet) {
+ return {
+ className: selectedClassName ?? '',
+ id: selectedElementId ?? '',
+ }
+ }
+
+ try {
+ const parser = new DOMParser()
+ const document = parser.parseFromString(htmlSnippet, 'text/html')
+ const element = document.body.firstElementChild
+ if (!element) {
+ return {
+ className: selectedClassName ?? '',
+ id: selectedElementId ?? '',
+ }
+ }
+
+ return {
+ alt: element.getAttribute('alt') ?? '',
+ 'aria-label': element.getAttribute('aria-label') ?? '',
+ className: element.getAttribute('class') ?? selectedClassName ?? '',
+ href: element.getAttribute('href') ?? '',
+ id: element.getAttribute('id') ?? selectedElementId ?? '',
+ src: element.getAttribute('src') ?? '',
+ title: element.getAttribute('title') ?? '',
+ }
+ } catch {
+ return {
+ className: selectedClassName ?? '',
+ id: selectedElementId ?? '',
+ }
+ }
+}
+
+function getAttributeFields(tagName: string | undefined, defaults: DirectEditableAttributes): DirectEditableAttributeName[] {
+ const tag = tagName?.toLowerCase() ?? ''
+ const fields: DirectEditableAttributeName[] = ['id', 'className', 'title', 'aria-label']
+
+ if (tag === 'a' || defaults.href) {
+ fields.splice(2, 0, 'href')
+ }
+
+ if (tag === 'img' || defaults.src || defaults.alt) {
+ fields.splice(2, 0, 'src')
+ fields.splice(3, 0, 'alt')
+ }
+
+ return Array.from(new Set(fields))
 }
 
 // Toggle button for text styling
@@ -918,8 +995,10 @@ export function VisualEditorSidebar({
  onPreviewStyle,
  onPreviewText,
  onApplyChanges,
- onClose,
- className,
+  onClose,
+  saveFeedback,
+  savePending = false,
+  className,
 }: VisualEditorSidebarProps) {
  const {
  isOpen,
@@ -927,6 +1006,7 @@ export function VisualEditorSidebar({
  selectedElement,
  pendingChanges,
  pendingTextChange,
+ pendingAttributes,
  styleState,
  activeTab,
  searchQuery,
@@ -935,6 +1015,7 @@ export function VisualEditorSidebar({
  openingAfterSwitch,
  close,
  clearPendingChanges,
+ updatePendingAttribute,
  updatePendingText,
  updatePendingChange,
  setStyleState,
@@ -987,10 +1068,21 @@ export function VisualEditorSidebar({
  const dragStartX = useRef(0)
  const dragStartWidth = useRef(0)
 
-  const hasChanges = Object.keys(pendingChanges).length > 0 || pendingTextChange !== null
+  const hasChanges =
+    Object.keys(pendingChanges).length > 0 ||
+    pendingTextChange !== null ||
+    Object.keys(pendingAttributes).length > 0
   const contentValue = pendingTextChange !== null ? pendingTextChange : (selectedElement?.textContent || '')
   console.log('[VisualEditor][sidebar:render] contentValue:', contentValue, 'pendingTextChange:', pendingTextChange, 'selectedElement.textContent:', selectedElement?.textContent)
   const selectedElementKey = selectedElement?.path?.join('.') ?? selectedElement?.selector ?? 'none'
+  const attributeDefaults = useMemo(
+    () => parseSelectedElementAttributes(selectedElement?.htmlSnippet, selectedElement?.id, selectedElement?.className),
+    [selectedElement?.className, selectedElement?.htmlSnippet, selectedElement?.id]
+  )
+  const attributeFields = useMemo(
+    () => getAttributeFields(selectedElement?.tagName, attributeDefaults),
+    [attributeDefaults, selectedElement?.tagName]
+  )
 
  const sections = useMemo(
  () => getRelevantSections(selectedElement?.tagName),
@@ -1011,6 +1103,15 @@ export function VisualEditorSidebar({
  },
  [updatePendingText, onPreviewText]
  )
+
+ const handleAttributeChange = useCallback((attribute: DirectEditableAttributeName, value: string) => {
+  const originalValue = attributeDefaults[attribute] ?? ''
+  if (value === originalValue) {
+   updatePendingAttribute(attribute, null)
+   return
+  }
+  updatePendingAttribute(attribute, value)
+ }, [attributeDefaults, updatePendingAttribute])
 
  const handleReset = useCallback(() => {
  const originalText = selectedElement?.textContent ?? ''
@@ -1513,13 +1614,25 @@ export function VisualEditorSidebar({
  <TabsContent value="attributes" className="flex-1 flex flex-col overflow-hidden m-0">
  <ScrollArea className="flex-1 min-w-0">
  <div className="p-3 space-y-3 min-w-0 w-full">
- <p className="text-xs text-muted-foreground">
- HTML attributes editing coming soon.
- </p>
  {selectedElement && (
  <div className="space-y-2">
- <InlineTextInput label="id" property="zIndex" placeholder="element-id" onPreview={() => {}} />
- <InlineTextInput label="class" property="zIndex" placeholder="class-names" onPreview={() => {}} />
+ {attributeFields.map((attribute) => {
+ const config = ATTRIBUTE_FIELD_CONFIG[attribute]
+ const value = pendingAttributes[attribute] ?? attributeDefaults[attribute] ?? ''
+ return (
+ <div key={`${selectedElementKey}:${attribute}`} className="space-y-1.5">
+ <Label className="text-[11px] text-sidebar-foreground/70">{config.label}</Label>
+ <Input
+ type="text"
+ value={value}
+ onChange={(event) => handleAttributeChange(attribute, event.target.value)}
+ className="h-9 rounded-2xl bg-secondary/80 pl-4 pr-2 font-mono text-[11px] focus-visible:ring-sidebar-ring/40"
+ placeholder={config.placeholder}
+ spellCheck={false}
+ />
+ </div>
+ )
+ })}
  </div>
  )}
  </div>
@@ -1590,9 +1703,22 @@ export function VisualEditorSidebar({
 
  {/* Footer */}
  <div className="px-3 py-2 space-y-2">
- <div className="flex gap-2">
- <Button
- variant="outline"
+  {saveFeedback?.message ? (
+  <p
+  className={cn(
+  'text-[11px]',
+  saveFeedback.tone === 'success' && 'text-emerald-600 dark:text-emerald-400',
+  saveFeedback.tone === 'warning' && 'text-amber-600 dark:text-amber-400',
+  saveFeedback.tone === 'destructive' && 'text-destructive',
+  saveFeedback.tone === 'default' && 'text-muted-foreground'
+  )}
+  >
+  {saveFeedback.message}
+  </p>
+  ) : null}
+  <div className="flex gap-2">
+  <Button
+  variant="outline"
  size="sm"
  className="flex-1 h-8 text-[11px] bg-background/40 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
  onClick={handleReset}
@@ -1601,16 +1727,16 @@ export function VisualEditorSidebar({
  <RotateCcw className="h-3 w-3 mr-1" />
  Reset
  </Button>
- <Button
- size="sm"
- className="flex-1 h-8 text-[11px]"
- onClick={handleApply}
- disabled={!hasChanges}
- >
- Apply
- </Button>
- </div>
- </div>
+  <Button
+  size="sm"
+  className="flex-1 h-8 text-[11px]"
+  onClick={handleApply}
+  disabled={!hasChanges || savePending}
+  >
+  {savePending ? 'Saving…' : 'Save'}
+  </Button>
+  </div>
+  </div>
  </div>
 </div>
  )

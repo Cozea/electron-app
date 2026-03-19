@@ -11,61 +11,49 @@ import {
     type ServerStatus,
 } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
+import { useCachedPreviewUrl } from '@/hooks/useCachedPreviewUrl'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
 import { useProblemsStore } from '@/stores/useProblemsStore'
-import { scanForRoutes } from '@/utils/routeScanner'
 import { findBestPreviewRouteIndex, resolveNavigationPathFromBridge } from '@/lib/previewRouteMatching'
 import {
-    injectBridgeScript,
-    sendBridgeMessage,
-    type BridgeMessage,
-    type SelectedElementData,
-    type ElementContextMenuData,
+  injectBridgeScript,
+  sendBridgeMessage,
+  type BridgeMessage,
+  type ElementContextMenuData,
+  type SelectedElementData,
 } from '@/utils/previewBridge'
+import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
+import { ProjectPreviewGrid } from '@/features/projects/components/previews/ProjectPreviewGrid'
+import { ProjectPreviewThumbnailStrip } from '@/features/projects/components/previews/ProjectPreviewThumbnailStrip'
+import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
+import { type PreviewRouteViewModel } from '@/features/projects/components/previews/types'
 import { ServerControl } from '../components/ServerControl'
-import { TaskFocusOverlay } from '../components/TaskFocusOverlay'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { useProjectRouteScan } from '../hooks/useProjectRouteScan'
 import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-    FileText,
-    Monitor,
-    Tablet,
-    Smartphone,
-    ZoomIn,
-    ZoomOut,
-    RefreshCw,
-    AppWindow,
-    Loader2,
-    LayoutGrid,
-    ExternalLink,
-    Sparkles,
-    Camera,
-    MousePointer2,
-    CheckCircle2,
-    ChevronDown,
-    PanelLeft,
+  FileText,
+  Loader2,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
-import { CompactPresenceIndicator, type CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
+import type { CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
+import {
+  captureAndCacheRoutePreview,
+  getCachedRoutePreviewUrl,
+  invalidateRoutePreviewCache,
+} from '@/features/projects/lib/routePreviewImageCache'
+import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 
 interface ProjectPresenceUser extends CompactPresenceUser {
@@ -98,10 +86,15 @@ function isChromeErrorUrl(url?: string | null): boolean {
 
 type PreviewEmbedMode = 'standard' | 'credentialless'
 
+type VisualSaveFeedbackTone = 'default' | 'destructive' | 'success' | 'warning'
+
+interface VisualSaveFeedback {
+    isSaving: boolean
+    message: string | null
+    tone: VisualSaveFeedbackTone
+}
+
 const BRIDGE_READY_TIMEOUT_MS = 2500
-const MIN_ZOOM_PERCENT = 25
-const MAX_ZOOM_PERCENT = 200
-const ZOOM_STEP_PERCENT = 25
 
 function resolvePreviewEmbedModeForRun(
     serverStatus: ServerStatus,
@@ -141,6 +134,8 @@ export function ProjectPagesPage() {
     const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
     const activeServerRunId = serverLifecycle.runId
     const togglePagesListOpen = actions.togglePagesListOpen
+    const currentPage = usePageContextStore((state) => state.currentPage)
+    const inspectedElement = usePageContextStore((state) => state.inspectedElement)
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
@@ -157,6 +152,11 @@ export function ProjectPagesPage() {
     const [isScanningAI, setIsScanningAI] = useState(false)
     const [inspectorEnabled, setInspectorEnabled] = useState(false)
     const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
+    const [visualSaveFeedback, setVisualSaveFeedback] = useState<VisualSaveFeedback>({
+        isSaving: false,
+        message: null,
+        tone: 'default',
+    })
     const [bridgeReady, setBridgeReady] = useState(false)
     const [bridgeError, setBridgeError] = useState<string | null>(null)
     const [, setBridgeLogs] = useState<Array<{ time: Date; message: string; type: 'info' | 'error' | 'success' }>>([])
@@ -172,12 +172,8 @@ export function ProjectPagesPage() {
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const [zoom, setZoom] = useState(100)
-    const [zoomInputValue, setZoomInputValue] = useState('100')
-    const thumbnailStripRef = useRef<HTMLDivElement>(null)
+    const [routePreviewCacheVersion, setRoutePreviewCacheVersion] = useState(0)
     const iframeRef = useRef<HTMLIFrameElement>(null)
-    const headerRef = useRef<HTMLDivElement>(null)
-    const [headerWidth, setHeaderWidth] = useState<number>(0)
-    const [toolbarTooltip, setToolbarTooltip] = useState<'screenshot' | 'inspector' | 'preview' | null>(null)
     const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
     const focusedIframeLoadedPathRef = useRef<string | null>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
@@ -212,6 +208,17 @@ export function ProjectPagesPage() {
             setTaskOverlay(locationState.taskOverlay)
         }
     }, [locationState?.taskOverlay])
+
+    const selectedElementPathKey = selectedElement?.path?.join('.') ?? null
+    const selectedElementSelector = selectedElement?.selector ?? null
+
+    useEffect(() => {
+        setVisualSaveFeedback({
+            isSaving: false,
+            message: null,
+            tone: 'default',
+        })
+    }, [selectedElementPathKey, selectedElementSelector])
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
@@ -279,40 +286,6 @@ export function ProjectPagesPage() {
     const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
     const prevProjectPathRef = useRef<string | null>(null)
 
-    const clampZoomPercent = useCallback((value: number) => {
-        return Math.max(MIN_ZOOM_PERCENT, Math.min(MAX_ZOOM_PERCENT, Math.round(value)))
-    }, [])
-
-    const handleZoomStepDown = useCallback(() => {
-        setZoom((previous) => clampZoomPercent(previous - ZOOM_STEP_PERCENT))
-    }, [clampZoomPercent])
-
-    const handleZoomStepUp = useCallback(() => {
-        setZoom((previous) => clampZoomPercent(previous + ZOOM_STEP_PERCENT))
-    }, [clampZoomPercent])
-
-    const commitZoomInput = useCallback(() => {
-        const normalized = zoomInputValue.replace('%', '').trim()
-        if (!normalized) {
-            setZoomInputValue(String(zoom))
-            return
-        }
-
-        const parsed = Number(normalized)
-        if (!Number.isFinite(parsed)) {
-            setZoomInputValue(String(zoom))
-            return
-        }
-
-        const nextZoom = clampZoomPercent(parsed)
-        setZoom(nextZoom)
-        setZoomInputValue(String(nextZoom))
-    }, [clampZoomPercent, zoom, zoomInputValue])
-
-    useEffect(() => {
-        setZoomInputValue(String(zoom))
-    }, [zoom])
-
     useEffect(() => {
         if (focusedRoute?.path) {
             setCachedFocusedRoutePath(focusedRoute.path)
@@ -344,28 +317,6 @@ export function ProjectPagesPage() {
             focusedIframeLoadedPathRef.current = null
         }
     }, [routes, cachedFocusedRoutePath])
-
-    useEffect(() => {
-        const el = headerRef.current
-        if (!el) return
-
-        setHeaderWidth(Math.round(el.getBoundingClientRect().width))
-
-        const resizeObserver = new ResizeObserver((entries) => {
-            const entry = entries[0]
-            if (!entry) return
-            setHeaderWidth(Math.round(entry.contentRect.width))
-        })
-
-        resizeObserver.observe(el)
-        return () => resizeObserver.disconnect()
-    }, [])
-
-    const toolbarDensity = useMemo<'full' | 'compact' | 'minimal'>(() => {
-        if (headerWidth >= 860) return 'full'
-        if (headerWidth >= 640) return 'compact'
-        return 'minimal'
-    }, [headerWidth])
 
     // Reset project-scoped UI state when switching projects (prevents "wrong project" preview/terminals)
     useEffect(() => {
@@ -447,6 +398,45 @@ export function ProjectPagesPage() {
         },
         [presenceByFilePath, presenceByRoutePath]
     )
+    const { url: projectPreviewImageUrl } = useCachedPreviewUrl(
+        project?._id,
+        convexUserId ?? undefined,
+        { enabled: Boolean(project?._id && convexUserId) }
+    )
+
+    const routePreviewImageUrlByPath = useMemo(() => {
+        const currentProjectId = project?._id ? String(project._id) : null
+        if (!currentProjectId) {
+            return new Map<string, string | null>()
+        }
+
+        return new Map(
+            routes.map((route) => [
+                `${routePreviewCacheVersion}:${route.path}`,
+                getCachedRoutePreviewUrl(currentProjectId, route.path),
+            ])
+        )
+    }, [project?._id, routePreviewCacheVersion, routes])
+    const routeViewModels = useMemo<PreviewRouteViewModel[]>(() => {
+        return routes.map((route) => ({
+            route,
+            previewUrl: buildRoutePreviewUrl(route.path),
+            previewImageUrl: routePreviewImageUrlByPath.get(`${routePreviewCacheVersion}:${route.path}`) ?? null,
+            fallbackPreviewImageUrl: projectPreviewImageUrl,
+            presenceUsers: getRoutePresenceUsers(route.path, route.file),
+        }))
+    }, [
+        buildRoutePreviewUrl,
+        getRoutePresenceUsers,
+        projectPreviewImageUrl,
+        routePreviewCacheVersion,
+        routePreviewImageUrlByPath,
+        routes,
+    ])
+    const previewRouteViewModel = useMemo(
+        () => previewRoute ? routeViewModels.find((routeViewModel) => routeViewModel.route.path === previewRoute.path) ?? null : null,
+        [previewRoute, routeViewModels]
+    )
 
     const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
     const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
@@ -478,19 +468,20 @@ export function ProjectPagesPage() {
             devPort: project.frameworkInfo.devPort,
         }
     }, [project?.frameworkInfo])
+    const {
+        routes: scannedRoutes,
+        refreshRoutes,
+    } = useProjectRouteScan({
+        projectPath,
+        storedFrameworkInfo,
+    })
 
-    const refreshRoutes = useCallback(async () => {
-        if (!projectPath) return
-        const result = await scanForRoutes(projectPath, storedFrameworkInfo)
-        actions.setRoutes(result.routes.map(r => ({ ...r, status: 'active' as const })))
-    }, [actions, projectPath, storedFrameworkInfo])
-
-    // Scan for routes when project loads
     useEffect(() => {
-        if (projectPath) {
-            refreshRoutes()
-        }
-    }, [projectPath, refreshRoutes])
+        actions.setRoutes(scannedRoutes.map((route) => ({
+            ...route,
+            status: 'active' as const,
+        })))
+    }, [actions, scannedRoutes])
 
     // Capture home page screenshot and upload as project preview (for Projects dashboard showcase)
     const captureAndUploadProjectPreview = useCallback(async () => {
@@ -554,6 +545,67 @@ export function ProjectPagesPage() {
             }
         }
     }, [])
+
+    useEffect(() => {
+        if (!projectPath || !project?._id) return
+
+        const projectId = String(project._id)
+        const invalidateProjectRoutePreviews = () => {
+            invalidateRoutePreviewCache(projectId)
+            setRoutePreviewCacheVersion((value) => value + 1)
+        }
+
+        const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(({ filePath }) => {
+            if (!filePath.startsWith(projectPath)) return
+            invalidateProjectRoutePreviews()
+        })
+
+        const cleanupDelete = window.electronAPI.yjs?.onExternalFileDelete?.(({ filePath }) => {
+            if (!filePath.startsWith(projectPath)) return
+            invalidateProjectRoutePreviews()
+        })
+
+        return () => {
+            cleanupChange?.()
+            cleanupDelete?.()
+        }
+    }, [project?._id, projectPath])
+
+    useEffect(() => {
+        if (!previewReady || !focusedPreviewUrl || !previewRoute?.path || !project?._id) {
+            return
+        }
+
+        const projectId = String(project._id)
+        if (getCachedRoutePreviewUrl(projectId, previewRoute.path)) {
+            return
+        }
+
+        let cancelled = false
+        const timerId = window.setTimeout(() => {
+            void captureAndCacheRoutePreview(
+                projectId,
+                previewRoute.path,
+                focusedPreviewUrl,
+                {
+                    attempts: 2,
+                    height: 720,
+                    width: 1280,
+                }
+            ).then(() => {
+                if (!cancelled) {
+                    setRoutePreviewCacheVersion((value) => value + 1)
+                }
+            }).catch(() => {
+                // Best effort only; keep focused preview responsive.
+            })
+        }, 900)
+
+        return () => {
+            cancelled = true
+            window.clearTimeout(timerId)
+        }
+    }, [focusedPreviewUrl, previewReady, previewRoute?.path, project?._id, previewReloadToken])
 
     // Handle route/focus query params from external navigation
     useEffect(() => {
@@ -621,16 +673,6 @@ export function ProjectPagesPage() {
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
     }, [focusedPageIndex, routes.length])
-
-    // Scroll thumbnail into view when focused page changes
-    useEffect(() => {
-        if (focusedPageIndex !== null && thumbnailStripRef.current) {
-            const thumbnail = thumbnailStripRef.current.children[focusedPageIndex] as HTMLElement
-            if (thumbnail) {
-                thumbnail.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
-            }
-        }
-    }, [focusedPageIndex])
 
     // Update page context when focused route changes
     useEffect(() => {
@@ -1831,28 +1873,121 @@ export function ProjectPagesPage() {
         })
     }, [focusedPreviewFrameName, selectedElement, setSelectedElement])
 
-    // Handle apply changes from visual editor
-    const handleApplyChanges = useCallback(() => {
-        // This would generate a prompt for the AI to apply the CSS changes
-        const { pendingChanges, pendingTextChange, selectedElement } = useVisualEditorStore.getState()
+    const openVisualEditAssistantFallback = useCallback(() => {
+        const { pendingAttributes, pendingChanges, pendingTextChange, selectedElement } = useVisualEditorStore.getState()
         if (!selectedElement) return
 
         const changes = Object.entries(pendingChanges)
             .map(([prop, value]) => `${prop}: ${value}`)
+            .join('; ')
+        const attributeChanges = Object.entries(pendingAttributes)
+            .map(([attribute, value]) => `${attribute}: ${value}`)
             .join('; ')
 
         const promptParts = [`Update the element "${selectedElement.selector}"`]
         if (changes.length > 0) {
             promptParts.push(`with styles: ${changes}`)
         }
+        if (attributeChanges.length > 0) {
+            promptParts.push(`with attributes: ${attributeChanges}`)
+        }
         if (pendingTextChange !== null) {
             promptParts.push(`and text content: "${pendingTextChange}"`)
         }
         const prompt = promptParts.join(' ')
-
-        // Open assistant with the prompt
         useAssistantPanelStore.getState().openWithPrompt(prompt)
     }, [])
+
+    const handleApplyChanges = useCallback(async () => {
+        const visualEditorState = useVisualEditorStore.getState()
+        const {
+            pendingAttributes,
+            pendingChanges,
+            pendingTextChange,
+            selectedElement: currentSelectedElement,
+        } = visualEditorState
+
+        if (!currentSelectedElement || !projectPath || !project?._id || !convexUserId) {
+            return
+        }
+
+        setVisualSaveFeedback({
+            isSaving: true,
+            message: 'Saving visual edits…',
+            tone: 'default',
+        })
+
+        const directEditResult = await buildDirectVisualEdit({
+            projectPath,
+            currentPageFilePath: currentPage?.filePath ?? null,
+            inspectedElement,
+            pendingAttributes,
+            pendingChanges,
+            pendingTextChange,
+            selectedElement: currentSelectedElement,
+        })
+
+        if (!directEditResult.ok) {
+            if (directEditResult.reason === 'unsupported') {
+                openVisualEditAssistantFallback()
+                setVisualSaveFeedback({
+                    isSaving: false,
+                    message: `${directEditResult.error} Assistant fallback opened.`,
+                    tone: 'warning',
+                })
+                return
+            }
+
+            setVisualSaveFeedback({
+                isSaving: false,
+                message: directEditResult.error,
+                tone: 'destructive',
+            })
+            return
+        }
+
+        const writeResult = await window.electronAPI.sync.writeFiles({
+            projectPath,
+            files: [{
+                path: directEditResult.value.filePath,
+                content: directEditResult.value.content,
+            }],
+            opMeta: {
+                projectId: String(project._id),
+                actorId: String(convexUserId),
+                actorType: 'user',
+                source: 'monaco',
+            },
+        })
+
+        const writeSucceeded = writeResult.successCount === 1 && writeResult.results.every((result) => result.success)
+        if (!writeSucceeded) {
+            const failure = writeResult.results.find((result) => !result.success)
+            setVisualSaveFeedback({
+                isSaving: false,
+                message: failure?.error ?? 'Failed to persist visual edits.',
+                tone: 'destructive',
+            })
+            return
+        }
+
+        visualEditorState.setSelectedElement({
+            ...currentSelectedElement,
+            className: pendingAttributes.className ?? currentSelectedElement.className,
+            id: pendingAttributes.id ?? currentSelectedElement.id,
+            textContent: pendingTextChange ?? currentSelectedElement.textContent,
+            computedStyles: {
+                ...currentSelectedElement.computedStyles,
+                ...pendingChanges,
+            },
+        })
+        visualEditorState.clearPendingChanges()
+        setVisualSaveFeedback({
+            isSaving: false,
+            message: null,
+            tone: 'default',
+        })
+    }, [convexUserId, currentPage?.filePath, inspectedElement, openVisualEditAssistantFallback, project?._id, projectPath])
 
     const handleOpenCode = useCallback(async (file: string, line?: number, column?: number) => {
         const normalizedFile = file.replace(/\\/g, '/')
@@ -1922,371 +2057,40 @@ export function ProjectPagesPage() {
     }, [focusedPreviewUrl])
 
     const headerControls = useMemo(() => (
-        <TooltipProvider delayDuration={300}>
-            <div
-                ref={headerRef}
-                className="flex items-center gap-2"
-            >
-                {focusedPageIndex !== null && (
-                    <>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setFocusedPageIndex(null)}
-                                    className="gap-2 h-7 px-2"
-                                >
-                                    <LayoutGrid className="h-3.5 w-3.5" />
-                                    {toolbarDensity === 'full' && <span className="text-xs">Grid</span>}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                                <p>Back to grid view</p>
-                            </TooltipContent>
-                        </Tooltip>
-                        <div className="h-4 w-px bg-border/60" />
-                    </>
-                )}
-
-                {focusedPageIndex !== null && toolbarDensity === 'full' && (
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={device === 'desktop' ? 'secondary' : 'ghost'}
-                                        size="icon"
-                                        onClick={() => setDevice('desktop')}
-                                        className={cn("h-7 w-7 rounded-full", device === 'desktop' && "bg-sidebar-accent shadow-none")}
-                                    >
-                                        <Monitor className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Desktop</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={device === 'tablet' ? 'secondary' : 'ghost'}
-                                        size="icon"
-                                        onClick={() => setDevice('tablet')}
-                                        className={cn("h-7 w-7 rounded-full", device === 'tablet' && "bg-sidebar-accent shadow-none")}
-                                    >
-                                        <Tablet className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={device === 'mobile' ? 'secondary' : 'ghost'}
-                                        size="icon"
-                                        onClick={() => setDevice('mobile')}
-                                        className={cn("h-7 w-7 rounded-full", device === 'mobile' && "bg-sidebar-accent shadow-none")}
-                                    >
-                                        <Smartphone className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
-                            </Tooltip>
-                        </div>
-
-                        <div className="h-4 w-px bg-border/60" />
-
-                        <div className="flex items-center gap-0.5">
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={handleZoomStepDown}
-                                        className="h-7 w-7 rounded-full"
-                                        disabled={zoom <= MIN_ZOOM_PERCENT}
-                                    >
-                                        <ZoomOut className="h-3.5 w-3.5" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Zoom out</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setZoom(100)}
-                                        className="h-7 px-2 text-xs font-mono min-w-[3rem]"
-                                    >
-                                        {zoom}%
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Reset to 100%</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={handleZoomStepUp}
-                                        className="h-7 w-7 rounded-full"
-                                        disabled={zoom >= MAX_ZOOM_PERCENT}
-                                    >
-                                        <ZoomIn className="h-3.5 w-3.5" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Zoom in</TooltipContent>
-                            </Tooltip>
-                        </div>
-                    </div>
-                )}
-
-                {focusedPageIndex !== null && toolbarDensity !== 'full' && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                    "group/zoom-trigger h-7 rounded-full overflow-hidden shadow-none transition-colors duration-200 hover:bg-secondary/70 hover:text-foreground data-[state=open]:bg-secondary data-[state=open]:text-secondary-foreground",
-                                    toolbarDensity === 'compact'
-                                        ? "px-2 gap-2"
-                                        : "min-w-7 px-1.5 gap-0 justify-center"
-                                )}
-                            >
-                                {device === 'desktop' ? (
-                                    <Monitor className="h-4 w-4" />
-                                ) : device === 'tablet' ? (
-                                    <Tablet className="h-4 w-4" />
-                                ) : (
-                                    <Smartphone className="h-4 w-4" />
-                                )}
-                                {toolbarDensity === 'compact' && (
-                                    <span className="text-xs font-mono tabular-nums min-w-[3rem]">
-                                        {zoom}%
-                                    </span>
-                                )}
-                                <span className="zoom-chevron-slot flex w-0 items-center justify-end overflow-hidden opacity-0 transition-all duration-200 group-hover/zoom-trigger:ml-1 group-hover/zoom-trigger:w-4 group-hover/zoom-trigger:opacity-70 group-data-[state=open]/zoom-trigger:ml-1 group-data-[state=open]/zoom-trigger:w-4 group-data-[state=open]/zoom-trigger:opacity-70">
-                                    <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/zoom-trigger:rotate-180" />
-                                </span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="center" className="w-56">
-                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                                View
-                            </div>
-                            <DropdownMenuItem onClick={() => setDevice('desktop')}>
-                                <Monitor className="h-4 w-4 mr-2" />
-                                Desktop
-                                {device === 'desktop' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDevice('tablet')}>
-                                <Tablet className="h-4 w-4 mr-2" />
-                                Tablet (768px)
-                                {device === 'tablet' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDevice('mobile')}>
-                                <Smartphone className="h-4 w-4 mr-2" />
-                                Mobile (375px)
-                                {device === 'mobile' && <CheckCircle2 className="h-3 w-3 ml-auto text-green-500" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                                Zoom
-                            </div>
-                            <div className="px-2 pb-2">
-                                <div className="flex h-8 w-full items-center justify-center px-1">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={handleZoomStepDown}
-                                        disabled={zoom <= MIN_ZOOM_PERCENT}
-                                        aria-label="Zoom out"
-                                    >
-                                        <ZoomOut className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <div className="mx-2 h-4 w-px bg-border/60" />
-                                    <div className="flex w-14 items-center justify-center gap-0.5">
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={zoomInputValue}
-                                            onChange={(event) => {
-                                                const next = event.target.value.replace('%', '').trim()
-                                                if (next === '' || /^\d{0,3}$/.test(next)) {
-                                                    setZoomInputValue(next)
-                                                }
-                                            }}
-                                            onBlur={commitZoomInput}
-                                            onKeyDown={(event) => {
-                                                if (event.key === 'Enter') {
-                                                    event.preventDefault()
-                                                    commitZoomInput()
-                                                    event.currentTarget.blur()
-                                                }
-                                                if (event.key === 'Escape') {
-                                                    event.preventDefault()
-                                                    setZoomInputValue(String(zoom))
-                                                    event.currentTarget.blur()
-                                                }
-                                            }}
-                                            className="h-6 w-10 border-0 bg-transparent p-0 text-center text-sm font-medium text-foreground outline-none"
-                                            aria-label="Zoom percent"
-                                        />
-                                        <span className="text-[11px] text-muted-foreground">%</span>
-                                    </div>
-                                    <div className="mx-2 h-4 w-px bg-border/60" />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={handleZoomStepUp}
-                                        disabled={zoom >= MAX_ZOOM_PERCENT}
-                                        aria-label="Zoom in"
-                                    >
-                                        <ZoomIn className="h-3.5 w-3.5" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-
-                <div className="flex items-center gap-2 min-w-0">
-                        {serverStatus === 'running' && useCredentiallessPreview && (
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span
-                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold leading-none text-amber-950 dark:text-amber-100"
-                                        aria-label="Compat preview"
-                                    >
-                                        !
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Legacy compat preview active</TooltipContent>
-                            </Tooltip>
-                        )}
-                        <DropdownMenu>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Preview actions">
-                                            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom">Preview actions</TooltipContent>
-                            </Tooltip>
-                            <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuItem onClick={refreshRoutes}>
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Refresh routes
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={retryBridgeInjection}>
-                                    <span
-                                            className={cn(
-                                                "h-2.5 w-2.5 rounded-full shrink-0 mr-2",
-                                                previewReady ? "bg-green-500" : "bg-amber-500"
-                                            )}
-                                            aria-hidden
-                                        />
-                                    Retry Bridge Connection
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        {focusedPageIndex !== null && serverStatus === 'running' && (
-                            <>
-                                {/* Screenshot button */}
-                                <Tooltip open={toolbarTooltip === 'screenshot'} onOpenChange={(open) => setToolbarTooltip(open ? 'screenshot' : null)}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            className="inline-flex"
-                                            onPointerEnter={() => setToolbarTooltip('screenshot')}
-                                            onPointerLeave={() => setToolbarTooltip(null)}
-                                        >
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7"
-                                                disabled={isCapturingScreenshot || !previewReady || previewEmbedBlocked}
-                                                onClick={handleCaptureScreenshot}
-                                            >
-                                                <Camera className={cn(
-                                                    "h-3.5 w-3.5",
-                                                    isCapturingScreenshot ? "animate-pulse text-primary" : "text-muted-foreground"
-                                                )} />
-                                            </Button>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">
-                                        {previewEmbedBlocked
-                                            ? 'Preview blocked. Open externally.'
-                                            : previewReady
-                                                ? 'Take Screenshot'
-                                                : 'Preview not ready yet'}
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                {/* Inspector button */}
-                                <Tooltip open={toolbarTooltip === 'inspector'} onOpenChange={(open) => setToolbarTooltip(open ? 'inspector' : null)}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            className="inline-flex"
-                                            onPointerEnter={() => setToolbarTooltip('inspector')}
-                                            onPointerLeave={() => setToolbarTooltip(null)}
-                                        >
-                                            <Button
-                                                variant={inspectorEnabled ? "secondary" : "ghost"}
-                                                size="icon"
-                                                className="h-7 w-7"
-                                                disabled={!previewReady || previewEmbedBlocked}
-                                                onClick={toggleInspector}
-                                            >
-                                                <MousePointer2 className={cn("h-3.5 w-3.5", inspectorEnabled ? "text-foreground" : "text-muted-foreground")} />
-                                            </Button>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="pointer-events-none data-[state=closed]:duration-0">
-                                        {previewEmbedBlocked
-                                            ? 'Preview blocked. Open externally.'
-                                            : previewReady
-                                                ? (inspectorEnabled ? 'Disable Inspector' : 'Enable Inspector')
-                                                : 'Preview not ready yet'}
-                                    </TooltipContent>
-                                </Tooltip>
-
-                            </>
-                        )}
-                    </div>
-            </div>
-        </TooltipProvider>
+        <ProjectPreviewToolbar
+            device={device}
+            focused={focusedPageIndex !== null}
+            inspectorEnabled={inspectorEnabled}
+            isCapturingScreenshot={isCapturingScreenshot}
+            onBackToGrid={() => setFocusedPageIndex(null)}
+            onCaptureScreenshot={handleCaptureScreenshot}
+            onDeviceChange={setDevice}
+            onRefreshRoutes={() => {
+                void refreshRoutes()
+            }}
+            onRetryBridge={retryBridgeInjection}
+            onToggleInspector={toggleInspector}
+            onZoomChange={setZoom}
+            previewEmbedBlocked={previewEmbedBlocked}
+            previewReady={previewReady}
+            serverRunning={serverStatus === 'running'}
+            useCredentiallessPreview={useCredentiallessPreview}
+            zoom={zoom}
+        />
     ), [
-        focusedPageIndex,
-        toolbarDensity,
         device,
-        zoom,
-        zoomInputValue,
-        isCapturingScreenshot,
+        focusedPageIndex,
+        handleCaptureScreenshot,
         inspectorEnabled,
-        toolbarTooltip,
-        serverStatus,
-        previewReady,
+        isCapturingScreenshot,
         previewEmbedBlocked,
-        useCredentiallessPreview,
+        previewReady,
         refreshRoutes,
         retryBridgeInjection,
-        handleCaptureScreenshot,
+        serverStatus,
         toggleInspector,
-        handleZoomStepDown,
-        handleZoomStepUp,
-        commitZoomInput,
-        setDevice,
-        setZoom,
-        setZoomInputValue,
-        setFocusedPageIndex,
+        useCredentiallessPreview,
+        zoom,
     ])
 
     const serverControlBreadcrumbAddon = useMemo(() => (
@@ -2347,6 +2151,11 @@ export function ProjectPagesPage() {
                         onPreviewText={handlePreviewText}
                         onApplyChanges={handleApplyChanges}
                         onClose={handleCloseInspectorSidebar}
+                        saveFeedback={{
+                            message: visualSaveFeedback.message,
+                            tone: visualSaveFeedback.tone,
+                        }}
+                        savePending={visualSaveFeedback.isSaving}
                     />
                 )}
 
@@ -2392,347 +2201,59 @@ export function ProjectPagesPage() {
                             </div>
                         ) : (
                             <div className="relative flex-1 min-h-0 min-w-0 bg-content-surface">
-                                {!isFocusedPreview && (
-                                <div
-                                    className="app-scrollbar absolute inset-0 overflow-y-auto px-6 pb-6 pt-16"
-                                >
-                                    <div className="grid [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] gap-6">
-                                        {routes.map((route, index) => {
-                                            const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
-                                            const routePreviewUrl = buildRoutePreviewUrl(route.path)
-                                            return (
-                                                <div key={route.path} className="group relative">
-                                                    <Card
-                                                        className="group relative overflow-hidden border-border/40 bg-card/50 hover:bg-card hover:border-sidebar-primary/20 transition-all duration-300 shadow-sm hover:shadow-md h-[220px] flex flex-col cursor-pointer p-0 gap-0"
-                                                        onClick={() => setFocusedPageIndex(index)}
-                                                    >
-                                                        {/* Preview Area */}
-                                                        <div className="flex-1 w-full bg-muted/30 relative overflow-hidden rounded-t-xl">
-                                                            {serverStatus === 'running' && routePreviewUrl ? (
-                                                                <div className="absolute inset-0">
-                                                                    <div className="w-full h-full bg-background relative overflow-hidden">
-                                                                        <iframe
-                                                                            key={`grid-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
-                                                                            src={routePreviewUrl}
-                                                                            credentialless={credentiallessAttribute}
-                                                                            loading="lazy"
-                                                                            className="w-[200%] h-[200%] origin-top-left scale-50 border-none pointer-events-none select-none block"
-                                                                            tabIndex={-1}
-                                                                        />
-                                                                        <div className="absolute inset-0 bg-transparent" />
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                                                    <AppWindow className="h-8 w-8 mb-2 text-muted-foreground/20" />
-                                                                    <span className="text-xs text-muted-foreground/40 font-medium">Start server to preview</span>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Dynamic Label */}
-                                                            {route.type === 'dynamic' && (
-                                                                <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/10 backdrop-blur-sm">
-                                                                    Dynamic
-                                                                </div>
-                                                            )}
-
-                                                            {/* Hover Overlay Actions */}
-                                                            <div className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 z-20">
-                                                                <Button
-                                                                    variant="secondary"
-                                                                    size="sm"
-                                                                    className="h-7 text-[10px] px-2 shadow-sm bg-background/80 backdrop-blur-sm hover:bg-background"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation()
-                                                                        handleOpenCode(route.file)
-                                                                    }}
-                                                                >
-                                                                    <FileText className="h-3 w-3 mr-1.5" />
-                                                                    Edit
-                                                                </Button>
-
-                                                                {serverStatus === 'running' && (
-                                                                    <Button
-                                                                        variant="secondary"
-                                                                        size="icon"
-                                                                        className="h-7 w-7 shadow-sm bg-background/80 backdrop-blur-sm hover:bg-background"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation()
-                                                                            if (!routePreviewUrl) return
-                                                                            window.open(routePreviewUrl, '_blank')
-                                                                        }}
-                                                                    >
-                                                                        <ExternalLink className="h-3 w-3" />
-                                                                    </Button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Footer Info */}
-                                                        <div className="px-3 py-2 mt-auto">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <h3 className="font-medium text-sm text-foreground/90 truncate" title={route.path}>
-                                                                    {route.name}
-                                                                </h3>
-                                                                <div className="flex shrink-0 items-center gap-1.5">
-                                                                    {routePresenceUsers.length > 0 && (
-                                                                        <CompactPresenceIndicator
-                                                                            users={routePresenceUsers}
-                                                                            size="sm"
-                                                                            className="shrink-0"
-                                                                        />
-                                                                    )}
-                                                                    <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 truncate max-w-[40%] text-right bg-muted/50 px-1.5 py-0.5 rounded">
-                                                                        {route.path}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="mt-1 min-w-0">
-                                                                <p className="min-w-0 flex-1 text-[11px] text-muted-foreground line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    {route.description ?? ''}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </Card>
-                                                </div>
-                                            )
-                                        })}
+                                {!isFocusedPreview ? (
+                                    <div className="app-scrollbar absolute inset-0 overflow-y-auto px-6 pb-6 pt-16">
+                                        <ProjectPreviewGrid
+                                            credentiallessAttribute={credentiallessAttribute}
+                                            onOpenCode={handleOpenCode}
+                                            onOpenRoute={setFocusedPageIndex}
+                                            previewEmbedMode={previewEmbedMode}
+                                            previewReloadToken={previewReloadToken}
+                                            routeViewModels={routeViewModels}
+                                            serverRunning={serverStatus === 'running'}
+                                        />
                                     </div>
-                                </div>
-                                )}
+                                ) : null}
 
-                                {isFocusedPreview && previewRoute && (
-                                    <div
-                                        className="absolute inset-0 flex overflow-hidden min-h-0 min-w-0"
-                                    >
-                                        <div className="flex-1 flex flex-col min-h-0 min-w-0">
-                                            {/* Preview area */}
-                                            <div className="flex-1 flex items-center justify-center min-h-0 pt-14 px-4 pb-4">
-                                                <div
-                                                    className={cn(
-                                                        "group/focused-preview relative bg-card overflow-hidden rounded-xl border border-border/40 shadow-xl transition-[transform,box-shadow,border-color] duration-300 ease-out",
-                                                        device === 'desktop' ? "w-full h-full" : "h-full",
-                                                        device === 'mobile' && "w-[375px]",
-                                                        device === 'tablet' && "w-[768px]"
-                                                    )}
-                                                    style={{
-                                                        transform: `scale(${zoom / 100})`,
-                                                        transformOrigin: 'center center'
-                                                    }}
-                                                >
-                                                    {serverStatus === 'running' && serverPort ? (
-                                                        <div className="relative h-full w-full bg-content-surface">
-                                                            <iframe
-                                                                ref={iframeRef}
-                                                                key={`focused-preview-${previewEmbedMode}-${previewReloadToken}-${previewRoute.path}`}
-                                                                name={focusedPreviewFrameName}
-                                                                src={focusedPreviewUrl ?? undefined}
-                                                                credentialless={credentiallessAttribute}
-                                                                className="h-full w-full border-none"
-                                                                onLoad={handleIframeLoad}
-                                                                onError={handleFocusedIframeError}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                                                            <AppWindow className="h-16 w-16 mb-4 opacity-20" />
-                                                            <p className="text-lg">Start dev server for live preview</p>
-                                                            <p className="text-sm text-muted-foreground/60 mt-1">{previewRoute.path}</p>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Dynamic badge */}
-                                                    {previewRoute.type === 'dynamic' && (
-                                                        <div className="absolute top-3 right-3 px-2 py-1 rounded text-xs uppercase font-bold tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
-                                                            Dynamic
-                                                        </div>
-                                                    )}
-
-                                                    {taskOverlay?.context.kind === 'page' ? (
-                                                        <TaskFocusOverlay task={taskOverlay} className="z-30" />
-                                                    ) : (
-                                                        <div className="pointer-events-none absolute bottom-4 right-4 flex translate-y-2 items-center gap-2 opacity-0 transition-all duration-200 ease-out group-hover/focused-preview:pointer-events-auto group-hover/focused-preview:translate-y-0 group-hover/focused-preview:opacity-100">
-                                                            <Button
-                                                                variant="secondary"
-                                                                size="sm"
-                                                                onClick={() => handleOpenCode(previewRoute.file)}
-                                                                className="shadow-md"
-                                                            >
-                                                                <FileText className="h-3.5 w-3.5 mr-1.5" />
-                                                                Open
-                                                            </Button>
-                                                            {serverStatus === 'running' && (
-                                                                <Button
-                                                                    variant="secondary"
-                                                                    size="sm"
-                                                                    onClick={openFocusedPreviewExternally}
-                                                                    className="shadow-md"
-                                                                >
-                                                                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                                                                    Browser
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Page name pill */}
-                                                    <div className="absolute bottom-4 left-4 flex items-center gap-2">
-                                                        <div className="inline-flex items-center gap-2 rounded-full bg-secondary/80 px-3 py-1 text-sm font-medium text-secondary-foreground shadow-md">
-                                                            {previewRoute.name}
-                                                        </div>
-                                                    </div>
-
-                                                    {showPreviewFailureOverlay && (
-                                                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm">
-                                                            <div className="max-w-md rounded-xl border border-border/80 bg-card p-4 shadow-xl">
-                                                                <p className="text-sm font-semibold">
-                                                                    {previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
-                                                                </p>
-                                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                                    {previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
-                                                                </p>
-                                                                {recentPreviewTimeline.length > 0 && (
-                                                                    <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-2">
-                                                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                            Recent diagnostics
-                                                                        </p>
-                                                                        <div className="mt-1 space-y-1">
-                                                                            {recentPreviewTimeline.slice(0, 3).map((event) => (
-                                                                                <p key={event.id} className="text-[11px] leading-4 text-muted-foreground">
-                                                                                    {event.message}
-                                                                                </p>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                <div className="mt-4 flex items-center gap-2">
-                                                                    <Button size="sm" variant="outline" onClick={() => reloadFocusedPreview('manual')}>
-                                                                        Retry
-                                                                    </Button>
-                                                                    <Button size="sm" onClick={openFocusedPreviewExternally}>
-                                                                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                                                                        Browser
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Thumbnail strip */}
+                                {isFocusedPreview && previewRouteViewModel ? (
+                                    <div className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
+                                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                                            <FocusedProjectPreview
+                                                credentiallessAttribute={credentiallessAttribute}
+                                                device={device}
+                                                focusedPreviewFrameName={focusedPreviewFrameName}
+                                                focusedPreviewUrl={focusedPreviewUrl}
+                                                iframeRef={iframeRef}
+                                                onIframeError={handleFocusedIframeError}
+                                                onIframeLoad={handleIframeLoad}
+                                                onOpenCode={handleOpenCode}
+                                                onOpenExternally={openFocusedPreviewExternally}
+                                                onRetryPreview={() => reloadFocusedPreview('manual')}
+                                                previewEmbedBlocked={previewEmbedBlocked}
+                                                previewEmbedMode={previewEmbedMode}
+                                                previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
+                                                previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
+                                                previewReloadToken={previewReloadToken}
+                                                recentPreviewTimeline={recentPreviewTimeline}
+                                                routePreviewImageUrl={previewRouteViewModel.previewImageUrl}
+                                                routeViewModel={previewRouteViewModel}
+                                                serverRunning={serverStatus === 'running'}
+                                                showPreviewFailureOverlay={showPreviewFailureOverlay}
+                                                taskOverlay={taskOverlay}
+                                                zoom={zoom}
+                                            />
                                             <div className="shrink-0 backdrop-blur-md px-3 py-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div
-                                                        ref={thumbnailStripRef}
-                                                        className="app-scrollbar flex-1 flex gap-2 overflow-x-auto pb-0.5"
-                                                    >
-                                                        {routes.map((route, index) => {
-                                                            const routePresenceUsers = getRoutePresenceUsers(route.path, route.file)
-                                                            const routePreviewUrl = buildRoutePreviewUrl(route.path)
-                                                            return (
-                                                                <div
-                                                                    key={route.path}
-                                                                    onClick={() => setFocusedPageIndex(index)}
-                                                                    role="button"
-                                                                    tabIndex={0}
-                                                                    onKeyDown={(e) => {
-                                                                        if (e.key === 'Enter' || e.key === ' ') {
-                                                                            e.preventDefault()
-                                                                            setFocusedPageIndex(index)
-                                                                        }
-                                                                    }}
-                                                                    className={cn(
-                                                                        "group shrink-0 flex flex-col items-center gap-1 transition-all cursor-pointer outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-                                                                        index === previewRouteIndex
-                                                                            ? "opacity-100"
-                                                                            : "opacity-50 hover:opacity-100"
-                                                                    )}
-                                                                >
-                                                                    <div className={cn(
-                                                                        "w-24 h-14 rounded border-2 overflow-hidden relative",
-                                                                        index === previewRouteIndex
-                                                                            ? "border-primary ring-1 ring-primary/20"
-                                                                            : "border-border/40 hover:border-border"
-                                                                    )}>
-                                                                        {serverStatus === 'running' && routePreviewUrl ? (
-                                                                            <div className="w-full h-full bg-background relative">
-                                                                                <iframe
-                                                                                    key={`thumb-preview-${previewEmbedMode}-${previewReloadToken}-${route.path}`}
-                                                                                    src={routePreviewUrl}
-                                                                                    credentialless={credentiallessAttribute}
-                                                                                    loading="lazy"
-                                                                                    className="w-[500%] h-[500%] origin-top-left scale-[0.20] border-none pointer-events-none"
-                                                                                    tabIndex={-1}
-                                                                                />
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="w-full h-full bg-muted/50 flex items-center justify-center">
-                                                                                <AppWindow className="h-3 w-3 text-muted-foreground/30" />
-                                                                            </div>
-                                                                        )}
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={(e) => {
-                                                                                e.preventDefault()
-                                                                                e.stopPropagation()
-                                                                                togglePagesListOpen()
-                                                                            }}
-                                                                            className="absolute top-1 left-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                                            aria-label="Toggle pages list"
-                                                                        >
-                                                                            <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={(e) => {
-                                                                                e.preventDefault()
-                                                                                e.stopPropagation()
-                                                                                handleOpenCode(route.file)
-                                                                            }}
-                                                                            className="absolute top-1 right-1 flex items-center justify-center w-6 h-6 rounded bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity border border-border/50 cursor-pointer shadow-sm"
-                                                                            aria-label="Open code file"
-                                                                        >
-                                                                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                        </button>
-                                                                        {routePresenceUsers.length > 0 && (
-                                                                            <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border/60 bg-background/90 p-[1px] shadow-sm backdrop-blur-sm">
-                                                                                <CompactPresenceIndicator
-                                                                                    users={routePresenceUsers}
-                                                                                    size="xs"
-                                                                                    showOverflow={false}
-                                                                                    className="gap-0"
-                                                                                />
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="w-24">
-                                                                        <span
-                                                                            className={cn(
-                                                                                "block min-w-0 text-[10px] truncate",
-                                                                                index === previewRouteIndex
-                                                                                    ? "text-foreground font-medium"
-                                                                                    : "text-muted-foreground"
-                                                                            )}
-                                                                            title={route.name}
-                                                                        >
-                                                                            {route.name}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            )
-                                                        })}
-                                                    </div>
-                                                    {previewRouteIndex !== null && (
-                                                        <div className="shrink-0 text-xs text-muted-foreground tabular-nums bg-muted/50 px-2.5 py-1 rounded-full">
-                                                            {previewRouteIndex + 1}/{routes.length}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ProjectPreviewThumbnailStrip
+                                                    focusedRouteIndex={previewRouteIndex}
+                                                    onOpenCode={handleOpenCode}
+                                                    onSelectRoute={setFocusedPageIndex}
+                                                    onTogglePagesList={togglePagesListOpen}
+                                                    routeViewModels={routeViewModels}
+                                                />
                                             </div>
                                         </div>
                                     </div>
-                                )}
+                                ) : null}
                             </div>
                         )}
 
@@ -2750,6 +2271,11 @@ export function ProjectPagesPage() {
                         onPreviewText={handlePreviewText}
                         onApplyChanges={handleApplyChanges}
                         onClose={handleCloseInspectorSidebar}
+                        saveFeedback={{
+                            message: visualSaveFeedback.message,
+                            tone: visualSaveFeedback.tone,
+                        }}
+                        savePending={visualSaveFeedback.isSaving}
                     />
                 )}
             </div>
