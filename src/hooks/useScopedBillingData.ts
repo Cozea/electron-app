@@ -4,7 +4,13 @@ import { api } from '../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
+import {
+  getSeatManagementCacheKey,
+  getSeatWalletsCacheKey,
+  getWalletSummaryCacheKey,
+} from '@/lib/queryCacheKeys'
 import { getSettingsSurfaceRoute } from '@/lib/settings/settingsRegistry'
+import { useCachedQuery } from '@/stores/useQueryCache'
 
 interface UseScopedBillingDataOptions {
   route?: string
@@ -79,19 +85,31 @@ export function useScopedBillingData(options: UseScopedBillingDataOptions = {}) 
       canViewWorkspaceMembers,
   })
 
-  const seatManagement = useQuery(
+  const freshSeatManagement = useQuery(
     api.billing.getSeatManagement,
     billingViewerArgs,
   )
+  const seatManagement = useCachedQuery(
+    getSeatManagementCacheKey(convexOrg?._id, convexUserId),
+    freshSeatManagement,
+  )
 
-  const walletSummary = useQuery(
+  const freshWalletSummary = useQuery(
     api.aiWallets.getWalletForViewer,
     billingViewerArgs,
   )
+  const walletSummary = useCachedQuery(
+    getWalletSummaryCacheKey(convexOrg?._id, convexUserId),
+    freshWalletSummary,
+  )
 
-  const seatWallets = useQuery(
+  const freshSeatWallets = useQuery(
     api.aiWallets.getSeatWalletsForViewer,
     workspaceScoped ? billingViewerArgs : 'skip',
+  )
+  const seatWallets = useCachedQuery(
+    getSeatWalletsCacheKey(convexOrg?._id, convexUserId),
+    freshSeatWallets,
   )
 
   return {

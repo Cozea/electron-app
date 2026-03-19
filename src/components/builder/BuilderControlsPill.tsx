@@ -29,6 +29,7 @@ interface BuilderControlsPillProps {
   statusMessage: string
   isAIGenerating: boolean
   isAIComplete: boolean
+  canOpenProject: boolean
   hasError: boolean
   isPulling: boolean
   // Build tasks
@@ -46,6 +47,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
   statusMessage,
   isAIGenerating,
   isAIComplete,
+  canOpenProject,
   hasError,
   isPulling,
   buildTasks,
@@ -117,7 +119,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium truncate">
-                {isPulling ? 'Syncing from cloud...' : (inProgressTask?.activeForm || statusMessage)}
+                {inProgressTask?.activeForm || statusMessage}
               </span>
               {totalCount > 0 && (
                 <span className="shrink-0 rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
@@ -149,7 +151,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
               </Button>
             )}
 
-            {isAIComplete && !isPulling && !isAIGenerating && (
+            {canOpenProject && !isPulling && !isAIGenerating && (
               <>
                 {onOpenProject && (
                   <Button
@@ -192,7 +194,7 @@ export const BuilderControlsPill = memo(function BuilderControlsPill({
               </>
             )}
 
-            {!isAIGenerating && !isAIComplete && !hasError && !isPulling && onStartBuild && (
+            {!isAIGenerating && !canOpenProject && !hasError && !isPulling && onStartBuild && (
               <Button size="sm" onClick={onStartBuild} className="h-8 gap-1.5">
                 <Sparkles className="h-3 w-3" />
                 Start Build

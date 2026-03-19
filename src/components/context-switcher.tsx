@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { getOrganizationPlanLabel, getPersonalPlanLabel } from '@/lib/billing/planLabels'
+import { getSeatManagementCacheKey } from '@/lib/queryCacheKeys'
 import { useCachedQuery } from '@/stores/useQueryCache'
 import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { useCreateWorkspaceDialogStore } from '@/stores/useCreateWorkspaceDialogStore'
@@ -130,7 +131,7 @@ export function ContextSwitcher() {
       : 'skip'
   )
   const cachedSeatManagement = useCachedQuery(
-    `context-switcher-seat-management-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
+    getSeatManagementCacheKey(convexOrg?._id, convexUserId),
     currentSeatManagement
   )
 

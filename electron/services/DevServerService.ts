@@ -14,7 +14,22 @@ export interface DevServerStartOptions {
 export interface DevServerStartResult {
   success: boolean
   port?: number
+  runId?: string
   error?: string
+}
+
+function extractCandidatePorts(output: string): number[] {
+  const matches = output.matchAll(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0)[:\s]+(\d{2,5})/gi)
+  const ports = new Set<number>()
+
+  for (const match of matches) {
+    const port = Number.parseInt(match[1] || '', 10)
+    if (Number.isFinite(port) && port > 0 && port <= 65535) {
+      ports.add(port)
+    }
+  }
+
+  return Array.from(ports)
 }
 
 export class DevServerService {
@@ -40,6 +55,8 @@ export class DevServerService {
     try {
       // 2. Guarantee a free port
       const actualPort = await getPort({ port: preferredPort })
+      const candidatePorts = new Set<number>([actualPort])
+      const startupTimeoutMs = /\binstall\b/i.test(command) ? 120000 : 30000
       console.log(`[DevServerService] Starting ${command} in ${projectPath} on port ${actualPort}`)
 
       // 3. Spawn robustly with cross-platform support
@@ -63,13 +80,21 @@ export class DevServerService {
       // 4. Stream logs reliably
       if (subprocess.stdout) {
         subprocess.stdout.on('data', (data: Buffer) => {
-          onOutput(data.toString('utf-8'), 'stdout')
+          const output = data.toString('utf-8')
+          for (const port of extractCandidatePorts(output)) {
+            candidatePorts.add(port)
+          }
+          onOutput(output, 'stdout')
         })
       }
       
       if (subprocess.stderr) {
         subprocess.stderr.on('data', (data: Buffer) => {
-          onOutput(data.toString('utf-8'), 'stderr')
+          const output = data.toString('utf-8')
+          for (const port of extractCandidatePorts(output)) {
+            candidatePorts.add(port)
+          }
+          onOutput(output, 'stderr')
         })
       }
 
@@ -84,20 +109,32 @@ export class DevServerService {
       })
 
       // 6. Deterministic Health Check
-      // We wait until a TCP connection to the port succeeds.
-      const isReady = await this.waitForPort(actualPort, 30000) // 30 second timeout
+      // Wait until any candidate port is reachable so frameworks that ignore PORT still work.
+      const reachablePort = await this.waitForReachablePort(
+        candidatePorts,
+        startupTimeoutMs,
+        () => this.processes.get(projectPath)?.runId === runId
+      )
 
-      if (!isReady) {
+      if (!reachablePort) {
         await this.stop(projectPath)
-        return { success: false, error: 'Dev server failed to bind to port within timeout.' }
+        return {
+          success: false,
+          runId,
+          error: 'Dev server failed to bind to a reachable port within timeout.',
+        }
       }
 
-      console.log(`[DevServerService] Ready on port ${actualPort}`)
-      return { success: true, port: actualPort }
+      console.log(`[DevServerService] Ready on port ${reachablePort}`)
+      return { success: true, port: reachablePort, runId }
 
     } catch (error) {
       console.error('[DevServerService] Failed to start:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error starting dev server' }
+      return {
+        success: false,
+        runId,
+        error: error instanceof Error ? error.message : 'Unknown error starting dev server',
+      }
     }
   }
 
@@ -143,42 +180,49 @@ export class DevServerService {
   }
 
   /**
-   * Pings the port continuously until a TCP socket connects.
+   * Pings candidate ports continuously until one accepts a TCP socket connection.
    */
-  private waitForPort(port: number, timeoutMs: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const startTime = Date.now()
-      let timer: NodeJS.Timeout
+  private async waitForReachablePort(
+    candidatePorts: Set<number>,
+    timeoutMs: number,
+    isRunActive: () => boolean
+  ): Promise<number | null> {
+    const startTime = Date.now()
 
-      const check = () => {
-        if (Date.now() - startTime > timeoutMs) {
-          resolve(false)
-          return
+    while (Date.now() - startTime <= timeoutMs) {
+      if (!isRunActive()) return null
+
+      for (const port of candidatePorts) {
+        const reachable = await this.checkPort(port)
+        if (reachable) {
+          return port
         }
-
-        const socket = new net.Socket()
-        socket.setTimeout(1000)
-        
-        socket.on('connect', () => {
-          socket.destroy()
-          clearTimeout(timer)
-          resolve(true)
-        })
-
-        socket.on('timeout', () => {
-          socket.destroy()
-          timer = setTimeout(check, 500)
-        })
-
-        socket.on('error', () => {
-          socket.destroy()
-          timer = setTimeout(check, 500)
-        })
-
-        socket.connect(port, '127.0.0.1')
+        if (!isRunActive()) return null
       }
 
-      check()
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
+    return null
+  }
+
+  private checkPort(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = new net.Socket()
+      let settled = false
+
+      const finish = (value: boolean) => {
+        if (settled) return
+        settled = true
+        socket.destroy()
+        resolve(value)
+      }
+
+      socket.setTimeout(1000)
+      socket.on('connect', () => finish(true))
+      socket.on('timeout', () => finish(false))
+      socket.on('error', () => finish(false))
+      socket.connect(port, '127.0.0.1')
     })
   }
 }

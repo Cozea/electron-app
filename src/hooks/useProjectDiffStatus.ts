@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import type { Id } from '../../convex/_generated/dataModel'
 import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
@@ -10,6 +10,7 @@ import {
   useProjectDiffStore,
   type ProjectDiffStatus,
 } from '@/stores/useProjectDiffStore'
+import { scheduleTask } from '@/lib/scheduler'
 
 const MIN_FULL_REFRESH_INTERVAL = 30 * 1000
 const GIT_CHECK_TIMEOUT_MS = 20 * 1000
@@ -82,6 +83,7 @@ interface UseProjectDiffStatusOptions {
   projectSlug: string
   localPath: string | null
   lastSyncAt?: number
+  initialRefreshMode?: 'remote' | 'local' | 'none'
 }
 
 export function useProjectDiffStatus({
@@ -89,10 +91,13 @@ export function useProjectDiffStatus({
   projectSlug,
   localPath,
   lastSyncAt,
+  initialRefreshMode = 'remote',
 }: UseProjectDiffStatusOptions): ProjectDiffStatus | undefined {
   const diffStatus = useProjectDiffStore((state) => state.diffs[projectSlug])
   const setDiffStatus = useProjectDiffStore((state) => state.setDiffStatus)
   const setChecking = useProjectDiffStore((state) => state.setChecking)
+  const initialRefreshKeyRef = useRef<string | null>(null)
+  const localRefreshKeyRef = useRef<string | null>(null)
 
   const checkDiff = useCallback(async (
     options?: {
@@ -239,18 +244,49 @@ export function useProjectDiffStatus({
   }, [localPath, projectId, projectSlug, setChecking, setDiffStatus])
 
   useEffect(() => {
+    const initialRefreshKey = localPath ? `${projectSlug}:${localPath}` : null
+    if (!initialRefreshKey) {
+      initialRefreshKeyRef.current = null
+      localRefreshKeyRef.current = null
+      return
+    }
+
+    if (initialRefreshKeyRef.current === initialRefreshKey) {
+      return
+    }
+
+    initialRefreshKeyRef.current = initialRefreshKey
+    localRefreshKeyRef.current = `${initialRefreshKey}:${lastSyncAt ?? 0}`
+
+    if (initialRefreshMode === 'none') {
+      return
+    }
+
     const initialDelayMs = hashString(projectSlug) % INITIAL_CHECK_MAX_STAGGER_MS
     const initialTimerId = window.setTimeout(() => {
-      void checkDiff({ force: true, fetchRemote: true })
+      void scheduleTask(
+        () =>
+          checkDiff({
+            force: true,
+            fetchRemote: initialRefreshMode === 'remote',
+          }),
+        'background'
+      )
     }, initialDelayMs)
 
+    return () => {
+      window.clearTimeout(initialTimerId)
+    }
+  }, [checkDiff, initialRefreshMode, lastSyncAt, localPath, projectSlug])
+
+  useEffect(() => {
     const handleFocusRefresh = () => {
-      void checkDiff({ fetchRemote: true })
+      void scheduleTask(() => checkDiff({ fetchRemote: true }), 'background')
     }
 
     const handleVisibilityRefresh = () => {
       if (document.visibilityState === 'visible') {
-        void checkDiff({ fetchRemote: true })
+        void scheduleTask(() => checkDiff({ fetchRemote: true }), 'background')
       }
     }
 
@@ -259,7 +295,7 @@ export function useProjectDiffStatus({
       if (!detail || detail.projectId !== String(projectId)) {
         return
       }
-      void checkDiff({ force: true, fetchRemote: false })
+      void scheduleTask(() => checkDiff({ force: true, fetchRemote: false }), 'background')
     }
 
     window.addEventListener('focus', handleFocusRefresh)
@@ -268,18 +304,39 @@ export function useProjectDiffStatus({
     document.addEventListener('visibilitychange', handleVisibilityRefresh)
 
     return () => {
-      window.clearTimeout(initialTimerId)
       window.removeEventListener('focus', handleFocusRefresh)
       window.removeEventListener('online', handleFocusRefresh)
       window.removeEventListener(GIT_STATUS_EVENT_NAME, handleGitStatusEvent as EventListener)
       document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
-  }, [checkDiff, projectId, projectSlug])
+  }, [checkDiff, projectId])
 
   useEffect(() => {
-    if (!localPath) return
-    void checkDiff({ force: true, fetchRemote: false })
-  }, [checkDiff, lastSyncAt, localPath])
+    const localRefreshKey = localPath ? `${projectSlug}:${localPath}:${lastSyncAt ?? 0}` : null
+    if (!localRefreshKey) {
+      localRefreshKeyRef.current = null
+      return
+    }
+
+    if (localRefreshKeyRef.current === null) {
+      localRefreshKeyRef.current = localRefreshKey
+      return
+    }
+
+    if (localRefreshKeyRef.current === localRefreshKey) {
+      return
+    }
+
+    localRefreshKeyRef.current = localRefreshKey
+    const localDelayMs = hashString(localRefreshKey) % Math.max(1, Math.floor(INITIAL_CHECK_MAX_STAGGER_MS / 2))
+    const refreshTimerId = window.setTimeout(() => {
+      void scheduleTask(() => checkDiff({ force: true, fetchRemote: false }), 'background')
+    }, localDelayMs)
+
+    return () => {
+      window.clearTimeout(refreshTimerId)
+    }
+  }, [checkDiff, lastSyncAt, localPath, projectSlug])
 
   return diffStatus
 }

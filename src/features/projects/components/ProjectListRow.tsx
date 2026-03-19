@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { memo, useState, useCallback, useEffect, useRef } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -83,7 +83,7 @@ function formatRelativeTime(timestamp: number): string {
     return 'now'
 }
 
-export function ProjectListRow({
+export const ProjectListRow = memo(function ProjectListRow({
   project,
   userId,
   creatorName,
@@ -102,41 +102,19 @@ export function ProjectListRow({
   const [syncMessage, setSyncMessage] = useState('')
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
-  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
   const archiveProject = useMutation(api.projects.archive)
   const restoreProject = useMutation(api.projects.restore)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const [showMenu, setShowMenu] = useState(false)
-  const [localPath, setLocalPath] = useState<string | null>(null)
-  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
+  const [localPath, setLocalPath] = useState<string | null>(project.localPath ?? null)
+  const shouldHydrateSyncStatus = isInViewport || syncState !== 'idle'
 
   useEffect(() => {
-        if (!shouldHydrateSyncStatus) return
-
-        let cancelled = false
-
-        const loadLocalPath = async () => {
-            if (project.status === 'draft') {
-                if (!cancelled) setLocalPath(null)
-                return
-            }
-
-            const path = project.localPath ?? await window.electronAPI.project.getLocalPath({
-                slug: project.slug,
-                projectId: String(project._id),
-            })
-            if (!cancelled) setLocalPath(path)
-        }
-
-        void loadLocalPath()
-        return () => {
-            cancelled = true
-        }
-    }, [project._id, project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
+    setLocalPath(project.localPath ?? null)
+  }, [project._id, project.localPath])
 
     const preloadProjectDestination = useCallback(() => {
-        setSyncHydrationRequested(true)
         if (project.status === 'draft') {
             void preloadNewProjectPage()
             return
@@ -517,4 +495,4 @@ export function ProjectListRow({
                 </TableCell>
             </TableRow>
     )
-}
+})

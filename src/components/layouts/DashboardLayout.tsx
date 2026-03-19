@@ -26,6 +26,7 @@ interface DashboardLayoutProps {
   breadcrumbs?: { label: string; href?: string }[]
   contentMode?: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
+  hideInbox?: boolean
   user?: {
     email: string
     firstName?: string | null
@@ -56,6 +57,7 @@ interface DashboardLayoutContentProps {
   breadcrumbs: { label: string; href?: string }[]
   contentMode: 'scroll' | 'fixed'
   headerContentInsetClassName?: string
+  hideInbox?: boolean
   user?: {
     email: string
     firstName?: string | null
@@ -103,6 +105,7 @@ function DashboardLayoutContent({
   breadcrumbs,
   contentMode,
   headerContentInsetClassName,
+  hideInbox,
   user,
   onLogout,
 }: DashboardLayoutContentProps) {
@@ -210,6 +213,7 @@ function DashboardLayoutContent({
               header={header}
               breadcrumbAddon={effectiveBreadcrumbAddon}
               leftWindowControlsInset={areAllSidebarsCollapsed}
+              hideInbox={hideInbox}
             />
             {contentMode === 'fixed' ? (
               <div
@@ -254,6 +258,7 @@ export function DashboardLayout({
   breadcrumbs = DEFAULT_BREADCRUMBS,
   contentMode = 'scroll',
   headerContentInsetClassName,
+  hideInbox,
   user,
   onLogout,
 }: DashboardLayoutProps) {
@@ -267,6 +272,7 @@ export function DashboardLayout({
         breadcrumbs={breadcrumbs}
         contentMode={contentMode}
         headerContentInsetClassName={headerContentInsetClassName}
+        hideInbox={hideInbox}
         user={user}
         onLogout={onLogout}
       />

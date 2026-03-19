@@ -1,8 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { memo, useState, useCallback, useEffect, useRef } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
-import { useCachedQuery } from '@/stores/useQueryCache'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import {
     Clock,
@@ -41,6 +40,7 @@ interface ProjectSummary extends ProjectOpenGitProjectLike {
     template?: string | null
     status: string
     description?: string | null
+    previewImageUrl?: string | null
     updatedAt?: number
     lastSyncAt?: number
     createdBy?: string
@@ -83,7 +83,7 @@ type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
-export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
+export const ProjectCard = memo(function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
@@ -98,55 +98,23 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
   const [syncDetail, setSyncDetail] = useState<string | null>(null)
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
-  const [syncHydrationRequested, setSyncHydrationRequested] = useState(false)
   const deleteProject = useMutation(api.projects.deleteProject)
   const archiveProject = useMutation(api.projects.archive)
   const restoreProject = useMutation(api.projects.restore)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
-  const [localPath, setLocalPath] = useState<string | null>(null)
-
-    // Get preview image URL
-    const freshPreviewImageUrl = useQuery(
-        api.projects.getPreviewImageUrl,
-        project.status !== 'draft' && userId ? { projectId: project._id, userId } : 'skip'
-    )
-    const previewImageUrl = useCachedQuery(
-        `project-preview-img-${project._id}`,
-        freshPreviewImageUrl
-    )
+  const [localPath, setLocalPath] = useState<string | null>(project.localPath ?? null)
+  const previewImageUrl = project.previewImageUrl ?? null
   const [imageError, setImageError] = useState(false)
-  const shouldHydrateSyncStatus = syncHydrationRequested || isInViewport || syncState !== 'idle'
 
   useEffect(() => {
     setImageError(false)
   }, [previewImageUrl, project._id])
 
   useEffect(() => {
-    if (!shouldHydrateSyncStatus) return
-
-    let cancelled = false
-
-        const loadLocalPath = async () => {
-            if (project.status === 'draft') {
-                if (!cancelled) setLocalPath(null)
-                return
-            }
-
-            const path = project.localPath ?? await window.electronAPI.project.getLocalPath({
-                slug: project.slug,
-                projectId: String(project._id),
-            })
-            if (!cancelled) setLocalPath(path)
-        }
-
-    void loadLocalPath()
-    return () => {
-      cancelled = true
-    }
-  }, [project._id, project.localPath, project.slug, project.status, shouldHydrateSyncStatus])
+    setLocalPath(project.localPath ?? null)
+  }, [project._id, project.localPath])
 
     const preloadProjectDestination = useCallback(() => {
-    setSyncHydrationRequested(true)
     if (project.status === 'draft') {
       void preloadNewProjectPage()
       return
@@ -407,6 +375,8 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
     const isBuilding = project.status === 'building' || project.status === 'generating'
     const isDraft = project.status === 'draft'
     const isArchiveActionPending = isArchiving || isRestoring
+    const shouldRenderPreviewImage = Boolean(previewImageUrl) && isInViewport && !imageError
+    const shouldHydrateSyncStatus = isInViewport || syncState !== 'idle'
     return (
         <div className="self-start">
                 <Card
@@ -423,12 +393,14 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
                 {/* Preview Section - Top Half */}
                 <div className="h-40 w-full bg-muted/50 flex items-center justify-center relative overflow-hidden group-hover:bg-muted/70 transition-colors rounded-t-xl">
                     {/* Preview Image or Placeholder */}
-                    {previewImageUrl && !imageError ? (
+                    {shouldRenderPreviewImage ? (
                         <>
                             <img
-                                src={previewImageUrl}
+                                src={previewImageUrl ?? undefined}
                                 alt={`${project.name} preview`}
                                 className="w-full h-full object-cover object-top"
+                                loading="lazy"
+                                decoding="async"
                                 onError={() => setImageError(true)}
                             />
                         </>
@@ -626,6 +598,7 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
                                                 projectSlug={project.slug}
                                                 localPath={localPath}
                                                 lastSyncAt={project.lastSyncAt}
+                                                initialRefreshMode="local"
                                                 size="compact"
                                             />
                                         </div>
@@ -636,6 +609,6 @@ export function ProjectCard({ project, userId, workspaceScoped }: ProjectCardPro
                     </CardContent>
                 </div>
             </Card>
-        </div>
-    )
-}
+                </div>
+            )
+})

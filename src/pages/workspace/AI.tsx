@@ -653,9 +653,10 @@ export function AI({ surface = 'page', route }: AIProps) {
   const selectedProviderInfo = selectedProvider
     ? providerRows.find((provider) => provider.id === selectedProvider)
     : undefined
-  const selectedProviderMethods = selectedProvider
-    ? availableProviderMethods[selectedProvider] ?? []
-    : []
+  const selectedProviderMethods = useMemo(
+    () => (selectedProvider ? availableProviderMethods[selectedProvider] ?? [] : []),
+    [availableProviderMethods, selectedProvider]
+  )
   const selectedProviderAuthStrategies = selectedProviderInfo?.authStrategies ?? []
   const providerNameById = useMemo(() => {
     const rows = providerCatalog.length > 0 ? providerCatalog : FALLBACK_PROVIDER_ROWS
@@ -692,10 +693,10 @@ export function AI({ surface = 'page', route }: AIProps) {
     hasCloudValue(cloudCredentials.secretAccessKey) ||
     hasCloudValue(cloudCredentials.serviceKey)
 
-  const providerSupportsMethod = (method: ProviderAuthMethod): boolean => {
+  const providerSupportsMethod = useCallback((method: ProviderAuthMethod): boolean => {
     if (selectedProviderMethods.length === 0) return true
     return selectedProviderMethods.includes(method)
-  }
+  }, [selectedProviderMethods])
 
   useEffect(() => {
     if (!selectedProvider) return
@@ -793,7 +794,6 @@ export function AI({ surface = 'page', route }: AIProps) {
             </div>
 
             <div className="rounded-2xl bg-secondary/80 dark:bg-secondary/40 p-5">
-
               <ChartContainer config={usageChartConfig} className="aspect-auto h-[200px] w-full">
                 <AreaChart data={chartData}>
                   <defs>
@@ -865,7 +865,7 @@ export function AI({ surface = 'page', route }: AIProps) {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <History className="h-5 w-5" />
-                  AI Usage History
+                  <span>AI Usage History</span>
                 </CardTitle>
                 <CardDescription>
                   {usageHistoryView === 'daily'
@@ -1003,11 +1003,9 @@ export function AI({ surface = 'page', route }: AIProps) {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                        {detailedUsageHistory === undefined
-                          ? `Loading ${usageHistoryView === 'daily' ? 'daily' : 'activity'} usage history...`
-                          : walletTotalDebitedCents > 0
-                            ? 'No usage rows were found in the selected range.'
-                            : 'No AI usage in the selected range yet.'}
+                        {walletTotalDebitedCents > 0
+                          ? 'No usage rows were found in the selected range.'
+                          : 'No AI usage in the selected range yet.'}
                       </TableCell>
                     </TableRow>
                   )}

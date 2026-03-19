@@ -1327,6 +1327,7 @@ export function NewProject() {
       breadcrumbAddon={breadcrumbAddon || undefined}
       footer={undefined}
       contentMode="fixed"
+      hideInbox
     >
       <WizardLayout
         steps={steps}

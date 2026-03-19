@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { DashboardLayout } from '../../components/layouts/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
+import { Checkbox } from '../../components/ui/checkbox'
 import { getDefaultFolderIcon } from '../../lib/fileExplorer'
 import { cn } from '../../lib/utils'
 import {
@@ -40,11 +41,50 @@ interface StorageProps {
 
 const PROJECTS_PAGE_SIZE = 10
 let cachedStorageSnapshot: StorageSnapshot | null = null
+let storageSnapshotPrewarmPromise: Promise<void> | null = null
 
 interface StorageUsageSegment {
   label: string
   bytes: number
   colorClassName: string
+}
+
+function buildSnapshotAfterProjectDeletion(
+  snapshot: StorageSnapshot,
+  projectPath: string
+): StorageSnapshot {
+  return buildSnapshotAfterProjectDeletions(snapshot, [projectPath])
+}
+
+function buildSnapshotAfterProjectDeletions(
+  snapshot: StorageSnapshot,
+  projectPaths: string[]
+): StorageSnapshot {
+  if (projectPaths.length === 0) {
+    return snapshot
+  }
+
+  const removedPaths = new Set(projectPaths)
+  const nextItems = snapshot.projects.items.filter((project) => !removedPaths.has(project.path))
+  if (nextItems.length === snapshot.projects.items.length) {
+    return snapshot
+  }
+
+  const removedCount = snapshot.projects.items.length - nextItems.length
+  const nextTotal = Math.max(0, snapshot.projects.total - removedCount)
+  const nextTotalPages = Math.max(1, Math.ceil(nextTotal / snapshot.projects.pageSize))
+  const nextPage = Math.min(snapshot.projects.page, nextTotalPages)
+
+  return {
+    ...snapshot,
+    projects: {
+      ...snapshot.projects,
+      items: nextPage === snapshot.projects.page ? nextItems : [],
+      total: nextTotal,
+      totalPages: nextTotalPages,
+      page: nextPage,
+    },
+  }
 }
 
 // Format bytes to human readable size
@@ -95,6 +135,30 @@ function getPageNumbers(currentPage: number, totalPages: number): Array<number |
   return [1, '...', currentPage, '...', totalPages]
 }
 
+export async function prewarmStorageSettings(): Promise<void> {
+  if (!window.electronAPI?.storage?.getSnapshot) return
+  if (cachedStorageSnapshot) return
+  if (storageSnapshotPrewarmPromise) {
+    await storageSnapshotPrewarmPromise
+    return
+  }
+
+  storageSnapshotPrewarmPromise = window.electronAPI.storage
+    .getSnapshot({
+      page: 1,
+      pageSize: PROJECTS_PAGE_SIZE,
+    })
+    .then((snapshot) => {
+      cachedStorageSnapshot = snapshot
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      storageSnapshotPrewarmPromise = null
+    })
+
+  await storageSnapshotPrewarmPromise
+}
+
 export function Storage({ surface = 'page' }: StorageProps) {
   const { user, logout } = useAuth()
   const [projectsDirectory, setProjectsDirectory] = useState<string>(
@@ -109,6 +173,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
   const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false)
   const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = useState(false)
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false)
+  const [selectedProjectPaths, setSelectedProjectPaths] = useState<string[]>([])
 
   const loadStorageSnapshot = useCallback(
     async (options?: {
@@ -307,8 +372,19 @@ export function Storage({ surface = 'page' }: StorageProps) {
           currentPage > 1
             ? currentPage - 1
             : currentPage
+        if (storageSnapshot) {
+          const nextSnapshot = buildSnapshotAfterProjectDeletion(storageSnapshot, project.path)
+          cachedStorageSnapshot = nextSnapshot
+          setStorageSnapshot(nextSnapshot)
+          setCurrentPage(nextSnapshot.projects.page)
+        }
 
-        await refreshSnapshot(nextPage, 'all')
+        void loadStorageSnapshot({
+          page: nextPage,
+          forceRefresh: true,
+          mode: 'all',
+          silent: true,
+        })
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Failed to delete the local project.'
@@ -318,8 +394,94 @@ export function Storage({ surface = 'page' }: StorageProps) {
         setPendingAction(null)
       }
     },
-    [currentPage, refreshSnapshot, showErrorDialog, storageSnapshot]
+    [currentPage, loadStorageSnapshot, showErrorDialog, storageSnapshot]
   )
+
+  const handleBulkDeleteProjects = useCallback(async () => {
+    if (
+      !window.electronAPI?.dialog ||
+      !window.electronAPI?.storage?.deleteProject ||
+      selectedProjectPaths.length === 0
+    ) {
+      return
+    }
+
+    const selectedProjects = (storageSnapshot?.projects.items ?? []).filter((project) =>
+      selectedProjectPaths.includes(project.path)
+    )
+    if (selectedProjects.length === 0) {
+      return
+    }
+
+    const confirmation = await window.electronAPI.dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Cancel', 'Delete Projects'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Delete Local Projects',
+      message: `Delete ${selectedProjects.length} local project${selectedProjects.length === 1 ? '' : 's'}?`,
+      detail:
+        'This removes the selected local project folders from your device. Cloud-synced data is not affected.',
+    })
+
+    if (confirmation.response !== 1) return
+
+    setPendingAction('delete:selected')
+
+    const deletedPaths: string[] = []
+    const failedProjects: string[] = []
+
+    try {
+      for (const project of selectedProjects) {
+        const result = await window.electronAPI.storage.deleteProject({
+          projectPath: project.path,
+        })
+
+        if (result.success) {
+          deletedPaths.push(project.path)
+        } else {
+          failedProjects.push(project.name)
+        }
+      }
+
+      if (deletedPaths.length > 0 && storageSnapshot) {
+        const nextSnapshot = buildSnapshotAfterProjectDeletions(storageSnapshot, deletedPaths)
+        cachedStorageSnapshot = nextSnapshot
+        setStorageSnapshot(nextSnapshot)
+        setCurrentPage(nextSnapshot.projects.page)
+      }
+
+      setSelectedProjectPaths((current) => current.filter((path) => !deletedPaths.includes(path)))
+
+      const nextPage =
+        storageSnapshot
+          ? buildSnapshotAfterProjectDeletions(storageSnapshot, deletedPaths).projects.page
+          : currentPage
+
+      void loadStorageSnapshot({
+        page: nextPage,
+        forceRefresh: true,
+        mode: 'all',
+        silent: true,
+      })
+
+      if (failedProjects.length > 0) {
+        const detail =
+          failedProjects.length === 1
+            ? `Failed to delete ${failedProjects[0]}.`
+            : `Failed to delete ${failedProjects.length} selected projects.`
+        setActionError(detail)
+        await showErrorDialog('Delete Projects Failed', detail)
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete the selected local projects.'
+      setActionError(message)
+      await showErrorDialog('Delete Projects Failed', message)
+    } finally {
+      setPendingAction(null)
+    }
+  }, [currentPage, loadStorageSnapshot, selectedProjectPaths, showErrorDialog, storageSnapshot])
 
   const handleClearAll = useCallback(async () => {
     if (!window.electronAPI?.storage?.clearAll) return
@@ -354,7 +516,37 @@ export function Storage({ surface = 'page' }: StorageProps) {
 
   const storageUsage: StorageUsage | null = storageSnapshot?.usage ?? null
   const projectsPage: StorageProjectsPage | null = storageSnapshot?.projects ?? null
-  const localProjects = projectsPage?.items ?? []
+  const localProjects = useMemo(
+    () => projectsPage?.items ?? [],
+    [projectsPage?.items]
+  )
+  const allVisibleProjectPaths = useMemo(
+    () => localProjects.map((project) => project.path),
+    [localProjects]
+  )
+  const selectedVisibleProjectCount = allVisibleProjectPaths.filter((path) =>
+    selectedProjectPaths.includes(path)
+  ).length
+  const areAllVisibleProjectsSelected =
+    localProjects.length > 0 && selectedVisibleProjectCount === localProjects.length
+
+  useEffect(() => {
+    setSelectedProjectPaths((current) =>
+      current.filter((path) => allVisibleProjectPaths.includes(path))
+    )
+  }, [allVisibleProjectPaths])
+
+  const toggleAllVisibleProjects = useCallback(() => {
+    setSelectedProjectPaths(areAllVisibleProjectsSelected ? [] : allVisibleProjectPaths)
+  }, [allVisibleProjectPaths, areAllVisibleProjectsSelected])
+
+  const toggleProjectSelection = useCallback((projectPath: string) => {
+    setSelectedProjectPaths((current) =>
+      current.includes(projectPath)
+        ? current.filter((path) => path !== projectPath)
+        : [...current, projectPath]
+    )
+  }, [])
 
   // Use actual disk total, fallback to dynamic if disk info unavailable
   const diskTotal = storageUsage?.diskTotal || 0
@@ -427,18 +619,20 @@ export function Storage({ surface = 'page' }: StorageProps) {
         {/* Storage Usage */}
           <Card className="border-none shadow-none bg-transparent">
             <CardHeader>
-              <CardTitle>Local Storage</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <span>Local Storage</span>
+                {isLoadingStorage ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin text-muted-foreground"
+                    aria-label="Refreshing storage usage"
+                  />
+                ) : null}
+              </CardTitle>
             </CardHeader>
             <CardContent>
             {actionError && (
               <div className="mb-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {actionError}
-              </div>
-            )}
-            {isLoadingStorage && (
-              <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Refreshing storage usage...</span>
               </div>
             )}
 
@@ -609,16 +803,44 @@ export function Storage({ surface = 'page' }: StorageProps) {
         {/* Local Projects */}
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader>
-            <CardTitle>Local Projects</CardTitle>
-            <CardDescription>
-              Projects stored on this device
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Local Projects</CardTitle>
+                <CardDescription>
+                  Projects stored on this device
+                </CardDescription>
+              </div>
+              {selectedProjectPaths.length > 0 ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 rounded-full"
+                  onClick={() => void handleBulkDeleteProjects()}
+                  disabled={pendingAction === 'delete:selected'}
+                >
+                  {pendingAction === 'delete:selected' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  Delete ({selectedProjectPaths.length})
+                </Button>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40">
               <Table className="[&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={areAllVisibleProjectsSelected}
+                        onCheckedChange={toggleAllVisibleProjects}
+                        disabled={localProjects.length === 0 || pendingAction === 'delete:selected'}
+                        aria-label="Select all local projects on this page"
+                      />
+                    </TableHead>
                     <TableHead>Project</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Last Modified</TableHead>
@@ -629,6 +851,14 @@ export function Storage({ surface = 'page' }: StorageProps) {
                   {localProjects.length > 0 ? (
                     localProjects.map((project) => (
                       <TableRow key={project.path}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedProjectPaths.includes(project.path)}
+                            onCheckedChange={() => toggleProjectSelection(project.path)}
+                            disabled={pendingAction === 'delete:selected'}
+                            aria-label={`Select ${project.name}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">{project.name}</TableCell>
                         <TableCell>{formatBytes(project.size)}</TableCell>
                         <TableCell className="text-muted-foreground">
@@ -640,7 +870,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => void handleDeleteProject(project)}
-                            disabled={pendingAction === `delete:${project.path}`}
+                            disabled={Boolean(pendingAction)}
                           >
                             {pendingAction === `delete:${project.path}` ? (
                               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -653,7 +883,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                         {isLoadingProjects
                           ? 'Loading projects...'
                           : 'No projects found in this directory'}

@@ -28,6 +28,30 @@ const RUNTIME_LABELS: Record<RuntimeKind, string> = {
   go: 'Go',
 }
 
+let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = null
+let runtimeStatusPrewarmPromise: Promise<void> | null = null
+
+export async function prewarmToolingSettings(): Promise<void> {
+  if (!window.electronAPI?.runtime?.getRuntimeStatus) return
+  if (cachedRuntimeStatus) return
+  if (runtimeStatusPrewarmPromise) {
+    await runtimeStatusPrewarmPromise
+    return
+  }
+
+  runtimeStatusPrewarmPromise = window.electronAPI.runtime
+    .getRuntimeStatus()
+    .then((status) => {
+      cachedRuntimeStatus = status
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      runtimeStatusPrewarmPromise = null
+    })
+
+  await runtimeStatusPrewarmPromise
+}
+
 function getRuntimeTargetPresentation(target: string): {
   label: string
   icon: React.ReactNode
@@ -177,9 +201,11 @@ function RuntimeProgressRing({ progress }: { progress: number }) {
 
 export function Tooling({ surface = 'page' }: ToolingProps) {
   const { user, logout } = useAuth()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
-  const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(null)
+  const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
+    cachedRuntimeStatus
+  )
   const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
   const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
@@ -190,26 +216,31 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
     ? getRuntimeTargetPresentation(runtimeStatus.target)
     : null
 
-  const loadRuntimeStatus = useCallback(async () => {
-    setIsLoading(true)
+  const loadRuntimeStatus = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true)
+    }
     setError(null)
     try {
       if (!window.electronAPI?.runtime?.getRuntimeStatus) {
         throw new Error('Runtime API is unavailable in this environment.')
       }
       const status = await window.electronAPI.runtime.getRuntimeStatus()
+      cachedRuntimeStatus = status
       setRuntimeStatus(status)
     } catch (runtimeError) {
       const message = runtimeError instanceof Error ? runtimeError.message : 'Failed to load tooling status.'
       setError(message)
-      setRuntimeStatus(null)
+      setRuntimeStatus((current) => current ?? cachedRuntimeStatus)
     } finally {
-      setIsLoading(false)
+      if (!options?.silent) {
+        setIsLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    void loadRuntimeStatus()
+    void loadRuntimeStatus({ silent: Boolean(cachedRuntimeStatus) })
   }, [loadRuntimeStatus])
 
   useEffect(() => {
@@ -235,7 +266,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
     const hasActiveInstall = Object.values(runtimeInstallJobs).some((job) => job?.status === 'installing')
     if (!hasActiveInstall) return
     const timer = window.setInterval(() => {
-      void loadRuntimeStatus()
+      void loadRuntimeStatus({ silent: true })
     }, 2500)
     return () => window.clearInterval(timer)
   }, [loadRuntimeStatus, runtimeInstallJobs])
@@ -246,7 +277,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
       const runtime = runtimeKey as RuntimeKind
       const previousStatus = previousStatusesRef.current[runtime]
       if (previousStatus !== job.status && job.status === 'success') {
-        void loadRuntimeStatus()
+        void loadRuntimeStatus({ silent: true })
       }
       previousStatusesRef.current[runtime] = job.status
     }
@@ -294,7 +325,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
           : 'max-w-6xl space-y-6 px-6 pt-6 pb-8'
       }
     >
-        <div className="rounded-2xl bg-secondary/70 px-5 py-4">
+        <div className="px-1 py-1">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-base font-medium">Tooling and Framework Support</h2>
@@ -308,7 +339,9 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
             <Button
               size="sm"
               variant="ghost"
-              onClick={loadRuntimeStatus}
+              onClick={() => {
+                void loadRuntimeStatus()
+              }}
               disabled={isLoading}
               className="rounded-full"
             >
@@ -326,12 +359,6 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
           )}
         </div>
 
-        {isLoading && (
-          <div className="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading tooling status...
-          </div>
-        )}
         {error && (
           <div className="rounded-2xl bg-destructive/10 px-4 py-4 text-sm text-destructive">
             {error}
@@ -369,6 +396,9 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Runtime Inventory</h3>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : null}
           </div>
           <div className="overflow-hidden rounded-2xl bg-secondary/60">
             <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
@@ -452,7 +482,7 @@ export function Tooling({ surface = 'page' }: ToolingProps) {
                 ))
               ) : (
                 <div className="px-3 py-4 text-sm text-muted-foreground">
-                  {isLoading ? 'Loading runtime inventory...' : 'No runtime data available.'}
+                  {isLoading ? 'Checking runtime inventory...' : 'No runtime data available.'}
                 </div>
               )}
             </div>

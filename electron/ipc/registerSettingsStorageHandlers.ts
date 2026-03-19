@@ -26,6 +26,8 @@ const STORAGE_SNAPSHOT_TTL_MS = 30_000
 const DEFAULT_STORAGE_PAGE_SIZE = 10
 const MAX_STORAGE_PAGE_SIZE = 100
 const STORAGE_BUILD_CACHE_DIR_NAMES = ['dist', 'build', '.next'] as const
+const STORAGE_PROJECT_SCAN_CONCURRENCY = 4
+const STORAGE_PROJECT_CHILD_SCAN_CONCURRENCY = 6
 const DARWIN_CAPACITY_PROBE_TIMEOUT_MS = 15_000
 const DARWIN_SWIFT_CAPACITY_SCRIPT = `
 import Foundation
@@ -50,6 +52,13 @@ interface StorageSnapshotCacheEntry {
   updatedAt: number
 }
 
+interface ScannedStorageEntry {
+  totalSize: number
+  dependencies?: number
+  buildCache?: number
+  project?: LocalProject
+}
+
 let storageSnapshotCache: StorageSnapshotCacheEntry | null = null
 let darwinCapacityProbeAvailable: boolean | null = null
 
@@ -63,6 +72,14 @@ function getDefaultSettings(): AppSettings {
 
 function invalidateStorageSnapshotCache(): void {
   storageSnapshotCache = null
+}
+
+function getStorageSnapshotCacheForDirectory(
+  projectsDir: string
+): StorageSnapshotCacheEntry | null {
+  return storageSnapshotCache?.projectsDirectory === projectsDir
+    ? storageSnapshotCache
+    : null
 }
 
 function normalizePageSize(value?: number): number {
@@ -93,6 +110,30 @@ function paginateProjects(
     total,
     totalPages,
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const normalizedConcurrency = Math.max(1, Math.min(concurrency, items.length || 1))
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex)
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: normalizedConcurrency }, () => worker())
+  )
+
+  return results
 }
 
 function buildStorageSnapshotResponse(
@@ -240,17 +281,133 @@ async function getPathSize(targetPath: string): Promise<number> {
   }
 }
 
-async function removePath(targetPath: string): Promise<number> {
-  const size = await getPathSize(targetPath)
+function isBuildCacheDirectoryName(
+  name: string
+): name is (typeof STORAGE_BUILD_CACHE_DIR_NAMES)[number] {
+  return STORAGE_BUILD_CACHE_DIR_NAMES.includes(
+    name as (typeof STORAGE_BUILD_CACHE_DIR_NAMES)[number]
+  )
+}
+
+async function scanProjectDirectory(entryPath: string): Promise<{
+  totalSize: number
+  dependencies: number
+  buildCache: number
+}> {
+  let children: fs.Dirent[]
+  try {
+    children = await fs.promises.readdir(entryPath, { withFileTypes: true })
+  } catch {
+    return {
+      totalSize: await getDirectorySize(entryPath),
+      dependencies: 0,
+      buildCache: 0,
+    }
+  }
+
+  if (children.length === 0) {
+    return {
+      totalSize: 0,
+      dependencies: 0,
+      buildCache: 0,
+    }
+  }
+
+  const childSizes = await mapWithConcurrency(
+    children,
+    STORAGE_PROJECT_CHILD_SCAN_CONCURRENCY,
+    async (child) => {
+      const childPath = path.join(entryPath, child.name)
+      const size = child.isDirectory()
+        ? await getDirectorySize(childPath)
+        : await getPathSize(childPath)
+
+      return {
+        name: child.name,
+        size,
+      }
+    }
+  )
+
+  let totalSize = 0
+  let dependencies = 0
+  let buildCache = 0
+
+  for (const child of childSizes) {
+    totalSize += child.size
+
+    if (child.name === 'node_modules') {
+      dependencies += child.size
+      continue
+    }
+
+    if (isBuildCacheDirectoryName(child.name)) {
+      buildCache += child.size
+    }
+  }
+
+  return {
+    totalSize,
+    dependencies,
+    buildCache,
+  }
+}
+
+async function scanStorageEntry(
+  projectsDir: string,
+  entry: fs.Dirent
+): Promise<ScannedStorageEntry> {
+  const entryPath = path.join(projectsDir, entry.name)
+
+  if (!entry.isDirectory() || entry.name.startsWith('.')) {
+    return {
+      totalSize: await getPathSize(entryPath),
+    }
+  }
+
+  const { totalSize, dependencies, buildCache } = await scanProjectDirectory(entryPath)
+
+  let lastModified = Date.now()
+  try {
+    lastModified = fs.statSync(entryPath).mtimeMs
+  } catch {
+    // Ignore stat errors.
+  }
+
+  return {
+    totalSize,
+    dependencies,
+    buildCache,
+    project: {
+      name: entry.name,
+      path: entryPath,
+      size: totalSize,
+      lastModified,
+    } satisfies LocalProject,
+  }
+}
+
+async function removePath(
+  targetPath: string,
+  options?: { measureSize?: boolean }
+): Promise<number> {
+  const size = options?.measureSize === false ? 0 : await getPathSize(targetPath)
   if (!fs.existsSync(targetPath)) return size
   await fs.promises.rm(targetPath, { recursive: true, force: true })
   return size
 }
 
-async function clearDirectoryContents(dirPath: string): Promise<number> {
+async function clearDirectoryContents(
+  dirPath: string,
+  options?: { measureSize?: boolean }
+): Promise<number> {
   if (!fs.existsSync(dirPath)) return 0
   const entries = await fs.promises.readdir(dirPath)
-  const sizes = await Promise.all(entries.map((entry) => removePath(path.join(dirPath, entry))))
+  const sizes = await Promise.all(
+    entries.map((entry) =>
+      removePath(path.join(dirPath, entry), { measureSize: options?.measureSize })
+    )
+  )
   return sizes.reduce((total, size) => total + size, 0)
 }
 
@@ -284,43 +441,10 @@ async function collectStorageSnapshot(projectsDir: string): Promise<StorageSnaps
   if (fs.existsSync(projectsDir)) {
     try {
       const entries = fs.readdirSync(projectsDir, { withFileTypes: true })
-      const scannedEntries = await Promise.all(
-        entries.map(async (entry) => {
-          const entryPath = path.join(projectsDir, entry.name)
-          const totalSize = entry.isDirectory()
-            ? await getDirectorySize(entryPath)
-            : await getPathSize(entryPath)
-
-          if (!entry.isDirectory() || entry.name.startsWith('.')) {
-            return { totalSize }
-          }
-
-          const [nodeModules, dist, build, nextCache] = await Promise.all([
-            getDirectorySize(path.join(entryPath, 'node_modules')),
-            getDirectorySize(path.join(entryPath, 'dist')),
-            getDirectorySize(path.join(entryPath, 'build')),
-            getDirectorySize(path.join(entryPath, '.next')),
-          ])
-
-          let lastModified = Date.now()
-          try {
-            lastModified = fs.statSync(entryPath).mtimeMs
-          } catch {
-            // Ignore stat errors.
-          }
-
-          return {
-            totalSize,
-            dependencies: nodeModules,
-            buildCache: dist + build + nextCache,
-            project: {
-              name: entry.name,
-              path: entryPath,
-              size: totalSize,
-              lastModified,
-            } satisfies LocalProject,
-          }
-        })
+      const scannedEntries = await mapWithConcurrency(
+        entries,
+        STORAGE_PROJECT_SCAN_CONCURRENCY,
+        async (entry) => scanStorageEntry(projectsDir, entry)
       )
 
       for (const scannedEntry of scannedEntries) {
@@ -472,6 +596,7 @@ export function registerSettingsStorageHandlers(
     const userDataDir = app.getPath('userData')
     const appCachePath = path.join(userDataDir, 'Cache')
     const projectDirectories = getProjectDirectories(projectsDir)
+    const cachedSnapshot = getStorageSnapshotCacheForDirectory(projectsDir)
 
     try {
       const targets = [
@@ -481,9 +606,8 @@ export function registerSettingsStorageHandlers(
         ),
       ]
 
-      const clearedBytes = (await Promise.all(targets.map((target) => removePath(target)))).reduce(
-        (total, size) => total + size,
-        0
+      await Promise.all(
+        targets.map((target) => removePath(target, { measureSize: false }))
       )
 
       await fs.promises.mkdir(appCachePath, { recursive: true })
@@ -491,7 +615,9 @@ export function registerSettingsStorageHandlers(
 
       return {
         success: true,
-        clearedBytes,
+        ...(typeof cachedSnapshot?.usage.buildCache === 'number'
+          ? { clearedBytes: cachedSnapshot.usage.buildCache }
+          : {}),
       }
     } catch (error) {
       return {
@@ -503,15 +629,16 @@ export function registerSettingsStorageHandlers(
 
   ipcMain.handle('storage:clearLogs', async (): Promise<StorageActionResult> => {
     const logsDir = app.getPath('logs')
+    const cachedLogsSize = storageSnapshotCache?.usage.logs
 
     try {
-      const clearedBytes = await clearDirectoryContents(logsDir)
+      await clearDirectoryContents(logsDir, { measureSize: false })
       await fs.promises.mkdir(logsDir, { recursive: true })
       invalidateStorageSnapshotCache()
 
       return {
         success: true,
-        clearedBytes,
+        ...(typeof cachedLogsSize === 'number' ? { clearedBytes: cachedLogsSize } : {}),
       }
     } catch (error) {
       return {
@@ -537,11 +664,13 @@ export function registerSettingsStorageHandlers(
       }
 
       try {
-        const clearedBytes = await removePath(projectPath)
+        const cachedSnapshot = getStorageSnapshotCacheForDirectory(projectsDir)
+        const cachedProject = cachedSnapshot?.projects.find((project) => project.path === projectPath)
+        await removePath(projectPath, { measureSize: false })
         invalidateStorageSnapshotCache()
         return {
           success: true,
-          clearedBytes,
+          ...(typeof cachedProject?.size === 'number' ? { clearedBytes: cachedProject.size } : {}),
           deletedCount: 1,
         }
       } catch (error) {
@@ -561,12 +690,13 @@ export function registerSettingsStorageHandlers(
     const appCachePath = path.join(userDataDir, 'Cache')
     const defaultSettings = getDefaultSettings()
     const deletedProjectCount = getProjectDirectories(currentProjectsDir).length
+    const cachedSnapshot = getStorageSnapshotCacheForDirectory(currentProjectsDir)
 
     try {
-      const [projectsBytes, appCacheBytes, logsBytes] = await Promise.all([
-        clearDirectoryContents(currentProjectsDir),
-        clearDirectoryContents(appCachePath),
-        clearDirectoryContents(logsDir),
+      await Promise.all([
+        clearDirectoryContents(currentProjectsDir, { measureSize: false }),
+        clearDirectoryContents(appCachePath, { measureSize: false }),
+        clearDirectoryContents(logsDir, { measureSize: false }),
       ])
 
       await Promise.all([
@@ -580,7 +710,9 @@ export function registerSettingsStorageHandlers(
 
       return {
         success: true,
-        clearedBytes: projectsBytes + appCacheBytes + logsBytes,
+        ...(typeof cachedSnapshot?.usage.total === 'number'
+          ? { clearedBytes: cachedSnapshot.usage.total }
+          : {}),
         deletedCount: deletedProjectCount,
       }
     } catch (error) {

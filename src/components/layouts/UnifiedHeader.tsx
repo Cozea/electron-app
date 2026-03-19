@@ -93,6 +93,7 @@ interface UnifiedHeaderProps {
   contentInsetLeft?: number
   contentInsetRight?: number
   compactHeaderActions?: boolean
+  hideInbox?: boolean
   projectInviteContext?: {
     projectId: Id<"projects"> | null
     projectName?: string | null
@@ -1045,6 +1046,7 @@ export function UnifiedHeader({
   contentInsetLeft = 0,
   contentInsetRight = 0,
   compactHeaderActions = true,
+  hideInbox = false,
   projectInviteContext = null,
 }: UnifiedHeaderProps) {
   const { personalScoped } = useScopedAppContext()
@@ -1202,7 +1204,7 @@ export function UnifiedHeader({
             projectName={projectInviteContext.projectName}
           />
         )
-      : <HeaderInboxButton />
+      : !hideInbox ? <HeaderInboxButton /> : null
     : null
 
   if (isTabsPrimaryLayout) {
