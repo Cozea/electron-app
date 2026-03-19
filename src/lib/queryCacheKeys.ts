@@ -40,3 +40,9 @@ export function getAiUsageHistoryCacheKey(
 ): string {
   return `ai-usage-history-${kind}-${organizationId ?? 'none'}-${startDate ?? 'none'}-${endDate ?? 'none'}`
 }
+
+export function getPersonalProjectContactsCacheKey(
+  userId?: string | null
+): string {
+  return `personal-project-contacts-${userId ?? 'none'}`
+}
