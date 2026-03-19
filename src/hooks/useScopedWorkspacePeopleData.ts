@@ -5,6 +5,7 @@ import { api } from '../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useHydrateWorkspaceMembers } from '@/hooks/useHydrateWorkspaceMembers'
 import { useScopedSettingsPage } from '@/hooks/useScopedSettingsPage'
+import { getSeatManagementCacheKey } from '@/lib/queryCacheKeys'
 import { useCachedQuery } from '@/stores/useQueryCache'
 import {
   buildOrganizationWorkspaceRoleOptions,
@@ -112,7 +113,7 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
   )
   const organizationRoles = useMemo(() => canReadRoles ? (organizationRolesQuery ?? []) : [], [canReadRoles, organizationRolesQuery])
 
-  const seatManagement = useQuery(
+  const freshSeatManagement = useQuery(
     api.billing.getSeatManagement,
     options.includeSeatManagement &&
       convexOrg?._id &&
@@ -121,6 +122,10 @@ export function useScopedWorkspacePeopleData(options: UseScopedWorkspacePeopleDa
       settingsPage.workspaceAccess.memberAccess !== null
       ? { organizationId: convexOrg._id, userId: convexUserId }
       : 'skip',
+  )
+  const seatManagement = useCachedQuery(
+    getSeatManagementCacheKey(convexOrg?._id, convexUserId),
+    freshSeatManagement,
   )
 
   const roleOptions = useMemo(

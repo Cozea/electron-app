@@ -24,6 +24,24 @@ import type {
   WorkspaceSurfaceAccessState,
 } from "@/lib/settings/settingsSurfaceTypes"
 
+const preloadAccountPage = () => import("@/pages/settings/Account")
+const preloadBillingPage = () => import("@/pages/workspace/Billing")
+const preloadAiPage = () => import("@/pages/workspace/AI")
+const preloadModelSelectionPage = () => import("@/pages/settings/ModelSelection")
+const preloadAppearancePage = () => import("@/pages/settings/Appearance")
+const preloadGeneralPage = () => import("@/pages/workspace/General")
+const preloadStoragePage = async () => {
+  const module = await import("@/pages/settings/Storage")
+  await module.prewarmStorageSettings?.()
+}
+const preloadCliToolsPage = () => import("@/pages/workspace/Integrations")
+const preloadToolingPage = async () => {
+  const module = await import("@/pages/settings/Tooling")
+  await module.prewarmToolingSettings?.()
+}
+const preloadPoliciesPage = () => import("@/pages/workspace/Policies")
+const preloadMembersPage = () => import("@/pages/teams/Members")
+const preloadCloudStoragePage = () => import("@/pages/workspace/Sync")
 const preloadPermissionsPage = () => import("@/pages/teams/Roles")
 
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
@@ -34,6 +52,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     routes: { personal: "/settings/account" },
     storageMode: { personal: "cloud" },
     placements: ["drawer", "command", "settingsWindow"],
+    preload: preloadAccountPage,
     commandKeywords: ["account", "profile", "settings"],
   },
   {
@@ -45,6 +64,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { workspace: "workspace" },
     workspaceAccessKey: "billing",
+    preload: preloadBillingPage,
     commandKeywords: ["billing", "subscription", "payment", "usage", "plan"],
   },
   {
@@ -56,6 +76,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { workspace: "workspace" },
     workspaceAccessKey: "ai",
+    preload: preloadAiPage,
     commandKeywords: ["ai", "providers", "models", "settings"],
   },
   {
@@ -69,6 +90,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     storageMode: { personal: "local", workspace: "cloud" },
     placements: ["drawer", "command"],
     workspaceAccessKey: "ai",
+    preload: preloadModelSelectionPage,
     commandKeywords: ["models", "model selection", "allowlist", "ai policy"],
   },
   {
@@ -78,6 +100,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     routes: { personal: "/settings/appearance" },
     storageMode: { personal: "local" },
     placements: ["drawer", "command", "settingsWindow"],
+    preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
   },
   {
@@ -87,6 +110,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     routes: { personal: "/settings/storage" },
     storageMode: { personal: "local" },
     placements: ["drawer", "command", "settingsWindow"],
+    preload: preloadStoragePage,
     commandKeywords: ["storage", "disk", "local files"],
   },
   {
@@ -101,6 +125,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["sidebar", "command", "settingsWindow"],
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "integrations",
+    preload: preloadCliToolsPage,
     commandKeywords: ["cli", "tools", "integrations", "connect", "services", "terminal"],
   },
   {
@@ -110,6 +135,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     routes: { personal: "/settings/tooling" },
     storageMode: { personal: "local" },
     placements: ["drawer", "command", "settingsWindow"],
+    preload: preloadToolingPage,
     commandKeywords: ["tooling", "runtime", "framework", "local machine"],
   },
   {
@@ -121,6 +147,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["sidebar", "command"],
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "general",
+    preload: preloadGeneralPage,
     commandKeywords: ["workspace", "general", "settings"],
   },
   {
@@ -133,6 +160,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "settings",
     commandKeywords: ["policies", "governance", "sharing", "retention"],
+    preload: preloadPoliciesPage,
   },
   {
     id: "members",
@@ -143,6 +171,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["sidebar", "command"],
     sidebarGroups: { workspace: "team" },
     workspaceAccessKey: "members",
+    preload: preloadMembersPage,
     commandKeywords: ["team", "members", "organization", "invite"],
   },
   {
@@ -168,6 +197,7 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalWorkspace", workspace: "workspace" },
     workspaceAccessKey: "usage",
     alpha: true,
+    preload: preloadCloudStoragePage,
     commandKeywords: ["cloud storage", "sync", "usage", "storage"],
   },
 ] as const

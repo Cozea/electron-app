@@ -366,6 +366,13 @@ export async function getFrameworkInfo(
 /**
  * Get just the dev server config (for ServerControl)
  */
+function getPersistedDevCommand(projectPath: string): string | null {
+  if (typeof localStorage === 'undefined') return null
+  const key = `dev-command:${encodeURIComponent(projectPath)}`
+  const raw = localStorage.getItem(key)
+  return raw?.trim() || null
+}
+
 export async function getDevServerConfig(
   projectPath: string,
   storedDevCommand?: string | null,
@@ -395,17 +402,29 @@ export async function getDevServerConfig(
     return Number.isFinite(parsed) ? parsed : fallbackPort
   }
 
-  if (storedDevCommand && storedDevPort) {
+  const info = await detectFramework(projectPath)
+
+  if (storedDevCommand) {
     return {
       command: storedDevCommand,
-      port: storedDevPort,
+      port: inferPortFromCommand(storedDevCommand, storedDevPort ?? info.devPort),
       label: inferDevServerLabelFromCommand(storedDevCommand),
       suggestions,
       requiresUserSelection: false,
     }
   }
 
-  const info = await detectFramework(projectPath)
+  const persistedCommand = getPersistedDevCommand(projectPath)
+  if (persistedCommand) {
+    return {
+      command: persistedCommand,
+      port: inferPortFromCommand(persistedCommand, info.devPort),
+      label: inferDevServerLabelFromCommand(persistedCommand),
+      suggestions,
+      requiresUserSelection: false,
+    }
+  }
+
   const selectedSuggestion = suggestions.find((suggestion) => suggestion.confidence >= 0.8)
   if (selectedSuggestion) {
     const fallbackPort = info.devPort

@@ -9,6 +9,7 @@ import { api } from '../../../convex/_generated/api'
 import { cn } from '@/lib/utils'
 import { IconActivity } from '@tabler/icons-react'
 import { getOrganizationPlanLabel } from '@/lib/billing/planLabels'
+import { getSeatManagementCacheKey, getUsageSummaryCacheKey } from '@/lib/queryCacheKeys'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCachedQuery } from '@/stores/useQueryCache'
@@ -40,7 +41,7 @@ export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayP
     convexOrg?._id ? { orgId: convexOrg._id, period: 'monthly' } : 'skip'
   )
   const cachedUsageSummary = useCachedQuery(
-    `credit-display-usage-${convexOrg?._id ?? 'none'}`,
+    getUsageSummaryCacheKey(convexOrg?._id, 'monthly'),
     usageSummary
   )
   const seatManagement = useQuery(
@@ -50,7 +51,7 @@ export function CreditDisplay({ className, variant = 'compact' }: CreditDisplayP
       : 'skip'
   )
   const cachedSeatManagement = useCachedQuery(
-    `credit-display-seat-management-${convexOrg?._id ?? 'none'}-${convexUserId ?? 'none'}`,
+    getSeatManagementCacheKey(convexOrg?._id, convexUserId),
     seatManagement
   )
 

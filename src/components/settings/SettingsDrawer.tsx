@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -12,7 +12,10 @@ import { Integrations } from '@/pages/workspace/Integrations'
 import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Billing } from '@/pages/workspace/Billing'
 import { AI } from '@/pages/workspace/AI'
+import { useAuth } from '@/contexts/AuthContext'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
+import { prewarmAiSettingsData } from '@/hooks/useScopedAiData'
+import { prewarmCloudStorageData } from '@/hooks/useScopedCloudStorageData'
 import {
   canAccessWorkspaceSurface,
   getSettingsSurfaceDisplayLabel,
@@ -57,11 +60,13 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 }
 
 export function SettingsDrawer() {
+  const { convexUserId } = useAuth()
   const isOpen = useSettingsDrawerStore((state) => state.isOpen)
   const section = useSettingsDrawerStore((state) => state.section)
   const route = useSettingsDrawerStore((state) => state.route)
   const close = useSettingsDrawerStore((state) => state.close)
   const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
+  const preloadedRoutesRef = useRef<Set<string>>(new Set())
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const [showSidebarTopFade, setShowSidebarTopFade] = useState(false)
@@ -75,6 +80,7 @@ export function SettingsDrawer() {
   const {
     workspaceScoped,
     personalScoped,
+    convexOrganizationId,
     surfaceAccess,
   } = useScopedAppContext({
     route: routePath || '/settings/account',
@@ -86,6 +92,46 @@ export function SettingsDrawer() {
     if (!workspaceScoped) return true
     return canAccessWorkspaceSurface(surface, surfaceAccess)
   })
+
+  const preloadSurface = useCallback((route: string, preload?: () => Promise<unknown>) => {
+    if (!preload) return
+    if (preloadedRoutesRef.current.has(route)) return
+    preloadedRoutesRef.current.add(route)
+    void preload().catch(() => {
+      preloadedRoutesRef.current.delete(route)
+    })
+  }, [])
+
+  const getSurfacePreload = useCallback(
+    (
+      surface: ReturnType<typeof listSettingsSurfaces>[number]
+    ): (() => Promise<unknown>) | undefined => {
+      if (surface.id === 'cloudStorage') {
+        return async () => {
+          await Promise.all([
+            surface.preload?.(),
+            prewarmCloudStorageData(convexOrganizationId ?? null),
+          ])
+        }
+      }
+
+      if (surface.id === 'ai') {
+        return async () => {
+          await Promise.all([
+            surface.preload?.(),
+            prewarmAiSettingsData({
+              organizationId: convexOrganizationId ?? null,
+              userId: convexUserId ?? null,
+              range: '30d',
+            }),
+          ])
+        }
+      }
+
+      return surface.preload
+    },
+    [convexOrganizationId, convexUserId]
+  )
 
   useEffect(() => {
     const updateFades = (
@@ -187,6 +233,9 @@ export function SettingsDrawer() {
                         type="button"
                         data-active={isActive}
                         onClick={() => openFromRoute(itemRoute)}
+                        onMouseEnter={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                        onFocus={() => preloadSurface(itemRoute, getSurfacePreload(item))}
+                        onPointerDown={() => preloadSurface(itemRoute, getSurfacePreload(item))}
                         className={cn(
                           'flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
                         )}

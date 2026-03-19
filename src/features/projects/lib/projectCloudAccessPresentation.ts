@@ -31,6 +31,10 @@ function cleanGitTransportError(message: string): string {
     .trim()
 }
 
+function includesAny(haystack: string, needles: readonly string[]): boolean {
+  return needles.some((needle) => haystack.includes(needle))
+}
+
 export function formatProjectCloudAccessError(
   input: unknown,
   fallback = 'Failed to prepare project',
@@ -39,6 +43,7 @@ export function formatProjectCloudAccessError(
   const rawMessage = extractErrorText(input, fallback)
   const normalized = cleanGitTransportError(rawMessage)
   const lower = normalized.toLowerCase()
+  const storageHref = getSettingsSurfaceRoute('storage', 'personal') ?? '/settings/storage'
   const billingHref =
     getSettingsSurfaceRoute('billing', options.workspaceScoped ? 'workspace' : 'personal') ??
     '/settings/billing'
@@ -105,6 +110,111 @@ export function formatProjectCloudAccessError(
       actionHref: billingHref,
       actionLabel: 'Open Billing',
       isAccessError: true,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'failed to recover local project',
+      'failed to clone project during recovery',
+      'failed to move existing project aside for recovery',
+      'failed to verify git status after automatic recovery',
+      'local repository does not have work to replay',
+      'you do not have the initial commit yet',
+      'does not have the initial commit yet',
+    ])
+  ) {
+    return {
+      summary: 'Local Project Recovery Failed',
+      detail:
+        'This local copy is out of sync or incomplete. Delete the local copy from Storage and open the project again.',
+      actionHref: storageHref,
+      actionLabel: 'Open Storage',
+      isAccessError: false,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'project path is not a git repository',
+      'destination already exists and is not a git repository',
+      'failed to initialize local git repository',
+      'failed to read local git status',
+      'failed to inspect local git repository health',
+      'failed to verify git status after local project recovery',
+      'failed to verify git status after restore',
+      'failed to verify git status after pull',
+      'failed to verify final git status',
+    ])
+  ) {
+    return {
+      summary: 'Local Project Copy Needs Repair',
+      detail:
+        'The local git data for this project looks incomplete or corrupted. Delete the local copy from Storage and reopen the project.',
+      actionHref: storageHref,
+      actionLabel: 'Open Storage',
+      isAccessError: false,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'remote branch origin/',
+      'remote branch ',
+      'failed to restore missing cloud history',
+      'failed to prepare imported project for cozea git',
+      'failed to create initial project commit',
+      'failed to publish project files to cloud',
+      'failed to restore project files from cloud',
+      'failed to refresh local project from cloud',
+      'failed to replay local changes on top of cloud history',
+    ])
+  ) {
+    return {
+      summary: 'Project History Is Not Ready',
+      detail:
+        'The project repository history is missing or could not be reconciled yet. Try again in a moment, or have a teammate open and sync the project first.',
+      actionHref: null,
+      actionLabel: null,
+      isAccessError: false,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'failed to clone repository',
+      'failed to fetch latest project changes',
+      'authentication failed',
+      'repository not found',
+      'could not resolve host',
+      'failed to connect',
+      'connection timed out',
+      'network is unreachable',
+      'could not read from remote repository',
+    ])
+  ) {
+    return {
+      summary: 'Could Not Reach Project Repository',
+      detail:
+        'Cozea could not reach the project repository right now. Check your connection and try opening the project again.',
+      actionHref: null,
+      actionLabel: null,
+      isAccessError: false,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'failed to publish local git changes',
+    ])
+  ) {
+    return {
+      summary: 'Cloud Sync Failed',
+      detail:
+        'The project opened locally, but Cozea could not finish syncing its git history to the cloud. Try again in a moment.',
+      actionHref: null,
+      actionLabel: null,
+      isAccessError: false,
     }
   }
 

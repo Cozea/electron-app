@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server"
+import { mutation, query, type QueryCtx } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -571,6 +571,191 @@ export const getBySlug = query({
   },
 })
 
+const PROJECT_PAGE_DEFAULT_SIZE = 20
+const PROJECT_PAGE_MAX_SIZE = 100
+
+type ProjectsPageStatusFilter = "all" | "active" | "draft" | "building" | "archived"
+type ProjectsPageSortOption = "last_modified" | "name" | "created"
+
+interface ProjectPageItem {
+  _id: Id<"projects">
+  organizationId: Id<"organizations">
+  name: string
+  slug: string
+  description?: string
+  template?: string
+  status: Doc<"projects">["status"]
+  createdAt: number
+  updatedAt: number
+  createdBy: Id<"users">
+  lastSyncAt?: number
+  lastSyncBy?: Id<"users">
+  syncMode?: Doc<"projects">["syncMode"]
+  sourceControl?: Doc<"projects">["sourceControl"]
+  gitRepository?: Doc<"projects">["gitRepository"]
+  localPath: string | null
+  previewImageUrl: string | null
+}
+
+interface ProjectsPageResult {
+  items: ProjectPageItem[]
+  total: number
+  totalPages: number
+  page: number
+  pageSize: number
+  hasArchivedProjects: boolean
+}
+
+function normalizeProjectsPageSize(pageSize?: number): number {
+  if (typeof pageSize !== "number" || !Number.isFinite(pageSize)) {
+    return PROJECT_PAGE_DEFAULT_SIZE
+  }
+
+  return Math.max(1, Math.min(PROJECT_PAGE_MAX_SIZE, Math.floor(pageSize)))
+}
+
+function normalizeProjectsPage(page: number | undefined, totalPages: number): number {
+  if (typeof page !== "number" || !Number.isFinite(page)) {
+    return 1
+  }
+
+  return Math.max(1, Math.min(totalPages, Math.floor(page)))
+}
+
+function matchesProjectsPageStatus(
+  project: Doc<"projects">,
+  statusFilter: ProjectsPageStatusFilter
+): boolean {
+  if (project.status === "deleted") {
+    return false
+  }
+
+  if (statusFilter === "all") {
+    return project.status !== "archived"
+  }
+
+  if (statusFilter === "building") {
+    return project.status === "building" || project.status === "generating"
+  }
+
+  return project.status === statusFilter
+}
+
+function sortProjectsPageRows(
+  projects: Doc<"projects">[],
+  sortBy: ProjectsPageSortOption
+): Doc<"projects">[] {
+  return [...projects].sort((left, right) => {
+    switch (sortBy) {
+      case "name": {
+        const byName = left.name.localeCompare(right.name, undefined, {
+          sensitivity: "base",
+        })
+        if (byName !== 0) return byName
+        break
+      }
+      case "created": {
+        const byCreated = right.createdAt - left.createdAt
+        if (byCreated !== 0) return byCreated
+        break
+      }
+      case "last_modified":
+      default: {
+        const byUpdated = right.updatedAt - left.updatedAt
+        if (byUpdated !== 0) return byUpdated
+        break
+      }
+    }
+
+    return String(left._id).localeCompare(String(right._id))
+  })
+}
+
+function paginateProjectsPageRows<T>(
+  items: T[],
+  page?: number,
+  pageSize?: number
+): {
+  items: T[]
+  total: number
+  totalPages: number
+  page: number
+  pageSize: number
+} {
+  const normalizedPageSize = normalizeProjectsPageSize(pageSize)
+  const total = items.length
+  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize))
+  const normalizedPage = normalizeProjectsPage(page, totalPages)
+  const startIndex = (normalizedPage - 1) * normalizedPageSize
+
+  return {
+    items: items.slice(startIndex, startIndex + normalizedPageSize),
+    total,
+    totalPages,
+    page: normalizedPage,
+    pageSize: normalizedPageSize,
+  }
+}
+
+async function buildProjectsPageItems(
+  ctx: QueryCtx,
+  projects: Doc<"projects">[],
+  memberPathMap: Map<string, string | null>
+): Promise<ProjectPageItem[]> {
+  return await Promise.all(
+    projects.map(async (project) => ({
+      _id: project._id,
+      organizationId: project.organizationId,
+      name: project.name,
+      slug: project.slug,
+      description: project.description,
+      template: project.template,
+      status: project.status,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+      createdBy: project.createdBy,
+      lastSyncAt: project.lastSyncAt,
+      lastSyncBy: project.lastSyncBy,
+      syncMode: project.syncMode,
+      sourceControl: project.sourceControl,
+      gitRepository: project.gitRepository,
+      localPath: memberPathMap.get(String(project._id)) ?? null,
+      previewImageUrl: project.previewImageId
+        ? await ctx.storage.getUrl(project.previewImageId)
+        : null,
+    }))
+  )
+}
+
+async function buildProjectsPageResult(
+  ctx: QueryCtx,
+  args: {
+    projects: Doc<"projects">[]
+    memberPathMap: Map<string, string | null>
+    statusFilter: ProjectsPageStatusFilter
+    sortBy: ProjectsPageSortOption
+    page?: number
+    pageSize?: number
+  }
+): Promise<ProjectsPageResult> {
+  const hasArchivedProjects = args.projects.some((project) => project.status === "archived")
+  const filteredProjects = args.projects.filter((project) =>
+    matchesProjectsPageStatus(project, args.statusFilter)
+  )
+  const sortedProjects = sortProjectsPageRows(filteredProjects, args.sortBy)
+  const paginated = paginateProjectsPageRows(sortedProjects, args.page, args.pageSize)
+  const items = await buildProjectsPageItems(ctx, paginated.items, args.memberPathMap)
+
+  return {
+    items,
+    total: paginated.total,
+    totalPages: paginated.totalPages,
+    page: paginated.page,
+    pageSize: paginated.pageSize,
+    hasArchivedProjects,
+  }
+}
+
 // List projects for organization
 export const listForOrganization = query({
   args: {
@@ -623,6 +808,109 @@ export const listForOrganization = query({
         ...project,
         localPath: memberPathMap.get(project._id.toString()) ?? null,
       }))
+  },
+})
+
+export const listPageForOrganization = query({
+  args: {
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    statusFilter: v.union(
+      v.literal("all"),
+      v.literal("active"),
+      v.literal("draft"),
+      v.literal("building"),
+      v.literal("archived")
+    ),
+    sortBy: v.union(
+      v.literal("last_modified"),
+      v.literal("name"),
+      v.literal("created")
+    ),
+    page: v.optional(v.number()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<ProjectsPageResult> => {
+    const workspaceAccess = await getWorkspaceProjectAccess(
+      ctx,
+      args.organizationId,
+      args.userId
+    )
+    if (!hasWorkspaceProjectPermission(workspaceAccess, "projects:view")) {
+      return {
+        items: [],
+        total: 0,
+        totalPages: 1,
+        page: 1,
+        pageSize: normalizeProjectsPageSize(args.pageSize),
+        hasArchivedProjects: false,
+      }
+    }
+
+    let projects: Doc<"projects">[]
+    if (args.statusFilter === "active") {
+      projects = await ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", args.organizationId).eq("status", "active")
+        )
+        .collect()
+    } else if (args.statusFilter === "draft") {
+      projects = await ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", args.organizationId).eq("status", "draft")
+        )
+        .collect()
+    } else if (args.statusFilter === "archived") {
+      projects = await ctx.db
+        .query("projects")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", args.organizationId).eq("status", "archived")
+        )
+        .collect()
+    } else if (args.statusFilter === "building") {
+      const [buildingProjects, generatingProjects] = await Promise.all([
+        ctx.db
+          .query("projects")
+          .withIndex("by_organization_and_status", (q) =>
+            q.eq("organizationId", args.organizationId).eq("status", "building")
+          )
+          .collect(),
+        ctx.db
+          .query("projects")
+          .withIndex("by_organization_and_status", (q) =>
+            q.eq("organizationId", args.organizationId).eq("status", "generating")
+          )
+          .collect(),
+      ])
+      projects = [...buildingProjects, ...generatingProjects]
+    } else {
+      projects = await ctx.db
+        .query("projects")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+        .collect()
+    }
+
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+    const memberPathMap = new Map(
+      memberships.map((membership) => [
+        membership.projectId.toString(),
+        membership.localPath ?? null,
+      ])
+    )
+
+    return await buildProjectsPageResult(ctx, {
+      projects,
+      memberPathMap,
+      statusFilter: args.statusFilter,
+      sortBy: args.sortBy,
+      page: args.page,
+      pageSize: args.pageSize,
+    })
   },
 })
 
@@ -689,6 +977,88 @@ export const listForPersonalWorkspaceMemberView = query({
     }
 
     return Array.from(byProject.values())
+  },
+})
+
+export const listPageForPersonalWorkspaceMemberView = query({
+  args: {
+    userId: v.id("users"),
+    statusFilter: v.union(
+      v.literal("all"),
+      v.literal("active"),
+      v.literal("draft"),
+      v.literal("building"),
+      v.literal("archived")
+    ),
+    sortBy: v.union(
+      v.literal("last_modified"),
+      v.literal("name"),
+      v.literal("created")
+    ),
+    page: v.optional(v.number()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<ProjectsPageResult> => {
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    const rows = await Promise.all(
+      memberships.map(async (membership) => {
+        const project = await ctx.db.get(membership.projectId)
+        if (!project) return null
+
+        const ownerWorkspace = await ctx.db.get(project.organizationId)
+        if (
+          !ownerWorkspace ||
+          !ownerWorkspace.workosId ||
+          !ownerWorkspace.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+        ) {
+          return null
+        }
+
+        return {
+          project,
+          localPath: membership.localPath ?? null,
+        }
+      })
+    )
+
+    const dedupedProjects = new Map<
+      string,
+      {
+        project: Doc<"projects">
+        localPath: string | null
+      }
+    >()
+
+    for (const row of rows) {
+      if (!row) continue
+
+      const key = String(row.project._id)
+      const existing = dedupedProjects.get(key)
+      if (!existing || row.project.updatedAt > existing.project.updatedAt) {
+        dedupedProjects.set(key, row)
+      }
+    }
+
+    const projects = Array.from(dedupedProjects.values()).map((row) => row.project)
+    const memberPathMap = new Map(
+      Array.from(dedupedProjects.values()).map((row) => [
+        row.project._id.toString(),
+        row.localPath,
+      ])
+    )
+
+    return await buildProjectsPageResult(ctx, {
+      projects,
+      memberPathMap,
+      statusFilter: args.statusFilter,
+      sortBy: args.sortBy,
+      page: args.page,
+      pageSize: args.pageSize,
+    })
   },
 })
 

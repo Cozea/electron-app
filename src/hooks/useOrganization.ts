@@ -2,6 +2,8 @@ import { useMutation, useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { getUsageSummaryCacheKey } from "@/lib/queryCacheKeys"
+import { useCachedQuery } from "@/stores/useQueryCache"
 
 export function useOrganization(orgId: Id<"organizations"> | null) {
   const { convexUserId } = useAuth()
@@ -20,9 +22,13 @@ export function useOrganization(orgId: Id<"organizations"> | null) {
     orgId && convexUserId ? { orgId, viewerUserId: convexUserId } : "skip"
   )
 
-  const usageSummary = useQuery(
+  const freshUsageSummary = useQuery(
     api.organizations.getUsageSummary,
     orgId ? { orgId, period: "monthly" } : "skip"
+  )
+  const usageSummary = useCachedQuery(
+    getUsageSummaryCacheKey(orgId, "monthly"),
+    freshUsageSummary
   )
 
   return {

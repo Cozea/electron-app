@@ -69,7 +69,10 @@ export function Account({ surface = 'page' }: AccountProps) {
   // Derived state
   const displayName = profile?.firstName
     ? `${profile.firstName} ${profile.lastName || ''}`.trim()
-    : user?.email?.split('@')[0] || 'User'
+    : user?.firstName
+      ? `${user.firstName} ${user.lastName || ''}`.trim()
+      : user?.email?.split('@')[0] || 'User'
+  const avatarImageUrl = profile?.profileImageUrl || user?.profileImageUrl || undefined
 
   // Handlers
   const handleNotificationToggle = async (key: keyof NotificationPrefs, value: boolean) => {
@@ -105,8 +108,8 @@ export function Account({ surface = 'page' }: AccountProps) {
           <div className="flex items-center gap-4 p-4 rounded-lg">
             <div className="group relative h-16 w-16 cursor-pointer shrink-0">
               <Avatar className="h-16 w-16">
-                <AvatarImage src={profile?.profileImageUrl || ''} />
-                <AvatarFallback className="text-xl">
+                <AvatarImage src={avatarImageUrl} alt={displayName} />
+                <AvatarFallback delayMs={150} className="text-xl">
                   {displayName.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>

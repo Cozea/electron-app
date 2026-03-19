@@ -15,6 +15,7 @@ interface ProjectDiffBadgeProps {
   projectSlug: string
   localPath: string | null
   lastSyncAt?: number
+  initialRefreshMode?: 'remote' | 'local' | 'none'
   size?: 'default' | 'compact'
   className?: string
 }
@@ -24,6 +25,7 @@ export function ProjectDiffBadge({
   projectSlug,
   localPath,
   lastSyncAt,
+  initialRefreshMode = 'remote',
   size = 'default',
   className,
 }: ProjectDiffBadgeProps) {
@@ -32,6 +34,7 @@ export function ProjectDiffBadge({
     projectSlug,
     localPath,
     lastSyncAt,
+    initialRefreshMode,
   })
 
   const [lastRenderableStatus, setLastRenderableStatus] = useState<{

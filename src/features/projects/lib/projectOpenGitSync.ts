@@ -126,6 +126,15 @@ function shouldTreatAsSuspectedLocalWipe(status: {
   return deletedCount >= 5 && changedCount > 0 && nonDeletedCount <= 2
 }
 
+function isRecoverableInitialCommitStateError(errorMessage: string): boolean {
+  const normalized = errorMessage.trim().toLowerCase()
+  return (
+    normalized.includes('you do not have the initial commit yet') ||
+    normalized.includes('does not have the initial commit yet') ||
+    normalized.includes('local repository does not have work to replay')
+  )
+}
+
 function formatConflictFileList(paths: string[] | undefined, maxItems = 5): string {
   const conflictedPaths = (paths ?? []).filter(Boolean)
   if (conflictedPaths.length === 0) {
@@ -197,6 +206,7 @@ export async function prepareGitProjectForOpen({
   let strategy: GitOpenTelemetryEvent['strategy'] = 'clean'
   let lastRepoHealth: string | undefined
   let hadMeaningfulLocalState = false
+  let attemptedInitialCommitRecovery = false
 
   const recordOutcome = (
     outcome: GitOpenTelemetryEvent['outcome'],
@@ -297,6 +307,110 @@ export async function prepareGitProjectForOpen({
   })
   if (!status.success || !status.isRepo) {
     throw new Error(status.error || 'Failed to read local git status')
+  }
+
+  const attemptInitialCommitRecovery = async (
+    trigger: 'restore' | 'restore-behind' | 'replay',
+    errorMessage: string
+  ): Promise<boolean> => {
+    if (
+      attemptedInitialCommitRecovery ||
+      !isRecoverableInitialCommitStateError(errorMessage)
+    ) {
+      return false
+    }
+
+    attemptedInitialCommitRecovery = true
+    strategy = 'salvage-reclone'
+
+    const recoveryContext = {
+      projectId: String(project._id),
+      projectSlug: project.slug,
+      trigger,
+      errorMessage,
+      localPath: effectiveLocalPath,
+    }
+
+    console.warn(
+      '[GitOpen] Missing initial commit state detected; attempting automatic salvage/reclone recovery',
+      recoveryContext
+    )
+    logGitOpenDebug('prepare:missing_initial_commit_recovery', recoveryContext)
+
+    onProgress?.('Recovering local project...')
+    const salvageResult = await window.electronAPI.sync.gitSalvageReclone({
+      projectPath: effectiveLocalPath,
+      repoUrl,
+      branch,
+      extraHeader,
+      debug,
+    })
+
+    logGitOpenDebug('prepare:missing_initial_commit_recovery_result', {
+      ...recoveryContext,
+      salvageResult,
+    })
+
+    if (!salvageResult.success || !salvageResult.localPath) {
+      console.warn(
+        '[GitOpen] Automatic recovery after missing initial commit state failed',
+        {
+          ...recoveryContext,
+          backupPath: salvageResult.backupPath ?? null,
+          salvageError: salvageResult.error ?? null,
+        }
+      )
+      return false
+    }
+
+    effectiveLocalPath = salvageResult.localPath
+    remoteHeadCommit = salvageResult.headCommit ?? remoteHeadCommit
+    changed = true
+
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: effectiveLocalPath,
+      kind: 'restored',
+    })
+
+    status = await window.electronAPI.sync.gitStatus({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:status_after_missing_initial_commit_recovery', {
+      ...recoveryContext,
+      localPath: effectiveLocalPath,
+      backupPath: salvageResult.backupPath ?? null,
+      status,
+    })
+    if (!status.success || !status.isRepo) {
+      throw new Error(status.error || 'Failed to verify git status after automatic recovery')
+    }
+
+    const recoveredRepoHealth = await window.electronAPI.sync.gitClassifyRepoHealth({
+      projectPath: effectiveLocalPath,
+      branch,
+      debug,
+    })
+    logGitOpenDebug('prepare:repo_health_after_missing_initial_commit_recovery', {
+      ...recoveryContext,
+      localPath: effectiveLocalPath,
+      repoHealth: recoveredRepoHealth,
+    })
+    if (recoveredRepoHealth.success && recoveredRepoHealth.health) {
+      lastRepoHealth = recoveredRepoHealth.health
+    }
+
+    console.warn(
+      '[GitOpen] Automatic recovery after missing initial commit state succeeded',
+      {
+        ...recoveryContext,
+        localPath: effectiveLocalPath,
+        backupPath: salvageResult.backupPath ?? null,
+      }
+    )
+    return true
   }
 
     const repoHealth = await window.electronAPI.sync.gitClassifyRepoHealth({
@@ -559,26 +673,31 @@ export async function prepareGitProjectForOpen({
       restoreResult,
     })
     if (!restoreResult.success) {
-      throw new Error(restoreResult.error || 'Failed to restore project files from cloud')
-    }
-    changed = true
-    dispatchGitStatusEvent({
-      projectId: String(project._id),
-      projectPath: effectiveLocalPath,
-      kind: 'restored',
-    })
-    status = await window.electronAPI.sync.gitStatus({
-      projectPath: effectiveLocalPath,
-      branch,
-      debug,
-    })
-    logGitOpenDebug('prepare:status_after_restore', {
-      projectId: String(project._id),
-      effectiveLocalPath,
-      status,
-    })
-    if (!status.success || !status.isRepo) {
-      throw new Error(status.error || 'Failed to verify git status after restore')
+      const restoreError = restoreResult.error || 'Failed to restore project files from cloud'
+      const recovered = await attemptInitialCommitRecovery('restore', restoreError)
+      if (!recovered) {
+        throw new Error(restoreError)
+      }
+    } else {
+      changed = true
+      dispatchGitStatusEvent({
+        projectId: String(project._id),
+        projectPath: effectiveLocalPath,
+        kind: 'restored',
+      })
+      status = await window.electronAPI.sync.gitStatus({
+        projectPath: effectiveLocalPath,
+        branch,
+        debug,
+      })
+      logGitOpenDebug('prepare:status_after_restore', {
+        projectId: String(project._id),
+        effectiveLocalPath,
+        status,
+      })
+      if (!status.success || !status.isRepo) {
+        throw new Error(status.error || 'Failed to verify git status after restore')
+      }
     }
   }
 
@@ -655,14 +774,20 @@ export async function prepareGitProjectForOpen({
         return result
       }
       if (!replayResult.success) {
-        throw new Error(replayResult.error || 'Failed to replay local changes on top of cloud history')
+        const replayError =
+          replayResult.error || 'Failed to replay local changes on top of cloud history'
+        const recovered = await attemptInitialCommitRecovery('replay', replayError)
+        if (!recovered) {
+          throw new Error(replayError)
+        }
+      } else {
+        changed = true
+        dispatchGitStatusEvent({
+          projectId: String(project._id),
+          projectPath: effectiveLocalPath,
+          kind: 'pulled',
+        })
       }
-      changed = true
-      dispatchGitStatusEvent({
-        projectId: String(project._id),
-        projectPath: effectiveLocalPath,
-        kind: 'pulled',
-      })
     } else {
       strategy = 'restore'
       onProgress?.('Refreshing local project...')
@@ -679,14 +804,23 @@ export async function prepareGitProjectForOpen({
         restoreResult,
       })
       if (!restoreResult.success) {
-        throw new Error(restoreResult.error || 'Failed to refresh local project from cloud')
+        const restoreError =
+          restoreResult.error || 'Failed to refresh local project from cloud'
+        const recovered = await attemptInitialCommitRecovery(
+          'restore-behind',
+          restoreError
+        )
+        if (!recovered) {
+          throw new Error(restoreError)
+        }
+      } else {
+        changed = true
+        dispatchGitStatusEvent({
+          projectId: String(project._id),
+          projectPath: effectiveLocalPath,
+          kind: 'restored',
+        })
       }
-      changed = true
-      dispatchGitStatusEvent({
-        projectId: String(project._id),
-        projectPath: effectiveLocalPath,
-        kind: 'restored',
-      })
     }
   }
 

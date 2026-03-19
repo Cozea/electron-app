@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import type { NavMainItem } from "@/components/nav-main"
+import { useAuth } from "@/contexts/AuthContext"
+import { prewarmAiSettingsData } from "@/hooks/useScopedAiData"
 import { useScopedAppContext } from "@/hooks/useScopedAppContext"
+import { prewarmCloudStorageData } from "@/hooks/useScopedCloudStorageData"
 import {
   canAccessWorkspaceSurface,
   listSettingsSurfaces,
@@ -31,15 +34,67 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLogout?: () => void
 }
 
-const PLATFORM_ITEMS: NavMainItem[] = [
-  { title: "Projects", url: "/projects", icon: IconFolderCode },
-]
-
 export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarProps) {
+  const { convexUserId } = useAuth()
   const {
     workspaceScoped: organizationWorkspaceSelected,
+    convexOrganizationId,
+    permissions,
     surfaceAccess,
   } = useScopedAppContext()
+
+  const preloadProjectsPage = React.useCallback(async () => {
+    const module = await import("@/pages/Projects")
+    await module.prewarmProjectsPageData({
+      personalScoped: !organizationWorkspaceSelected,
+      organizationId: convexOrganizationId ?? null,
+      userId: convexUserId ?? null,
+      canViewWorkspaceMembers: permissions.includes('members:view'),
+    })
+  }, [convexOrganizationId, convexUserId, organizationWorkspaceSelected, permissions])
+
+  const platformItems = React.useMemo<NavMainItem[]>(
+    () => [
+      {
+        title: "Projects",
+        url: "/projects",
+        icon: IconFolderCode,
+        preload: preloadProjectsPage,
+      },
+    ],
+    [preloadProjectsPage]
+  )
+
+  const getSurfacePreload = React.useCallback(
+    (
+      surface: ReturnType<typeof listSettingsSurfaces>[number]
+    ): (() => Promise<unknown>) | undefined => {
+      if (surface.id === 'cloudStorage') {
+        return async () => {
+          await Promise.all([
+            surface.preload?.(),
+            prewarmCloudStorageData(convexOrganizationId ?? null),
+          ])
+        }
+      }
+
+      if (surface.id === 'ai') {
+        return async () => {
+          await Promise.all([
+            surface.preload?.(),
+            prewarmAiSettingsData({
+              organizationId: convexOrganizationId ?? null,
+              userId: convexUserId ?? null,
+              range: '30d',
+            }),
+          ])
+        }
+      }
+
+      return surface.preload
+    },
+    [convexOrganizationId, convexUserId]
+  )
 
   const teamItems = organizationWorkspaceSelected
     ? listSettingsSurfaces({
@@ -57,7 +112,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
               url: surface.routes.workspace!,
               icon: surface.icon,
               alpha: surface.alpha,
-              preload: surface.preload,
+              preload: getSurfacePreload(surface),
             }) satisfies NavMainItem
         )
     : []
@@ -77,7 +132,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
               url: surface.routes.workspace!,
               icon: surface.icon,
               alpha: surface.alpha,
-              preload: surface.preload,
+              preload: getSurfacePreload(surface),
             }) satisfies NavMainItem
         )
         .sort((left, right) => {
@@ -97,6 +152,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
             url: surface.routes.personal!,
             icon: surface.icon,
             alpha: surface.alpha,
+            preload: getSurfacePreload(surface),
           }) satisfies NavMainItem
       )
         .sort((left, right) => {
@@ -119,7 +175,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
           </div>
         </SidebarHeader>
         <SidebarContent className="titlebar-no-drag">
-          <NavMain label="Platform" items={PLATFORM_ITEMS} />
+          <NavMain label="Platform" items={platformItems} />
           {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}
           <NavMain label="Workspace" items={workspaceItems} />
         </SidebarContent>

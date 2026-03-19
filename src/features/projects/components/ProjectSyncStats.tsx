@@ -24,6 +24,7 @@ export function ProjectSyncStats({
     projectSlug,
     localPath,
     lastSyncAt,
+    initialRefreshMode: 'local',
   })
 
   if (!status || status.isChecking) {

@@ -45,6 +45,7 @@ import { featureFlags } from '@/lib/featureFlags'
 import { cn } from '@/lib/utils'
 import { useScopedBillingData } from '@/hooks/useScopedBillingData'
 import { WorkspaceAccessNotice } from '@/components/workspaces/WorkspaceAccessNotice'
+import { useQueryCache } from '@/stores/useQueryCache'
 
 const AUTH_SERVER_URL =
   import.meta.env.VITE_AUTH_SERVER_URL ||
@@ -55,6 +56,7 @@ const STARTUP_MAX_SEATS = 10
 const SEAT_ASSIGNMENTS_PAGE_SIZE = 5
 const MAX_TRIAL_INCLUDED_PERCENT = 5
 const INACTIVE_PLAN_STATUS_LABEL = 'Inactive'
+const INVOICE_CACHE_MAX_AGE_MS = 15 * 60 * 1000
 
 type BillingCycle = 'monthly' | 'yearly'
 type CheckoutPlan = 'pro' | 'max' | 'startup'
@@ -768,8 +770,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const setSeatAssignment = useMutation(api.billing.setSeatAssignment)
 
-  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([])
+  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[] | null>(null)
   const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [hasResolvedInvoices, setHasResolvedInvoices] = useState(false)
   const [pricingCatalog, setPricingCatalog] = useState<StripeCatalogResponse | null>(null)
   const [scheduledCycleChange, setScheduledCycleChange] = useState<ScheduledCycleChange | null>(null)
   const [, setIsCatalogLoading] = useState(false)
@@ -787,6 +790,30 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
   const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle>('monthly')
   const [checkoutSeatQuantity, setCheckoutSeatQuantity] = useState<number>(STARTUP_MIN_SEATS)
+
+  const invoiceCacheKey = useMemo(() => {
+    const scopeKey = workspaceScoped ? 'workspace' : 'personal'
+    return `billing-invoices-${scopeKey}-${billingOrganizationId ?? 'pending'}`
+  }, [billingOrganizationId, workspaceScoped])
+
+  const cachedStripeInvoices = useQueryCache(
+    useCallback((state) => {
+      const entry = state.cache[invoiceCacheKey]
+      if (!entry) return undefined
+      if (Date.now() - entry.timestamp > INVOICE_CACHE_MAX_AGE_MS) return undefined
+      return entry.data as StripeInvoice[]
+    }, [invoiceCacheKey]),
+  )
+
+  const visibleStripeInvoices = stripeInvoices ?? cachedStripeInvoices ?? []
+  const shouldShowInvoiceLoading =
+    invoicesLoading || (!hasResolvedInvoices && visibleStripeInvoices.length === 0)
+
+  useEffect(() => {
+    setStripeInvoices(null)
+    setInvoicesLoading(false)
+    setHasResolvedInvoices(false)
+  }, [invoiceCacheKey])
 
   useEffect(() => {
     if (!seatManagement) return
@@ -959,9 +986,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
           | null
 
         if (response.ok) {
+          const nextInvoices = data?.invoices ?? []
           if (!cancelled) {
-            setStripeInvoices(data?.invoices ?? [])
+            setStripeInvoices(nextInvoices)
+            setHasResolvedInvoices(true)
           }
+          useQueryCache.getState().set(invoiceCacheKey, nextInvoices)
           console.info('[Billing][Invoices][Response]', {
             scope: workspaceScoped ? 'workspace' : 'personal',
             billingOrganizationId,
@@ -975,6 +1005,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
               })) ?? [],
           })
         } else {
+          if (!cancelled) {
+            setHasResolvedInvoices(true)
+          }
           console.error('[Billing][Invoices][Error]', {
             scope: workspaceScoped ? 'workspace' : 'personal',
             billingOrganizationId,
@@ -985,6 +1018,9 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       } catch (err) {
         if (isAbortError(err)) return
         console.error('Failed to fetch invoices:', err)
+        if (!cancelled) {
+          setHasResolvedInvoices(true)
+        }
       } finally {
         if (!cancelled) {
           setInvoicesLoading(false)
@@ -997,7 +1033,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
       cancelled = true
       controller.abort()
     }
-  }, [billingOrganizationId, accessToken, workspaceScoped])
+  }, [accessToken, billingOrganizationId, invoiceCacheKey, workspaceScoped])
 
   const entitlement = seatManagement?.entitlement
   const currentPlanName = planLabel({
@@ -1095,7 +1131,7 @@ export function Billing({ surface = 'page', route }: BillingProps) {
   const invoiceHistoryDescription = workspaceScoped
     ? 'Review recent Stripe invoices billed to this workspace.'
     : 'Review recent Stripe invoices for your personal plan.'
-  const emptyInvoiceHistoryLabel = invoicesLoading
+  const emptyInvoiceHistoryLabel = shouldShowInvoiceLoading
     ? 'Loading invoices...'
     : workspaceScoped
       ? 'No workspace invoices yet'
@@ -2431,7 +2467,12 @@ export function Billing({ surface = 'page', route }: BillingProps) {
 
         <Card className="border-none shadow-none bg-transparent">
           <CardHeader className="pt-0 px-0 pb-4">
-            <CardTitle>Invoice History</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <span>Invoice History</span>
+              {invoicesLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : null}
+            </CardTitle>
             <CardDescription>{invoiceHistoryDescription}</CardDescription>
           </CardHeader>
           <CardContent className="pt-0 px-0">
@@ -2447,8 +2488,8 @@ export function Billing({ surface = 'page', route }: BillingProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-                  {stripeInvoices.length > 0 ? (
-                    stripeInvoices.map((invoice) => (
+                  {visibleStripeInvoices.length > 0 ? (
+                    visibleStripeInvoices.map((invoice) => (
                       <TableRow key={invoice.id}>
                         <TableCell>{formatDate(invoice.date)}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{invoice.description}</TableCell>

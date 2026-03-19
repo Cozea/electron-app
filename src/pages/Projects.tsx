@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { useCachedQuery } from '../stores/useQueryCache'
+import type { Id } from '../../convex/_generated/dataModel'
+import { convex } from '@/lib/convex'
+import { useCachedQuery, useQueryCache } from '../stores/useQueryCache'
 import { useAuth } from '../contexts/AuthContext'
 import { useScopedAppContext } from '@/hooks/useScopedAppContext'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
@@ -55,34 +57,148 @@ import { featureFlags } from '@/lib/featureFlags'
 
 type SortOption = 'last_modified' | 'name' | 'created'
 type StatusFilter = 'all' | 'active' | 'draft' | 'building' | 'archived'
+const ITEMS_PER_PAGE = 20
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 767px)'
+const DEFAULT_SORT_BY: SortOption = 'last_modified'
+const DEFAULT_STATUS_FILTER: StatusFilter = 'all'
+const DEFAULT_PROJECTS_PAGE = 1
+
+function getProjectsPageCacheKey(args: {
+  personalScoped: boolean
+  userId?: string | null
+  organizationId?: string | null
+  statusFilter: StatusFilter
+  sortBy: SortOption
+  page: number
+}): string {
+  return args.personalScoped
+    ? `projects-page-personal-${args.userId ?? 'none'}-${args.statusFilter}-${args.sortBy}-${args.page}`
+    : `projects-page-org-${args.organizationId ?? 'none'}-${args.statusFilter}-${args.sortBy}-${args.page}`
+}
+
+function getProjectMembersCacheKey(
+  organizationId?: string | null,
+  userId?: string | null
+): string {
+  return `projects-members-${organizationId ?? 'none'}-${userId ?? 'none'}`
+}
+
+export async function prewarmProjectsPageData(args: {
+  personalScoped: boolean
+  organizationId?: Id<'organizations'> | null
+  userId?: Id<'users'> | null
+  canViewWorkspaceMembers?: boolean
+  statusFilter?: StatusFilter
+  sortBy?: SortOption
+  page?: number
+  pageSize?: number
+}): Promise<void> {
+  if (!convex || !args.userId) return
+
+  const statusFilter = args.statusFilter ?? DEFAULT_STATUS_FILTER
+  const sortBy = args.sortBy ?? DEFAULT_SORT_BY
+  const page = args.page ?? DEFAULT_PROJECTS_PAGE
+  const pageSize = args.pageSize ?? ITEMS_PER_PAGE
+  const projectsPageCacheKey = getProjectsPageCacheKey({
+    personalScoped: args.personalScoped,
+    organizationId: args.organizationId,
+    userId: args.userId,
+    statusFilter,
+    sortBy,
+    page,
+  })
+
+  const queryCache = useQueryCache.getState()
+  const pendingQueries: Array<Promise<void>> = []
+
+  if (queryCache.get(projectsPageCacheKey) === undefined) {
+    if (args.personalScoped) {
+      pendingQueries.push(
+        convex
+          .query(api.projects.listPageForPersonalWorkspaceMemberView, {
+            userId: args.userId,
+            statusFilter,
+            sortBy,
+            page,
+            pageSize,
+          })
+          .then((projectsPage) => {
+            if (projectsPage !== undefined) {
+              useQueryCache.getState().set(projectsPageCacheKey, projectsPage)
+            }
+          }),
+      )
+    } else if (args.organizationId) {
+      pendingQueries.push(
+        convex
+          .query(api.projects.listPageForOrganization, {
+            organizationId: args.organizationId,
+            userId: args.userId,
+            statusFilter,
+            sortBy,
+            page,
+            pageSize,
+          })
+          .then((projectsPage) => {
+            if (projectsPage !== undefined) {
+              useQueryCache.getState().set(projectsPageCacheKey, projectsPage)
+            }
+          }),
+      )
+    }
+  }
+
+  if (!args.personalScoped && args.organizationId && args.canViewWorkspaceMembers) {
+    const membersCacheKey = getProjectMembersCacheKey(args.organizationId, args.userId)
+    if (queryCache.get(membersCacheKey) === undefined) {
+      pendingQueries.push(
+        convex
+          .query(api.organizations.getMembers, {
+            orgId: args.organizationId,
+            viewerUserId: args.userId,
+          })
+          .then((members) => {
+            if (members !== undefined) {
+              useQueryCache.getState().set(membersCacheKey, members)
+            }
+          }),
+      )
+    }
+  }
+
+  if (pendingQueries.length === 0) return
+  await Promise.allSettled(pendingQueries)
+}
 
 export function Projects() {
   const { user, convexUserId, logout } = useAuth()
   const { personalScoped, workspaceScoped, convexOrg, capabilities, permissions } = useScopedAppContext()
   const navigate = useViewTransitionNavigate()
-  const [sortBy, setSortBy] = useState<SortOption>('last_modified')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortBy, setSortBy] = useState<SortOption>(DEFAULT_SORT_BY)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS_FILTER)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [prevFilters, setPrevFilters] = useState({ statusFilter, sortBy })
-  if (statusFilter !== prevFilters.statusFilter || sortBy !== prevFilters.sortBy) {
-    setCurrentPage(1)
-    setPrevFilters({ statusFilter, sortBy })
-  }
-
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [currentPage, setCurrentPage] = useState(DEFAULT_PROJECTS_PAGE)
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches)
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY)
+    const handleChange = () => setIsMobile(mediaQuery.matches)
+    handleChange()
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => mediaQuery.removeListener(handleChange)
   }, [])
 
   const effectiveViewMode = isMobile ? 'list' : viewMode
-  const ITEMS_PER_PAGE = 20
 
   // Get organization members to display names
-  const members = useQuery(
+  const membersCacheKey = getProjectMembersCacheKey(convexOrg?._id, convexUserId)
+  const freshMembers = useQuery(
     api.organizations.getMembers,
     workspaceScoped &&
     convexOrg?._id &&
@@ -91,6 +207,7 @@ export function Projects() {
       ? { orgId: convexOrg._id, viewerUserId: convexUserId }
       : 'skip'
   )
+  const members = useCachedQuery(membersCacheKey, freshMembers)
 
   const userMap = useMemo(() => {
     if (!members) return {}
@@ -106,82 +223,61 @@ export function Projects() {
     return map
   }, [members])
 
-  // Query projects with source based on active workspace type (with caching)
-  const freshProjects = useQuery(
-    personalScoped
-      ? api.projects.listForPersonalWorkspaceMemberView
-      : api.projects.listForOrganization,
-    personalScoped
-      ? convexUserId
-        ? { userId: convexUserId }
-        : 'skip'
-      : convexOrg?._id && convexUserId
-        ? { organizationId: convexOrg._id, userId: convexUserId }
-        : 'skip'
-  )
-  const projects = useCachedQuery(
-    personalScoped ? `projects-list-personal-${convexUserId}` : `projects-list-org-${convexOrg?._id}`,
-    freshProjects
-  )
-  const normalizedProjects = useMemo(
-    () => {
-      const rows = projects ?? []
-      return rows.filter((project): project is NonNullable<typeof project> => project !== null)
-    },
-    [projects]
-  )
-  const hasArchivedProjects = useMemo(
-    () => normalizedProjects.some((project) => project.status === 'archived'),
-    [normalizedProjects]
-  )
+  const projectsCacheKey = getProjectsPageCacheKey({
+    personalScoped,
+    organizationId: convexOrg?._id,
+    userId: convexUserId,
+    statusFilter,
+    sortBy,
+    page: currentPage,
+  })
 
-  const filteredProjects = useMemo(() => {
-    let result = normalizedProjects
-
-    if (statusFilter === 'all') {
-      result = result.filter((project) => project.status !== 'archived')
-    } else {
-      if (statusFilter === 'building') {
-        result = result.filter((project) => project.status === 'building' || project.status === 'generating')
-      } else {
-        result = result.filter((project) => project.status === statusFilter)
-      }
-    }
-
-    return [...result].sort((left, right) => {
-      switch (sortBy) {
-        case 'name':
-          return left.name.localeCompare(right.name)
-        case 'created':
-          return right.createdAt - left.createdAt
-        case 'last_modified':
-        default:
-          return right.updatedAt - left.updatedAt
-      }
-    })
-  }, [normalizedProjects, statusFilter, sortBy])
-
-  // Pagination Logic
-  const totalPages = Math.ceil(filteredProjects.length / ITEMS_PER_PAGE)
-  const paginatedProjects = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredProjects.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [filteredProjects, currentPage])
+  const personalProjectsPage = useQuery(
+    api.projects.listPageForPersonalWorkspaceMemberView,
+    personalScoped && convexUserId
+      ? {
+          userId: convexUserId,
+          statusFilter,
+          sortBy,
+          page: currentPage,
+          pageSize: ITEMS_PER_PAGE,
+        }
+      : 'skip'
+  )
+  const organizationProjectsPage = useQuery(
+    api.projects.listPageForOrganization,
+    !personalScoped && convexOrg?._id && convexUserId
+      ? {
+          organizationId: convexOrg._id,
+          userId: convexUserId,
+          statusFilter,
+          sortBy,
+          page: currentPage,
+          pageSize: ITEMS_PER_PAGE,
+        }
+      : 'skip'
+  )
+  const freshProjectsPage = personalScoped ? personalProjectsPage : organizationProjectsPage
+  const projectsPage = useCachedQuery(projectsCacheKey, freshProjectsPage)
 
   const isLoading = personalScoped
-    ? convexUserId === null || projects === undefined
-    : convexOrg === undefined || (convexOrg && projects === undefined)
-  const hasProjects = normalizedProjects.length > 0
+    ? convexUserId === null || (freshProjectsPage === undefined && projectsPage === undefined)
+    : convexOrg === undefined || (convexOrg && freshProjectsPage === undefined && projectsPage === undefined)
+  const paginatedProjects = projectsPage?.items ?? []
+  const totalPages = projectsPage?.totalPages ?? 1
+  const totalProjects = projectsPage?.total ?? 0
+  const displayPage = projectsPage?.page ?? currentPage
+  const hasProjects = totalProjects > 0
   const showProjectControls = hasProjects || isLoading
   const canCreateProjects = capabilities.canCreateProjects
   const canStartProjectFlow = canCreateProjects || capabilities.canImportProjects
-  const allStatusEmptyMessage = hasArchivedProjects
+  const allStatusEmptyMessage = projectsPage?.hasArchivedProjects
     ? 'No active projects. Switch to Archived to view archived projects.'
     : 'No projects yet. Create your first project.'
 
   const breadcrumbAddon = hasProjects ? (
     <Badge variant="secondary" className="text-xs font-normal">
-      {normalizedProjects.length}
+      {totalProjects}
     </Badge>
   ) : null
 
@@ -196,11 +292,26 @@ export function Projects() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setStatusFilter('all')}>All Status</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setStatusFilter('active')}>Active</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setStatusFilter('draft')}>Draft</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setStatusFilter('building')}>Building</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setStatusFilter('archived')}>Archived</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setStatusFilter('all')
+            setCurrentPage(1)
+          }}>All Status</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setStatusFilter('active')
+            setCurrentPage(1)
+          }}>Active</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setStatusFilter('draft')
+            setCurrentPage(1)
+          }}>Draft</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setStatusFilter('building')
+            setCurrentPage(1)
+          }}>Building</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setStatusFilter('archived')
+            setCurrentPage(1)
+          }}>Archived</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -213,9 +324,18 @@ export function Projects() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setSortBy('last_modified')}>Last modified</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setSortBy('name')}>Name</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setSortBy('created')}>Created date</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setSortBy('last_modified')
+            setCurrentPage(1)
+          }}>Last modified</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setSortBy('name')
+            setCurrentPage(1)
+          }}>Name</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            setSortBy('created')
+            setCurrentPage(1)
+          }}>Created date</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -260,7 +380,7 @@ export function Projects() {
     </div>
   ) : null
 
-  const showPagination = filteredProjects.length > ITEMS_PER_PAGE
+  const showPagination = totalProjects > ITEMS_PER_PAGE
 
   return (
     <DashboardLayout
@@ -379,7 +499,7 @@ export function Projects() {
                 </TableBody>
               </Table>
             </div>
-            {!isLoading && filteredProjects.length === 0 && statusFilter === 'all' && canStartProjectFlow && (
+            {!isLoading && totalProjects === 0 && statusFilter === 'all' && canStartProjectFlow && (
               <div className="mt-3 flex justify-end">
                 <Button className="gap-2" onClick={() => navigate('/projects/new')}>
                   <Plus className="h-4 w-4" />
@@ -397,20 +517,20 @@ export function Projects() {
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(Math.max(1, displayPage - 1))}
+              disabled={displayPage === 1}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-xs font-medium px-2 min-w-[4rem] text-center">
-              {currentPage} / {totalPages}
+              {displayPage} / {totalPages}
             </span>
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(Math.min(totalPages, displayPage + 1))}
+              disabled={displayPage === totalPages}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

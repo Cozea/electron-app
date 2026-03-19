@@ -8,7 +8,6 @@ import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -155,7 +154,6 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
   // Pull state
   const [isPulling, setIsPulling] = useState(false)
-  const [pullProgress, setPullProgress] = useState(0)
   const autoPullTriggeredRef = useRef(false)
   const previewAutoRetryRef = useRef({
     attempts: 0,
@@ -173,7 +171,10 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
   const [hasHydratedRemote, setHasHydratedRemote] = useState(false)
   const runIdRef = useRef<string | null>(null)
 
-  const isAIComplete = runStatus === 'completed' || (buildTasks.length > 0 && buildTasks.every(t => t.status === 'completed'))
+  const hasCompletedBuildTasks =
+    buildTasks.length > 0 && buildTasks.every((task) => task.status === 'completed')
+  const isAIComplete = hasCompletedBuildTasks
+  const canOpenProject = runStatus === 'completed' || hasCompletedBuildTasks
   const runStorageKey = projectId ? `builderRun:${projectId}` : null
 
   // Track files created during build for Yjs initialization
@@ -794,7 +795,6 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     if (!project || !convexUserId) return false
 
     setIsPulling(true)
-    setPullProgress(0)
     addLog('Pulling latest files from git...')
 
     try {
@@ -843,7 +843,6 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
         throw new Error('Could not determine local path')
       }
 
-      setPullProgress(35)
       const gitOpenResult = await prepareGitProjectForOpen({
         convex,
         project: {
@@ -880,7 +879,6 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
         return false
       }
 
-      setPullProgress(80)
       const filesResult = await window.electronAPI.project.listFiles({
         projectPath: targetPath,
       })
@@ -890,12 +888,10 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
       const fileCount = filesResult.files?.length ?? 0
       if (fileCount === 0) {
-        setPullProgress(100)
         addLog('Remote git repository is empty.')
         return false
       }
 
-      setPullProgress(100)
       addLog(`Pull complete from git (${fileCount} file${fileCount === 1 ? '' : 's'}).`)
       setStatusMessage('Files synced from git')
       setRunStatus('completed')
@@ -1118,16 +1114,6 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
         </div>
       ) : (
         <div className="h-full flex flex-col overflow-hidden">
-        {/* Progress Bar - Pulling (Moved from header) */}
-        {isPulling && (
-          <div className="px-6 py-4 border-b">
-            <div className="max-w-md">
-              <Progress value={pullProgress} className="h-1.5" />
-              <p className="text-xs text-muted-foreground mt-1.5">{pullProgress}% synced</p>
-            </div>
-          </div>
-        )}
-
         {/* Split Pane Layout: Builder Conversation + Live Preview */}
         <div className="flex-1 overflow-hidden">
           <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
@@ -1174,8 +1160,9 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
                       statusMessage={isPulling ? 'Creating project folder & workspace...' : statusMessage}
                       isAIGenerating={isAIGenerating}
                       isAIComplete={isAIComplete}
+                      canOpenProject={canOpenProject}
                       hasError={hasError}
-                      isPulling={false}
+                      isPulling={isPulling}
                       buildTasks={buildTasks}
                       onStop={handleAIStop}
                       onRetry={handleRetry}

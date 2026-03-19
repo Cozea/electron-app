@@ -2,7 +2,6 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import type { RuntimeHealth, RuntimeKind, RuntimeResolveResult, RuntimeTarget } from './runtimeTypes'
 import { resolveCommandIntent } from './commandResolver'
 
@@ -88,20 +87,38 @@ function getRuntimePackCandidate(runtime: RuntimeKind, target: RuntimeTarget): s
   return path.join(getRuntimeCacheRoot(), target, runtime, 'bin', executable)
 }
 
-function resolveSystemPath(binary: string): string | null {
-  const command = process.platform === 'win32' ? 'where' : 'which'
-  const result = spawnSync(command, [binary], {
-    env: process.env,
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+function getPathEntries(): string[] {
+  const rawPath = process.env.PATH
+  if (!rawPath) return []
 
-  if (result.status !== 0) return null
-  const first = (result.stdout || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean)
-  return first || null
+  return rawPath
+    .split(path.delimiter)
+    .map((entry) => entry.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean)
+}
+
+function isExecutable(candidate: string): boolean {
+  try {
+    if (process.platform === 'win32') {
+      return fs.existsSync(candidate)
+    }
+
+    fs.accessSync(candidate, fs.constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function resolveSystemPath(binary: string): string | null {
+  for (const entry of getPathEntries()) {
+    const candidate = path.join(entry, binary)
+    if (isExecutable(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
 }
 
 export function resolveRuntimeHealth(runtime: RuntimeKind, target = getRuntimeTarget()): RuntimeHealth {
