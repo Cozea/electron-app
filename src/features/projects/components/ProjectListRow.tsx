@@ -42,6 +42,7 @@ import { useSettingsDrawerStore } from '@/stores/useSettingsDrawerStore'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { formatProjectDeleteError } from '../lib/projectMutationPresentation'
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
@@ -97,6 +98,8 @@ export const ProjectListRow = memo(function ProjectListRow({
   const rowRef = useRef<HTMLTableRowElement | null>(null)
   const isInViewport = useInViewportOnce(rowRef)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [syncState, setSyncState] = useState<SyncState>('idle')
@@ -123,40 +126,26 @@ export const ProjectListRow = memo(function ProjectListRow({
         void preloadProjectDetailPage()
     }, [project.status])
 
-    const handleDelete = async () => {
-        if (!userId) return
-
-        const result = await window.electronAPI.dialog.showMessageBox({
-            type: 'warning',
-            buttons: ['Cancel', 'Delete Project'],
-            defaultId: 0,
-            cancelId: 0,
-            title: 'Delete Project',
-            message: `Delete ${project.name}?`,
-            detail: `This action cannot be undone. This will permanently delete the project and all associated data.`,
-        })
-
-        if (result.response !== 1) {
-            return
-        }
+    const handleDelete = async (confirmName: string) => {
+        if (!userId || isDeleting || confirmName !== project.name) return
 
         setIsDeleting(true)
+        setDeleteError(null)
         try {
             await deleteProject({
                 projectId: project._id,
                 userId,
-                confirmName: project.name,
+                confirmName,
             })
+            setShowDeleteDialog(false)
         } catch (error) {
             console.error('Failed to delete project:', error)
             const presentation = formatProjectDeleteError(error)
-            
-            await window.electronAPI.dialog.showMessageBox({
-                type: 'error',
-                title: presentation.title,
-                message: presentation.message,
-                detail: presentation.detail ?? undefined,
-            })
+            setDeleteError(
+                presentation.detail
+                    ? `${presentation.message} ${presentation.detail}`
+                    : presentation.message
+            )
         } finally {
             setIsDeleting(false)
         }
@@ -325,6 +314,7 @@ export const ProjectListRow = memo(function ProjectListRow({
     const isArchiveActionPending = isArchiving || isRestoring
 
     return (
+        <>
             <TableRow
                 ref={rowRef}
                 data-interactive="true"
@@ -482,10 +472,12 @@ export const ProjectListRow = memo(function ProjectListRow({
                             <DropdownMenuItem
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    void handleDelete()
+                                    setDeleteError(null)
+                                    setShowDeleteDialog(true)
+                                    setShowMenu(false)
                                 }}
                                 className="text-destructive focus:text-destructive cursor-pointer"
-                                disabled={isDeleting}
+                                disabled={isDeleting || !userId}
                             >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
@@ -494,5 +486,19 @@ export const ProjectListRow = memo(function ProjectListRow({
                     </DropdownMenu>
                 </TableCell>
             </TableRow>
+            <ProjectDeleteDialog
+                open={showDeleteDialog}
+                onOpenChange={(open) => {
+                    setShowDeleteDialog(open)
+                    if (!open) {
+                        setDeleteError(null)
+                    }
+                }}
+                projectName={project.name}
+                onConfirm={handleDelete}
+                isDeleting={isDeleting}
+                errorMessage={deleteError}
+            />
+        </>
     )
 })

@@ -39,6 +39,7 @@ import {
 } from '@/lib/diagnostics/toolDiagnosticsPipeline'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
+import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { prepareGitProjectForOpen } from '@/features/projects/lib/projectOpenGitSync'
@@ -168,6 +169,9 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
   const [runId, setRunId] = useState<string | null>(initialSessionState.runId)
   const [runStatus, setRunStatus] = useState<ProjectBuildRunStatus>(initialSessionState.runStatus)
   const [runAttempt, setRunAttempt] = useState(initialSessionState.runAttempt)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isDeletingProject, setIsDeletingProject] = useState(false)
   const [stopRequestCount, setStopRequestCount] = useState(0)
   const [hasHydratedRemote, setHasHydratedRemote] = useState(false)
   const runIdRef = useRef<string | null>(null)
@@ -993,22 +997,37 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     navigate(buildProjectPath(String(project._id)))
   }
 
-  const handleCancelProject = async () => {
-    if (!project?._id || !convexUserId || !window.confirm('Are you sure you want to cancel and delete this project? This action cannot be undone.')) return
+  const handleCancelProject = useCallback(() => {
+    setDeleteError(null)
+    setShowDeleteDialog(true)
+  }, [])
 
+  const confirmDeleteProject = useCallback(async (confirmName: string) => {
+    if (!project?._id || !convexUserId || isDeletingProject || confirmName !== project.name) return
+
+    setIsDeletingProject(true)
+    setDeleteError(null)
     try {
       await deleteProject({
         projectId: project._id,
         userId: convexUserId,
-        confirmName: project.name
+        confirmName,
       })
+      setShowDeleteDialog(false)
       navigate('/projects')
     } catch (error) {
       console.error('Failed to delete project:', error)
       const presentation = formatProjectDeleteError(error)
       setStatusMessage(presentation.message)
+      setDeleteError(
+        presentation.detail
+          ? `${presentation.message} ${presentation.detail}`
+          : presentation.message
+      )
+    } finally {
+      setIsDeletingProject(false)
     }
-  }
+  }, [convexUserId, deleteProject, isDeletingProject, navigate, project])
 
   const isProjectLoading = project === undefined
   const isProjectMissing = project === null
@@ -1103,19 +1122,20 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       headerContentInsetClassName="pt-11"
       contentMode="fixed"
     >
-      {isProjectLoading ? (
-        <div className="h-full flex items-center justify-center text-muted-foreground">
-          Loading project...
-        </div>
-      ) : isProjectMissing || !project ? (
-        <div className="h-full flex flex-col items-center justify-center gap-4">
-          <div className="text-foreground text-lg">Project not found</div>
-          <Button variant="outline" onClick={() => navigate('/projects')}>
-            Back to Projects
-          </Button>
-        </div>
-      ) : (
-        <div className="h-full flex flex-col overflow-hidden">
+      <>
+        {isProjectLoading ? (
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            Loading project...
+          </div>
+        ) : isProjectMissing || !project ? (
+          <div className="h-full flex flex-col items-center justify-center gap-4">
+            <div className="text-foreground text-lg">Project not found</div>
+            <Button variant="outline" onClick={() => navigate('/projects')}>
+              Back to Projects
+            </Button>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col overflow-hidden">
         {/* Split Pane Layout: Builder Conversation + Live Preview */}
         <div className="flex-1 overflow-hidden">
           <ResizablePanelGroup orientation="horizontal" className="h-full w-full" id="builder-panels">
@@ -1208,8 +1228,33 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
             )}
           </ResizablePanelGroup>
         </div>
-        </div>
-      )}
+          </div>
+        )}
+        {project ? (
+          <ProjectDeleteDialog
+            open={showDeleteDialog}
+            onOpenChange={(open) => {
+              setShowDeleteDialog(open)
+              if (!open) {
+                setDeleteError(null)
+              }
+            }}
+            projectName={project.name}
+            title="Cancel and Delete Project"
+            description={
+              <>
+                Cancel and delete <span className="font-semibold">{project.name}</span>? This
+                action cannot be undone. This will cancel the build, permanently delete the
+                project, and remove its associated data. Type{' '}
+                <span className="font-mono font-semibold">{project.name}</span> to confirm.
+              </>
+            }
+            onConfirm={confirmDeleteProject}
+            isDeleting={isDeletingProject}
+            errorMessage={deleteError}
+          />
+        ) : null}
+      </>
     </DashboardLayout>
   )
 }

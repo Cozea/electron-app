@@ -33,6 +33,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { formatProjectDeleteError } from '../lib/projectMutationPresentation'
 
 // Types based on what we saw in the schema and Projects.tsx
@@ -91,6 +92,8 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   const cardRef = useRef<HTMLDivElement | null>(null)
   const isInViewport = useInViewportOnce(cardRef)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [isOpeningFolder, setIsOpeningFolder] = useState(false)
@@ -217,41 +220,26 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
         }
     }, [convex, localPath, navigate, preloadProjectDestination, project, syncState, updateMemberLocalPath, userId, workspaceScoped])
 
-    const handleDelete = async () => {
-        if (!userId) return
-
-        const result = await window.electronAPI.dialog.showMessageBox({
-            type: 'warning',
-            buttons: ['Cancel', 'Delete Project'],
-            defaultId: 0,
-            cancelId: 0,
-            title: 'Delete Project',
-            message: `Delete ${project.name}?`,
-            detail: `This action cannot be undone. This will permanently delete the project and all associated data.`,
-        })
-
-        if (result.response !== 1) {
-            return
-        }
+    const handleDelete = async (confirmName: string) => {
+        if (!userId || isDeleting || confirmName !== project.name) return
 
         setIsDeleting(true)
+        setDeleteError(null)
         try {
             await deleteProject({
                 projectId: project._id,
                 userId,
-                confirmName: project.name, // Since we bypass typing, pass the exact name
+                confirmName,
             })
+            setShowDeleteDialog(false)
         } catch (error) {
             console.error('Failed to delete project:', error)
             const presentation = formatProjectDeleteError(error)
-            
-            // Show error in another native dialog since we don't have the UI anymore
-            await window.electronAPI.dialog.showMessageBox({
-                type: 'error',
-                title: presentation.title,
-                message: presentation.message,
-                detail: presentation.detail ?? undefined,
-            })
+            setDeleteError(
+                presentation.detail
+                    ? `${presentation.message} ${presentation.detail}`
+                    : presentation.message
+            )
         } finally {
             setIsDeleting(false)
         }
@@ -561,10 +549,11 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
                             <DropdownMenuItem
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    void handleDelete()
+                                    setDeleteError(null)
+                                    setShowDeleteDialog(true)
                                 }}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                                disabled={isDeleting}
+                                disabled={isDeleting || !userId}
                             >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
@@ -608,6 +597,19 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
                     </CardContent>
                 </div>
             </Card>
-                </div>
-            )
+            <ProjectDeleteDialog
+                open={showDeleteDialog}
+                onOpenChange={(open) => {
+                    setShowDeleteDialog(open)
+                    if (!open) {
+                        setDeleteError(null)
+                    }
+                }}
+                projectName={project.name}
+                onConfirm={handleDelete}
+                isDeleting={isDeleting}
+                errorMessage={deleteError}
+            />
+        </div>
+    )
 })
