@@ -1,6 +1,6 @@
 import { mutation, query, type QueryCtx } from "./_generated/server"
 import type { DatabaseWriter } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
 import {
   buildPendingProjectInviteRecord,
@@ -1508,11 +1508,19 @@ export const deleteProject = mutation({
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
+    if (!project) {
+      throw new ConvexError({
+        code: "project_not_found",
+        message: "Project not found",
+      })
+    }
 
     // Verify confirmation name matches
     if (args.confirmName !== project.name) {
-      throw new Error("Project name does not match")
+      throw new ConvexError({
+        code: "project_delete_name_mismatch",
+        message: "Project name does not match",
+      })
     }
 
     // Verify user has permission (project_manager role OR project creator OR org admin/owner)
@@ -1538,9 +1546,11 @@ export const deleteProject = mutation({
     )
 
     if (!isCreator && !isProjectManager && !canDeleteFromWorkspace) {
-      throw new Error(
-        "Only project creators, managers, or authorized workspace members can delete projects"
-      )
+      throw new ConvexError({
+        code: "project_delete_permission_required",
+        message:
+          "Only project creators, managers, or authorized workspace members can delete projects",
+      })
     }
 
     // Delete all project members

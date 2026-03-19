@@ -33,6 +33,7 @@ import { useInViewportOnce } from '@/hooks/useInViewportOnce'
 import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
+import { formatProjectDeleteError } from '../lib/projectMutationPresentation'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary extends ProjectOpenGitProjectLike {
@@ -242,16 +243,14 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
             })
         } catch (error) {
             console.error('Failed to delete project:', error)
-            const message = error instanceof Error ? error.message : 'Failed to delete project'
-            // Extract the actual error message from Convex error format
-            const cleanMessage = message.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '')
+            const presentation = formatProjectDeleteError(error)
             
             // Show error in another native dialog since we don't have the UI anymore
             await window.electronAPI.dialog.showMessageBox({
                 type: 'error',
-                title: 'Delete Failed',
-                message: 'Failed to delete project',
-                detail: cleanMessage
+                title: presentation.title,
+                message: presentation.message,
+                detail: presentation.detail ?? undefined,
             })
         } finally {
             setIsDeleting(false)

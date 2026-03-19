@@ -772,10 +772,10 @@ export function Members() {
                     disabled={paginatedRows.length === 0}
                   />
                 </TableHead>
-                <TableHead>Member Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead className="w-[42%]">Member Name</TableHead>
+                <TableHead className="w-[24%]">Role</TableHead>
+                <TableHead className="w-[14%]">Status</TableHead>
+                <TableHead className="w-[12%]">Date</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -789,49 +789,51 @@ export function Members() {
                         onCheckedChange={() => toggleRow(row.id)}
                       />
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
+                    <TableCell className="overflow-hidden">
+                      <div className="flex min-w-0 items-center gap-3">
                         <Avatar className="h-9 w-9">
                           <AvatarImage src={row.avatarUrl} />
                           <AvatarFallback className="text-xs">
                             {row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{row.name}</span>
+                            <span className="truncate font-medium">{row.name}</span>
                           </div>
-                          <div className="text-sm text-muted-foreground">{row.email}</div>
+                          <div className="truncate text-sm text-muted-foreground">{row.email}</div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge className="border-0 bg-primary/10 text-primary">
-                          {formatOrganizationWorkspaceRole(row.roleBaseRole, row.roleName ?? row.role)}
+                    <TableCell className="overflow-hidden">
+                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                        <Badge className="max-w-full shrink justify-start border-0 bg-primary/10 text-primary">
+                          <span className="truncate">
+                            {formatOrganizationWorkspaceRole(row.roleBaseRole, row.roleName ?? row.role)}
+                          </span>
                         </Badge>
                         {row.email === user?.email ? (
                           <>
-                            <span className="h-4 w-px bg-border/70" aria-hidden="true" />
-                            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                            <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden="true" />
+                            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
                               you
                             </span>
                           </>
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+                    <TableCell className="overflow-hidden">
+                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                         <span
-                          className={`h-2 w-2 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
+                          className={`h-2 w-2 shrink-0 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
                             }`}
                         />
-                        <span className={row.status === 'active' ? 'text-green-600' : 'text-amber-600'}>
+                        <span className={`truncate ${row.status === 'active' ? 'text-green-600' : 'text-amber-600'}`}>
                           {row.status === 'active' ? 'Active' : 'Pending'}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="truncate text-muted-foreground">
                       {formatDate(row.date)}
                     </TableCell>
                     <TableCell>
