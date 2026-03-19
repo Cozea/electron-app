@@ -15,7 +15,8 @@ import {
     FolderOpen,
     Settings,
     Archive,
-    RotateCcw
+    RotateCcw,
+    Pencil
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -34,7 +35,8 @@ import { buildProjectPath } from '../lib/projectRoutes'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '../lib/projectOpenGitSync'
 import { formatProjectCloudAccessError } from '../lib/projectCloudAccessPresentation'
 import { ProjectDeleteDialog } from './ProjectDeleteDialog'
-import { formatProjectDeleteError } from '../lib/projectMutationPresentation'
+import { ProjectRenameDialog } from './ProjectRenameDialog'
+import { formatProjectDeleteError, formatProjectRenameError } from '../lib/projectMutationPresentation'
 
 // Types based on what we saw in the schema and Projects.tsx
 interface ProjectSummary extends ProjectOpenGitProjectLike {
@@ -94,6 +96,10 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [showRenameDialog, setShowRenameDialog] = useState(false)
+  const [renameValue, setRenameValue] = useState(project.name)
+  const [renameError, setRenameError] = useState<string | null>(null)
   const [isArchiving, setIsArchiving] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [isOpeningFolder, setIsOpeningFolder] = useState(false)
@@ -103,6 +109,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   const [syncErrorActionHref, setSyncErrorActionHref] = useState<string | null>(null)
   const [syncErrorActionLabel, setSyncErrorActionLabel] = useState<string | null>(null)
   const deleteProject = useMutation(api.projects.deleteProject)
+  const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const restoreProject = useMutation(api.projects.restore)
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
@@ -117,6 +124,10 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
   useEffect(() => {
     setLocalPath(project.localPath ?? null)
   }, [project._id, project.localPath])
+
+  useEffect(() => {
+    setRenameValue(project.name)
+  }, [project._id, project.name])
 
     const preloadProjectDestination = useCallback(() => {
     if (project.status === 'draft') {
@@ -242,6 +253,34 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
             )
         } finally {
             setIsDeleting(false)
+        }
+    }
+
+    const handleRename = async (nextName: string) => {
+        if (!userId || isRenaming) return
+
+        const trimmedName = nextName.trim()
+        if (!trimmedName || trimmedName === project.name) return
+
+        setIsRenaming(true)
+        setRenameError(null)
+        try {
+            await updateProject({
+                projectId: project._id,
+                userId,
+                name: trimmedName,
+            })
+            setShowRenameDialog(false)
+        } catch (error) {
+            console.error('Failed to rename project:', error)
+            const presentation = formatProjectRenameError(error)
+            setRenameError(
+                presentation.detail
+                    ? `${presentation.message} ${presentation.detail}`
+                    : presentation.message
+            )
+        } finally {
+            setIsRenaming(false)
         }
     }
 
@@ -513,6 +552,18 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
                                         <Settings className="mr-2 h-4 w-4" />
                                         Settings
                                     </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            setRenameValue(project.name)
+                                            setRenameError(null)
+                                            setShowRenameDialog(true)
+                                        }}
+                                        disabled={isRenaming || !userId}
+                                    >
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        Rename
+                                    </DropdownMenuItem>
                                     {project.status === 'archived' ? (
                                         <DropdownMenuItem
                                             onClick={(e) => {
@@ -609,6 +660,22 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
                 onConfirm={handleDelete}
                 isDeleting={isDeleting}
                 errorMessage={deleteError}
+            />
+            <ProjectRenameDialog
+                open={showRenameDialog}
+                onOpenChange={(open) => {
+                    setShowRenameDialog(open)
+                    if (!open) {
+                        setRenameValue(project.name)
+                        setRenameError(null)
+                    }
+                }}
+                currentName={project.name}
+                value={renameValue}
+                onValueChange={setRenameValue}
+                onConfirm={handleRename}
+                isSaving={isRenaming}
+                errorMessage={renameError}
             />
         </div>
     )

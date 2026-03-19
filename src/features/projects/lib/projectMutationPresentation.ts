@@ -4,6 +4,12 @@ export interface ProjectDeleteErrorPresentation {
   detail: string | null
 }
 
+export interface ProjectRenameErrorPresentation {
+  title: string
+  message: string
+  detail: string | null
+}
+
 interface ProjectMutationErrorData {
   code?: string
   message?: string
@@ -91,5 +97,34 @@ export function formatProjectDeleteError(input: unknown): ProjectDeleteErrorPres
     title: 'Could Not Delete Project',
     message: 'Cozea could not delete this project.',
     detail: cleaned === 'Failed to delete project' ? null : cleaned,
+  }
+}
+
+export function formatProjectRenameError(input: unknown): ProjectRenameErrorPresentation {
+  const cleaned = cleanConvexErrorMessage(
+    extractErrorText(input, 'Failed to rename project')
+  )
+  const lower = cleaned.toLowerCase()
+
+  if (lower.includes('unauthorized to edit project')) {
+    return {
+      title: 'Rename Permission Required',
+      message: 'You do not have permission to rename this project.',
+      detail: 'Only project editors or authorized workspace members can rename projects.',
+    }
+  }
+
+  if (lower.includes('project not found')) {
+    return {
+      title: 'Project Not Found',
+      message: 'This project is no longer available.',
+      detail: 'It may already have been deleted or you may no longer have access to it.',
+    }
+  }
+
+  return {
+    title: 'Could Not Rename Project',
+    message: 'Cozea could not rename this project.',
+    detail: cleaned === 'Failed to rename project' ? null : cleaned,
   }
 }

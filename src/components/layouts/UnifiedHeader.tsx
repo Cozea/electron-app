@@ -19,6 +19,7 @@ import {
   Link2,
   Loader2,
   MoreVertical,
+  Plus,
   RefreshCw,
   Send,
   Share2,
@@ -81,6 +82,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys"
+import { useCachedQuery, useQueryCache } from "@/stores/useQueryCache"
 
 interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
@@ -108,6 +111,14 @@ type InviteLookupUser = {
   lastName?: string | null
   profileImageUrl?: string | null
 }
+
+type PersonalProjectContact = {
+  email: string
+  user: InviteLookupUser | null
+  lastSharedAt: number
+}
+
+const PERSONAL_CONTACTS_CACHE_MAX_AGE_MS = 10 * 60 * 1000
 
 const PROJECT_INVITE_ROLE_OPTIONS: Array<{ value: ProjectInviteRole; label: string }> = [
   { value: "project_manager", label: "Project Manager" },
@@ -528,6 +539,28 @@ function HeaderProjectShareButton({
     api.users.getByEmails,
     inviteEmailCandidates.length > 0 ? { emails: inviteEmailCandidates } : "skip"
   )
+  const personalContactsCacheKey = getPersonalProjectContactsCacheKey(convexUserId)
+  const freshPersonalContacts = useQuery(
+    api.projectInvites.listPersonalContactsForUser,
+    isInviteOpen && convexUserId ? { userId: convexUserId } : "skip"
+  )
+  const personalContacts = useCachedQuery(
+    personalContactsCacheKey,
+    freshPersonalContacts,
+    PERSONAL_CONTACTS_CACHE_MAX_AGE_MS
+  )
+  const projectMembers = useQuery(
+    api.projectMembers.listMembers,
+    isInviteOpen && projectId && convexUserId
+      ? { projectId, viewerUserId: convexUserId }
+      : "skip"
+  )
+  const pendingProjectInvites = useQuery(
+    api.projectInvites.listForProject,
+    isInviteOpen && projectId && convexUserId
+      ? { projectId, viewerUserId: convexUserId }
+      : "skip"
+  )
   const inviteLookupByEmail = useMemo(() => {
     const next = new Map<string, InviteLookupUser>()
     for (const entry of inviteLookup ?? []) {
@@ -542,6 +575,62 @@ function HeaderProjectShareButton({
   const activeJoinLink = joinLinkState?.activeLink ?? null
   const canSendProjectInvites = canInvite && isPersonalProject
   const canManageJoinLinks = canInvite && isPersonalProject
+  const unavailableContactEmails = useMemo(() => {
+    const emails = new Set<string>()
+    inviteMembers.forEach((member) => {
+      emails.add(member.email.trim().toLowerCase())
+    })
+    ;(projectMembers ?? []).forEach((member) => {
+      if (member.user?.email) {
+        emails.add(member.user.email.trim().toLowerCase())
+      }
+    })
+    ;(pendingProjectInvites ?? []).forEach((invite) => {
+      emails.add(invite.email.trim().toLowerCase())
+    })
+    return emails
+  }, [inviteMembers, pendingProjectInvites, projectMembers])
+  const filteredPersonalContacts = useMemo(() => {
+    const search = emailInput.trim().toLowerCase()
+    return (personalContacts ?? [])
+      .filter((contact) => !unavailableContactEmails.has(contact.email.trim().toLowerCase()))
+      .filter((contact) => {
+        if (!search) return true
+        const displayName = formatInviteeDisplayName(contact.email, contact.user)
+        return (
+          contact.email.toLowerCase().includes(search) ||
+          displayName.toLowerCase().includes(search)
+        )
+      })
+  }, [emailInput, personalContacts, unavailableContactEmails])
+
+  const prewarmPersonalContacts = useCallback(() => {
+    if (!convexUserId) return
+
+    const queryCache = useQueryCache.getState()
+    if (
+      queryCache.get<PersonalProjectContact[]>(
+        personalContactsCacheKey,
+        PERSONAL_CONTACTS_CACHE_MAX_AGE_MS
+      ) !== undefined
+    ) {
+      return
+    }
+
+    void scheduleTask(async () => {
+      try {
+        const contacts = await convex.query(
+          api.projectInvites.listPersonalContactsForUser,
+          { userId: convexUserId }
+        )
+        if (contacts !== undefined) {
+          useQueryCache.getState().set(personalContactsCacheKey, contacts)
+        }
+      } catch {
+        // Ignore prewarm failures and let the live modal query resolve normally.
+      }
+    }, "background")
+  }, [convex, convexUserId, personalContactsCacheKey])
 
   const flushProjectBeforeShare = useCallback(async () => {
     if (!projectId || !convexUserId || !syncContext?.projectPath) return
@@ -766,6 +855,9 @@ function HeaderProjectShareButton({
               variant="ghost"
               className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
               disabled={!projectId || roleCheckPending || shareStatePending}
+              onMouseEnter={prewarmPersonalContacts}
+              onFocus={prewarmPersonalContacts}
+              onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -833,6 +925,57 @@ function HeaderProjectShareButton({
                   onKeyDown={handleAddEmail}
                   disabled={isSubmitting}
                 />
+
+                {personalContacts === undefined ? (
+                  <div className="px-1 py-2 text-sm text-muted-foreground">Loading contacts…</div>
+                ) : filteredPersonalContacts.length > 0 ? (
+                  <div className="app-scrollbar max-h-[18rem] space-y-1 overflow-y-auto pr-1">
+                    {filteredPersonalContacts.map((contact: PersonalProjectContact) => {
+                      const contactName = formatInviteeDisplayName(contact.email, contact.user)
+                      return (
+                        <div
+                          key={contact.email}
+                          className="flex items-center justify-between gap-3 rounded-xl px-1 py-2"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar className="h-9 w-9">
+                              <AvatarImage
+                                src={contact.user?.profileImageUrl ?? undefined}
+                                alt={contactName}
+                              />
+                              <AvatarFallback className="text-xs">
+                                {getInitials(contactName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <span className="block truncate text-sm font-medium">
+                                {contactName}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {contact.email}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 shrink-0 rounded-full px-3 text-xs"
+                            disabled={isSubmitting}
+                            onClick={() => {
+                              setInviteError(null)
+                              queueInviteEmail(contact.email)
+                              setEmailInput("")
+                            }}
+                          >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Add
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
 
                 {inviteMembers.length > 0 ? (
                   <div className="relative">

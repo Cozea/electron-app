@@ -58,8 +58,9 @@ export function ProjectDeleteDialog({
           <AlertDialogDescription>
             {description ?? (
               <>
-                Delete <span className="font-semibold">{projectName}</span>? This action cannot be
-                undone. This will permanently delete the project and all associated data.
+                Delete {projectName}? This action cannot be undone. This will{' '}
+                <span className="font-semibold">permanently delete</span> the project and all
+                associated data.
               </>
             )}
           </AlertDialogDescription>

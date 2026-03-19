@@ -1243,9 +1243,9 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
             title="Cancel and Delete Project"
             description={
               <>
-                Cancel and delete <span className="font-semibold">{project.name}</span>? This
-                action cannot be undone. This will cancel the build, permanently delete the
-                project, and remove its associated data. Type{' '}
+                Cancel and delete {project.name}? This action cannot be undone. This will cancel
+                the build, <span className="font-semibold">permanently delete</span> the project,
+                and remove its associated data. Type{' '}
                 <span className="font-mono font-semibold">{project.name}</span> to confirm.
               </>
             }

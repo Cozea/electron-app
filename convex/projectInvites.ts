@@ -245,6 +245,201 @@ export const listForProject = query({
   },
 })
 
+export const listPersonalContactsForUser = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await ctx.db.get(args.userId)
+    if (!viewer?.email) {
+      return []
+    }
+
+    const viewerEmail = normalizeProjectInviteEmail(viewer.email)
+    const userCacheById = new Map<string, Promise<Doc<"users"> | null>>()
+    const userCacheByEmail = new Map<string, Promise<Doc<"users"> | null>>()
+    const contacts = new Map<
+      string,
+      {
+        email: string
+        user: {
+          id: Id<"users">
+          email: string
+          firstName?: string | null
+          lastName?: string | null
+          profileImageUrl?: string | null
+        } | null
+        lastSharedAt: number
+      }
+    >()
+    const relevantProjects = new Map<
+      string,
+      { project: Doc<"projects">; isOwnedByViewer: boolean }
+    >()
+
+    const getCachedUserById = (userId: Id<"users">) => {
+      const cacheKey = String(userId)
+      let request = userCacheById.get(cacheKey)
+      if (!request) {
+        request = ctx.db.get(userId)
+        userCacheById.set(cacheKey, request)
+      }
+      return request
+    }
+
+    const getCachedUserByEmail = (email: string) => {
+      const normalizedEmail = normalizeProjectInviteEmail(email)
+      let request = userCacheByEmail.get(normalizedEmail)
+      if (!request) {
+        request = findUserByNormalizedEmail(ctx, normalizedEmail)
+        userCacheByEmail.set(normalizedEmail, request)
+      }
+      return request
+    }
+
+    const addContact = async (args: {
+      email: string
+      userId?: Id<"users">
+      timestamp: number
+    }) => {
+      const normalizedEmail = normalizeProjectInviteEmail(args.email)
+      if (!normalizedEmail || normalizedEmail === viewerEmail) {
+        return
+      }
+
+      let contactUser: Doc<"users"> | null = null
+      if (args.userId) {
+        contactUser = await getCachedUserById(args.userId)
+      }
+      if (!contactUser) {
+        contactUser = await getCachedUserByEmail(normalizedEmail)
+      }
+
+      const nextEntry = {
+        email: contactUser?.email ?? normalizedEmail,
+        user: contactUser
+          ? {
+              id: contactUser._id,
+              email: contactUser.email,
+              firstName: contactUser.firstName,
+              lastName: contactUser.lastName,
+              profileImageUrl: contactUser.profileImageUrl,
+            }
+          : null,
+        lastSharedAt: args.timestamp,
+      }
+
+      const existing = contacts.get(normalizedEmail)
+      if (!existing || nextEntry.lastSharedAt > existing.lastSharedAt) {
+        contacts.set(normalizedEmail, nextEntry)
+      }
+    }
+
+    const ownedProjects = await ctx.db
+      .query("projects")
+      .withIndex("by_created_by", (q) => q.eq("createdBy", args.userId))
+      .collect()
+
+    for (const project of ownedProjects) {
+      if (project.status === "deleted") continue
+      const scope = await getProjectShareScope(ctx, project._id).catch(() => null)
+      if (!scope?.isPersonalProject) continue
+      relevantProjects.set(String(project._id), {
+        project,
+        isOwnedByViewer: true,
+      })
+    }
+
+    const memberships = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+
+    for (const membership of memberships) {
+      const project = await ctx.db.get(membership.projectId)
+      if (!project || project.status === "deleted") continue
+      const scope = await getProjectShareScope(ctx, project._id).catch(() => null)
+      if (!scope?.isPersonalProject) continue
+      const cacheKey = String(project._id)
+      if (!relevantProjects.has(cacheKey)) {
+        relevantProjects.set(cacheKey, {
+          project,
+          isOwnedByViewer: project.createdBy === args.userId,
+        })
+      }
+    }
+
+    for (const { project, isOwnedByViewer } of relevantProjects.values()) {
+      if (!isOwnedByViewer && project.createdBy !== args.userId) {
+        const owner = await getCachedUserById(project.createdBy)
+        if (owner?.email) {
+          await addContact({
+            email: owner.email,
+            userId: owner._id,
+            timestamp: project.updatedAt ?? project.createdAt,
+          })
+        }
+      }
+
+      const projectMembers = await ctx.db
+        .query("projectMembers")
+        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .collect()
+
+      for (const membership of projectMembers) {
+        if (membership.userId === args.userId) continue
+        const memberUser = await getCachedUserById(membership.userId)
+        if (!memberUser?.email) continue
+        await addContact({
+          email: memberUser.email,
+          userId: memberUser._id,
+          timestamp: membership.addedAt,
+        })
+      }
+
+      if (isOwnedByViewer) {
+        const projectInvites = await ctx.db
+          .query("projectInvites")
+          .withIndex("by_project", (q) => q.eq("projectId", project._id))
+          .collect()
+
+        for (const invite of projectInvites) {
+          if (invite.invitedBy !== args.userId) continue
+          await addContact({
+            email: invite.email,
+            timestamp: invite.invitedAt,
+          })
+        }
+      }
+    }
+
+    const incomingInvites = await ctx.db
+      .query("projectInvites")
+      .withIndex("by_email", (q) => q.eq("email", viewerEmail))
+      .collect()
+
+    for (const invite of incomingInvites) {
+      const scope = await getProjectShareScope(ctx, invite.projectId).catch(() => null)
+      if (!scope?.isPersonalProject) continue
+      const inviter = await getCachedUserById(invite.invitedBy)
+      if (!inviter?.email) continue
+      await addContact({
+        email: inviter.email,
+        userId: inviter._id,
+        timestamp: invite.invitedAt,
+      })
+    }
+
+    return [...contacts.values()]
+      .sort((left, right) => {
+        const timestampDelta = right.lastSharedAt - left.lastSharedAt
+        if (timestampDelta !== 0) return timestampDelta
+        return left.email.localeCompare(right.email)
+      })
+      .slice(0, 50)
+  },
+})
+
 export const listForEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
