@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, type MouseEvent } from "react"
+import { useMemo, type MouseEvent } from "react"
 import { useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { scanForRoutes, type ScannedRoute } from "@/utils/routeScanner"
 import { getFileIcon } from "@/lib/fileExplorer/fileIcons"
 import { FileText, Loader2, RefreshCw, ExternalLink, AppWindow } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -11,6 +10,8 @@ import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { useProjectRouteScan } from '@/features/projects/hooks/useProjectRouteScan'
+import type { ScannedRoute } from '@/utils/routeScanner'
 
 export function PagesList() {
     const navigate = useViewTransitionNavigate()
@@ -23,10 +24,6 @@ export function PagesList() {
     // Get the focused page index from URL
     const focusParam = searchParams.get('focus')
     const focusedIndex = focusParam !== null ? parseInt(focusParam, 10) : null
-
-    const [routes, setRoutes] = useState<ScannedRoute[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [framework, setFramework] = useState<string | null>(null)
 
     const projectBasePath = useMemo(() => {
         if (project?._id) return buildProjectPath(String(project._id))
@@ -42,29 +39,17 @@ export function PagesList() {
             devCommand: project.frameworkInfo.devCommand,
             devPort: project.frameworkInfo.devPort,
         }
-    }, [project?.frameworkInfo])
+    }, [project])
 
-    const refreshRoutes = useCallback(async () => {
-        if (!projectPath) return
-
-        setIsLoading(true)
-        try {
-            const result = await scanForRoutes(projectPath, storedFrameworkInfo)
-            setRoutes(result.routes)
-            setFramework(result.framework)
-        } catch (error) {
-            console.error('Failed to scan routes:', error)
-        } finally {
-            setIsLoading(false)
-        }
-    }, [projectPath, storedFrameworkInfo])
-
-    // Scan routes when project loads
-    useEffect(() => {
-        if (projectPath) {
-            refreshRoutes()
-        }
-    }, [projectPath, refreshRoutes])
+    const {
+        routes,
+        isLoading,
+        frameworkDisplayName,
+        refreshRoutes,
+    } = useProjectRouteScan({
+        projectPath,
+        storedFrameworkInfo,
+    })
 
     const handlePageClick = (index: number) => {
         // Navigate to the pages view with this route focused
@@ -155,15 +140,15 @@ export function PagesList() {
             {routes.length > 0 && (
                 <div className="px-3 py-1.5 text-xs text-muted-foreground flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        {framework && getFileIcon(
-                            framework.toLowerCase().includes('vite') ? 'vite.config.js' :
-                                framework.toLowerCase().includes('next') ? 'next.config.js' :
-                                    framework.toLowerCase().includes('astro') ? 'astro.config.mjs' :
-                                        framework.toLowerCase().includes('remix') ? 'remix.config.js' :
-                                            framework.toLowerCase().includes('nuxt') ? 'nuxt.config.ts' :
-                                                framework.toLowerCase().includes('svelte') ? 'svelte.config.js' :
-                                                    framework.toLowerCase().includes('react') ? 'App.tsx' :
-                                                        framework.toLowerCase().includes('vue') ? 'App.vue' :
+                        {frameworkDisplayName && getFileIcon(
+                            frameworkDisplayName.toLowerCase().includes('vite') ? 'vite.config.js' :
+                                frameworkDisplayName.toLowerCase().includes('next') ? 'next.config.js' :
+                                    frameworkDisplayName.toLowerCase().includes('astro') ? 'astro.config.mjs' :
+                                        frameworkDisplayName.toLowerCase().includes('remix') ? 'remix.config.js' :
+                                            frameworkDisplayName.toLowerCase().includes('nuxt') ? 'nuxt.config.ts' :
+                                                frameworkDisplayName.toLowerCase().includes('svelte') ? 'svelte.config.js' :
+                                                    frameworkDisplayName.toLowerCase().includes('react') ? 'App.tsx' :
+                                                        frameworkDisplayName.toLowerCase().includes('vue') ? 'App.vue' :
                                                             'package.json',
                             { className: "h-3.5 w-3.5" }
                         )}

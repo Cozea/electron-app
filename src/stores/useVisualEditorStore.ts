@@ -93,6 +93,17 @@ export interface SelectedElement {
   textContent?: string
 }
 
+export type DirectEditableAttributeName =
+  | 'alt'
+  | 'aria-label'
+  | 'className'
+  | 'href'
+  | 'id'
+  | 'src'
+  | 'title'
+
+export type DirectEditableAttributes = Partial<Record<DirectEditableAttributeName, string>>
+
 export type InspectorSide = 'left' | 'right'
 
 interface VisualEditorState {
@@ -123,6 +134,9 @@ interface VisualEditorState {
   // Pending text change
   pendingTextChange: string | null
 
+  // Pending attribute changes
+  pendingAttributes: DirectEditableAttributes
+
   // Current style state (default, :hover, :active, :focus)
   styleState: StyleState
 
@@ -152,6 +166,9 @@ interface VisualEditorState {
   // Update pending text change
   updatePendingText: (text: string) => void
 
+  // Update pending attribute change
+  updatePendingAttribute: (attribute: DirectEditableAttributeName, value: string | null) => void
+
   // Get pending text or original text content
   getPendingOrOriginalText: () => string
 
@@ -177,6 +194,7 @@ const initialState = {
   selectedElement: null,
   pendingChanges: {},
   pendingTextChange: null,
+  pendingAttributes: {},
   styleState: 'default' as StyleState,
   activeTab: 'styling' as EditorTab,
   searchQuery: '',
@@ -223,6 +241,7 @@ export const useVisualEditorStore = create<VisualEditorState>()(
       state.selectedElement = null
       state.pendingChanges = {}
       state.pendingTextChange = null
+      state.pendingAttributes = {}
     }),
 
     toggle: () => set((state) => {
@@ -291,6 +310,7 @@ export const useVisualEditorStore = create<VisualEditorState>()(
       if (!preservePendingChanges) {
         state.pendingChanges = {}
         state.pendingTextChange = null
+        state.pendingAttributes = {}
       }
       if (element) {
         state.isOpen = true
@@ -301,6 +321,7 @@ export const useVisualEditorStore = create<VisualEditorState>()(
       state.selectedElement = null
       state.pendingChanges = {}
       state.pendingTextChange = null
+      state.pendingAttributes = {}
     }),
 
     updatePendingChange: (property, value) => set((state) => {
@@ -321,6 +342,14 @@ export const useVisualEditorStore = create<VisualEditorState>()(
       state.pendingTextChange = text
     }),
 
+    updatePendingAttribute: (attribute, value) => set((state) => {
+      if (value === null) {
+        delete state.pendingAttributes[attribute]
+        return
+      }
+      state.pendingAttributes[attribute] = value
+    }),
+
     getPendingOrOriginalText: () => {
       const state = get()
       if (state.pendingTextChange !== null) {
@@ -334,6 +363,7 @@ export const useVisualEditorStore = create<VisualEditorState>()(
     clearPendingChanges: () => set((state) => {
       state.pendingChanges = {}
       state.pendingTextChange = null
+      state.pendingAttributes = {}
     }),
 
     setStyleState: (styleState) => set((state) => {

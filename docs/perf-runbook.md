@@ -6,6 +6,7 @@ This runbook is the canonical way to profile dashboard jank in development.
 
 Target pages:
 - `/projects`
+- `/projects/:projectId/pages`
 - `/teams`
 - `/settings/billing`
 - `/settings/ai`
@@ -30,11 +31,17 @@ Primary warnings:
 2. Enable screenshots and JS sampling.
 3. Start recording.
 4. Navigate pages in this exact sequence:
-   - Projects -> Members -> Billing -> AI -> Sync -> Projects
+   - Projects -> Project Pages -> Members -> Billing -> AI -> Sync -> Projects
 5. On each page:
    - Wait 3 seconds after load.
    - Trigger one interaction (sort/filter/open menu where available).
-6. Stop recording after returning to Projects.
+6. On `Project Pages`, record both modes:
+   - grid mode cold open
+   - open one focused route
+   - switch through at least 5 thumbnails
+   - reload preview once
+   - toggle inspector once
+7. Stop recording after returning to Projects.
 
 ## What To Compare
 
@@ -42,6 +49,11 @@ Primary warnings:
 - Count of forced reflow violations.
 - Long tasks over 50ms.
 - LoAF console output (when enabled).
+- Project Pages specific checks:
+  - grid mount does not create one live iframe per route
+  - focused mode keeps one live iframe only
+  - thumbnail strip renders a bounded visible window
+  - screenshot/static previews appear before any live fallback for non-focused routes
 
 ## Reporting Format
 

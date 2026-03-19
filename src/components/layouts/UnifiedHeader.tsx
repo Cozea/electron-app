@@ -83,7 +83,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys"
-import { useCachedQuery, useQueryCache } from "@/stores/useQueryCache"
+import { useQueryCache } from "@/stores/useQueryCache"
 
 interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
@@ -524,6 +524,8 @@ function HeaderProjectShareButton({
   const [joinLinkError, setJoinLinkError] = useState<string | null>(null)
   const [joinLinkNotice, setJoinLinkNotice] = useState<string | null>(null)
   const [joinLinkAction, setJoinLinkAction] = useState<"copy" | "rotate" | "disable" | null>(null)
+  const [isLoadingPersonalContacts, setIsLoadingPersonalContacts] = useState(false)
+  const [personalContactsError, setPersonalContactsError] = useState<string | null>(null)
   const inviteEmailCandidates = useMemo(
     () =>
       Array.from(
@@ -539,28 +541,15 @@ function HeaderProjectShareButton({
     api.users.getByEmails,
     inviteEmailCandidates.length > 0 ? { emails: inviteEmailCandidates } : "skip"
   )
-  const personalContactsCacheKey = getPersonalProjectContactsCacheKey(convexUserId)
-  const freshPersonalContacts = useQuery(
-    api.projectInvites.listPersonalContactsForUser,
-    isInviteOpen && convexUserId ? { userId: convexUserId } : "skip"
-  )
-  const personalContacts = useCachedQuery(
-    personalContactsCacheKey,
-    freshPersonalContacts,
-    PERSONAL_CONTACTS_CACHE_MAX_AGE_MS
-  )
-  const projectMembers = useQuery(
-    api.projectMembers.listMembers,
-    isInviteOpen && projectId && convexUserId
-      ? { projectId, viewerUserId: convexUserId }
-      : "skip"
-  )
-  const pendingProjectInvites = useQuery(
-    api.projectInvites.listForProject,
-    isInviteOpen && projectId && convexUserId
-      ? { projectId, viewerUserId: convexUserId }
-      : "skip"
-  )
+  const personalContactsCacheKey = getPersonalProjectContactsCacheKey(convexUserId, projectId)
+  const personalContacts = useQueryCache((state) => {
+    const entry = state.cache[personalContactsCacheKey]
+    if (!entry) return undefined
+    if (Date.now() - entry.timestamp > PERSONAL_CONTACTS_CACHE_MAX_AGE_MS) {
+      return undefined
+    }
+    return entry.data as PersonalProjectContact[]
+  })
   const inviteLookupByEmail = useMemo(() => {
     const next = new Map<string, InviteLookupUser>()
     for (const entry of inviteLookup ?? []) {
@@ -580,16 +569,8 @@ function HeaderProjectShareButton({
     inviteMembers.forEach((member) => {
       emails.add(member.email.trim().toLowerCase())
     })
-    ;(projectMembers ?? []).forEach((member) => {
-      if (member.user?.email) {
-        emails.add(member.user.email.trim().toLowerCase())
-      }
-    })
-    ;(pendingProjectInvites ?? []).forEach((invite) => {
-      emails.add(invite.email.trim().toLowerCase())
-    })
     return emails
-  }, [inviteMembers, pendingProjectInvites, projectMembers])
+  }, [inviteMembers])
   const filteredPersonalContacts = useMemo(() => {
     const search = emailInput.trim().toLowerCase()
     return (personalContacts ?? [])
@@ -604,8 +585,46 @@ function HeaderProjectShareButton({
       })
   }, [emailInput, personalContacts, unavailableContactEmails])
 
+  useEffect(() => {
+    if (!isInviteOpen || !convexUserId || !projectId || !isPersonalProject) return
+
+    let cancelled = false
+    const queryCache = useQueryCache.getState()
+    const hasCachedContacts =
+      queryCache.get<PersonalProjectContact[]>(
+        personalContactsCacheKey,
+        PERSONAL_CONTACTS_CACHE_MAX_AGE_MS
+      ) !== undefined
+
+    setPersonalContactsError(null)
+    setIsLoadingPersonalContacts(!hasCachedContacts)
+
+    void scheduleTask(async () => {
+      try {
+        const contacts = await convex.query(
+          api.projectInvites.listPersonalContactsForUser,
+          { userId: convexUserId, projectId }
+        )
+        if (cancelled) return
+        useQueryCache.getState().set(personalContactsCacheKey, contacts ?? [])
+        setPersonalContactsError(null)
+      } catch (error) {
+        if (cancelled) return
+        setPersonalContactsError(cleanConvexError(error, "Failed to load contacts"))
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPersonalContacts(false)
+        }
+      }
+    }, "background")
+
+    return () => {
+      cancelled = true
+    }
+  }, [convex, convexUserId, isInviteOpen, isPersonalProject, personalContactsCacheKey, projectId])
+
   const prewarmPersonalContacts = useCallback(() => {
-    if (!convexUserId) return
+    if (!convexUserId || !projectId) return
 
     const queryCache = useQueryCache.getState()
     if (
@@ -621,7 +640,7 @@ function HeaderProjectShareButton({
       try {
         const contacts = await convex.query(
           api.projectInvites.listPersonalContactsForUser,
-          { userId: convexUserId }
+          { userId: convexUserId, projectId }
         )
         if (contacts !== undefined) {
           useQueryCache.getState().set(personalContactsCacheKey, contacts)
@@ -630,7 +649,7 @@ function HeaderProjectShareButton({
         // Ignore prewarm failures and let the live modal query resolve normally.
       }
     }, "background")
-  }, [convex, convexUserId, personalContactsCacheKey])
+  }, [convex, convexUserId, personalContactsCacheKey, projectId])
 
   const flushProjectBeforeShare = useCallback(async () => {
     if (!projectId || !convexUserId || !syncContext?.projectPath) return
@@ -703,6 +722,8 @@ function HeaderProjectShareButton({
       setInviteError(null)
       setInviteNotice(null)
       setIsSubmitting(false)
+      setIsLoadingPersonalContacts(false)
+      setPersonalContactsError(null)
       setJoinLinkError(null)
       setJoinLinkNotice(null)
       setJoinLinkAction(null)
@@ -926,7 +947,11 @@ function HeaderProjectShareButton({
                   disabled={isSubmitting}
                 />
 
-                {personalContacts === undefined ? (
+                {personalContactsError ? (
+                  <div className="px-1 py-2 text-sm text-muted-foreground">
+                    Unable to load contacts right now.
+                  </div>
+                ) : isLoadingPersonalContacts && personalContacts === undefined ? (
                   <div className="px-1 py-2 text-sm text-muted-foreground">Loading contacts…</div>
                 ) : filteredPersonalContacts.length > 0 ? (
                   <div className="app-scrollbar max-h-[18rem] space-y-1 overflow-y-auto pr-1">

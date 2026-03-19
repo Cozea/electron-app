@@ -248,6 +248,7 @@ export const listForProject = query({
 export const listPersonalContactsForUser = query({
   args: {
     userId: v.id("users"),
+    projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
     const viewer = await ctx.db.get(args.userId)
@@ -295,6 +296,49 @@ export const listPersonalContactsForUser = query({
         userCacheByEmail.set(normalizedEmail, request)
       }
       return request
+    }
+
+    const excludedEmails = new Set<string>()
+
+    if (args.projectId) {
+      const canAccess = await canAccessProjectByWorkspaceOrMembership(
+        ctx,
+        args.projectId,
+        args.userId
+      )
+      if (!canAccess) {
+        return []
+      }
+
+      const scope = await getProjectShareScope(ctx, args.projectId).catch(() => null)
+      if (!scope?.isPersonalProject) {
+        return []
+      }
+
+      const [projectMembers, pendingInvites] = await Promise.all([
+        ctx.db
+          .query("projectMembers")
+          .withIndex("by_project", (q) => q.eq("projectId", args.projectId!))
+          .collect(),
+        ctx.db
+          .query("projectInvites")
+          .withIndex("by_project_and_status", (q) =>
+            q.eq("projectId", args.projectId!).eq("status", "pending")
+          )
+          .collect(),
+      ])
+
+      for (const member of projectMembers) {
+        const memberUser = await getCachedUserById(member.userId)
+        if (!memberUser?.email) continue
+        excludedEmails.add(normalizeProjectInviteEmail(memberUser.email))
+      }
+
+      for (const invite of pendingInvites) {
+        const normalizedEmail = normalizeProjectInviteEmail(invite.email)
+        if (!normalizedEmail) continue
+        excludedEmails.add(normalizedEmail)
+      }
     }
 
     const addContact = async (args: {
@@ -431,6 +475,7 @@ export const listPersonalContactsForUser = query({
     }
 
     return [...contacts.values()]
+      .filter((contact) => !excludedEmails.has(normalizeProjectInviteEmail(contact.email)))
       .sort((left, right) => {
         const timestampDelta = right.lastSharedAt - left.lastSharedAt
         if (timestampDelta !== 0) return timestampDelta
