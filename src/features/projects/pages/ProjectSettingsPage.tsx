@@ -6,6 +6,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { buildLegacyProjectPath, buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { Button } from '@/components/ui/button'
@@ -78,7 +79,6 @@ export function ProjectSettingsPage() {
   const [isArchiving, setIsArchiving] = useState(false)
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -89,7 +89,6 @@ export function ProjectSettingsPage() {
     setSaveError(null)
     setArchiveError(null)
     setDeleteError(null)
-    setDeleteConfirmName('')
   }, [project?._id, project?.name, project?.description, project])
 
   const isManager = memberRole === 'project_manager'
@@ -146,8 +145,8 @@ export function ProjectSettingsPage() {
     }
   }, [archiveProject, convexUserId, navigate, project])
 
-  const handleDelete = useCallback(async () => {
-    if (!project || !convexUserId || deleteConfirmName !== project.name) return
+  const handleDelete = useCallback(async (confirmName: string) => {
+    if (!project || !convexUserId || confirmName !== project.name) return
 
     setIsDeleting(true)
     setDeleteError(null)
@@ -155,10 +154,9 @@ export function ProjectSettingsPage() {
       await removeProject({
         projectId: project._id,
         userId: convexUserId,
-        confirmName: deleteConfirmName,
+        confirmName,
       })
       setShowDeleteDialog(false)
-      setDeleteConfirmName('')
       navigate('/projects')
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
@@ -170,7 +168,7 @@ export function ProjectSettingsPage() {
     } finally {
       setIsDeleting(false)
     }
-  }, [convexUserId, deleteConfirmName, navigate, project, removeProject])
+  }, [convexUserId, navigate, project, removeProject])
 
   const headerActions = useMemo(() => {
     if (currentSection !== 'general') return null
@@ -362,52 +360,19 @@ export function ProjectSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
+      <ProjectDeleteDialog
         open={showDeleteDialog}
         onOpenChange={(open) => {
           setShowDeleteDialog(open)
           if (!open) {
-            setDeleteConfirmName('')
             setDeleteError(null)
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Project</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. Type <span className="font-mono font-semibold">{project.name}</span> to confirm.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirm-delete-project">Confirm project name</Label>
-            <Input
-              id="confirm-delete-project"
-              value={deleteConfirmName}
-              onChange={(event) => {
-                setDeleteConfirmName(event.target.value)
-              }}
-              placeholder={project.name}
-            />
-            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                void handleDelete()
-              }}
-              disabled={isDeleting || deleteConfirmName !== project.name}
-              className="bg-destructive text-white hover:bg-destructive/90 disabled:bg-destructive/70 disabled:text-white disabled:opacity-100"
-            >
-              {isDeleting ? 'Deleting...' : 'Delete Project'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        projectName={project.name}
+        onConfirm={handleDelete}
+        isDeleting={isDeleting}
+        errorMessage={deleteError}
+      />
     </div>
   )
 }

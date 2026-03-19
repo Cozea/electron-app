@@ -844,7 +844,7 @@ export function Storage({ surface = 'page' }: StorageProps) {
                     <TableHead>Project</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Last Modified</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead className="w-[72px] pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
@@ -864,20 +864,22 @@ export function Storage({ surface = 'page' }: StorageProps) {
                         <TableCell className="text-muted-foreground">
                           {formatRelativeTime(project.lastModified)}
                         </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => void handleDeleteProject(project)}
-                            disabled={Boolean(pendingAction)}
-                          >
-                            {pendingAction === `delete:${project.path}` ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            ) : (
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
+                        <TableCell className="pr-6">
+                          <div className="flex justify-end">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => void handleDeleteProject(project)}
+                              disabled={Boolean(pendingAction)}
+                            >
+                              {pendingAction === `delete:${project.path}` ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
