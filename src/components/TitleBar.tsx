@@ -1,15 +1,13 @@
 import { type ReactNode } from "react"
-import { CommandSearch } from "./CommandSearch"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 
 interface TitleBarProps {
   title?: string
   showTitle?: boolean
-  showSearch?: boolean
   children?: ReactNode
 }
 
-export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = false, children }: TitleBarProps) {
+export function TitleBar({ title = 'Cozea', showTitle = false, children }: TitleBarProps) {
   const windowChrome = useWindowChrome()
 
   return (
@@ -27,16 +25,7 @@ export function TitleBar({ title = 'Cozea', showTitle = false, showSearch = fals
         {children}
       </div>
 
-      {/* Center Search - absolutely positioned overlay */}
-      {showSearch && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="pointer-events-auto">
-            <CommandSearch />
-          </div>
-        </div>
-      )}
-
-      {showTitle && !showSearch && (
+      {showTitle && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span className="text-muted-foreground text-sm font-medium">
             {title}

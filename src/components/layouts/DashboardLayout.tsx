@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
+import { StatusBar } from "@/components/StatusBar"
 import { featureFlags } from "@/lib/featureFlags"
 import {
   getSettingsSurfaceRoute,
@@ -17,6 +18,8 @@ import {
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
+import { useResolvedScope } from "@/hooks/useResolvedScope"
+import { Building2, Layers3, UserRound } from "lucide-react"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -115,6 +118,7 @@ function DashboardLayoutContent({
   const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/"
+  const { activeWorkspace, activeScopeKind } = useResolvedScope({ ignoreLocation: true })
   const isSettingsWindow = windowChrome.windowContext === 'settings'
   const isMacClient = windowChrome.isMac
   const isWindowsClient = windowChrome.isWindows
@@ -124,6 +128,18 @@ function DashboardLayoutContent({
       : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
+  const activeLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? 'Projects'
+  const workspaceLabel = activeWorkspace?.organizationName ?? 'Workspace'
+  const workspaceIcon = activeScopeKind === 'personal' ? UserRound : Building2
+  const statusBar = (
+    <StatusBar
+      leftItems={[{ icon: Layers3, label: activeLabel }]}
+      rightItems={[
+        { icon: workspaceIcon, label: workspaceLabel },
+        { label: 'Cozea' },
+      ]}
+    />
+  )
   useEffect(() => {
     // Assistant panel is project-scoped and should never be visible in dashboard layout routes.
     closeAssistantPanel()
@@ -193,6 +209,7 @@ function DashboardLayoutContent({
             {footer}
           </div>
         )}
+        {statusBar}
       </div>
     )
   }
@@ -240,6 +257,7 @@ function DashboardLayoutContent({
                 {footer}
               </div>
             )}
+            {statusBar}
           </div>
         </SidebarInset>
       </div>

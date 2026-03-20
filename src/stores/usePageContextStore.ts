@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+export const PREVIEW_SCREENSHOT_REQUEST_EVENT = 'cozea:preview-screenshot-request'
+
 /**
  * Current page context - tracks which page the user is viewing in the preview
  * This context is injected into AI requests invisibly (not shown in input)
@@ -33,16 +35,26 @@ export interface InspectedElementContext {
   capturedAt: number
 }
 
+export interface PreviewScreenshotControl {
+  visible: boolean
+  enabled: boolean
+  capturing: boolean
+}
+
 interface PageContextState {
   /** Current page context, null if not viewing a page */
   currentPage: PageContext | null
   /** Last inspected element context, null if none */
   inspectedElement: InspectedElementContext | null
+  /** Preview screenshot availability for chat attachment actions */
+  previewScreenshot: PreviewScreenshotControl
 
   /** Set the current page context */
   setCurrentPage: (page: PageContext | null) => void
   /** Set the inspected element context */
   setInspectedElement: (inspected: InspectedElementContext | null) => void
+  /** Set preview screenshot availability */
+  setPreviewScreenshot: (previewScreenshot: PreviewScreenshotControl) => void
 
   /** Clear the current page context */
   clear: () => void
@@ -51,6 +63,11 @@ interface PageContextState {
 export const usePageContextStore = create<PageContextState>()((set) => ({
   currentPage: null,
   inspectedElement: null,
+  previewScreenshot: {
+    visible: false,
+    enabled: false,
+    capturing: false,
+  },
 
   setCurrentPage: (page) => set((state) => {
     const prev = state.currentPage
@@ -63,5 +80,15 @@ export const usePageContextStore = create<PageContextState>()((set) => ({
 
   setInspectedElement: (inspected) => set({ inspectedElement: inspected }),
 
-  clear: () => set({ currentPage: null, inspectedElement: null }),
+  setPreviewScreenshot: (previewScreenshot) => set({ previewScreenshot }),
+
+  clear: () => set({
+    currentPage: null,
+    inspectedElement: null,
+    previewScreenshot: {
+      visible: false,
+      enabled: false,
+      capturing: false,
+    },
+  }),
 }))

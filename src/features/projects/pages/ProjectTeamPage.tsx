@@ -531,7 +531,7 @@ export function ProjectTeamPage() {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl bg-secondary/80 px-2 py-1 dark:bg-secondary/40">
+      <div className="overflow-hidden">
           <Table className="[&_th]:px-4 [&_td]:px-4">
           <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
             <TableRow>

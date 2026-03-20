@@ -8,20 +8,19 @@ import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useCachedQuery } from "@/stores/useQueryCache"
 import { ProjectSidebar } from "../components/ProjectSidebar"
-import { FileTree, type FileTreeHandle } from "../components/FileTree"
 import {
     SidebarInset,
     SidebarProvider,
     useOptionalSidebar,
 } from "@/components/ui/sidebar"
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader"
-import { SearchCommand } from "@/components/shared/SearchCommand"
+import { StatusBar } from "@/components/StatusBar"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { AssistantPanel } from "@/components/assistant/AssistantPanel"
 import { ChatHistorySidebar } from "@/components/assistant/ChatHistorySidebar"
+import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator"
 import { useChatPanelStore } from "@/stores/useChatPanelStore"
 import { useAssistantPanelStore } from "@/stores/useAssistantPanelStore"
-import { useFileTabsStore } from "@/stores/useFileTabsStore"
 import { usePageContextStore } from "@/stores/usePageContextStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useAuth } from "@/contexts/AuthContext"
@@ -33,9 +32,8 @@ import { useDependenciesMonitor } from "@/hooks/useDependenciesMonitor"
 import { ensureVscodeServicesInitialized } from "@/lib/editor/vscodeServices"
 import { setVscodeWorkspaceProjectPath } from "@/lib/editor/vscodeFileSystemBridge"
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
-import { EditorTabs } from "@/features/editor/components/EditorTabs"
 import { ProjectPathRecoveryScreen } from "../components/ProjectPathRecoveryScreen"
-import { GripVertical, Loader2 } from "lucide-react"
+import { Building2, FolderKanban, GripVertical, Layers3, Loader2, UserRound } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { PresenceAvatarGroup } from "@/components/presence/PresenceAvatarGroup"
 import type { PresenceUser } from "@/hooks/useProjectPresence"
@@ -109,6 +107,7 @@ interface ProjectLayoutHeaderProps {
     breadcrumbs: { label: string; href?: string }[]
     header?: ReactNode
     breadcrumbAddon?: ReactNode
+    centerAddon?: ReactNode
     preSearchAddon?: ReactNode
     rightAddon?: ReactNode
     className?: string
@@ -125,6 +124,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     breadcrumbs,
     header,
     breadcrumbAddon,
+    centerAddon,
     preSearchAddon,
     rightAddon,
     className,
@@ -138,6 +138,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             breadcrumbs={breadcrumbs}
             header={header}
             breadcrumbAddon={breadcrumbAddon}
+            centerAddon={centerAddon}
             preSearchAddon={preSearchAddon}
             rightAddon={rightAddon}
             className={className}
@@ -211,7 +212,7 @@ export function ProjectLayout({
 }: ProjectLayoutProps) {
     const isWindowsClient = typeof window !== "undefined" && window.electronAPI?.platform === "win32"
     const { convexUserId, user, logout } = useAuth()
-    const { preferredConvexOrganizationId } = useScopedAppContext()
+    const { preferredConvexOrganizationId, workspaceName, scopeKind } = useScopedAppContext()
     const location = useLocation()
     const navigate = useViewTransitionNavigate()
     const { slug: routeSlug, projectId: routeProjectId } = useParams<{ slug?: string; projectId?: string }>()
@@ -560,24 +561,6 @@ export function ProjectLayout({
         }
     }, [convexUserId, pathRecoveryChoice, project?._id, projectSlug, updateMemberLocalPath])
 
-    const previousEffectivePathRef = useRef<string | null>(null)
-    useEffect(() => {
-        if (!projectSlug || !effectiveLocalPath) {
-            previousEffectivePathRef.current = effectiveLocalPath
-            return
-        }
-
-        const previousPath = previousEffectivePathRef.current
-        previousEffectivePathRef.current = effectiveLocalPath
-
-        if (previousPath && normalizePath(previousPath) === normalizePath(effectiveLocalPath)) {
-            return
-        }
-
-        const fileTabsStore = useFileTabsStore.getState()
-        fileTabsStore.actions.rebaseProjectPaths(projectSlug, previousPath, effectiveLocalPath)
-    }, [effectiveLocalPath, projectSlug])
-
     useDiagnosticsBridge(effectiveLocalPath)
     useDependenciesMonitor(effectiveLocalPath)
 
@@ -625,16 +608,13 @@ export function ProjectLayout({
         }
     }, [effectiveLocalPath])
 
-    const activeProjectFile = useFileTabsStore((state) =>
-        projectSlug ? state.projectTabs[projectSlug]?.activeFile ?? null : null
-    )
     const currentPreviewPage = usePageContextStore((state) => state.currentPage)
     const isPagesRoute = Boolean(
         projectBasePath && location.pathname.startsWith(`${projectBasePath}/pages`)
     )
     const presenceActiveFile = isPagesRoute
         ? currentPreviewPage?.filePath ?? null
-        : activeProjectFile
+        : null
     const presenceActiveRoute = isPagesRoute
         ? currentPreviewPage?.route ?? null
         : null
@@ -658,59 +638,12 @@ export function ProjectLayout({
         [navigate, projectBasePath]
     )
 
-    // File tree ref for refresh functionality
-    const fileTreeRef = useRef<FileTreeHandle>(null)
-    const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const [isRefreshing, setIsRefreshing] = useState(false)
-    const [, setIsSecondarySidebarVisible] = useState(true)
-
-    const fileTreeNode = useMemo(() => <FileTree ref={fileTreeRef} />, [])
-
-    const handleRefreshFiles = useCallback(() => {
-        if (fileTreeRef.current) {
-            fileTreeRef.current.refresh()
-            setIsRefreshing(true)
-            // Reset refreshing state after a short delay.
-            if (refreshTimeoutRef.current) {
-                clearTimeout(refreshTimeoutRef.current)
-            }
-            refreshTimeoutRef.current = setTimeout(() => setIsRefreshing(false), 500)
-        }
-    }, [])
-
-    useEffect(() => {
-        return () => {
-            if (refreshTimeoutRef.current) {
-                clearTimeout(refreshTimeoutRef.current)
-            }
-        }
-    }, [])
-
-    const handleCreateFile = useCallback(() => {
-        fileTreeRef.current?.startCreateFile()
-    }, [])
-
-    const handleCreateFolder = useCallback(() => {
-        fileTreeRef.current?.startCreateFolder()
-    }, [])
-
-    // Check if we have open files (to remove padding for editor)
-    const projectTabs = useFileTabsStore(state => projectSlug ? state.projectTabs[projectSlug] : null)
-    const hasOpenFiles = (projectTabs?.openFiles?.length || 0) > 0
-
     // Check if we are on views that need full-bleed content (no padding)
     const isPagesView = location.pathname.endsWith('/pages')
     const isBackendStudioView = location.pathname.endsWith('/backend')
     const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
-    const isFilesView = Boolean(
-        projectBasePath && (
-            location.pathname === `${projectBasePath}/files` ||
-            location.pathname.startsWith(`${projectBasePath}/files/`)
-        )
-    )
-    // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
-    const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
+    const shouldRemovePadding = isPagesView || isBackendStudioView || isDependenciesView || isChangesView
 
     // Determine if we can enable sync (need project + user data + resolved path decision)
     const hasSyncIdentities = Boolean(project?._id && convexUserId && projectSlug) && memberLocalPath !== undefined
@@ -718,6 +651,7 @@ export function ProjectLayout({
     const {
         header: headerContent,
         breadcrumbAddon,
+        centerAddon,
         hideBreadcrumbs,
         insetLeft,
         insetRight,
@@ -725,6 +659,7 @@ export function ProjectLayout({
         useShallow((state) => ({
             header: state.header,
             breadcrumbAddon: state.breadcrumbAddon,
+            centerAddon: state.centerAddon,
             hideBreadcrumbs: state.hideBreadcrumbs,
             insetLeft: state.insetLeft,
             insetRight: state.insetRight,
@@ -738,27 +673,16 @@ export function ProjectLayout({
     )
     const breadcrumbs = useMemo(
         () =>
-            (hideBreadcrumbs || isFilesView)
+            hideBreadcrumbs
                 ? []
                 : [
                     { label: "Projects", href: "/projects" },
                     ...(project?.name ? [{ label: project.name, href: projectBasePath ?? undefined }] : []),
                     ...(subpageLabel ? [{ label: subpageLabel }] : []),
                 ],
-        [hideBreadcrumbs, isFilesView, project?.name, projectBasePath, subpageLabel]
+        [hideBreadcrumbs, project?.name, projectBasePath, subpageLabel]
     )
-    const headerSlot = useMemo(
-        () =>
-            isFilesView ? (
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                    {headerContent}
-                    <div className="min-w-0 flex-1">
-                        <EditorTabs />
-                    </div>
-                </div>
-            ) : headerContent,
-        [headerContent, isFilesView]
-    )
+    const headerSlot = headerContent
     const [assistantHistorySidebarWidth, setAssistantHistorySidebarWidth] = useState(() => {
         if (typeof window === 'undefined') return ASSISTANT_HISTORY_SIDEBAR_DEFAULT_WIDTH
         const stored = localStorage.getItem(ASSISTANT_HISTORY_SIDEBAR_WIDTH_KEY)
@@ -880,6 +804,20 @@ export function ProjectLayout({
         Boolean(presenceHeaderAddon)
     const isAnyPanelFullscreen = chatPanelMode === 'fullscreen' || assistantPanelMode === 'fullscreen'
     const showAssistantHistorySidebar = assistantPanelMode === 'fullscreen'
+    const workspaceIcon = scopeKind === 'personal' ? UserRound : Building2
+    const statusBar = (
+        <StatusBar
+            leftAddon={<ProjectSyncIndicator variant="compact" className="h-5 w-5 rounded-sm bg-transparent" />}
+            leftItems={[
+                ...(project?.name ? [{ icon: FolderKanban, label: project.name }] : []),
+                { icon: Layers3, label: subpageLabel ?? 'Project' },
+            ]}
+            rightItems={[
+                { icon: workspaceIcon, label: workspaceName },
+                { label: 'Cozea' },
+            ]}
+        />
+    )
 
     if (pathRecoveryChoice) {
         return (
@@ -907,12 +845,6 @@ export function ProjectLayout({
                         color="currentColor"
                         user={user}
                         onLogout={logout}
-                        fileTree={fileTreeNode}
-                        onRefreshFiles={handleRefreshFiles}
-                        isRefreshing={isRefreshing}
-                        onCreateFile={handleCreateFile}
-                        onCreateFolder={handleCreateFolder}
-                        onSecondaryVisibilityChange={setIsSecondarySidebarVisible}
                         projectId={project?._id ?? null}
                     />
                     {showAssistantHistorySidebar ? (
@@ -954,6 +886,7 @@ export function ProjectLayout({
                             breadcrumbs={breadcrumbs}
                             header={headerSlot ?? undefined}
                             breadcrumbAddon={breadcrumbAddon ?? undefined}
+                            centerAddon={centerAddon ?? undefined}
                             preSearchAddon={presenceHeaderAddon ?? undefined}
                             className={
                                 isWindowsClient
@@ -962,7 +895,7 @@ export function ProjectLayout({
                             }
                             insetLeft={insetLeft}
                             insetRight={insetRight}
-                            compactHeaderActions={!isFilesView}
+                            compactHeaderActions
                             projectInviteContext={{
                                 projectId: project?._id ?? null,
                                 projectName: project?.name ?? null,
@@ -1006,7 +939,7 @@ export function ProjectLayout({
                         </div>
                     </div>
                 )}
-                <SearchCommand />
+                {statusBar}
             </div>
         </SidebarProvider >
     )
@@ -1022,7 +955,6 @@ export function ProjectLayout({
                 projectSlug={projectSlug}
                 localPath={effectiveLocalPath}
                 lastSyncAt={project.lastSyncAt}
-                onFilesChanged={handleRefreshFiles}
                 skipInitialSyncCheck={shouldSkipInitialSyncCheck}
             >
                 {layoutContent}

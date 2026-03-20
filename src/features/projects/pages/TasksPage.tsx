@@ -1,5 +1,4 @@
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQuery } from 'convex/react'
 import {
   AppWindow,
@@ -20,6 +19,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'
 import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import {
@@ -168,7 +168,7 @@ interface TaskContextAttachment {
   kind: 'file' | 'page'
   value: string
   label: string
-  href: string
+  href?: string
   title: string
 }
 
@@ -505,13 +505,11 @@ function getCompactDeadlineValue(deadlineTimestamp: number | null | undefined): 
 
 function createFileContextAttachment(
   filePath: string,
-  projectBasePath: string,
 ): TaskContextAttachment {
   return {
     kind: 'file',
     value: filePath,
     label: truncatePath(filePath, 26),
-    href: `${projectBasePath}?path=${encodeURIComponent(filePath)}`,
     title: filePath,
   }
 }
@@ -534,7 +532,6 @@ function createPageContextAttachment(
 
 function createStoredContextAttachment(
   context: ManualTaskContextRecord,
-  projectBasePath: string,
   projectPagesPath: string,
 ): TaskContextAttachment {
   if (context.kind === 'page') {
@@ -553,7 +550,6 @@ function createStoredContextAttachment(
     kind: 'file',
     value: filePath,
     label: context.label || truncatePath(filePath, 26),
-    href: `${projectBasePath}?path=${encodeURIComponent(filePath)}`,
     title: context.title || filePath,
   }
 }
@@ -659,10 +655,12 @@ function buildAssigneeClaimants(
 function TaskTile({
   item,
   projectId,
+  projectPath,
   onToggleMarker,
 }: {
   item: BoardItem
   projectId: string
+  projectPath: string | null
   onToggleMarker: (item: BoardItem, markerId: string) => void
 }) {
   const navigate = useViewTransitionNavigate()
@@ -687,7 +685,19 @@ function TaskTile({
     taskOverlay,
   }
 
-  function openContext(): void {
+  async function openContext(): Promise<void> {
+    if (item.context.kind === 'file') {
+      const result = await openProjectFileInExternalEditor({
+        filePath: item.context.value,
+        projectPath,
+      })
+      if (!result.success) {
+        console.error('[TasksPage] Failed to open file in external editor', result.error)
+      }
+      return
+    }
+
+    if (!item.context.href) return
     navigate(item.context.href, { state: navigationState })
   }
 
@@ -695,7 +705,7 @@ function TaskTile({
     if (event.target !== event.currentTarget) return
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
-    openContext()
+    void openContext()
   }
 
   return (
@@ -704,7 +714,9 @@ function TaskTile({
       role="link"
       tabIndex={0}
       aria-label={`Open ${item.context.kind}: ${item.context.title}`}
-      onClick={openContext}
+      onClick={() => {
+        void openContext()
+      }}
       onKeyDown={handleCardKeyDown}
     >
       <div className="flex h-full flex-col rounded-[20px] bg-secondary/45 px-3.5 pt-3.5 pb-3">
@@ -712,19 +724,16 @@ function TaskTile({
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-[15px] font-semibold leading-5 text-foreground">{item.title}</h3>
             <Button
-              asChild
               variant="ghost"
               size="icon-sm"
               className="-mr-1 -mt-1 shrink-0"
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void openContext()
+              }}
+              aria-label={`Open ${item.context.title}`}
             >
-              <Link
-                to={item.context.href}
-                state={navigationState}
-                aria-label={`Open ${item.context.title}`}
-              >
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
+              <ArrowUpRight className="h-4 w-4" />
             </Button>
           </div>
 
@@ -732,13 +741,15 @@ function TaskTile({
             <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
           </div>
 
-          <Link
-            to={item.context.href}
-            state={navigationState}
+          <button
+            type="button"
             title={item.context.title}
             aria-label={`Open context: ${item.context.title}`}
             className="mt-3 inline-flex h-7 max-w-full items-center gap-1.5 self-start rounded-full bg-sidebar-accent/80 px-2.5 text-xs text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/90 dark:bg-sidebar-accent dark:hover:bg-sidebar-accent/80"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              void openContext()
+            }}
           >
             {item.context.kind === 'file' ? (
               getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
@@ -746,7 +757,7 @@ function TaskTile({
               <AppWindow className="h-3.5 w-3.5 shrink-0" />
             )}
             <span className="truncate">{item.context.label}</span>
-          </Link>
+          </button>
         </div>
 
         <div className="mt-3 flex flex-1 flex-col">
@@ -896,7 +907,6 @@ export function TasksPage() {
 
   const projectId = project ? String(project._id) : null
 
-  const projectBasePath = projectId ? buildProjectPath(projectId) : '/projects'
   const projectPagesPath = projectId ? buildProjectPath(projectId, 'pages') : '/projects'
   const storedFrameworkInfo = useMemo(() => {
     if (!project?.frameworkInfo) return null
@@ -966,8 +976,8 @@ export function TasksPage() {
       return createPageContextAttachment(planPages[0], projectPagesPath)
     }
 
-    return createFileContextAttachment('convex/schema.ts', projectBasePath)
-  }, [project, projectBasePath, projectPagesPath])
+    return createFileContextAttachment('convex/schema.ts')
+  }, [project, projectPagesPath])
   const pageContextOptions = useMemo<TaskContextAttachment[]>(() => {
     const options: TaskContextAttachment[] = []
     const seen = new Set<string>()
@@ -1007,8 +1017,8 @@ export function TasksPage() {
           if (priorityDelta !== 0) return priorityDelta
           return left.localeCompare(right)
         })
-        .map((filePath) => createFileContextAttachment(filePath, projectBasePath)),
-    [draftProjectFiles, projectBasePath],
+        .map((filePath) => createFileContextAttachment(filePath)),
+    [draftProjectFiles],
   )
   const filteredPageContextOptions = useMemo(() => {
     const searchTerms = normalizeSearchValue(draftContextSearch)
@@ -1235,7 +1245,7 @@ export function TasksPage() {
         deadlineTimestamp: deadlineDateToTimestamp(task.deadlineDate),
         markers,
         claimants: buildAssigneeClaimants(task.assignee, task.taskKey),
-        context: createStoredContextAttachment(task.context, projectBasePath, projectPagesPath),
+        context: createStoredContextAttachment(task.context, projectPagesPath),
       }
     })
 
@@ -1253,7 +1263,6 @@ export function TasksPage() {
       },
     )
   }, [
-    projectBasePath,
     projectPagesPath,
     project,
     sharedManualTasks,
@@ -1597,6 +1606,7 @@ export function TasksPage() {
                                 key={item.id}
                                 item={item}
                                 projectId={projectId ?? ''}
+                                projectPath={projectPath}
                                 onToggleMarker={handleToggleMarker}
                               />
                             ))}

@@ -26,9 +26,71 @@ export function useDiagnosticsBridge(projectPath: string | null) {
     const normalizePath = (value: string) => value.replace(/^file:\/\//i, '').replace(/\\/g, '/')
     const normalizedProjectPath = normalizePath(projectPath).replace(/\/+$/, '')
     let frame: number | null = null
+    let diagnosticsRefreshSeq = 0
     let lastLogAt = 0
     let disposed = false
     const markerOwner = 'vscode-semantic'
+
+    const getTrackedFilePaths = () =>
+      monaco.editor
+        .getModels()
+        .filter((model) => {
+          if (model.uri.scheme !== 'file') return false
+          const filePath = normalizePath(model.uri.fsPath)
+          return filePath === normalizedProjectPath || filePath.startsWith(`${normalizedProjectPath}/`)
+        })
+        .map((model) => normalizePath(model.uri.fsPath))
+
+    const refreshServiceDiagnostics = async (restart = false) => {
+      if (!window.electronAPI?.diagnostics) return
+
+      const seq = ++diagnosticsRefreshSeq
+
+      if (restart) {
+        await window.electronAPI.diagnostics.stop({ projectPath })
+        if (disposed || seq !== diagnosticsRefreshSeq) return
+        await window.electronAPI.diagnostics.start({ projectPath })
+        if (disposed || seq !== diagnosticsRefreshSeq) return
+      }
+
+      const filePaths = getTrackedFilePaths()
+      if (filePaths.length === 0) {
+        return
+      }
+
+      const result = await window.electronAPI.diagnostics.checkFiles({
+        projectPath,
+        filePaths,
+        timeoutMs: 1200,
+      })
+      if (disposed || seq !== diagnosticsRefreshSeq || !result.success || !Array.isArray(result.diagnostics)) {
+        return
+      }
+
+      const diagnostics = result.diagnostics as Array<{
+        source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+        severity: 'error' | 'warning' | 'info'
+        message: string
+        file?: string
+        line?: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+        code?: string
+        related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+      }>
+
+      replaceDiagnostics(
+        projectPath,
+        'tsserver',
+        diagnostics.filter((diagnostic) => diagnostic.source === 'tsserver')
+      )
+      replaceDiagnostics(
+        projectPath,
+        'eslint',
+        diagnostics.filter((diagnostic) => diagnostic.source === 'eslint')
+      )
+    }
 
     const mirrorVscodeMarkers = async () => {
       await ensureVscodeServicesInitialized()
@@ -167,19 +229,28 @@ export function useDiagnosticsBridge(projectPath: string | null) {
     const markerDisposable = monaco.editor.onDidChangeMarkers(scheduleMarkerPublish)
     const modelAddDisposable = monaco.editor.onDidCreateModel(scheduleMarkerPublish)
     const modelRemoveDisposable = monaco.editor.onWillDisposeModel(scheduleMarkerPublish)
+    const diagnosticsPublishCleanup = window.electronAPI?.diagnostics?.onPublish?.((payload) => {
+      if (payload.projectPath !== projectPath) return
+      if (payload.source !== 'tsserver' && payload.source !== 'eslint') return
+      replaceDiagnostics(projectPath, payload.source, payload.diagnostics)
+    })
     const refreshHandler = () => {
       scheduleMarkerPublish()
+      void refreshServiceDiagnostics(true)
     }
 
     window.addEventListener(DIAGNOSTICS_REFRESH_EVENT_NAME, refreshHandler)
+    void window.electronAPI?.diagnostics?.start({ projectPath })
     void mirrorVscodeMarkers()
     scheduleMarkerPublish()
+    void refreshServiceDiagnostics(true)
 
     return () => {
       disposed = true
       markerDisposable.dispose()
       modelAddDisposable.dispose()
       modelRemoveDisposable.dispose()
+      diagnosticsPublishCleanup?.()
       for (const disposable of cleanupDisposables) {
         disposable.dispose()
       }
@@ -192,6 +263,7 @@ export function useDiagnosticsBridge(projectPath: string | null) {
       }
       replaceDiagnostics(projectPath, 'tsserver', [])
       replaceDiagnostics(projectPath, 'eslint', [])
+      void window.electronAPI?.diagnostics?.stop({ projectPath })
     }
   }, [projectPath, replaceDiagnostics])
 }

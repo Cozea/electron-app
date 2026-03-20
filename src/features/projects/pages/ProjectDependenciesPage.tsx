@@ -274,7 +274,7 @@ export function ProjectDependenciesPage() {
           <div className="px-4 pb-4">
             <Card className="border-0 shadow-none bg-transparent">
               <div className="relative w-full">
-                <div className="overflow-hidden rounded-2xl bg-secondary/80 dark:bg-secondary/40 px-2 py-1">
+                <div className="overflow-hidden">
                   <table className="w-full caption-bottom text-sm [&_th]:px-4 [&_td]:px-4">
                     <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
                       <TableRow className="hover:bg-transparent">

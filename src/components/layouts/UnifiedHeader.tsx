@@ -49,7 +49,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { CommandSearch } from "@/components/CommandSearch"
 import { LayoutToggles } from "@/components/layouts/LayoutToggles"
 import { Button } from "@/components/ui/button"
 import {
@@ -89,6 +88,7 @@ interface UnifiedHeaderProps {
   breadcrumbs: { label: string; href?: string }[]
   header?: ReactNode
   breadcrumbAddon?: ReactNode
+  centerAddon?: ReactNode
   preSearchAddon?: ReactNode
   rightAddon?: ReactNode
   className?: string
@@ -1207,6 +1207,7 @@ export function UnifiedHeader({
   breadcrumbs,
   header,
   breadcrumbAddon,
+  centerAddon,
   preSearchAddon,
   rightAddon,
   className,
@@ -1382,6 +1383,13 @@ export function UnifiedHeader({
           className
         )}
       >
+        {centerAddon && (
+          <div className="pointer-events-none absolute inset-x-0 flex justify-center">
+            <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center">
+              {centerAddon}
+            </div>
+          </div>
+        )}
         <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
           <div className="flex items-center min-w-0 flex-1">
             {compactHeaderActions ? (
@@ -1401,7 +1409,6 @@ export function UnifiedHeader({
             <div className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
           )}
           <div className="flex items-center gap-0 titlebar-no-drag shrink-0">
-            <CommandSearch />
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
@@ -1434,6 +1441,13 @@ export function UnifiedHeader({
         className
       )}
     >
+      {centerAddon && (
+        <div className="pointer-events-none absolute inset-x-0 flex justify-center">
+          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center">
+            {centerAddon}
+          </div>
+        </div>
+      )}
       <div className="flex items-center w-full gap-3" style={headerContentStyle}>
         <div
           ref={breadcrumbContainerRef}
@@ -1536,7 +1550,6 @@ export function UnifiedHeader({
             <div className="mx-1.5 h-4 w-px shrink-0 bg-border/70" />
           )}
           <div className="flex items-center gap-0.5">
-            <CommandSearch />
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (

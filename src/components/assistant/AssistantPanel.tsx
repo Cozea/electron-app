@@ -190,7 +190,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
         {/* Header */}
         <div className={cn('titlebar-drag-region flex items-center h-9 px-4 shrink-0 gap-2', isMacClient && 'pr-2')}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-sm font-medium truncate min-w-0">{chatTitle}</span>
+            <span className="min-w-0 truncate text-xs font-normal">{chatTitle}</span>
           </div>
           <div className="titlebar-no-drag flex items-center gap-1 shrink-0">
             {isFullscreen ? (

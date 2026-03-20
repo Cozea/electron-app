@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -11,7 +10,7 @@ import {
     type ServerStatus,
 } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { usePageContextStore } from '@/stores/usePageContextStore'
+import { PREVIEW_SCREENSHOT_REQUEST_EVENT, usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
 import { useProblemsStore } from '@/stores/useProblemsStore'
@@ -24,6 +23,7 @@ import {
   type SelectedElementData,
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
+import { ProjectPreviewRouteBar } from '@/features/projects/components/previews/ProjectPreviewRouteBar'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
@@ -39,10 +39,16 @@ import {
 import { cn } from '@/lib/utils'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
+import type { AvailableExternalBrowser, AvailableExternalBrowserResult, ExternalBrowserId } from '@shared/electronApiTypes'
+import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import {
+  openProjectFileInExternalEditor,
+  PREVIEW_EDITOR_PREFERENCE_KEY,
+  readStoredExternalEditorPreference,
+  resolvePreferredExternalEditorId,
+} from '@/features/projects/lib/externalEditorPreference'
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
-import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
-import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
 import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
 
@@ -66,6 +72,7 @@ interface VisualSaveFeedback {
 }
 
 const BRIDGE_READY_TIMEOUT_MS = 2500
+const PREVIEW_BROWSER_PREFERENCE_KEY = 'cozea.preview.browser'
 
 function resolvePreviewEmbedModeForRun(
     serverStatus: ServerStatus,
@@ -90,10 +97,9 @@ function resolvePreviewEmbedModeForRun(
 
 export function ProjectPagesPage() {
     const { convexUserId } = useAuth()
-    const navigate = useViewTransitionNavigate()
     const location = useLocation()
     const [searchParams, setSearchParams] = useSearchParams()
-    const { project, projectIdParam, slugParam } = useAccessibleProject()
+    const { project } = useAccessibleProject()
     const syncContext = useOptionalProjectSyncContext()
     const projectPath = syncContext?.projectPath ?? null
     const locationState = (location.state as TaskOverlayLocationState | null) ?? null
@@ -108,6 +114,7 @@ export function ProjectPagesPage() {
     const inspectedElement = usePageContextStore((state) => state.inspectedElement)
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
     const setInspectedElement = usePageContextStore((state) => state.setInspectedElement)
+    const setPreviewScreenshot = usePageContextStore((state) => state.setPreviewScreenshot)
     const setSelectedElement = useVisualEditorStore((state) => state.setSelectedElement)
     const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
@@ -133,13 +140,39 @@ export function ProjectPagesPage() {
     )
     const [previewEmbedBlocked, setPreviewEmbedBlocked] = useState(false)
     const [previewReloadToken, setPreviewReloadToken] = useState(0)
+    const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
+        { id: 'system', name: 'System Default' },
+    ])
+    const [availableEditors, setAvailableEditors] = useState<AvailableExternalEditor[]>([])
+    const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>('system')
+    const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => {
+        try {
+            const stored = window.localStorage.getItem(PREVIEW_BROWSER_PREFERENCE_KEY)
+            switch (stored) {
+                case 'system':
+                case 'safari':
+                case 'chrome':
+                case 'arc':
+                case 'firefox':
+                case 'edge':
+                case 'brave':
+                    return stored
+                default:
+                    return 'system'
+            }
+        } catch {
+            return 'system'
+        }
+    })
+    const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId>(() => {
+        return readStoredExternalEditorPreference() ?? 'vscode'
+    })
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
         const focus = searchParams.get('focus')
         return focus !== null ? parseInt(focus, 10) : null
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
-    const [zoom, setZoom] = useState(100)
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
     const selectionHydrationSeqRef = useRef(0)
@@ -252,6 +285,65 @@ export function ProjectPagesPage() {
     const prevProjectPathRef = useRef<string | null>(null)
 
     useEffect(() => {
+        let cancelled = false
+
+        const loadAvailableBrowsers = async () => {
+            try {
+                const result = await window.electronAPI.shell.listAvailableBrowsers() as AvailableExternalBrowserResult
+                if (cancelled || result.browsers.length === 0) return
+                setAvailableBrowsers(result.browsers)
+                setDefaultBrowserId(result.defaultBrowserId)
+            } catch (error) {
+                console.error('[PagesPreview] Failed to load available browsers', error)
+            }
+        }
+
+        const loadAvailableEditors = async () => {
+            try {
+                const editors = await window.electronAPI.editor.listAvailableEditors()
+                if (cancelled) return
+                setAvailableEditors(editors)
+            } catch (error) {
+                console.error('[PagesPreview] Failed to load available editors', error)
+            }
+        }
+
+        void loadAvailableBrowsers()
+        void loadAvailableEditors()
+
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    useEffect(() => {
+        if (availableBrowsers.some((browser) => browser.id === selectedBrowserId)) return
+        setSelectedBrowserId('system')
+    }, [availableBrowsers, selectedBrowserId])
+
+    useEffect(() => {
+        const resolvedEditorId = resolvePreferredExternalEditorId(availableEditors, selectedEditorId)
+        if (!resolvedEditorId || resolvedEditorId === selectedEditorId) return
+        setSelectedEditorId(resolvedEditorId)
+    }, [availableEditors, selectedEditorId])
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(PREVIEW_BROWSER_PREFERENCE_KEY, selectedBrowserId)
+        } catch {
+            // Ignore localStorage failures in desktop preview state.
+        }
+    }, [selectedBrowserId])
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(PREVIEW_EDITOR_PREFERENCE_KEY, selectedEditorId)
+        } catch {
+            // Ignore localStorage failures in desktop preview state.
+        }
+    }, [selectedEditorId])
+
+    useEffect(() => {
         if ((serverStatus === 'stopped' || serverStatus === 'error') || !activeServerRunId) {
             embedModeHydratedRunIdRef.current = null
             return
@@ -279,12 +371,6 @@ export function ProjectPagesPage() {
 
         prevProjectPathRef.current = projectPath
     }, [projectPath, actions])
-
-    const projectBasePath = useMemo(() => {
-        if (project?._id) return buildProjectPath(String(project._id))
-        if (projectIdParam) return buildProjectPath(projectIdParam)
-        return slugParam ? `/projects/${slugParam}` : null
-    }, [project?._id, projectIdParam, slugParam])
 
     const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
     const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
@@ -448,6 +534,14 @@ export function ProjectPagesPage() {
         setInspectedElement(null)
         closeVisualEditor()
     }, [setSelectedElement, setInspectedElement, closeVisualEditor])
+
+    const handleSelectPreviewRoute = useCallback((routePath: string) => {
+        const normalizedRoute = normalizePreviewPath(routePath)
+        const routeIndex = routes.findIndex((route) => normalizePreviewPath(route.path) === normalizedRoute)
+        if (routeIndex >= 0) {
+            setFocusedPageIndex(routeIndex)
+        }
+    }, [routes])
 
     // Update page context when focused route changes
     useEffect(() => {
@@ -910,14 +1004,18 @@ export function ProjectPagesPage() {
                                 if (stack) void navigator.clipboard.writeText(stack)
                             } else if (action === 'open-source') {
                                 const fileName = data.react?.source?.fileName
-                                if (!fileName || !projectBasePath || !projectPath) return
-                                void resolveProjectSourcePath(fileName, projectPath).then(resolvedPath => {
-                                    if (!resolvedPath) return
-                                    const params = new URLSearchParams()
-                                    params.set('path', resolvedPath)
-                                    if (data.react?.source?.lineNumber) params.set('line', String(data.react?.source.lineNumber))
-                                    if (data.react?.source?.columnNumber) params.set('column', String(data.react?.source.columnNumber))
-                                    navigate(`${projectBasePath}?${params.toString()}`)
+                                if (!fileName) return
+                                void openProjectFileInExternalEditor({
+                                    availableEditors,
+                                    filePath: fileName,
+                                    line: data.react?.source?.lineNumber,
+                                    column: data.react?.source?.columnNumber,
+                                    preferredEditorId: selectedEditorId,
+                                    projectPath,
+                                }).then((result) => {
+                                    if (!result.success) {
+                                        console.error('[PagesPreview] Failed to open source from inspector', result.error)
+                                    }
                                 })
                             }
                         })
@@ -959,6 +1057,14 @@ export function ProjectPagesPage() {
                     })
                     if (!navigationPath) break
                     const matchedIndex = findBestPreviewRouteIndex(routes, navigationPath)
+                    const matchedRoute = matchedIndex !== null ? routes[matchedIndex] : null
+                    setCurrentPage({
+                        route: navigationPath,
+                        filePath: matchedRoute?.file ?? focusedRoute?.file ?? '',
+                        componentName: matchedRoute?.name ?? focusedRoute?.name ?? navigationPath,
+                        serverPort: serverPort ?? undefined,
+                        lastUpdated: Date.now(),
+                    })
                     if (matchedIndex !== null && matchedIndex !== focusedPageIndex) {
                         setFocusedPageIndex(matchedIndex)
                     }
@@ -1006,7 +1112,7 @@ export function ProjectPagesPage() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, navigate, projectBasePath])
+    }, [handleCloseInspectorSidebar, inspectorEnabled, focusedRoute, project?.name, serverPort, setSelectedElement, setInspectedElement, setCurrentPage, openWithScreenshot, closeAssistantPanel, routes, focusedPageIndex, shiftInspectorActive, previewReady, closeVisualEditor, addRuntimeProblem, projectPath, isFocusedPreview, addBridgeLog, previewRoute?.path, clearBridgeReadyTimeout, previewEmbedMode, addPreviewTimelineEvent, actions, activeServerRunId, setPreviewFailure, selectedElement, availableEditors, selectedEditorId])
 
     // Toggle inspector in iframe when inspectorEnabled changes
     useEffect(() => {
@@ -1361,6 +1467,43 @@ export function ProjectPagesPage() {
         }
     }, [previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, previewServerActive, project?.name, serverPort])
 
+    useEffect(() => {
+        setPreviewScreenshot({
+            visible: Boolean(previewRoute && previewServerActive && serverPort),
+            enabled: Boolean(previewReady && !previewEmbedBlocked && previewServerActive && serverPort),
+            capturing: isCapturingScreenshot,
+        })
+    }, [
+        isCapturingScreenshot,
+        previewEmbedBlocked,
+        previewReady,
+        previewRoute,
+        previewServerActive,
+        serverPort,
+        setPreviewScreenshot,
+    ])
+
+    useEffect(() => {
+        return () => {
+            setPreviewScreenshot({
+                visible: false,
+                enabled: false,
+                capturing: false,
+            })
+        }
+    }, [setPreviewScreenshot])
+
+    useEffect(() => {
+        const handlePreviewScreenshotRequest = () => {
+            void handleCaptureScreenshot()
+        }
+
+        window.addEventListener(PREVIEW_SCREENSHOT_REQUEST_EVENT, handlePreviewScreenshotRequest)
+        return () => {
+            window.removeEventListener(PREVIEW_SCREENSHOT_REQUEST_EVENT, handlePreviewScreenshotRequest)
+        }
+    }, [handleCaptureScreenshot])
+
     // Toggle inspector mode (manual toggle via button)
     const toggleInspector = useCallback(() => {
         if (!inspectorEnabled && !previewReady) {
@@ -1581,27 +1724,18 @@ export function ProjectPagesPage() {
     }, [convexUserId, currentPage?.filePath, inspectedElement, openVisualEditAssistantFallback, project?._id, projectPath])
 
     const handleOpenCode = useCallback(async (file: string, line?: number, column?: number) => {
-        const normalizedFile = file.replace(/\\/g, '/')
-        const normalizedProject = projectPath ? projectPath.replace(/\\/g, '/').replace(/\/+$/, '') : null
-        const isAbsolute = normalizedFile.startsWith('/') || /^[A-Za-z]:\//.test(normalizedFile)
-        const resolvedRelativePath =
-            projectPath
-                ? await resolveProjectSourcePath(normalizedFile, projectPath)
-                : null
-        const pathForUrl = resolvedRelativePath
-            ? (normalizedProject ? `${normalizedProject}/${resolvedRelativePath.replace(/^\/+/, '')}` : resolvedRelativePath)
-            : normalizedProject
-                ? (isAbsolute || normalizedFile.startsWith(normalizedProject))
-                    ? normalizedFile
-                    : `${normalizedProject}/${normalizedFile.replace(/^\/+/, '')}`
-                : normalizedFile
-        const params = new URLSearchParams()
-        params.set('path', pathForUrl)
-        if (line) params.set('line', String(line))
-        if (column) params.set('column', String(column))
-        if (!projectBasePath) return
-        navigate(`${projectBasePath}?${params.toString()}`)
-    }, [navigate, projectBasePath, projectPath])
+        const result = await openProjectFileInExternalEditor({
+            availableEditors,
+            filePath: file,
+            line,
+            column,
+            preferredEditorId: selectedEditorId,
+            projectPath,
+        })
+        if (!result.success) {
+            console.error('[PagesPreview] Failed to open file in external editor', result.error)
+        }
+    }, [availableEditors, projectPath, selectedEditorId])
 
     const reloadFocusedPreview = useCallback((reason: 'manual' | 'fallback' = 'manual') => {
         clearBridgeReadyTimeout()
@@ -1644,15 +1778,24 @@ export function ProjectPagesPage() {
 
     const openFocusedPreviewExternally = useCallback(() => {
         if (!focusedPreviewUrl) return
-        window.open(focusedPreviewUrl, '_blank')
-    }, [focusedPreviewUrl])
+        void (async () => {
+            const result = await window.electronAPI.shell.openInBrowser({
+                url: focusedPreviewUrl,
+                browserId: selectedBrowserId === 'system' ? defaultBrowserId : selectedBrowserId,
+            })
+            if (!result.success) {
+                console.error('[PagesPreview] Failed to open preview in browser', result.error)
+            }
+        })()
+    }, [defaultBrowserId, focusedPreviewUrl, selectedBrowserId])
 
     const headerControls = useMemo(() => (
         <ProjectPreviewToolbar
+            availableBrowsers={availableBrowsers}
+            availableEditors={availableEditors}
+            defaultBrowserId={defaultBrowserId}
             device={device}
             inspectorEnabled={inspectorEnabled}
-            isCapturingScreenshot={isCapturingScreenshot}
-            onCaptureScreenshot={handleCaptureScreenshot}
             onDeviceChange={setDevice}
             onOpenCode={() => {
                 if (previewRoute) {
@@ -1660,35 +1803,35 @@ export function ProjectPagesPage() {
                 }
             }}
             onOpenExternally={openFocusedPreviewExternally}
-            onRefreshRoutes={() => {
-                void refreshRoutes()
-            }}
-            onRetryBridge={retryBridgeInjection}
+            onSelectedEditorChange={setSelectedEditorId}
+            onSelectedBrowserChange={setSelectedBrowserId}
             onToggleInspector={toggleInspector}
-            onZoomChange={setZoom}
             previewEmbedBlocked={previewEmbedBlocked}
+            previewLoading={previewLoading}
             previewReady={previewReady}
+            selectedEditorId={selectedEditorId}
+            selectedBrowserId={selectedBrowserId}
             serverRunning={previewServerActive && Boolean(serverPort)}
             useCredentiallessPreview={useCredentiallessPreview}
-            zoom={zoom}
         />
     ), [
+        availableBrowsers,
+        availableEditors,
+        defaultBrowserId,
         device,
-        handleCaptureScreenshot,
         inspectorEnabled,
-        isCapturingScreenshot,
         previewEmbedBlocked,
+        previewLoading,
         previewReady,
-        refreshRoutes,
-        retryBridgeInjection,
         handleOpenCode,
         openFocusedPreviewExternally,
+        selectedEditorId,
+        selectedBrowserId,
         previewRoute,
         previewServerActive,
         serverPort,
         toggleInspector,
         useCredentiallessPreview,
-        zoom,
     ])
 
     const serverControlBreadcrumbAddon = useMemo(() => (
@@ -1709,10 +1852,23 @@ export function ProjectPagesPage() {
         </div>
     ), [headerControls, serverControlBreadcrumbAddon])
 
+    const focusedPreviewCenterAddon = useMemo(() => {
+        if (routes.length === 0) return null
+        return (
+            <ProjectPreviewRouteBar
+                currentRoute={previewRoute}
+                currentPath={currentPage?.route ?? previewRoute?.path ?? null}
+                routes={routes}
+                onSelectRoute={(route) => handleSelectPreviewRoute(route.path)}
+            />
+        )
+    }, [currentPage?.route, handleSelectPreviewRoute, previewRoute, routes])
+
     useProjectHeader(
         null,
         focusedPreviewBreadcrumbAddon,
-        Boolean(previewRoute)
+        focusedPreviewCenterAddon,
+        true
     )
 
     // Loading state - show shell immediately
@@ -1816,7 +1972,6 @@ export function ProjectPagesPage() {
                                                 serverRunning={previewServerActive && Boolean(serverPort)}
                                                 showPreviewFailureOverlay={showPreviewFailureOverlay}
                                                 taskOverlay={taskOverlay}
-                                                zoom={zoom}
                                             />
                                         </div>
                                     </div>

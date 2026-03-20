@@ -8,39 +8,29 @@ import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search, Plus } from 'lucide-react'
+import { MessageCircle, Plus, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ChatHistorySidebarProps {
   projectId: Id<'projects'> | null
 }
 
-interface ConversationListItem {
-  _id: Id<'aiConversations'>
-  title: string
-  createdAt: number
-}
+function formatRelativeTime(timestamp: number) {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  const weeks = Math.floor(diff / 604800000)
 
-function getDayBucketKey(timestamp: number) {
-  const date = new Date(timestamp)
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-}
-
-function formatDaySeparatorLabel(timestamp: number) {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(timestamp)
-  const targetDay = new Date(target.getFullYear(), target.getMonth(), target.getDate())
-  const dayDifference = Math.round((today.getTime() - targetDay.getTime()) / 86400000)
-
-  if (dayDifference === 0) return 'Today'
-  if (dayDifference === 1) return 'Yesterday'
-
-  const includeYear = targetDay.getFullYear() !== today.getFullYear()
-  return targetDay.toLocaleDateString(undefined, {
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  if (hours < 24) return `${hours}h`
+  if (days < 7) return `${days}d`
+  if (weeks < 52) return `${weeks}w`
+  return new Date(timestamp).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
-    ...(includeYear ? { year: 'numeric' } : {}),
   })
 }
 
@@ -62,40 +52,13 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
       : 'skip'
   )
 
-  const filteredConversations = useMemo<ConversationListItem[] | undefined>(() => {
+  const filteredConversations = useMemo(() => {
     if (!conversations) return conversations
     const query = searchQuery.trim().toLowerCase()
     if (!query) return conversations
     return conversations.filter((conv) => conv.title.toLowerCase().includes(query))
   }, [conversations, searchQuery])
-
-  const groupedConversations = useMemo(() => {
-    if (!filteredConversations) return []
-
-    const groups: Array<{
-      dayKey: string
-      dayLabel: string
-      conversations: ConversationListItem[]
-    }> = []
-
-    for (const conversation of filteredConversations) {
-      const dayKey = getDayBucketKey(conversation.createdAt)
-      const lastGroup = groups[groups.length - 1]
-
-      if (!lastGroup || lastGroup.dayKey !== dayKey) {
-        groups.push({
-          dayKey,
-          dayLabel: formatDaySeparatorLabel(conversation.createdAt),
-          conversations: [conversation],
-        })
-        continue
-      }
-
-      lastGroup.conversations.push(conversation)
-    }
-
-    return groups
-  }, [filteredConversations])
+  const visibleConversations = filteredConversations ?? []
 
   const handleSelect = (conv: { _id: Id<'aiConversations'>; title: string }) => {
     setCurrentConversationId(conv._id)
@@ -123,11 +86,11 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
       className="file-tree-panel-border h-full min-w-0 shrink-0 border-l border-border/55 bg-sidebar"
     >
       <SidebarHeader
-        className="titlebar-drag-region h-9 px-3"
+        className="titlebar-drag-region h-11 px-4"
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-muted-foreground">
-            Chats
+          <span className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+            Sessions
           </span>
           <div className="titlebar-no-drag flex items-center gap-1">
             <Button
@@ -135,7 +98,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
               variant="ghost"
               size="icon"
               className={cn(
-                "h-6 w-6 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground",
+                "h-7 w-7 rounded-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground",
                 isSearchVisible && "bg-sidebar-accent text-sidebar-accent-foreground"
               )}
               onClick={handleToggleSearch}
@@ -148,7 +111,7 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-6 w-6 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground"
+              className="h-7 w-7 rounded-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground"
               onClick={startNewConversation}
               aria-label="New chat"
               title="New chat"
@@ -159,70 +122,70 @@ export function ChatHistorySidebar({ projectId }: ChatHistorySidebarProps) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-2">
+      <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-1">
         <div
           className={cn(
             "overflow-hidden transition-all duration-200 ease-out",
             isSearchVisible ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
           )}
         >
-          <div className="px-2 pt-1 pb-2">
+          <div className="px-4 pt-1 pb-2">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sidebar-foreground/55" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sidebar-foreground/55" />
               <Input
                 type="text"
-                placeholder="Search chats"
+                placeholder="Search sessions"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                className="h-8 rounded-xl border border-sidebar-border/70 bg-background/90 pl-8 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/50 shadow-none focus-visible:ring-sidebar-ring/35 dark:border-sidebar-border/60 dark:bg-secondary/40"
+                className="h-9 rounded-2xl border border-sidebar-border/70 bg-background/90 pl-9 text-[13px] text-sidebar-foreground placeholder:text-sidebar-foreground/50 shadow-none focus-visible:ring-sidebar-ring/35 dark:border-sidebar-border/60 dark:bg-secondary/40"
               />
             </div>
           </div>
         </div>
 
         <div className="relative min-h-0 flex-1">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-sidebar via-sidebar to-transparent" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-sidebar via-sidebar to-transparent" />
           <ScrollArea className="h-full">
-            <div className="px-2 pb-3">
+            <div className="px-3 pb-4">
               {conversations === undefined ? (
-                <div className="px-2 py-6 text-sm text-muted-foreground">Loading chats...</div>
-              ) : filteredConversations?.length === 0 ? (
-                <div className="px-2 py-6 text-sm text-muted-foreground">
-                  {searchQuery ? 'No matching chats' : 'No chats yet'}
+                <div className="px-3 py-8 text-[13px] text-muted-foreground">Loading sessions...</div>
+              ) : visibleConversations.length === 0 ? (
+                <div className="px-3 py-8 text-[13px] text-muted-foreground">
+                  {searchQuery ? 'No matching sessions' : 'No sessions yet'}
                 </div>
               ) : (
-                groupedConversations.map((group, index) => (
-                  <div key={group.dayKey}>
-                    <div
+                visibleConversations.map((conv) => {
+                  const isActive = currentConversationId === conv._id
+                  return (
+                    <button
+                      key={conv._id}
+                      type="button"
+                      onClick={() => handleSelect(conv)}
                       className={cn(
-                        'my-2 flex items-center gap-2 px-2',
-                        index === 0 ? 'mt-0' : undefined
+                        'group flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors',
+                        isActive
+                          ? 'bg-sidebar-accent/80 text-sidebar-accent-foreground'
+                          : 'hover:bg-sidebar-accent/55'
                       )}
                     >
-                      <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                        {group.dayLabel}
-                      </span>
-                      <span className="h-px flex-1 bg-border/40" />
-                    </div>
-
-                    {group.conversations.map((conv) => (
-                      <button
-                        key={conv._id}
-                        type="button"
-                        onClick={() => handleSelect(conv)}
-                        className={cn(
-                          'group mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
-                          currentConversationId === conv._id
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                            : 'hover:bg-sidebar-accent/70'
-                        )}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{conv.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))
+                      <span className={cn(
+                        'mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full',
+                        isActive ? 'bg-primary' : 'bg-primary/95'
+                      )} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[17px] font-normal leading-6 text-foreground">
+                          {conv.title}
+                        </div>
+                        <div className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+                          {isActive ? 'Current session' : 'Conversation'}
+                        </div>
+                      </div>
+                      <div className="mt-0.5 flex shrink-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        <span>{formatRelativeTime(conv.createdAt)}</span>
+                      </div>
+                    </button>
+                  )
+                })
               )}
             </div>
           </ScrollArea>
