@@ -71,6 +71,9 @@ export const BRIDGE_SCRIPT = `
     'bridge:style-update-ack': true,
     'bridge:navigation': true,
     'bridge:runtime-error': true,
+    'bridge:viewport-wheel': true,
+    'bridge:viewport-pan': true,
+    'bridge:viewport-pinch': true,
   };
   const OFFSCREEN_SCREENSHOT_ENCODING_ENABLED = ${JSON.stringify(OFFSCREEN_SCREENSHOT_ENCODING_ENABLED)};
 
@@ -284,6 +287,13 @@ export const BRIDGE_SCRIPT = `
   // Live DOM Shadowing via MutationObserver
   let domSnapshotObserver = null;
   let domSnapshotTimeout = null;
+  let hostCanPanViewport = false;
+  let spacePanActive = false;
+  let activePanPointerId = null;
+  let lastPanPoint = null;
+  const activeTouchPoints = new Map();
+  let lastPinchDistance = null;
+  let lastPinchCenter = null;
 
   function sendDomSnapshot() {
     if (!document.body) return;
@@ -906,6 +916,34 @@ export const BRIDGE_SCRIPT = `
     bridgeLog('Selection cleared');
   }
 
+  function isEditableTarget(target) {
+    if (!(target instanceof Element)) return false;
+    const tagName = target.tagName ? target.tagName.toLowerCase() : '';
+    return (
+      tagName === 'input' ||
+      tagName === 'textarea' ||
+      tagName === 'select' ||
+      target.closest('[contenteditable="true"]') !== null
+    );
+  }
+
+  function getTouchPointSnapshot() {
+    return Array.from(activeTouchPoints.values()).slice(0, 2);
+  }
+
+  function getDistanceBetweenPoints(first, second) {
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    return Math.hypot(dx, dy);
+  }
+
+  function getMidpointBetweenPoints(first, second) {
+    return {
+      x: (first.x + second.x) / 2,
+      y: (first.y + second.y) / 2,
+    };
+  }
+
   // Listen for messages from parent
   window.addEventListener('message', (e) => {
     const { type, payload } = e.data || {};
@@ -990,6 +1028,10 @@ export const BRIDGE_SCRIPT = `
           selectElement(restored, 'bridge:element-selected');
         }
         break;
+
+      case 'host:set-viewport-state':
+        hostCanPanViewport = !!payload?.canPan;
+        break;
     }
   });
 
@@ -1030,11 +1072,164 @@ export const BRIDGE_SCRIPT = `
     }
   }, false);
 
+  document.addEventListener('wheel', (e) => {
+    if (inspectorEnabled) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      postToParent({
+        type: 'bridge:viewport-wheel',
+        payload: {
+          deltaY: e.deltaY,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+        },
+      });
+      return;
+    }
+    if (!hostCanPanViewport) return;
+    e.preventDefault();
+    postToParent({
+      type: 'bridge:viewport-pan',
+      payload: {
+        phase: 'move',
+        deltaX: -e.deltaX,
+        deltaY: -e.deltaY,
+      },
+    });
+  }, { capture: true, passive: false });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (inspectorEnabled) return;
+
+    if (e.pointerType === 'touch') {
+      activeTouchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activeTouchPoints.size === 2) {
+        const [first, second] = getTouchPointSnapshot();
+        lastPinchDistance = getDistanceBetweenPoints(first, second);
+        lastPinchCenter = getMidpointBetweenPoints(first, second);
+      }
+      return;
+    }
+
+    if (isEditableTarget(e.target)) return;
+    if (!(spacePanActive || e.button === 1)) return;
+
+    activePanPointerId = e.pointerId;
+    lastPanPoint = { x: e.clientX, y: e.clientY };
+    e.preventDefault();
+    postToParent({
+      type: 'bridge:viewport-pan',
+      payload: {
+        phase: 'start',
+        deltaX: 0,
+        deltaY: 0,
+      },
+    });
+  }, true);
+
+  document.addEventListener('pointermove', (e) => {
+    if (inspectorEnabled) return;
+
+    if (e.pointerType === 'touch' && activeTouchPoints.has(e.pointerId)) {
+      activeTouchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activeTouchPoints.size === 2) {
+        const [first, second] = getTouchPointSnapshot();
+        const nextDistance = getDistanceBetweenPoints(first, second);
+        const nextCenter = getMidpointBetweenPoints(first, second);
+        if (lastPinchDistance && nextDistance > 0) {
+          const scaleDelta = nextDistance / lastPinchDistance;
+          const panDeltaX = lastPinchCenter ? nextCenter.x - lastPinchCenter.x : 0;
+          const panDeltaY = lastPinchCenter ? nextCenter.y - lastPinchCenter.y : 0;
+          postToParent({
+            type: 'bridge:viewport-pinch',
+            payload: {
+              scaleDelta: Number.isFinite(scaleDelta) ? scaleDelta : 1,
+              deltaX: panDeltaX,
+              deltaY: panDeltaY,
+              centerX: nextCenter.x,
+              centerY: nextCenter.y,
+            },
+          });
+        }
+        lastPinchDistance = nextDistance;
+        lastPinchCenter = nextCenter;
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (activePanPointerId !== e.pointerId || !lastPanPoint) return;
+
+    const deltaX = e.clientX - lastPanPoint.x;
+    const deltaY = e.clientY - lastPanPoint.y;
+    lastPanPoint = { x: e.clientX, y: e.clientY };
+    if (deltaX === 0 && deltaY === 0) return;
+
+    e.preventDefault();
+    postToParent({
+      type: 'bridge:viewport-pan',
+      payload: {
+        phase: 'move',
+        deltaX,
+        deltaY,
+      },
+    });
+  }, { capture: true, passive: false });
+
+  const finishPanGesture = () => {
+    if (activePanPointerId == null) return;
+    activePanPointerId = null;
+    lastPanPoint = null;
+    postToParent({
+      type: 'bridge:viewport-pan',
+      payload: {
+        phase: 'end',
+        deltaX: 0,
+        deltaY: 0,
+      },
+    });
+  };
+
+  const finishPinchGesture = (pointerId) => {
+    if (!activeTouchPoints.has(pointerId)) return;
+    activeTouchPoints.delete(pointerId);
+    if (activeTouchPoints.size < 2) {
+      lastPinchDistance = null;
+      lastPinchCenter = null;
+    }
+  };
+
+  document.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'touch') {
+      finishPinchGesture(e.pointerId);
+      return;
+    }
+    if (activePanPointerId === e.pointerId) {
+      finishPanGesture();
+    }
+  }, true);
+
+  document.addEventListener('pointercancel', (e) => {
+    if (e.pointerType === 'touch') {
+      finishPinchGesture(e.pointerId);
+      return;
+    }
+    if (activePanPointerId === e.pointerId) {
+      finishPanGesture();
+    }
+  }, true);
+
   // Escape closes inspector (notify parent so it can disable inspector and clear selection)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && inspectorEnabled) {
       e.preventDefault();
       postToParent({ type: 'bridge:close-inspector' });
+    }
+    if (e.code === 'Space' && !e.repeat && !isEditableTarget(e.target)) {
+      e.preventDefault();
+      spacePanActive = true;
     }
     // Forward Shift so parent can enable inspector when focus is in iframe (e.g. after Escape)
     if (e.key === 'Shift' && !e.repeat) {
@@ -1043,6 +1238,11 @@ export const BRIDGE_SCRIPT = `
   }, true);
 
   document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      spacePanActive = false;
+      finishPanGesture();
+    }
     if (e.key === 'Shift') {
       postToParent({ type: 'bridge:shift-keyup' });
     }

@@ -27,6 +27,9 @@ export type BridgeMessageType =
   | 'bridge:navigation'
   | 'bridge:runtime-error'
   | 'bridge:console'
+  | 'bridge:viewport-wheel'
+  | 'bridge:viewport-pan'
+  | 'bridge:viewport-pinch'
   // host → iframe
   | 'host:enable-inspector'
   | 'host:disable-inspector'
@@ -37,6 +40,7 @@ export type BridgeMessageType =
   | 'host:update-text'
   | 'host:clear-selection'
   | 'host:restore-selection'
+  | 'host:set-viewport-state'
 
 export interface BridgeMessage {
   type: BridgeMessageType

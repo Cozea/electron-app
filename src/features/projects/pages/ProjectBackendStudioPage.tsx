@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useViewTransitionNavigate } from '@/lib/navigation'
 import { ConvexHttpClient } from "convex/browser"
 import type { FunctionReference } from "convex/server"
 import {
@@ -51,7 +50,7 @@ import {
   Zap,
 } from "lucide-react"
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject"
-import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { openProjectFileInExternalEditor } from "@/features/projects/lib/externalEditorPreference"
 
 type StudioNode = ReactFlowNode<StudioGraphNodeData, "studio">
 
@@ -207,15 +206,9 @@ function normalizePath(path: string): string {
 }
 
 export function ProjectBackendStudioPage() {
-  const navigate = useViewTransitionNavigate()
-  const { project, projectIdParam, slugParam } = useAccessibleProject()
+  const { project } = useAccessibleProject()
   const syncContext = useOptionalProjectSyncContext()
   const projectPath = syncContext?.projectPath ?? null
-  const projectBasePath = useMemo(() => {
-    if (project?._id) return buildProjectPath(String(project._id))
-    if (projectIdParam) return buildProjectPath(projectIdParam)
-    return slugParam ? buildLegacyProjectPath(slugParam) : null
-  }, [project?._id, projectIdParam, slugParam])
 
   const [isScanning, setIsScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -465,11 +458,17 @@ export function ProjectBackendStudioPage() {
   }, [projectPath])
 
   const handleOpenSource = useCallback(() => {
-    if (!projectBasePath) return
     const filePath = selectedData?.filePath
     if (!filePath) return
-    navigate(`${projectBasePath}?path=${encodeURIComponent(filePath)}`)
-  }, [navigate, projectBasePath, selectedData?.filePath])
+    void openProjectFileInExternalEditor({
+      filePath,
+      projectPath,
+    }).then((result) => {
+      if (!result.success) {
+        console.error('[ProjectBackendStudioPage] Failed to open source in external editor', result.error)
+      }
+    })
+  }, [projectPath, selectedData?.filePath])
 
   const handleRunSelected = useCallback(async () => {
     if (!selectedData || selectedData.kind !== "convex" || !selectedData.apiPath || !selectedData.operation) {
@@ -791,7 +790,7 @@ export function ProjectBackendStudioPage() {
                       </div>
 
                       <div className="mt-3 flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={handleOpenSource} disabled={!selectedData.filePath || !projectBasePath}>
+                        <Button size="sm" variant="outline" onClick={handleOpenSource} disabled={!selectedData.filePath}>
                           <FileCode2 className="h-4 w-4 mr-2" />
                           Open source
                         </Button>

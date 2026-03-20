@@ -31,6 +31,8 @@ import { loadSyncState } from './services/syncReplicaStore'
 
 import { DevServerService } from './services/DevServerService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
+import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
+import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -993,6 +995,15 @@ registerCoreHandlers(ipcMain, {
     })
   },
   openExternal: (url) => shell.openExternal(url),
+  listAvailableBrowsers,
+  openInBrowser: ({ url, browserId }) => openUrlInBrowser(url, browserId),
+  listAvailableEditors,
+  openInEditor: ({ editorId, filePath, line, column }) => {
+    if (editorId === 'cozea') {
+      return Promise.resolve()
+    }
+    return openFileInExternalEditor({ editorId, filePath, line, column })
+  },
   isWindowFullScreen: () => win?.isFullScreen() ?? false,
   openSettingsWindow,
 })

@@ -165,7 +165,7 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
       <Sidebar
         collapsible="icon"
-        className={cn("w-56 shrink-0 z-20 h-screen sidebar-glass", className)}
+        className={cn("h-full w-56 shrink-0 z-20 sidebar-glass", className)}
         {...props}
       >
         <div className="h-10 shrink-0" aria-hidden="true" />

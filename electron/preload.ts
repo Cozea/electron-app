@@ -163,6 +163,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    listAvailableBrowsers: () => ipcRenderer.invoke('shell:listAvailableBrowsers'),
+    openInBrowser: (options: { url: string; browserId?: import('../shared/electronApiTypes').ExternalBrowserId }) =>
+      ipcRenderer.invoke('shell:openInBrowser', options),
+  },
+  editor: {
+    listAvailableEditors: () => ipcRenderer.invoke('editor:listAvailableEditors'),
+    openInEditor: (options: {
+      editorId: import('../shared/electronApiTypes').ExternalEditorId
+      filePath: string
+      line?: number
+      column?: number
+    }) => ipcRenderer.invoke('editor:openInEditor', options),
   },
   app: {
     onNavigate: (callback: (path: string) => void) => {
@@ -668,5 +680,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('diagnostics:getSnapshot', options),
     checkFiles: (options: { projectPath: string; filePaths: string[]; timeoutMs?: number }) =>
       ipcRenderer.invoke('diagnostics:checkFiles', options),
+    onPublish: (callback: (payload: import('../shared/electronApiTypes').DiagnosticPublishPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: import('../shared/electronApiTypes').DiagnosticPublishPayload) =>
+        callback(payload)
+      ipcRenderer.on('diagnostics:publish', handler)
+      return () => ipcRenderer.removeListener('diagnostics:publish', handler)
+    },
   },
 } satisfies ElectronAPI)

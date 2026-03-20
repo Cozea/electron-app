@@ -52,11 +52,6 @@ const NewProject = lazy(() =>
 const ProjectBuild = lazy(() =>
   import('@/pages/ProjectBuild').then((module) => ({ default: module.ProjectBuild }))
 )
-const ProjectDetailPage = lazy(() =>
-  import('@/features/projects/pages/ProjectDetailPage').then((module) => ({
-    default: module.ProjectDetailPage,
-  }))
-)
 const ProjectPagesPage = lazy(() =>
   import('@/features/projects/pages/ProjectPagesPage').then((module) => ({
     default: module.ProjectPagesPage,
@@ -243,7 +238,7 @@ export const appRoutes: RouteObject[] = [
         element: <ProjectLayout />,
         children: [
           { index: true, element: <Navigate to="pages" replace /> },
-          { path: 'files', element: <ProjectDetailPage /> },
+          { path: 'files', element: <Navigate to="../pages" replace /> },
           { path: 'pages', element: <ProjectPagesPage /> },
           { path: 'database', element: <ProjectDatabasePage /> },
           { path: 'dependencies', element: <ProjectDependenciesPage /> },
@@ -258,7 +253,7 @@ export const appRoutes: RouteObject[] = [
           { path: 'settings', element: <ProjectSettingsPage /> },
           { path: 'settings/team', element: <Navigate to="../team" replace /> },
           { path: 'settings/:section', element: <ProjectSettingsPage /> },
-          { path: '*', element: <ProjectDetailPage /> },
+          { path: '*', element: <Navigate to="../pages" replace /> },
         ],
       },
       { path: 'projects/:slug', element: <LegacyProjectRedirectPage /> },

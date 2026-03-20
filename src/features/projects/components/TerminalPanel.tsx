@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useMemo } from "react"
+import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import {
     useTerminalStore,
@@ -52,6 +52,7 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
         if (!activeGroup) return []
         return activeGroup.terminalIds.map((id) => terminals[id]).filter(Boolean)
     }, [activeGroup, terminals])
+    const previousTerminalStatusesRef = useRef<Record<string, string>>({})
 
     const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
     const [isDragging, setIsDragging] = useState(false)
@@ -125,6 +126,34 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
             markRead(projectPath)
         }
     }, [markRead, projectPath])
+
+    const terminalInstances = useMemo(() => Object.values(terminals), [terminals])
+
+    useEffect(() => {
+        const previousStatuses = previousTerminalStatusesRef.current
+        const nextStatuses: Record<string, string> = {}
+        let shouldRefreshDiagnostics = false
+
+        for (const terminal of terminalInstances) {
+            nextStatuses[terminal.id] = terminal.status
+            if (terminal.projectPath !== projectPath) continue
+
+            const previousStatus = previousStatuses[terminal.id]
+            if (
+                previousStatus &&
+                previousStatus !== terminal.status &&
+                (terminal.status === "exited" || terminal.status === "error")
+            ) {
+                shouldRefreshDiagnostics = true
+            }
+        }
+
+        previousTerminalStatusesRef.current = nextStatuses
+
+        if (shouldRefreshDiagnostics) {
+            requestEditorDiagnosticsRefresh()
+        }
+    }, [projectPath, terminalInstances])
 
     return (
         <div
