@@ -166,7 +166,7 @@ export function ProjectDashboard() {
           <p className="text-muted-foreground">{project.description || 'No description'}</p>
         </div>
         <Button asChild>
-          <Link to={`${buildProjectPath(String(project._id))}?path=README.md`}>
+          <Link to={`${buildProjectPath(String(project._id), 'files')}?path=README.md`}>
             <Code className="h-4 w-4 mr-2" />
             Open Editor
           </Link>
@@ -208,7 +208,7 @@ export function ProjectDashboard() {
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
-          to={`${buildProjectPath(String(project._id))}?path=README.md`}
+          to={`${buildProjectPath(String(project._id), 'files')}?path=README.md`}
           className="p-6 rounded-lg border bg-card hover:bg-accent transition-colors"
         >
           <Code className="h-6 w-6 mb-2" />

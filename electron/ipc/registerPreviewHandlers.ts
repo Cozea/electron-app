@@ -1,7 +1,9 @@
 import { BrowserWindow, type IpcMain, type WebContents, type WebFrameMain } from 'electron'
+import net from 'node:net'
 
 import { BRIDGE_SCRIPT } from '../../shared/previewBridgeScript'
 import { normalizeComputedStyles } from '../../shared/styleProperties'
+import { PreviewSnapshotService } from '../services/PreviewSnapshotService'
 import type {
   PreviewCaptureScreenshotResult,
   PreviewInspectorElementSnapshot,
@@ -13,6 +15,7 @@ import type {
   PreviewFailureReason,
   PreviewHeaderDiagnostic,
   PreviewInjectBridgeResult,
+  PreviewProbePortResult,
   PreviewProbeUrlResult,
 } from '../../shared/electronApiTypes'
 
@@ -1124,52 +1127,6 @@ function isExpectedPreviewConnectivityError(message: string): boolean {
   )
 }
 
-async function loadUrlForCapture(
-  targetWindow: BrowserWindow,
-  targetUrl: string,
-  timeoutMs: number
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false
-
-    const finish = (callback: () => void) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      targetWindow.webContents.removeListener('did-finish-load', onFinishLoad)
-      targetWindow.webContents.removeListener('did-fail-load', onFailLoad)
-      callback()
-    }
-
-    const onFinishLoad = () => {
-      finish(resolve)
-    }
-
-    const onFailLoad = (
-      _event: Electron.Event,
-      errorCode: number,
-      errorDescription: string,
-      _validatedURL: string,
-      isMainFrame: boolean
-    ) => {
-      if (!isMainFrame) return
-      finish(() => reject(new Error(`Failed to load page: ${errorDescription} (${errorCode})`)))
-    }
-
-    const timer = setTimeout(() => {
-      finish(() => reject(new Error('Page load timeout')))
-    }, timeoutMs)
-
-    targetWindow.webContents.on('did-finish-load', onFinishLoad)
-    targetWindow.webContents.on('did-fail-load', onFailLoad)
-
-    void targetWindow.loadURL(targetUrl).catch((error: unknown) => {
-      const err = error instanceof Error ? error : new Error(String(error))
-      finish(() => reject(err))
-    })
-  })
-}
-
 function isAllowedPreviewUrl(url: URL): boolean {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
@@ -1317,6 +1274,7 @@ export function registerPreviewHandlers(
   deps: RegisterPreviewHandlersDeps
 ): void {
   const inspectorService = new PreviewInspectorService(deps)
+  const previewSnapshotService = PreviewSnapshotService.getInstance()
 
   // Inject the preview bridge into the project's dev-server iframe (cross-origin safe via WebFrameMain)
   ipcMain.handle(
@@ -1570,6 +1528,87 @@ export function registerPreviewHandlers(
   )
 
   ipcMain.handle(
+    'preview:probePort',
+    async (
+      _event,
+      { port, timeoutMs = 1000 }: { port: number; timeoutMs?: number }
+    ): Promise<PreviewProbePortResult> => {
+      const startedAt = Date.now()
+      const normalizedPort = Number(port)
+      if (!Number.isFinite(normalizedPort) || normalizedPort <= 0 || normalizedPort > 65535) {
+        return {
+          success: false,
+          port: normalizedPort,
+          reachable: false,
+          error: 'Invalid port',
+          elapsedMs: Date.now() - startedAt,
+        }
+      }
+
+      const hostsToProbe = ['127.0.0.1', '::1', 'localhost'] as const
+
+      return await new Promise((resolve) => {
+        const sockets = new Set<net.Socket>()
+        let settled = false
+        let remaining = hostsToProbe.length
+        const failures: string[] = []
+
+        const finish = (reachable: boolean, error?: string) => {
+          if (settled) return
+          settled = true
+          for (const socket of sockets) {
+            socket.destroy()
+          }
+          sockets.clear()
+          resolve({
+            success: reachable,
+            port: normalizedPort,
+            reachable,
+            error,
+            elapsedMs: Date.now() - startedAt,
+          })
+        }
+
+        const failHost = (host: string, error: string) => {
+          if (settled) return
+          failures.push(`${host}: ${error}`)
+          remaining -= 1
+          if (remaining <= 0) {
+            finish(false, failures.join(' | '))
+          }
+        }
+
+        for (const host of hostsToProbe) {
+          const socket = new net.Socket()
+          sockets.add(socket)
+          let hostSettled = false
+
+          const finishHostFailure = (error: string) => {
+            if (hostSettled || settled) return
+            hostSettled = true
+            sockets.delete(socket)
+            socket.destroy()
+            failHost(host, error)
+          }
+
+          socket.setTimeout(Math.max(250, Math.min(timeoutMs, 15_000)))
+          socket.on('connect', () => {
+            if (hostSettled || settled) return
+            hostSettled = true
+            finish(true)
+          })
+          socket.on('timeout', () => finishHostFailure('Port probe timed out'))
+          socket.on('error', (error) => finishHostFailure(error.message))
+          socket.connect({
+            port: normalizedPort,
+            host,
+          })
+        }
+      })
+    }
+  )
+
+  ipcMain.handle(
     'preview:probeUrl',
     async (
       _event,
@@ -1687,36 +1726,14 @@ export function registerPreviewHandlers(
         return { success: false, error: 'Only localhost URLs are supported' }
       }
 
-      const captureWindow = new BrowserWindow({
-        width,
-        height,
-        show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          offscreen: true,
-        },
-      })
-
       try {
-        // Load the URL with explicit timeout + listener cleanup to avoid unhandled rejections.
-        await loadUrlForCapture(captureWindow, url, 30000)
-
-        // Wait a bit for any animations/rendering to complete.
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        const image = await captureWindow.webContents.capturePage()
-        const base64 = image.toPNG().toString('base64')
-
-        return { success: true, base64 }
+        return await previewSnapshotService.capture({ url, width, height })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Screenshot capture failed'
         if (!isExpectedPreviewConnectivityError(message)) {
           console.error('[Preview] Screenshot capture failed:', error)
         }
         return { success: false, error: message }
-      } finally {
-        captureWindow.destroy()
       }
     }
   )

@@ -895,8 +895,6 @@ export function ChangesPage() {
               )}
             </div>
           </ScrollArea>
-          <div className="pointer-events-none absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-content-surface to-transparent z-10" />
-          <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-content-surface to-transparent z-10" />
         </div>
       </div>
 
@@ -914,13 +912,7 @@ export function ChangesPage() {
       )}
       {showSplitPane && (
         <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 -translate-x-1/2">
-          <div
-            className="h-full w-px bg-border"
-            style={{
-              maskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
-            }}
-          />
+          <div className="h-full w-px bg-border" />
         </div>
       )}
     </div>

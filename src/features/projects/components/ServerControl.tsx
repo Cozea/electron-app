@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Play, Square, RefreshCw } from "lucide-react"
+import { Play, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { getPreviewFailurePresentation } from "@/features/projects/lib/previewFailurePresentation"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
 import type { DevCommandSuggestion, PreviewFailureReason } from "@shared/electronApiTypes"
@@ -38,8 +37,7 @@ const isProblemHeader = (line: string) =>
     /failed to compile/i.test(line) ||
     /error:\s/i.test(line)
 
-const formatTerminalTabTitle = (label: string, port: number | null | undefined) =>
-    port ? `${label} · localhost:${port}` : label
+const formatTerminalTabTitle = (label: string) => label
 
 const getPersistedDevCommand = (projectPath: string): string | null => {
     const key = `dev-command:${encodeURIComponent(projectPath)}`
@@ -105,6 +103,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const devServerLabelRef = useRef<string>('Dev Server')
     const devServerRunIdRef = useRef<string | null>(null)
     const pendingReadyProbeKeyRef = useRef<string | null>(null)
+    const cancelledStartRunIdsRef = useRef<Set<string>>(new Set())
 
     // Ref for startup watchdog when ready patterns/probes don't confirm in time
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -166,10 +165,10 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         })
     }, [actions, addTimelineEvent])
 
-    const probeServerReachability = useCallback(async (
+    const waitForServerPortReachability = useCallback(async (
         runId: string,
         port: number,
-        source: 'ready-pattern' | 'port-detected'
+        source: 'launch' | 'port-detected'
     ) => {
         if (!projectPath) return
         if (devServerRunIdRef.current !== runId) return
@@ -180,75 +179,89 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         }
         pendingReadyProbeKeyRef.current = probeKey
 
-        const previewUrl = `http://localhost:${port}`
         try {
-            const probe = await window.electronAPI.preview.probeUrl({
-                url: previewUrl,
-                timeoutMs: 2500,
-            })
-
-            if (devServerRunIdRef.current !== runId) {
-                return
-            }
-
-            if (probe.success && probe.reachable) {
-                actions.setServerStatus('running')
-                actions.setServerLifecycle({
-                    runId,
-                    state: 'ready',
-                    readyAt: Date.now(),
-                    lastOutputAt: Date.now(),
-                    unhealthyReason: null,
-                })
-                actions.setPreviewReadiness({
-                    runId,
-                    reachable: true,
-                    lastCheckedAt: Date.now(),
-                    lastFailureReason: null,
-                    lastFailureMessage: null,
-                })
-                if (devServerTerminalIdRef.current) {
-                    updateTerminalStatus(devServerTerminalIdRef.current, 'running')
-                    updateTerminalDisplay(devServerTerminalIdRef.current, {
-                        phase: 'active',
-                        lastHeartbeatAt: Date.now(),
-                    })
+            const startedAt = Date.now()
+            while (Date.now() - startedAt <= 60_000) {
+                if (devServerRunIdRef.current !== runId) {
+                    return
                 }
-                addTimelineEvent({
-                    runId,
-                    type: 'probe_succeeded',
-                    message: `Dev server reachable at ${previewUrl}`,
-                    details: {
-                        source,
-                        statusCode: probe.statusCode,
-                    },
-                })
-                clearReadyTimeout()
-                return
-            }
+                if (pendingReadyProbeKeyRef.current !== probeKey) {
+                    return
+                }
 
-            const failure = getPreviewFailurePresentation(
-                probe.reason ?? 'server_unreachable',
-                probe.error || 'Dev server process started but preview URL is not reachable yet.',
-                { context: 'server' }
-            )
-            markRunUnhealthy(failure.message, failure.reason, runId)
+                const probe = await window.electronAPI.preview.probePort({
+                    port,
+                    timeoutMs: 1000,
+                })
+
+                if (devServerRunIdRef.current !== runId) {
+                    return
+                }
+                if (pendingReadyProbeKeyRef.current !== probeKey) {
+                    return
+                }
+
+                if (probe.success && probe.reachable) {
+                    actions.setServerStatus('running')
+                    actions.setServerLifecycle({
+                        runId,
+                        state: 'ready',
+                        readyAt: Date.now(),
+                        lastOutputAt: Date.now(),
+                        unhealthyReason: null,
+                    })
+                    actions.setPreviewReadiness({
+                        runId,
+                        reachable: true,
+                        lastCheckedAt: Date.now(),
+                        lastFailureReason: null,
+                        lastFailureMessage: null,
+                    })
+                    if (devServerTerminalIdRef.current) {
+                        updateTerminalStatus(devServerTerminalIdRef.current, 'running')
+                        updateTerminalDisplay(devServerTerminalIdRef.current, {
+                            phase: 'active',
+                            lastHeartbeatAt: Date.now(),
+                        })
+                    }
+                    addTimelineEvent({
+                        runId,
+                        type: 'probe_succeeded',
+                        message: `Dev server port reachable at localhost:${port}`,
+                        details: {
+                            source,
+                            elapsedMs: probe.elapsedMs,
+                        },
+                    })
+                    clearReadyTimeout()
+                    pendingReadyProbeKeyRef.current = null
+                    return
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 400))
+            }
         } catch (error) {
             if (devServerRunIdRef.current !== runId) {
                 return
             }
-            const failure = getPreviewFailurePresentation(
-                'server_unreachable',
-                error instanceof Error ? error.message : 'Dev server reachability probe failed',
-                { context: 'server' }
-            )
-            markRunUnhealthy(failure.message, failure.reason, runId)
+            addTimelineEvent({
+                runId,
+                type: 'probe_failed',
+                message: error instanceof Error ? error.message : 'Dev server port probe failed',
+                details: {
+                    source,
+                },
+            })
         } finally {
             if (pendingReadyProbeKeyRef.current === probeKey) {
                 pendingReadyProbeKeyRef.current = null
             }
         }
-    }, [actions, addTimelineEvent, clearReadyTimeout, markRunUnhealthy, projectPath, updateTerminalDisplay, updateTerminalStatus])
+    }, [actions, addTimelineEvent, clearReadyTimeout, projectPath, updateTerminalDisplay, updateTerminalStatus])
+
+    const isStartCancelled = useCallback((runId: string) => {
+        return cancelledStartRunIdsRef.current.has(runId)
+    }, [])
 
     const reportProblemsFromOutput = useCallback((data: string) => {
         if (!projectPath) return
@@ -419,6 +432,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     state: 'starting',
                     command: existingDevTerminal.command ?? null,
                 })
+                if (typeof existingDevTerminal.port === 'number' && devServerRunIdRef.current) {
+                    void waitForServerPortReachability(devServerRunIdRef.current, existingDevTerminal.port, 'port-detected')
+                }
                 return
             }
 
@@ -430,7 +446,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 readyAt: Date.now(),
             })
             if (typeof existingDevTerminal.port === 'number' && devServerRunIdRef.current) {
-                void probeServerReachability(devServerRunIdRef.current, existingDevTerminal.port, 'port-detected')
+                void waitForServerPortReachability(devServerRunIdRef.current, existingDevTerminal.port, 'port-detected')
             }
         })().catch((error) => {
             console.error('[ServerControl] Failed to re-bind dev server terminal:', error)
@@ -439,23 +455,11 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         return () => {
             cancelled = true
         }
-    }, [actions, probeServerReachability, projectPath, terminals])
+    }, [actions, projectPath, terminals, waitForServerPortReachability])
 
-    // Subscribe to terminal events for dev server detection
+    // Subscribe to terminal events for log output and process exit only.
     useEffect(() => {
-        const extractPort = (input: string): number | null => {
-            const cleaned = stripAnsi(input)
-            const match =
-                cleaned.match(/localhost:(\d{2,5})/i) ??
-                cleaned.match(/127\.0\.0\.1:(\d{2,5})/i) ??
-                cleaned.match(/0\.0\.0\.0:(\d{2,5})/i)
-
-            if (!match?.[1]) return null
-            const port = Number(match[1])
-            return Number.isFinite(port) ? port : null
-        }
-
-        // Handle output from terminal to detect server ready
+        // Handle output from terminal for display and problem extraction.
         const unsubOutput = window.electronAPI.terminal.onOutput(({ terminalId, data, runId }) => {
             if (terminalId === devServerTerminalIdRef.current) {
                 if (runId && devServerRunIdRef.current && runId !== devServerRunIdRef.current) {
@@ -480,65 +484,6 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     type: 'output',
                     message: 'Received dev server output',
                 })
-
-                const detectedPort = extractPort(data)
-                if (detectedPort) {
-                    actions.setServerPort(detectedPort)
-                    if (devServerTerminalIdRef.current) {
-                        updateTerminalDisplay(devServerTerminalIdRef.current, {
-                            port: detectedPort,
-                            title: formatTerminalTabTitle(devServerLabelRef.current, detectedPort),
-                        })
-                    }
-                }
-
-                // Try to detect when server is ready by looking for common patterns
-                const readyPatterns = [
-                    // Generic patterns
-                    /ready on/i,
-                    /listening on/i,
-                    /started server on/i,
-                    /server.*running/i,
-                    // URL patterns (localhost, 127.0.0.1, 0.0.0.0)
-                    /local:\s*http/i,
-                    /localhost:\d+/i,
-                    /127\.0\.0\.1:\d+/i,
-                    /0\.0\.0\.0:\d+/i,
-                    // Framework-specific patterns
-                    /✓\s*ready/i,              // Next.js
-                    /ready in \d+/i,           // Next.js alt
-                    /watching for file changes/i,  // Astro
-                    /vite.*ready/i,            // Vite
-                    /compiled.*successfully/i, // CRA, Webpack
-                    /bundle.*successfully/i,   // Various bundlers
-                    /➜\s*(local|network):/i,   // Vite CLI output
-                    /app started/i,            // Generic
-                    /server started/i,         // Generic
-                ]
-                const cleaned = stripAnsi(data)
-                if (readyPatterns.some(pattern => pattern.test(cleaned))) {
-                    addTimelineEvent({
-                        runId: activeRunId,
-                        type: 'ready_detected',
-                        message: 'Detected ready pattern in terminal output',
-                        details: {
-                            detectedPort,
-                        },
-                    })
-                    const candidatePort = detectedPort ?? useProjectPagesStore.getState().serverPort
-                    if (candidatePort && activeRunId) {
-                        void probeServerReachability(activeRunId, candidatePort, 'ready-pattern')
-                    } else if (candidatePort) {
-                        actions.setServerStatus('running')
-                        actions.setServerLifecycle({
-                            state: 'ready',
-                            readyAt: Date.now(),
-                        })
-                        if (devServerTerminalIdRef.current) {
-                            updateTerminalStatus(devServerTerminalIdRef.current, 'running')
-                        }
-                    }
-                }
             }
         })
 
@@ -577,7 +522,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             unsubExit()
             clearReadyTimeout()
         }
-    }, [actions, addTimelineEvent, clearReadyTimeout, probeServerReachability, updateTerminalDisplay, updateTerminalStatus, reportProblemsFromOutput])
+    }, [actions, addTimelineEvent, clearReadyTimeout, reportProblemsFromOutput])
 
     const launchDevServerTerminal = useCallback(async (
         projectPathValue: string,
@@ -585,6 +530,10 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         config: { label: string; port: number },
         runId: string
     ) => {
+        if (isStartCancelled(runId)) {
+            return
+        }
+
         // Check if we need to install dependencies first
         let command = baseCommand
         const hasPackage = await hasPackageJson(projectPathValue)
@@ -598,16 +547,29 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             }
         }
 
+        if (isStartCancelled(runId)) {
+            return
+        }
+
         const result = await window.electronAPI.terminal.create({
             projectPath: projectPathValue,
             profileId: isWindowsClient() ? 'cmd' : undefined,
             cols: 80,
             rows: 24,
             runId,
+            env: {
+                PORT: String(config.port),
+                BROWSER: 'none',
+            },
         })
 
         if (!result.success || !result.terminalId) {
             throw new Error(result.error || 'Failed to create dev server terminal')
+        }
+
+        if (isStartCancelled(runId)) {
+            void window.electronAPI.terminal.kill({ terminalId: result.terminalId })
+            return
         }
 
         devServerTerminalIdRef.current = result.terminalId
@@ -639,7 +601,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             command,
             port: config.port,
             nameSource: 'auto',
-            title: formatTerminalTabTitle(config.label, config.port),
+            title: formatTerminalTabTitle(config.label),
             status: 'starting',
             hasOutput: false,
         })
@@ -657,15 +619,23 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         })
 
         setTimeout(() => {
+            if (isStartCancelled(runId)) {
+                return
+            }
             void window.electronAPI.terminal.input({
                 terminalId: result.terminalId!,
                 data: `${command}\r\n`
             })
         }, 100)
 
+        void waitForServerPortReachability(runId, config.port, 'launch')
+
         const timeout = command.includes('install') ? 120000 : 15000
         clearReadyTimeout()
         readyTimeoutRef.current = setTimeout(() => {
+            if (isStartCancelled(runId)) {
+                return
+            }
             const currentStatus = useProjectPagesStore.getState().serverStatus
             if (currentStatus === 'starting') {
                 const timeoutMessage = 'Startup watchdog elapsed before readiness was confirmed.'
@@ -674,11 +644,11 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 markRunUnhealthy(timeoutMessage, 'server_unreachable', runId)
             }
         }, timeout)
-    }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, markRunUnhealthy, setPanelOpen])
+    }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, isStartCancelled, markRunUnhealthy, setPanelOpen, waitForServerPortReachability])
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return
-        if (serverStatus === 'starting' || serverStatus === 'running') return
+        if (serverStatus === 'starting' || serverStatus === 'running' || serverStatus === 'unhealthy') return
 
         try {
             setIsUpdating(true)
@@ -686,6 +656,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             autoStartState.hasAttempted = true
             autoStartState.suppressed = false
             const runId = createRunId()
+            cancelledStartRunIdsRef.current.delete(runId)
             devServerRunIdRef.current = runId
             actions.beginServerRun(runId)
             actions.setServerStatus('starting')
@@ -697,6 +668,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             })
 
             const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
+            if (isStartCancelled(runId)) {
+                return
+            }
             const persistedCommand = getPersistedDevCommand(projectPath)
             const selectedCommand = persistedCommand || config.command
 
@@ -746,6 +720,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         serverStatus,
         storedDevCommand,
         storedDevPort,
+        isStartCancelled,
     ])
 
     const handleCommandPickerConfirm = useCallback(async (command: string) => {
@@ -757,6 +732,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             setShowCommandPicker(false)
             setIsUpdating(true)
             const runId = createRunId()
+            cancelledStartRunIdsRef.current.delete(runId)
             devServerRunIdRef.current = runId
             actions.beginServerRun(runId, command)
             actions.setServerStatus('starting')
@@ -770,6 +746,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                     command,
                 },
             })
+            if (isStartCancelled(runId)) {
+                return
+            }
             await launchDevServerTerminal(projectPath, command, pending, runId)
         } catch (e) {
             console.error(e)
@@ -789,7 +768,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             pendingCommandSelectionRef.current = null
             setIsUpdating(false)
         }
-    }, [actions, addTimelineEvent, createRunId, launchDevServerTerminal, projectPath])
+    }, [actions, addTimelineEvent, createRunId, isStartCancelled, launchDevServerTerminal, projectPath])
 
     // Auto-start dev server when entering the pages page (runs after handleStart is defined)
     useEffect(() => {
@@ -810,7 +789,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     const handleStop = useCallback(async () => {
         const terminalId = devServerTerminalIdRef.current
-        if (!terminalId || !projectPath) return
+        if (!projectPath) return
 
         try {
             setIsUpdating(true)
@@ -820,6 +799,9 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             clearReadyTimeout()
             pendingReadyProbeKeyRef.current = null
             const activeRunId = devServerRunIdRef.current
+            if (activeRunId) {
+                cancelledStartRunIdsRef.current.add(activeRunId)
+            }
 
             actions.setServerStatus('stopped')
             actions.setServerPort(null)
@@ -836,14 +818,17 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 type: 'stopped',
                 message: 'Dev server stopped by user',
             })
-            removeTerminal(terminalId)
-            devServerTerminalIdRef.current = null
             devServerProjectPathRef.current = null
             devServerRunIdRef.current = null
-
-            const result = await window.electronAPI.terminal.kill({ terminalId })
-            if (!result.success) {
-                console.warn('[ServerControl] Terminal kill did not report success', { terminalId })
+            if (terminalId) {
+                removeTerminal(terminalId)
+                devServerTerminalIdRef.current = null
+                const result = await window.electronAPI.terminal.kill({ terminalId })
+                if (!result.success) {
+                    console.warn('[ServerControl] Terminal kill did not report success', { terminalId })
+                }
+            } else {
+                devServerTerminalIdRef.current = null
             }
         } catch (e) {
             console.error(e)
@@ -870,7 +855,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             />
 
             <div className="flex items-center gap-2">
-                {serverStatus === 'stopped' || serverStatus === 'error' || serverStatus === 'unhealthy' || serverStatus === 'starting' ? (
+                {serverStatus === 'stopped' || serverStatus === 'error' ? (
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
@@ -880,11 +865,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                                 onClick={handleStart}
                                 disabled={isUpdating || !projectPath}
                             >
-                                {isUpdating || serverStatus === 'starting' ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Play className="h-4 w-4 ml-0.5 fill-current" />
-                                )}
+                                <Play className="h-4 w-4 ml-0.5 fill-current" />
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">Start Dev Server</TooltipContent>
@@ -894,10 +875,10 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20 animate-pulse"
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/20"
                             onClick={handleStop}
-                            title="Stop server"
-                            disabled={isUpdating}
+                            title={serverStatus === 'starting' ? 'Stop server startup' : 'Stop server'}
+                            disabled={!projectPath}
                         >
                             <Square className="h-3.5 w-3.5 fill-current" />
                         </Button>

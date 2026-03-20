@@ -48,7 +48,7 @@ import { formatProjectDeleteError, formatProjectRenameError } from '../lib/proje
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
+const preloadProjectPagesPage = () => import('@/features/projects/pages/ProjectPagesPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 interface ProjectSummary extends ProjectOpenGitProjectLike {
@@ -133,7 +133,7 @@ export const ProjectListRow = memo(function ProjectListRow({
             void preloadNewProjectPage()
             return
         }
-        void preloadProjectDetailPage()
+        void preloadProjectPagesPage()
     }, [project.status])
 
     const handleDelete = async (confirmName: string) => {
@@ -317,7 +317,7 @@ export const ProjectListRow = memo(function ProjectListRow({
             setSyncErrorActionLabel(null)
 
             setTimeout(() => {
-                navigate(buildProjectPath(String(project._id)), {
+                navigate(buildProjectPath(String(project._id), 'pages'), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,

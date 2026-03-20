@@ -314,6 +314,7 @@ export class TerminalService {
             cols?: number
             rows?: number
             runId?: string
+            env?: Record<string, string>
         }) => {
             try {
                 const profile = this.getTerminalProfile(options.profileId)
@@ -346,7 +347,10 @@ export class TerminalService {
                             cols,
                             rows,
                             cwd,
-                            env: toPtyEnv(runtimeEnv, candidate.env),
+                            env: toPtyEnv(runtimeEnv, {
+                                ...(candidate.env ?? {}),
+                                ...(options.env ?? {}),
+                            }),
                         })
                         selectedProfile = candidate
                         break

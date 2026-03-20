@@ -165,21 +165,19 @@ export function AppSidebar({ user, onLogout, className, ...props }: AppSidebarPr
     <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
       <Sidebar
         collapsible="icon"
-        windowChromeAware
         className={cn("w-56 shrink-0 z-20 h-screen sidebar-glass", className)}
         {...props}
       >
-        <SidebarHeader className="titlebar-drag-region">
-          <div className="titlebar-no-drag">
-            <ContextSwitcher />
-          </div>
+        <div className="h-10 shrink-0" aria-hidden="true" />
+        <SidebarHeader>
+          <ContextSwitcher />
         </SidebarHeader>
-        <SidebarContent className="titlebar-no-drag">
+        <SidebarContent>
           <NavMain label="Platform" items={platformItems} />
           {teamItems.length > 0 ? <NavMain label="Access" items={teamItems} /> : null}
           <NavMain label="Workspace" items={workspaceItems} />
         </SidebarContent>
-        <SidebarFooter className="titlebar-no-drag mt-auto pb-2 group-data-[collapsible=icon]:pb-2">
+        <SidebarFooter className="mt-auto pb-2 group-data-[collapsible=icon]:pb-2">
           <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
             <NavUser user={user} onLogout={onLogout} />
           </div>

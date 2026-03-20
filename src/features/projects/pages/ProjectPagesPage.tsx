@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useQuery, useMutation } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
@@ -11,7 +11,6 @@ import {
     type ServerStatus,
 } from '@/stores/useProjectPagesStore'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
-import { useCachedPreviewUrl } from '@/hooks/useCachedPreviewUrl'
 import { usePageContextStore } from '@/stores/usePageContextStore'
 import { useVisualEditorStore } from '@/stores/useVisualEditorStore'
 import { useAssistantPanelStore, type PendingAttachment } from '@/stores/useAssistantPanelStore'
@@ -25,10 +24,7 @@ import {
   type SelectedElementData,
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
-import { ProjectPreviewGrid } from '@/features/projects/components/previews/ProjectPreviewGrid'
-import { ProjectPreviewThumbnailStrip } from '@/features/projects/components/previews/ProjectPreviewThumbnailStrip'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
-import { type PreviewRouteViewModel } from '@/features/projects/components/previews/types'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
@@ -42,42 +38,17 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
-import type { CompactPresenceUser } from '@/components/presence/CompactPresenceIndicator'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
-import {
-  captureAndCacheRoutePreview,
-  getCachedRoutePreviewUrl,
-  invalidateRoutePreviewCache,
-} from '@/features/projects/lib/routePreviewImageCache'
 import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
-
-interface ProjectPresenceUser extends CompactPresenceUser {
-    id: string
-    userEmail: string
-    activeTab?: string
-    activeFile?: string
-    activeRoute?: string
-}
-
-function normalizeRoutePath(path?: string | null): string | null {
-    if (!path) return null
-    if (path === '/') return '/'
-    return path.replace(/\/+$/, '')
-}
 
 function normalizePreviewPath(path?: string | null): string {
     if (!path) return '/'
     return path.startsWith('/') ? path : `/${path}`
-}
-
-function normalizeFilePath(path?: string | null): string | null {
-    if (!path) return null
-    return path.replace(/\\/g, '/')
 }
 
 function isChromeErrorUrl(url?: string | null): boolean {
@@ -101,7 +72,7 @@ function resolvePreviewEmbedModeForRun(
     runId: string | null,
     previewTimeline: PreviewTimelineEvent[]
 ): PreviewEmbedMode {
-    if (serverStatus !== 'running' || !runId) return 'standard'
+    if ((serverStatus === 'stopped' || serverStatus === 'error') || !runId) return 'standard'
 
     for (let index = previewTimeline.length - 1; index >= 0; index -= 1) {
         const event = previewTimeline[index]
@@ -133,7 +104,6 @@ export function ProjectPagesPage() {
     // Store state
     const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
     const activeServerRunId = serverLifecycle.runId
-    const togglePagesListOpen = actions.togglePagesListOpen
     const currentPage = usePageContextStore((state) => state.currentPage)
     const inspectedElement = usePageContextStore((state) => state.inspectedElement)
     const setCurrentPage = usePageContextStore((state) => state.setCurrentPage)
@@ -142,8 +112,6 @@ export function ProjectPagesPage() {
     const selectedElement = useVisualEditorStore((state) => state.selectedElement)
     const closeVisualEditor = useVisualEditorStore((state) => state.close)
     const inspectorSide = useVisualEditorStore((state) => state.inspectorSide)
-    const visualEditorOpen = useVisualEditorStore((state) => state.isOpen)
-    const visualEditorWidth = useVisualEditorStore((state) => state.panelWidth)
     const openWithScreenshot = useAssistantPanelStore((state) => state.openWithScreenshot)
     const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
@@ -172,10 +140,7 @@ export function ProjectPagesPage() {
     })
     const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
     const [zoom, setZoom] = useState(100)
-    const [routePreviewCacheVersion, setRoutePreviewCacheVersion] = useState(0)
     const iframeRef = useRef<HTMLIFrameElement>(null)
-    const [cachedFocusedRoutePath, setCachedFocusedRoutePath] = useState<string | null>(null)
-    const focusedIframeLoadedPathRef = useRef<string | null>(null)
     const focusedPreviewFrameName = 'cozea-focused-preview-frame'
     const selectionHydrationSeqRef = useRef(0)
     const selectionMutationSeqRef = useRef(0)
@@ -183,7 +148,6 @@ export function ProjectPagesPage() {
     const bridgeReadyRef = useRef(false)
     const bridgeReadyTimeoutRef = useRef<number | null>(null)
     const previewFallbackAttemptRef = useRef(0)
-    const nonFocusedEmbedProbeKeyRef = useRef<string | null>(null)
     const embedModeHydratedRunIdRef = useRef<string | null>(null)
     const previewCaptureScheduleKeyRef = useRef<string | null>(null)
     const latestPreviewCaptureStateRef = useRef<{
@@ -222,11 +186,8 @@ export function ProjectPagesPage() {
 
     // Derived state - must be before any effects that use it
     const focusedRoute = focusedPageIndex !== null ? routes[focusedPageIndex] : null
-    const cachedFocusedRoute = useMemo(
-        () => cachedFocusedRoutePath ? routes.find((route) => route.path === cachedFocusedRoutePath) ?? null : null,
-        [routes, cachedFocusedRoutePath]
-    )
-    const previewRoute = focusedRoute ?? cachedFocusedRoute
+    const previewRoute = focusedRoute
+    const previewServerActive = serverStatus === 'running' || serverStatus === 'unhealthy'
     const focusedPreviewUrl = previewRoute && serverPort
         ? `http://localhost:${serverPort}${normalizePreviewPath(previewRoute.path)}`
         : null
@@ -243,19 +204,14 @@ export function ProjectPagesPage() {
         const homeRoute = routes.find((route) => normalizePreviewPath(route.path) === '/')
         return normalizePreviewPath(homeRoute?.path ?? routes[0]?.path ?? '/')
     }, [routes])
-    const nonFocusedPreviewProbeUrl = useMemo(() => {
-        return buildRoutePreviewUrl(defaultProjectPreviewPath)
-    }, [buildRoutePreviewUrl, defaultProjectPreviewPath])
+    const entryRouteIndex = useMemo(() => {
+        const homeRouteIndex = routes.findIndex((route) => normalizePreviewPath(route.path) === '/')
+        return homeRouteIndex >= 0 ? homeRouteIndex : 0
+    }, [routes])
     const compatProjectPreviewPath = normalizePreviewPath(previewRoute?.path ?? defaultProjectPreviewPath)
     const projectPreviewCapturePath = useCredentiallessPreview ? compatProjectPreviewPath : defaultProjectPreviewPath
     const projectPreviewCaptureUrl = buildRoutePreviewUrl(projectPreviewCapturePath)
-    const previewRouteIndex = useMemo(() => {
-        if (focusedPageIndex !== null) return focusedPageIndex
-        if (!previewRoute) return null
-        const index = routes.findIndex((route) => route.path === previewRoute.path)
-        return index >= 0 ? index : null
-    }, [focusedPageIndex, previewRoute, routes])
-    const previewReady = bridgeReady && previewReadiness.reachable && !previewEmbedBlocked
+    const previewReady = bridgeReady && !previewEmbedBlocked
     const recentPreviewTimeline = useMemo(() => {
         return previewTimeline
             .filter((event) => event.category === 'preview' && (!activeServerRunId || !event.runId || event.runId === activeServerRunId))
@@ -278,22 +234,25 @@ export function ProjectPagesPage() {
         previewReadiness.lastFailureMessage,
         previewReadiness.lastFailureReason,
     ])
-    const showPreviewFailureOverlay = serverStatus === 'running' && (
+    const showPreviewFailureOverlay = previewServerActive && (
         previewFailurePresentation?.blocked || previewFailurePresentation?.reason === 'network_quality_degraded'
     )
-    const isFocusedPreview = focusedPageIndex !== null && Boolean(focusedRoute)
-    const headerInsetLeft = isFocusedPreview && visualEditorOpen && inspectorSide === 'left' ? visualEditorWidth : 0
-    const headerInsetRight = isFocusedPreview && visualEditorOpen && inspectorSide === 'right' ? visualEditorWidth : 0
+    const previewLoading = Boolean(previewRoute)
+        && !showPreviewFailureOverlay
+        && (
+            serverStatus === 'starting'
+            || (
+                previewServerActive
+                && Boolean(serverPort)
+                && Boolean(focusedPreviewUrl)
+                && !previewReady
+            )
+        )
+    const isFocusedPreview = Boolean(previewRoute)
     const prevProjectPathRef = useRef<string | null>(null)
 
     useEffect(() => {
-        if (focusedRoute?.path) {
-            setCachedFocusedRoutePath(focusedRoute.path)
-        }
-    }, [focusedRoute?.path])
-
-    useEffect(() => {
-        if (serverStatus !== 'running' || !activeServerRunId) {
+        if ((serverStatus === 'stopped' || serverStatus === 'error') || !activeServerRunId) {
             embedModeHydratedRunIdRef.current = null
             return
         }
@@ -309,15 +268,6 @@ export function ProjectPagesPage() {
         setPreviewEmbedMode(resolvedMode)
     }, [activeServerRunId, previewTimeline, serverStatus])
 
-    useEffect(() => {
-        if (!cachedFocusedRoutePath) return
-        const stillExists = routes.some((route) => route.path === cachedFocusedRoutePath)
-        if (!stillExists) {
-            setCachedFocusedRoutePath(null)
-            focusedIframeLoadedPathRef.current = null
-        }
-    }, [routes, cachedFocusedRoutePath])
-
     // Reset project-scoped UI state when switching projects (prevents "wrong project" preview/terminals)
     useEffect(() => {
         const prev = prevProjectPathRef.current
@@ -325,8 +275,6 @@ export function ProjectPagesPage() {
             // Clear page routes and focused selection
             actions.setRoutes([])
             setFocusedPageIndex(null)
-            setCachedFocusedRoutePath(null)
-            focusedIframeLoadedPathRef.current = null
         }
 
         prevProjectPathRef.current = projectPath
@@ -337,106 +285,6 @@ export function ProjectPagesPage() {
         if (projectIdParam) return buildProjectPath(projectIdParam)
         return slugParam ? `/projects/${slugParam}` : null
     }, [project?._id, projectIdParam, slugParam])
-
-    const projectPresenceUsers = useQuery(
-        api.projectPresence.getActiveUsers,
-        project?._id ? { projectId: project._id } : 'skip'
-    ) as ProjectPresenceUser[] | undefined
-
-    const { presenceByRoutePath, presenceByFilePath } = useMemo(() => {
-        const byRoutePath = new Map<string, ProjectPresenceUser[]>()
-        const byFilePath = new Map<string, ProjectPresenceUser[]>()
-
-        for (const user of projectPresenceUsers ?? []) {
-            if (user.activeTab !== 'pages') continue
-
-            const routeKey = normalizeRoutePath(user.activeRoute)
-            if (routeKey) {
-                const existing = byRoutePath.get(routeKey) ?? []
-                existing.push(user)
-                byRoutePath.set(routeKey, existing)
-            }
-
-            const fileKey = normalizeFilePath(user.activeFile)
-            if (fileKey) {
-                const existing = byFilePath.get(fileKey) ?? []
-                existing.push(user)
-                byFilePath.set(fileKey, existing)
-            }
-        }
-
-        const sortByRecent = (users: ProjectPresenceUser[]) =>
-            users.sort(
-                (a, b) =>
-                    (b.lastActivityAt ?? b.lastHeartbeat) -
-                    (a.lastActivityAt ?? a.lastHeartbeat)
-            )
-
-        for (const users of byRoutePath.values()) {
-            sortByRecent(users)
-        }
-
-        for (const users of byFilePath.values()) {
-            sortByRecent(users)
-        }
-
-        return {
-            presenceByRoutePath: byRoutePath,
-            presenceByFilePath: byFilePath,
-        }
-    }, [projectPresenceUsers])
-
-    const getRoutePresenceUsers = useCallback(
-        (routePath: string, routeFile: string) => {
-            const byRoute = presenceByRoutePath.get(normalizeRoutePath(routePath) ?? '')
-            if (byRoute && byRoute.length > 0) {
-                return byRoute
-            }
-
-            const byFile = presenceByFilePath.get(normalizeFilePath(routeFile) ?? '')
-            return byFile ?? []
-        },
-        [presenceByFilePath, presenceByRoutePath]
-    )
-    const { url: projectPreviewImageUrl } = useCachedPreviewUrl(
-        project?._id,
-        convexUserId ?? undefined,
-        { enabled: Boolean(project?._id && convexUserId) }
-    )
-
-    const routePreviewImageUrlByPath = useMemo(() => {
-        const currentProjectId = project?._id ? String(project._id) : null
-        if (!currentProjectId) {
-            return new Map<string, string | null>()
-        }
-
-        return new Map(
-            routes.map((route) => [
-                `${routePreviewCacheVersion}:${route.path}`,
-                getCachedRoutePreviewUrl(currentProjectId, route.path),
-            ])
-        )
-    }, [project?._id, routePreviewCacheVersion, routes])
-    const routeViewModels = useMemo<PreviewRouteViewModel[]>(() => {
-        return routes.map((route) => ({
-            route,
-            previewUrl: buildRoutePreviewUrl(route.path),
-            previewImageUrl: routePreviewImageUrlByPath.get(`${routePreviewCacheVersion}:${route.path}`) ?? null,
-            fallbackPreviewImageUrl: projectPreviewImageUrl,
-            presenceUsers: getRoutePresenceUsers(route.path, route.file),
-        }))
-    }, [
-        buildRoutePreviewUrl,
-        getRoutePresenceUsers,
-        projectPreviewImageUrl,
-        routePreviewCacheVersion,
-        routePreviewImageUrlByPath,
-        routes,
-    ])
-    const previewRouteViewModel = useMemo(
-        () => previewRoute ? routeViewModels.find((routeViewModel) => routeViewModel.route.path === previewRoute.path) ?? null : null,
-        [previewRoute, routeViewModels]
-    )
 
     const generatePreviewUploadUrl = useMutation(api.projects.generatePreviewUploadUrl)
     const updatePreviewImage = useMutation(api.projects.updatePreviewImage)
@@ -546,67 +394,6 @@ export function ProjectPagesPage() {
         }
     }, [])
 
-    useEffect(() => {
-        if (!projectPath || !project?._id) return
-
-        const projectId = String(project._id)
-        const invalidateProjectRoutePreviews = () => {
-            invalidateRoutePreviewCache(projectId)
-            setRoutePreviewCacheVersion((value) => value + 1)
-        }
-
-        const cleanupChange = window.electronAPI.yjs?.onExternalFileChange?.(({ filePath }) => {
-            if (!filePath.startsWith(projectPath)) return
-            invalidateProjectRoutePreviews()
-        })
-
-        const cleanupDelete = window.electronAPI.yjs?.onExternalFileDelete?.(({ filePath }) => {
-            if (!filePath.startsWith(projectPath)) return
-            invalidateProjectRoutePreviews()
-        })
-
-        return () => {
-            cleanupChange?.()
-            cleanupDelete?.()
-        }
-    }, [project?._id, projectPath])
-
-    useEffect(() => {
-        if (!previewReady || !focusedPreviewUrl || !previewRoute?.path || !project?._id) {
-            return
-        }
-
-        const projectId = String(project._id)
-        if (getCachedRoutePreviewUrl(projectId, previewRoute.path)) {
-            return
-        }
-
-        let cancelled = false
-        const timerId = window.setTimeout(() => {
-            void captureAndCacheRoutePreview(
-                projectId,
-                previewRoute.path,
-                focusedPreviewUrl,
-                {
-                    attempts: 2,
-                    height: 720,
-                    width: 1280,
-                }
-            ).then(() => {
-                if (!cancelled) {
-                    setRoutePreviewCacheVersion((value) => value + 1)
-                }
-            }).catch(() => {
-                // Best effort only; keep focused preview responsive.
-            })
-        }, 900)
-
-        return () => {
-            cancelled = true
-            window.clearTimeout(timerId)
-        }
-    }, [focusedPreviewUrl, previewReady, previewRoute?.path, project?._id, previewReloadToken])
-
     // Handle route/focus query params from external navigation
     useEffect(() => {
         const routeParam = searchParams.get('route')
@@ -642,6 +429,17 @@ export function ProjectPagesPage() {
         }
     }, [searchParams, routes, setSearchParams])
 
+    useEffect(() => {
+        if (routes.length === 0) return
+
+        setFocusedPageIndex((current) => {
+            if (current !== null && current >= 0 && current < routes.length) {
+                return current
+            }
+            return entryRouteIndex
+        })
+    }, [entryRouteIndex, routes.length])
+
     // When closing the inspector (X, Escape), disable inspector, close sidebar and context menu
     const handleCloseInspectorSidebar = useCallback(() => {
         setInspectorEnabled(false)
@@ -650,29 +448,6 @@ export function ProjectPagesPage() {
         setInspectedElement(null)
         closeVisualEditor()
     }, [setSelectedElement, setInspectedElement, closeVisualEditor])
-
-    // Arrow keys for navigation in focused view
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const target = e.target as HTMLElement
-            const isInteractiveElement =
-                target.tagName === 'INPUT' ||
-                target.tagName === 'TEXTAREA' ||
-                target.tagName === 'SELECT' ||
-                target.isContentEditable ||
-                target.closest('[contenteditable="true"]')
-
-            if (focusedPageIndex !== null && !isInteractiveElement) {
-                if (e.key === 'ArrowLeft') {
-                    setFocusedPageIndex(prev => prev !== null && prev > 0 ? prev - 1 : routes.length - 1)
-                } else if (e.key === 'ArrowRight') {
-                    setFocusedPageIndex(prev => prev !== null && prev < routes.length - 1 ? prev + 1 : 0)
-                }
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [focusedPageIndex, routes.length])
 
     // Update page context when focused route changes
     useEffect(() => {
@@ -735,79 +510,6 @@ export function ProjectPagesPage() {
         }
     }, [])
 
-    const probeFocusedPreviewReachability = useCallback(async (
-        url: string,
-        source: 'iframe-load' | 'manual-retry' | 'state-sync'
-    ): Promise<boolean> => {
-        if (!window.electronAPI?.preview?.probeUrl) {
-            actions.setPreviewReadiness({
-                runId: activeServerRunId,
-                reachable: true,
-                lastCheckedAt: Date.now(),
-            })
-            return true
-        }
-
-        try {
-            const probe = await window.electronAPI.preview.probeUrl({
-                url,
-                timeoutMs: 2500,
-            })
-
-            if (probe.success && probe.reachable) {
-                actions.setPreviewReadiness({
-                    runId: activeServerRunId,
-                    reachable: true,
-                    lastCheckedAt: Date.now(),
-                    lastFailureReason: null,
-                    lastFailureMessage: null,
-                })
-                addPreviewTimelineEvent({
-                    type: 'probe_succeeded',
-                    message: `Preview reachable (${source})`,
-                    details: {
-                        source,
-                        statusCode: probe.statusCode,
-                    },
-                })
-                return true
-            }
-
-            const failure = getPreviewFailurePresentation(
-                probe.reason ?? 'server_unreachable',
-                probe.error || 'Preview URL is unreachable',
-                { context: 'preview' }
-            )
-            setPreviewFailure(failure.reason, failure.message, failure.blocked)
-            addPreviewTimelineEvent({
-                type: 'probe_failed',
-                message: failure.message,
-                details: {
-                    source,
-                    reason: failure.reason,
-                    rawError: probe.error ?? undefined,
-                },
-            })
-            return false
-        } catch (error) {
-            const failure = getPreviewFailurePresentation(
-                'server_unreachable',
-                error instanceof Error ? error.message : 'Preview probe failed',
-                { context: 'preview' }
-            )
-            setPreviewFailure(failure.reason, failure.message, failure.blocked)
-            addPreviewTimelineEvent({
-                type: 'probe_failed',
-                message: failure.message,
-                details: {
-                    source,
-                    reason: failure.reason,
-                },
-            })
-            return false
-        }
-    }, [actions, activeServerRunId, addPreviewTimelineEvent, setPreviewFailure])
-
     const scheduleBridgeReadyTimeout = useCallback((mode: PreviewEmbedMode) => {
         clearBridgeReadyTimeout()
         bridgeReadyTimeoutRef.current = window.setTimeout(() => {
@@ -864,102 +566,13 @@ export function ProjectPagesPage() {
     }, [clearBridgeReadyTimeout])
 
     useEffect(() => {
-        if (serverStatus === 'running') return
+        if (previewServerActive) return
         clearBridgeReadyTimeout()
         setBridgeReady(false)
         setPreviewEmbedBlocked(false)
         previewFallbackAttemptRef.current = 0
         actions.resetPreviewReadiness()
-    }, [actions, clearBridgeReadyTimeout, serverStatus])
-
-    useEffect(() => {
-        if (!isFocusedPreview || !focusedPreviewUrl) return
-        if (serverStatus !== 'running') return
-        void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
-    }, [focusedPreviewUrl, isFocusedPreview, probeFocusedPreviewReachability, serverStatus])
-
-    useEffect(() => {
-        if (serverStatus !== 'running') {
-            nonFocusedEmbedProbeKeyRef.current = null
-            return
-        }
-        if (isFocusedPreview) return
-        if (previewEmbedMode !== 'standard') return
-        if (!nonFocusedPreviewProbeUrl) return
-        if (!window.electronAPI?.preview?.injectBridge) return
-
-        const probeKey = `${activeServerRunId ?? 'unknown'}:${nonFocusedPreviewProbeUrl}`
-        if (nonFocusedEmbedProbeKeyRef.current === probeKey) return
-        nonFocusedEmbedProbeKeyRef.current = probeKey
-
-        let cancelled = false
-        const runProbe = async () => {
-            for (let attempt = 0; attempt < 4; attempt += 1) {
-                if (cancelled) return
-
-                const result = await window.electronAPI.preview.injectBridge({
-                    url: nonFocusedPreviewProbeUrl,
-                })
-
-                if (cancelled) return
-
-                if (result.success) {
-                    addPreviewTimelineEvent({
-                        type: 'bridge_inject_succeeded',
-                        message: 'Non-focused preview probe succeeded',
-                        details: {
-                            mode: 'standard',
-                            source: 'grid-probe',
-                            attempt: attempt + 1,
-                        },
-                    })
-                    return
-                }
-
-                const reason = result.reason ?? 'bridge_injection_failed'
-                const likelyBlocked = Boolean(
-                    result.likelyBlocked ?? (reason === 'blocked_response' || reason === 'chrome_error_document')
-                )
-
-                if (likelyBlocked) {
-                    previewFallbackAttemptRef.current += 1
-                    addBridgeLog('Detected blocked standard embed in grid view; switching to credentialless mode', 'info')
-                    addPreviewTimelineEvent({
-                        type: 'fallback_mode',
-                        message: 'Grid preview probe switched to credentialless mode',
-                        details: {
-                            from: 'standard',
-                            to: 'credentialless',
-                            reason,
-                            source: 'grid-probe',
-                        },
-                    })
-                    setPreviewEmbedMode('credentialless')
-                    setPreviewEmbedBlocked(false)
-                    setBridgeError(null)
-                    setPreviewReloadToken((value) => value + 1)
-                    return
-                }
-
-                if (attempt < 3) {
-                    await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)))
-                }
-            }
-        }
-
-        void runProbe()
-        return () => {
-            cancelled = true
-        }
-    }, [
-        activeServerRunId,
-        addBridgeLog,
-        addPreviewTimelineEvent,
-        isFocusedPreview,
-        nonFocusedPreviewProbeUrl,
-        previewEmbedMode,
-        serverStatus,
-    ])
+    }, [actions, clearBridgeReadyTimeout, previewServerActive])
 
     // Listen for bridge messages from iframe
     useEffect(() => {
@@ -1416,8 +1029,6 @@ export function ProjectPagesPage() {
             if (e.key === 'Escape') {
                 if (inspectorEnabled) {
                     handleCloseInspectorSidebar()
-                } else if (focusedPageIndex !== null) {
-                    setFocusedPageIndex(null)
                 }
             }
         }
@@ -1447,9 +1058,6 @@ export function ProjectPagesPage() {
 
     // Inject bridge script when iframe loads
     const handleIframeLoad = useCallback(async () => {
-        if (previewRoute?.path) {
-            focusedIframeLoadedPathRef.current = previewRoute.path
-        }
         if (!isFocusedPreview) {
             return
         }
@@ -1476,13 +1084,6 @@ export function ProjectPagesPage() {
             },
         })
         addBridgeLog(`Iframe loaded for ${previewRoute?.path ?? 'unknown route'} [${frameName}], attempting injection...`)
-
-        if (focusedPreviewUrl) {
-            const reachable = await probeFocusedPreviewReachability(focusedPreviewUrl, 'iframe-load')
-            if (!reachable) {
-                return
-            }
-        }
 
         if (iframeRef.current) {
             try {
@@ -1584,7 +1185,7 @@ export function ProjectPagesPage() {
                 addBridgeLog(`Injection error: ${failure.message}`, 'error')
             }
         }
-    }, [actions, activeServerRunId, addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, isFocusedPreview, previewEmbedMode, previewRoute?.path, probeFocusedPreviewReachability, scheduleBridgeReadyTimeout, setPreviewFailure])
+    }, [actions, activeServerRunId, addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, isFocusedPreview, previewEmbedMode, previewRoute?.path, scheduleBridgeReadyTimeout, setPreviewFailure])
 
     // Attempt to reinject bridge if not ready
     const retryBridgeInjection = useCallback(async () => {
@@ -1599,13 +1200,6 @@ export function ProjectPagesPage() {
         const frameName = iframeRef.current.getAttribute('name') || 'unnamed-frame'
         addBridgeLog(`Retrying injection for ${previewRoute?.path ?? 'unknown route'} [${frameName}]...`)
         setBridgeError(null)
-
-        if (focusedPreviewUrl) {
-            const reachable = await probeFocusedPreviewReachability(focusedPreviewUrl, 'manual-retry')
-            if (!reachable) {
-                return false
-            }
-        }
 
         try {
             const result = await injectBridgeScript(iframeRef.current)
@@ -1699,21 +1293,18 @@ export function ProjectPagesPage() {
             })
             return false
         }
-    }, [addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, focusedPreviewUrl, previewEmbedMode, previewRoute?.path, probeFocusedPreviewReachability, scheduleBridgeReadyTimeout, setPreviewFailure])
+    }, [addBridgeLog, addPreviewTimelineEvent, clearBridgeReadyTimeout, previewEmbedMode, previewRoute?.path, scheduleBridgeReadyTimeout, setPreviewFailure])
 
     // Attempt to reinject bridge if not ready
     const ensureBridgeReady = useCallback((): boolean => {
         if (previewReady) return true
-        if (focusedPreviewUrl) {
-            void probeFocusedPreviewReachability(focusedPreviewUrl, 'state-sync')
-        }
         void retryBridgeInjection()
         return false
-    }, [focusedPreviewUrl, previewReady, probeFocusedPreviewReachability, retryBridgeInjection])
+    }, [previewReady, retryBridgeInjection])
 
     // Handle screenshot capture
     const handleCaptureScreenshot = useCallback(async () => {
-        if (!iframeRef.current || serverStatus !== 'running') return
+        if (!iframeRef.current || !previewServerActive) return
 
         if (!previewReady) {
             ensureBridgeReady()
@@ -1768,7 +1359,7 @@ export function ProjectPagesPage() {
         } finally {
             setIsCapturingScreenshot(false)
         }
-    }, [serverStatus, previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, project?.name, serverPort])
+    }, [previewReady, ensureBridgeReady, focusedRoute, openWithScreenshot, previewServerActive, project?.name, serverPort])
 
     // Toggle inspector mode (manual toggle via button)
     const toggleInspector = useCallback(() => {
@@ -2059,12 +1650,16 @@ export function ProjectPagesPage() {
     const headerControls = useMemo(() => (
         <ProjectPreviewToolbar
             device={device}
-            focused={focusedPageIndex !== null}
             inspectorEnabled={inspectorEnabled}
             isCapturingScreenshot={isCapturingScreenshot}
-            onBackToGrid={() => setFocusedPageIndex(null)}
             onCaptureScreenshot={handleCaptureScreenshot}
             onDeviceChange={setDevice}
+            onOpenCode={() => {
+                if (previewRoute) {
+                    void handleOpenCode(previewRoute.file)
+                }
+            }}
+            onOpenExternally={openFocusedPreviewExternally}
             onRefreshRoutes={() => {
                 void refreshRoutes()
             }}
@@ -2073,13 +1668,12 @@ export function ProjectPagesPage() {
             onZoomChange={setZoom}
             previewEmbedBlocked={previewEmbedBlocked}
             previewReady={previewReady}
-            serverRunning={serverStatus === 'running'}
+            serverRunning={previewServerActive && Boolean(serverPort)}
             useCredentiallessPreview={useCredentiallessPreview}
             zoom={zoom}
         />
     ), [
         device,
-        focusedPageIndex,
         handleCaptureScreenshot,
         inspectorEnabled,
         isCapturingScreenshot,
@@ -2087,7 +1681,11 @@ export function ProjectPagesPage() {
         previewReady,
         refreshRoutes,
         retryBridgeInjection,
-        serverStatus,
+        handleOpenCode,
+        openFocusedPreviewExternally,
+        previewRoute,
+        previewServerActive,
+        serverPort,
         toggleInspector,
         useCredentiallessPreview,
         zoom,
@@ -2104,24 +1702,17 @@ export function ProjectPagesPage() {
         </div>
     ), [projectPath, storedFrameworkInfo?.devCommand, storedFrameworkInfo?.devPort])
 
-    const focusedPreviewBreadcrumbAddon = useMemo(() => {
-        if (focusedPageIndex === null) {
-            return serverControlBreadcrumbAddon
-        }
-
-        return (
-            <div className="flex min-w-0 items-center gap-2">
-                {headerControls}
-                {serverControlBreadcrumbAddon}
-            </div>
-        )
-    }, [focusedPageIndex, headerControls, serverControlBreadcrumbAddon])
+    const focusedPreviewBreadcrumbAddon = useMemo(() => (
+        <div className="flex min-w-0 items-center gap-2">
+            {headerControls}
+            {serverControlBreadcrumbAddon}
+        </div>
+    ), [headerControls, serverControlBreadcrumbAddon])
 
     useProjectHeader(
-        focusedPageIndex !== null ? null : headerControls,
+        null,
         focusedPreviewBreadcrumbAddon,
-        focusedPageIndex !== null,
-        { insetLeft: headerInsetLeft, insetRight: headerInsetRight }
+        Boolean(previewRoute)
     )
 
     // Loading state - show shell immediately
@@ -2201,21 +1792,7 @@ export function ProjectPagesPage() {
                             </div>
                         ) : (
                             <div className="relative flex-1 min-h-0 min-w-0 bg-content-surface">
-                                {!isFocusedPreview ? (
-                                    <div className="app-scrollbar absolute inset-0 overflow-y-auto px-6 pb-6 pt-16">
-                                        <ProjectPreviewGrid
-                                            credentiallessAttribute={credentiallessAttribute}
-                                            onOpenCode={handleOpenCode}
-                                            onOpenRoute={setFocusedPageIndex}
-                                            previewEmbedMode={previewEmbedMode}
-                                            previewReloadToken={previewReloadToken}
-                                            routeViewModels={routeViewModels}
-                                            serverRunning={serverStatus === 'running'}
-                                        />
-                                    </div>
-                                ) : null}
-
-                                {isFocusedPreview && previewRouteViewModel ? (
+                                {previewRoute ? (
                                     <div className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
                                         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                                             <FocusedProjectPreview
@@ -2226,31 +1803,21 @@ export function ProjectPagesPage() {
                                                 iframeRef={iframeRef}
                                                 onIframeError={handleFocusedIframeError}
                                                 onIframeLoad={handleIframeLoad}
-                                                onOpenCode={handleOpenCode}
                                                 onOpenExternally={openFocusedPreviewExternally}
                                                 onRetryPreview={() => reloadFocusedPreview('manual')}
                                                 previewEmbedBlocked={previewEmbedBlocked}
                                                 previewEmbedMode={previewEmbedMode}
                                                 previewFailureMessage={previewFailurePresentation?.message ?? 'This page blocks iframe embedding in isolated mode.'}
                                                 previewFailureTitle={previewFailurePresentation?.title ?? 'Embedded preview unavailable'}
+                                                previewLoading={previewLoading}
                                                 previewReloadToken={previewReloadToken}
                                                 recentPreviewTimeline={recentPreviewTimeline}
-                                                routePreviewImageUrl={previewRouteViewModel.previewImageUrl}
-                                                routeViewModel={previewRouteViewModel}
-                                                serverRunning={serverStatus === 'running'}
+                                                route={previewRoute}
+                                                serverRunning={previewServerActive && Boolean(serverPort)}
                                                 showPreviewFailureOverlay={showPreviewFailureOverlay}
                                                 taskOverlay={taskOverlay}
                                                 zoom={zoom}
                                             />
-                                            <div className="shrink-0 backdrop-blur-md px-3 py-2">
-                                                <ProjectPreviewThumbnailStrip
-                                                    focusedRouteIndex={previewRouteIndex}
-                                                    onOpenCode={handleOpenCode}
-                                                    onSelectRoute={setFocusedPageIndex}
-                                                    onTogglePagesList={togglePagesListOpen}
-                                                    routeViewModels={routeViewModels}
-                                                />
-                                            </div>
                                         </div>
                                     </div>
                                 ) : null}

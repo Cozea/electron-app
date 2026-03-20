@@ -243,7 +243,7 @@ export function ContextSwitcher() {
 
       setTimeout(() => {
         setOpen(false)
-        navigate(buildProjectPath(String(project._id)), {
+        navigate(buildProjectPath(String(project._id), 'pages'), {
           state: {
             projectSlug: project.slug,
             projectId: String(project._id),

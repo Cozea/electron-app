@@ -242,7 +242,8 @@ export const appRoutes: RouteObject[] = [
         path: 'projects/p/:projectId',
         element: <ProjectLayout />,
         children: [
-          { index: true, element: <ProjectDetailPage /> },
+          { index: true, element: <Navigate to="pages" replace /> },
+          { path: 'files', element: <ProjectDetailPage /> },
           { path: 'pages', element: <ProjectPagesPage /> },
           { path: 'database', element: <ProjectDatabasePage /> },
           { path: 'dependencies', element: <ProjectDependenciesPage /> },

@@ -207,7 +207,6 @@ export function TerminalTabBar({
                 {groupTerminals.map((term) => {
                     const isActive = activeView === "terminal" && activeTerminal?.id === term.id
                     const display = getTerminalTabDisplay(term)
-                    const portLabel = typeof display.port === 'number' ? `localhost:${display.port}` : null
                     return (
                         <button
                             key={term.id}
@@ -224,19 +223,11 @@ export function TerminalTabBar({
                                 <div className={cn(
                                     "h-1.5 w-1.5 rounded-full shrink-0",
                                     term.status === 'running' && "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)]",
-                                    term.status === 'starting' && "bg-yellow-500 animate-pulse",
+                                    term.status === 'starting' && "bg-yellow-500",
                                     term.status === 'exited' && "bg-muted-foreground/50",
                                     term.status === 'error' && "bg-destructive"
                                 )} />
                                 <span className="truncate max-w-[140px] tracking-tight">{display.label}</span>
-                                {portLabel && (
-                                    <>
-                                        <span className="text-muted-foreground/40 font-normal">·</span>
-                                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                                            {portLabel}
-                                        </span>
-                                    </>
-                                )}
                             </span>
                             {/* Close button for individual tab */}
                             <span

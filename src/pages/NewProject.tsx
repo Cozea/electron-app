@@ -969,7 +969,7 @@ export function NewProject() {
         setImportSyncState('ready')
         setImportSyncMessage(publishFailed ? 'Opening project locally...' : 'Opening project...')
         setTimeout(() => {
-          const targetPath = buildProjectPath(String(result.projectId))
+          const targetPath = buildProjectPath(String(result.projectId), 'pages')
           const deferredTeamSetup = !publishFailed ? buildDeferredTeamSetup(state.team) : []
           logDeferredTeamSetupDebug('navigate_with_pending_team_setup', {
             projectId: String(result.projectId),
