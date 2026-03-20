@@ -1333,6 +1333,91 @@ function MessageBubble({ message, toolsByName, status, showUserErrorIndicator = 
   const sourceItems = extractSourcesFromParts(message.parts)
   const hasStandaloneAttachments = message.role === 'user' && message.parts.some(isFilePart)
 
+  const renderToolPart = (toolPart: ToolPart, index: number, grouped = false) => {
+    const toolName = getToolName(toolPart)
+    if (!toolName) return null
+    const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
+
+    if (toolName === 'plan_write') {
+      return null
+    }
+
+    const toolMeta = toolsByName.get(toolName)
+    const toolState = getToolState(toolPart.state)
+    const terminalOutput = toolName === 'bash' ? extractTerminalOutput(toolPart.output) : ''
+    const isEditTool = isFileEditTool(toolName)
+    const isWebSearchTool = toolName.toLowerCase().includes('search') ||
+      toolName.toLowerCase().includes('web') ||
+      toolName === 'tavily_search' ||
+      toolName === 'brave_search' ||
+      toolName === 'bing_search'
+
+    const isStaticTool =
+      toolName === 'read' ||
+      (toolName === 'bash' && toolState === 'output-available' && !hasMeaningfulTerminalOutput(terminalOutput))
+
+    if (isStaticTool) {
+      return (
+        <ToolStatic
+          key={`${message.id}-tool-${index}`}
+          className={cn('mb-0', grouped && 'rounded-none px-0.5')}
+          toolName={toolName}
+          input={toolInput}
+          type={toolMeta?.toolType || 'function'}
+          state={toolState}
+        />
+      )
+    }
+
+    return (
+      <Tool
+        key={`${message.id}-tool-${index}`}
+        className={cn(
+          'data-[state=closed]:mb-0',
+          grouped ? 'rounded-none data-[state=open]:mb-0' : 'data-[state=open]:mb-1'
+        )}
+      >
+        <ToolHeader
+          className={grouped ? 'rounded-none px-0.5 hover:bg-background/60' : undefined}
+          toolName={toolName}
+          input={toolInput}
+          type={toolMeta?.toolType || 'function'}
+          state={toolState}
+        />
+        <ToolContent>
+          {isEditTool && toolInput && (
+            <ToolDiffOutput
+              toolName={toolName}
+              input={toolInput}
+              maxHeight={300}
+            />
+          )}
+          {!isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
+            <ToolInput input={formatToolPayload(toolInput)} />
+          )}
+          {toolPart.state === 'output-available' && (
+            toolName === 'todowrite'
+              ? (() => {
+                const tasks = extractTasksFromToolOutput(toolPart.output)
+                if (tasks.length === 0) {
+                  return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
+                }
+                return <TaskProgress tasks={tasks} showSummary />
+              })()
+              : isEditTool
+                ? null
+                : isWebSearchTool
+                  ? null
+                  : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
+          )}
+          {toolPart.state === 'output-error' && (
+            <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
+          )}
+        </ToolContent>
+      </Tool>
+    )
+  }
+
   return (
     <Message from={message.role}>
       <div className={cn(message.role === 'user' ? 'flex justify-end' : 'w-full')}>
@@ -1364,149 +1449,122 @@ function MessageBubble({ message, toolsByName, status, showUserErrorIndicator = 
             ]
           )}
         >
-          {message.parts.map((part, index) => {
-          if (part.type === 'step-start') {
-            return (
-              <div key={`${message.id}-step-${index}`} className="py-2">
-                <div className="h-px bg-border" />
-              </div>
-            )
-          }
+          {(() => {
+            const renderedParts: Array<React.ReactNode> = []
 
-          if (isFilePart(part)) {
-            return (
-              <div
-                key={`${message.id}-file-${index}`}
-                className={message.role === 'user' ? 'flex justify-end' : 'flex'}
-              >
-                <ChatAttachmentCard
-                  mediaType={part.mediaType}
-                  name={part.filename || defaultAttachmentName(part.mediaType)}
-                  url={part.url}
-                  size="message"
-                />
-              </div>
-            )
-          }
+            for (let index = 0; index < message.parts.length; index += 1) {
+              const part = message.parts[index]
 
-          if (part.type === 'text') {
-            return (
-              hasStandaloneAttachments && message.role === 'user'
-                ? (
-                  <div key={`${message.id}-text-${index}`} className="flex justify-end">
-                    <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
-                      <MessageResponse>{part.text}</MessageResponse>
-                    </div>
+              if (part.type === 'step-start') {
+                continue
+              }
+
+              if (isFilePart(part)) {
+                renderedParts.push(
+                  <div
+                    key={`${message.id}-file-${index}`}
+                    className={message.role === 'user' ? 'flex justify-end' : 'flex'}
+                  >
+                    <ChatAttachmentCard
+                      mediaType={part.mediaType}
+                      name={part.filename || defaultAttachmentName(part.mediaType)}
+                      url={part.url}
+                      size="message"
+                    />
                   </div>
                 )
-                : (
-                  <MessageResponse key={`${message.id}-text-${index}`}>
-                    {part.text}
-                  </MessageResponse>
+                continue
+              }
+
+              if (part.type === 'text') {
+                renderedParts.push(
+                  hasStandaloneAttachments && message.role === 'user'
+                    ? (
+                      <div key={`${message.id}-text-${index}`} className="flex justify-end">
+                        <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
+                          <MessageResponse>{part.text}</MessageResponse>
+                        </div>
+                      </div>
+                    )
+                    : (
+                      <MessageResponse key={`${message.id}-text-${index}`}>
+                        {part.text}
+                      </MessageResponse>
+                    )
                 )
-            )
-          }
+                continue
+              }
 
-          if (part.type === 'reasoning') {
-            const reasoningPart = part as ReasoningPart
-            return (
-              <Reasoning
-                key={`${message.id}-reasoning-${index}`}
-                isStreaming={isStreaming}
-                duration={reasoningPart.duration}
-              >
-                <ReasoningTrigger />
-                <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
-              </Reasoning>
-            )
-          }
+              if (part.type === 'reasoning') {
+                const reasoningPart = part as ReasoningPart
+                renderedParts.push(
+                  <Reasoning
+                    key={`${message.id}-reasoning-${index}`}
+                    isStreaming={isStreaming}
+                    duration={reasoningPart.duration}
+                  >
+                    <ReasoningTrigger />
+                    <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
+                  </Reasoning>
+                )
+                continue
+              }
 
-          if (part.type === 'data-usage') return null
+              if (part.type === 'data-usage') {
+                continue
+              }
 
-          // Tool calls
-          if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
-            const toolPart = part as ToolPart
-            const toolName = getToolName(toolPart)
-            if (!toolName) return null
-            const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
+              if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+                const groupedToolParts: Array<{ part: ToolPart; index: number }> = []
+                let cursor = index
 
-            // Skip plan_write tool - it's rendered as PlanSelector below messages
-            if (toolName === 'plan_write') {
-              return null
+                while (cursor < message.parts.length) {
+                  const groupedPart = message.parts[cursor]
+                  if (groupedPart.type === 'step-start') {
+                    cursor += 1
+                    continue
+                  }
+                  if (!(groupedPart.type === 'dynamic-tool' || groupedPart.type.startsWith('tool-'))) {
+                    break
+                  }
+                  groupedToolParts.push({ part: groupedPart as ToolPart, index: cursor })
+                  cursor += 1
+                }
+
+                const useGroupedRows = groupedToolParts.length > 1
+                const toolNodes = groupedToolParts
+                  .map(({ part: groupedToolPart, index: groupedIndex }) =>
+                    renderToolPart(groupedToolPart, groupedIndex, useGroupedRows)
+                  )
+                  .filter(Boolean)
+
+                if (toolNodes.length > 0) {
+                  renderedParts.push(
+                    <div
+                      key={`${message.id}-tool-group-${index}`}
+                      className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5"
+                    >
+                      {toolNodes.length > 1 ? (
+                        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+                          <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                            Tool calls ({toolNodes.length})
+                          </p>
+                        </div>
+                      ) : null}
+                      <div className={cn(useGroupedRows && 'divide-y divide-border/35')}>
+                        {toolNodes}
+                      </div>
+                    </div>
+                  )
+                }
+
+                index = cursor - 1
+                continue
+              }
             }
 
-            const toolMeta = toolsByName.get(toolName)
-            const toolState = getToolState(toolPart.state)
-            const isEditTool = isFileEditTool(toolName)
-            // Special handling for web search tools (show only sources)
-            const isWebSearchTool = toolName.toLowerCase().includes('search') ||
-              toolName.toLowerCase().includes('web') ||
-              toolName === 'tavily_search' ||
-              toolName === 'brave_search' ||
-              toolName === 'bing_search'
-
-            // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read'
-
-            // Render static (non-expandable) tools
-            if (isStaticTool) {
-              return (
-                <ToolStatic
-                  key={`${message.id}-tool-${index}`}
-                  toolName={toolName}
-                  input={toolInput}
-                  type={toolMeta?.toolType || 'function'}
-                  state={toolState}
-                />
-              )
-            }
-
-            return (
-              <Tool key={`${message.id}-tool-${index}`}>
-                <ToolHeader
-                  toolName={toolName}
-                  input={toolInput}
-                  type={toolMeta?.toolType || 'function'}
-                  state={toolState}
-                />
-                <ToolContent>
-                  {/* For file edit tools, show Monaco diff viewer */}
-                  {isEditTool && toolInput && (
-                    <ToolDiffOutput
-                      toolName={toolName}
-                      input={toolInput}
-                      maxHeight={300}
-                    />
-                  )}
-                  {/* For non-edit/non-list/non-web_search tools, show raw input */}
-                  {!isEditTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
-                    <ToolInput input={formatToolPayload(toolInput)} />
-                  )}
-                  {toolPart.state === 'output-available' && (
-                    toolName === 'todowrite'
-                      ? (() => {
-                        const tasks = extractTasksFromToolOutput(toolPart.output)
-                        if (tasks.length === 0) {
-                          return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
-                        }
-                        return <TaskProgress tasks={tasks} showSummary />
-                      })()
-                      : isEditTool
-                        ? null // Diff viewer already shows the edit
-                        : isWebSearchTool
-                          ? null // Web search shows only sources, no raw output
-                          : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
-                  )}
-                  {toolPart.state === 'output-error' && (
-                    <ToolOutput output={null} errorText={toolPart.errorText} toolName={toolName} />
-                  )}
-                </ToolContent>
-              </Tool>
-            )
-          }
-
-          return null
-          })}
+            return renderedParts
+          })()}
           {sourceItems.length > 0 && (
             <div className="px-2 pb-2">
               <Sources>
@@ -1538,6 +1596,36 @@ function formatToolPayload(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function extractTerminalOutput(output: unknown): string {
+  if (typeof output === 'string') {
+    try {
+      const parsed = JSON.parse(output)
+      if (typeof parsed?.output === 'string') return parsed.output
+      if (typeof parsed?.stdout === 'string') return parsed.stdout
+      if (typeof parsed?.result === 'string') return parsed.result
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return output
+    }
+  }
+
+  if (typeof output === 'object' && output !== null) {
+    const obj = output as Record<string, unknown>
+    if (typeof obj.output === 'string') return obj.output
+    if (typeof obj.stdout === 'string') return obj.stdout
+    if (typeof obj.result === 'string') return obj.result
+    return JSON.stringify(obj, null, 2)
+  }
+
+  return String(output)
+}
+
+function hasMeaningfulTerminalOutput(output: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  const strippedAnsi = output.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+  return strippedAnsi.trim().length > 0
 }
 
 function defaultAttachmentName(mediaType: string): string {

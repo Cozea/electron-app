@@ -256,11 +256,11 @@ export const BuilderTerminal = memo(function BuilderTerminal({
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="size-4 p-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={handleCopy}
             title="Copy output"
           >
-            {isCopied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
+            {isCopied ? <CheckIcon className="h-2 w-2" /> : <CopyIcon className="h-2 w-2" />}
           </Button>
         </div>
       </div>
@@ -273,10 +273,6 @@ export const BuilderTerminal = memo(function BuilderTerminal({
         <div
           ref={containerRef}
           className="h-full overflow-hidden"
-        />
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-5"
-          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
         />
       </div>
     </div>

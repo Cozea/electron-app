@@ -30,13 +30,22 @@ import { ConfirmationDialog, type ConfirmationState } from '@/components/ai-elem
 import { TaskProgress, type TaskData } from '@/components/assistant/TaskProgress'
 import { BuilderTerminalOutput } from '@/components/builder/BuilderTerminalOutput'
 import { BuilderTerminal } from '@/components/builder/BuilderTerminal'
-import { ToolDiffOutput, isFileEditTool } from '@/components/ai-elements/tool-diff-output'
+import {
+  ToolDiffOutput,
+  extractToolDiffData,
+  isFileEditTool,
+  type ToolDiffData,
+} from '@/components/ai-elements/tool-diff-output'
 import { ToolPreviewBrowserOutput } from '@/components/ai-elements/tool-preview-browser-output'
+import {
+  MessageChangedFilesTray,
+} from '@/components/assistant/MessageChangedFilesTray'
+import { InjectedPromptPreviewChip } from '@/components/assistant/InjectedPromptPreviewChip'
 import { parseInjectedPromptForCompaction } from '@/components/assistant/injectedPromptCompaction'
 import { parseJsonArrayLoose } from '@/lib/ai/parseJsonLoose'
 import { cn } from '@/lib/utils'
-import { AlertCircle, AlertTriangle, Check, Copy, MousePointer2, Terminal, X } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, Check, Copy, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 export interface MessageToolMeta {
   displayName?: string
@@ -174,6 +183,7 @@ function MessageBubbleComponent({
     () => message.role === 'user' && message.parts.some(isFilePart),
     [message.parts, message.role]
   )
+  const changedFiles = useMemo(() => collectMessageToolDiffs(message.parts), [message.parts])
 
   const handleCopyMessage = useCallback(async () => {
     if (!canCopy) return
@@ -200,6 +210,212 @@ function MessageBubbleComponent({
       }
     }
   }, [])
+
+  const renderToolPart = (toolPart: ToolPart, index: number, grouped = false): ReactNode => {
+    const toolName = getToolName(toolPart)
+    if (!toolName) return null
+    const toolCallId = getToolCallId(toolPart, message.id, index)
+    const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
+    const toolMeta = toolsByName.get(toolName)
+    const requiresApproval = toolMeta?.executionEnvironment === 'local'
+      ? (shouldRequireLocalApproval ? shouldRequireLocalApproval(toolMeta) : toolMeta.requiresApproval ?? false)
+      : toolMeta?.requiresApproval ?? false
+
+    const toolState = getToolState(toolPart.state)
+    const isTaskTool = toolName === 'todowrite'
+    const hasTaskInput =
+      Array.isArray(toolInput?.tasks) ||
+      Array.isArray(toolInput?.todos) ||
+      typeof toolInput?.tasks_json === 'string'
+
+    if (toolName === 'todowrite' && !showTodowriteTools) {
+      return null
+    }
+
+    const isTerminalTool = toolName === 'bash'
+    const terminalOutput = isTerminalTool ? extractTerminalOutput(toolPart.output) : ''
+    const isEditTool = isFileEditTool(toolName)
+    const isPreviewBrowserTool = toolName === 'preview_browser'
+    const isWebSearchTool = toolName.toLowerCase().includes('search') ||
+      toolName.toLowerCase().includes('web') ||
+      toolName === 'tavily_search' ||
+      toolName === 'brave_search' ||
+      toolName === 'bing_search'
+
+    const isStaticTool =
+      toolName === 'read' ||
+      toolName === 'grep' ||
+      (isTerminalTool && toolState === 'output-available' && !hasMeaningfulTerminalOutput(terminalOutput))
+
+    if (isStaticTool) {
+      return (
+        <ToolStatic
+          key={`${message.id}-tool-${index}`}
+          className={cn(
+            'mb-0',
+            grouped && 'rounded-none px-0.5'
+          )}
+          toolName={toolName}
+          input={toolInput}
+          type={toolMeta?.toolType || 'function'}
+          state={toolState}
+        />
+      )
+    }
+
+    return (
+      <Tool
+        key={`${message.id}-tool-${index}`}
+        className={cn(
+          'data-[state=closed]:mb-0',
+          grouped ? 'rounded-none data-[state=open]:mb-0' : 'data-[state=open]:mb-1'
+        )}
+      >
+        <ToolHeader
+          className={grouped ? 'rounded-none px-0.5 hover:bg-background/60' : undefined}
+          toolName={toolName}
+          input={toolInput}
+          type={toolMeta?.toolType || 'function'}
+          state={toolState}
+        />
+        <ToolContent>
+          {isTaskTool && toolState !== 'output-available' && hasTaskInput && (
+            <TaskProgress tasks={extractTasksFromInput(toolInput)} showSummary />
+          )}
+
+          {isTerminalTool && typeof toolInput?.command === 'string' && (() => {
+            const activeTerminalId = terminalSessions?.get(toolCallId)
+            if (activeTerminalId && projectPath && toolState !== 'output-available') {
+              return (
+                <div className="px-4 py-2">
+                  <BuilderTerminal
+                    terminalId={activeTerminalId}
+                    command={toolInput.command}
+                    projectPath={projectPath}
+                    isStreaming={true}
+                  />
+                </div>
+              )
+            }
+            if (toolState !== 'output-available') {
+              return (
+                <div className="px-4 py-2 text-sm text-muted-foreground font-mono">
+                  $ {toolInput.command}
+                </div>
+              )
+            }
+            return null
+          })()}
+
+          {isEditTool && toolInput && (
+            <ToolDiffOutput
+              toolName={toolName}
+              input={toolInput}
+              maxHeight={300}
+            />
+          )}
+
+          {isPreviewBrowserTool && toolInput && toolState !== 'output-available' && (
+            <div className="px-2 pb-2">
+              <ToolPreviewBrowserOutput
+                input={toolInput}
+                state={toolState}
+              />
+            </div>
+          )}
+
+          {!isTaskTool && !isTerminalTool && !isEditTool && !isPreviewBrowserTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
+            <ToolInput input={formatToolPayload(toolInput)} />
+          )}
+
+          {requiresApproval && onApproveTool && onDenyTool && (
+            <ConfirmationDialog
+              state={(toolState === 'output-denied'
+                ? 'rejected'
+                : toolState === 'output-available'
+                  ? 'approved'
+                  : 'pending') as ConfirmationState}
+              toolName={toolMeta?.displayName || toolName}
+              toolCallId={toolCallId}
+              description="This tool requires your approval to execute."
+              onApprove={() => onApproveTool(toolName, toolCallId, toolInput, toolPart.approval?.id)}
+              onReject={() => onDenyTool(toolName, toolCallId, toolPart.approval?.id)}
+            />
+          )}
+
+          {toolState === 'output-available' && (
+            <>
+              {isTaskTool
+                ? (() => {
+                  const tasks = extractTasksFromToolOutput(toolPart.output)
+                  if (tasks.length === 0) {
+                    return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
+                  }
+                  return <TaskProgress tasks={tasks} showSummary />
+                })()
+                : isTerminalTool
+                  ? (
+                    <div className="px-2 pb-2">
+                      <BuilderTerminalOutput
+                        command={typeof toolInput?.command === 'string' ? toolInput.command : undefined}
+                        output={terminalOutput}
+                      />
+                    </div>
+                  )
+                  : isPreviewBrowserTool
+                    ? (
+                      <div className="px-2 pb-2">
+                        <ToolPreviewBrowserOutput
+                          input={toolInput}
+                          output={toolPart.output}
+                          state={toolState}
+                        />
+                      </div>
+                    )
+                    : isEditTool
+                      ? null
+                      : isWebSearchTool
+                        ? null
+                        : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />}
+              {(() => {
+                const sources = extractSourcesFromToolOutput(toolPart.output, toolName)
+                if (sources.length === 0) return null
+                return (
+                  <div className="px-4 pb-4">
+                    <Sources defaultOpen={isWebSearchTool}>
+                      <SourcesTrigger count={sources.length} />
+                      <SourcesContent>
+                        {sources.map((source, idx) => (
+                          <Source
+                            key={`${source.url}-${idx}`}
+                            href={source.url}
+                            title={source.title}
+                            favicon={source.favicon}
+                          />
+                        ))}
+                      </SourcesContent>
+                    </Sources>
+                  </div>
+                )
+              })()}
+            </>
+          )}
+
+          {toolState === 'output-error' && (
+            <ToolOutput
+              output={null}
+              errorText={typeof toolPart.errorText === 'string' ? toolPart.errorText : 'Tool execution failed'}
+              toolName={toolName}
+            />
+          )}
+
+          {toolState === 'output-denied' && (
+            <ToolOutput output={null} errorText="Tool execution denied" toolName={toolName} />
+          )}
+        </ToolContent>
+      </Tool>
+    )
+  }
 
   return (
     <Message from={message.role}>
@@ -232,366 +448,166 @@ function MessageBubbleComponent({
             ]
           )}
         >
-          {message.parts.map((part, index) => {
-          // Skip step-start separators (no visual divider needed)
-          if (part.type === 'step-start') {
-            return null
-          }
+          {(() => {
+            const renderedParts: ReactNode[] = []
 
-          if (isFilePart(part)) {
-            return (
-              <div
-                key={`${message.id}-file-${index}`}
-                className={message.role === 'user' ? 'flex justify-end' : 'flex'}
-              >
-                <ChatAttachmentCard
-                  mediaType={part.mediaType}
-                  name={part.filename || defaultAttachmentName(part.mediaType)}
-                  url={part.url}
-                  size="message"
-                />
-              </div>
-            )
-          }
+            for (let index = 0; index < message.parts.length; index += 1) {
+              const part = message.parts[index]
 
-          if (part.type === 'text') {
-            const compactedPrompt =
-              message.role === 'user'
-                ? parseInjectedPromptForCompaction(part.text)
-                : null
+              if (part.type === 'step-start') {
+                continue
+              }
 
-            if (compactedPrompt) {
-              if (compactedPrompt.kind === 'terminal') {
-                return (
-                  <div key={`${message.id}-text-${index}`} className="flex">
-                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-sky-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-sky-900">
-                      <Terminal className="h-3 w-3 shrink-0 text-sky-700/80 dark:text-sky-200/90" />
-                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Terminal output'}</span>
+              if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
+                const groupedToolParts: Array<{ part: ToolPart; index: number }> = []
+                let cursor = index
+
+                while (cursor < message.parts.length) {
+                  const groupedPart = message.parts[cursor]
+                  if (groupedPart.type === 'step-start') {
+                    cursor += 1
+                    continue
+                  }
+                  if (!(groupedPart.type === 'dynamic-tool' || groupedPart.type.startsWith('tool-'))) {
+                    break
+                  }
+
+                  groupedToolParts.push({ part: groupedPart as ToolPart, index: cursor })
+                  cursor += 1
+                }
+
+                const useGroupedRows = groupedToolParts.length > 1
+                const toolNodes = groupedToolParts
+                  .map(({ part: groupedToolPart, index: groupedIndex }) =>
+                    renderToolPart(groupedToolPart, groupedIndex, useGroupedRows)
+                  )
+                  .filter(Boolean)
+
+                if (toolNodes.length > 0) {
+                  renderedParts.push(
+                    <div
+                      key={`${message.id}-tool-group-${index}`}
+                      className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5"
+                    >
+                      {toolNodes.length > 1 ? (
+                        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+                          <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                            Tool calls ({toolNodes.length})
+                          </p>
+                        </div>
+                      ) : null}
+                      <div className={cn(useGroupedRows && 'divide-y divide-border/35')}>
+                        {toolNodes}
+                      </div>
                     </div>
+                  )
+                }
+
+                index = cursor - 1
+                continue
+              }
+
+              if (isFilePart(part)) {
+                renderedParts.push(
+                  <div
+                    key={`${message.id}-file-${index}`}
+                    className={message.role === 'user' ? 'flex justify-end' : 'flex'}
+                  >
+                    <ChatAttachmentCard
+                      mediaType={part.mediaType}
+                      name={part.filename || defaultAttachmentName(part.mediaType)}
+                      url={part.url}
+                      size="message"
+                    />
+                  </div>
+                )
+                continue
+              }
+
+              if (part.type === 'text') {
+                const compactedPrompt =
+                  message.role === 'user'
+                    ? parseInjectedPromptForCompaction(part.text)
+                    : null
+
+                if (compactedPrompt) {
+                  renderedParts.push(
+                    <div key={`${message.id}-text-${index}`} className="flex">
+                      <InjectedPromptPreviewChip preview={compactedPrompt} />
+                    </div>
+                  )
+                  continue
+                }
+
+                renderedParts.push(
+                  hasStandaloneAttachments && message.role === 'user'
+                    ? (
+                      <div key={`${message.id}-text-${index}`} className="flex justify-end">
+                        <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
+                          <MessageResponse>{part.text}</MessageResponse>
+                        </div>
+                      </div>
+                    )
+                    : (
+                      <MessageResponse key={`${message.id}-text-${index}`}>
+                        {part.text}
+                      </MessageResponse>
+                    )
+                )
+                continue
+              }
+
+              if (part.type === 'reasoning') {
+                const reasoningPart = part as ReasoningPart
+                const hasSubsequentParts = message.parts.slice(index + 1).some(
+                  nextPart => nextPart.type !== 'step-start'
+                )
+                const isThisReasoningStreaming = isStreaming && !hasSubsequentParts
+                renderedParts.push(
+                  <Reasoning
+                    key={`${message.id}-reasoning-${index}`}
+                    isStreaming={isThisReasoningStreaming}
+                    duration={reasoningPart.duration}
+                  >
+                    <ReasoningTrigger />
+                    <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
+                  </Reasoning>
+                )
+                continue
+              }
+
+              const partType = (part as { type?: string }).type
+              if (partType === 'error' || partType === 'data-error') {
+                if (dismissedErrors.has(index)) {
+                  continue
+                }
+                const errorPart = part as ErrorPart
+                const errorMessage = errorPart.error || errorPart.message || errorPart.text || 'Error'
+                renderedParts.push(
+                  <div
+                    key={`${message.id}-error-${index}`}
+                    className="flex items-center gap-2 rounded-lg bg-background/90 border border-destructive/30 px-3 py-2"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                    <span className="flex-1 text-sm text-destructive">{errorMessage}</span>
+                    <button
+                      type="button"
+                      className="text-destructive/70 transition-colors hover:text-destructive"
+                      onClick={() => setDismissedErrors(prev => new Set(prev).add(index))}
+                      aria-label="Dismiss error"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 )
               }
-
-              if (compactedPrompt.kind === 'inspector') {
-                return (
-                  <div key={`${message.id}-text-${index}`} className="flex">
-                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-teal-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-teal-900">
-                      <MousePointer2 className="h-3 w-3 shrink-0 text-teal-700/80 dark:text-teal-200/90" />
-                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Inspected element'}</span>
-                    </div>
-                  </div>
-                )
-              }
-
-              if (compactedPrompt.kind === 'problem') {
-                return (
-                  <div key={`${message.id}-text-${index}`} className="flex">
-                    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-amber-200 px-2.5 py-1 text-[11px] text-foreground dark:bg-amber-900">
-                      <AlertTriangle className="h-3 w-3 shrink-0 text-amber-700/80 dark:text-amber-200/90" />
-                      <span className="min-w-0 truncate">{compactedPrompt.pillText || 'Problem'}</span>
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <div
-                  key={`${message.id}-text-${index}`}
-                  className="rounded-lg border border-border/60 bg-secondary/55 px-2.5 py-2"
-                >
-                  <div className="text-xs font-medium text-foreground">{compactedPrompt.title}</div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">{compactedPrompt.subtitle}</p>
-                  {compactedPrompt.snippet ? (
-                    <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{compactedPrompt.snippet}</p>
-                  ) : null}
-                  {compactedPrompt.fields && compactedPrompt.fields.length > 0 ? (
-                    <div className="mt-1.5 space-y-0.5">
-                      {compactedPrompt.fields.map((field) => (
-                        <div key={field.label} className="flex items-start gap-1 text-[11px]">
-                          <span className="shrink-0 text-muted-foreground">{field.label}:</span>
-                          <span className="min-w-0 truncate text-foreground/90">{field.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              )
             }
 
-            return (
-              hasStandaloneAttachments && message.role === 'user'
-                ? (
-                  <div key={`${message.id}-text-${index}`} className="flex justify-end">
-                    <div className="max-w-full rounded-3xl bg-secondary px-3.5 py-2.5 text-foreground">
-                      <MessageResponse>{part.text}</MessageResponse>
-                    </div>
-                  </div>
-                )
-                : (
-                  <MessageResponse key={`${message.id}-text-${index}`}>
-                    {part.text}
-                  </MessageResponse>
-                )
-            )
-          }
-
-          if (part.type === 'reasoning') {
-            const reasoningPart = part as ReasoningPart
-            // Only mark as streaming if this is the last reasoning block AND message is still streaming
-            // If there are subsequent parts after this reasoning, it's already complete
-            const hasSubsequentParts = message.parts.slice(index + 1).some(
-              p => p.type !== 'step-start'
-            )
-            const isThisReasoningStreaming = isStreaming && !hasSubsequentParts
-            return (
-              <Reasoning
-                key={`${message.id}-reasoning-${index}`}
-                isStreaming={isThisReasoningStreaming}
-                duration={reasoningPart.duration}
-              >
-                <ReasoningTrigger />
-                <ReasoningContent>{reasoningPart.text || ''}</ReasoningContent>
-              </Reasoning>
-            )
-          }
-
-
-
-          const partType = (part as { type?: string }).type
-
-          // Handle error parts (data-error or error type)
-          if (partType === 'error' || partType === 'data-error') {
-            if (dismissedErrors.has(index)) {
-              return null
-            }
-            const errorPart = part as ErrorPart
-            const errorMessage = errorPart.error || errorPart.message || errorPart.text || 'Error'
-            return (
-              <div
-                key={`${message.id}-error-${index}`}
-                className="flex items-center gap-2 rounded-lg bg-background/90 backdrop-blur-md border border-destructive/30 px-3 py-2"
-              >
-                <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                <span className="text-sm text-destructive flex-1">{errorMessage}</span>
-                <button
-                  type="button"
-                  className="text-destructive/70 hover:text-destructive transition-colors"
-                  onClick={() => setDismissedErrors(prev => new Set(prev).add(index))}
-                  aria-label="Dismiss error"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )
-          }
-
-          if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
-            const toolPart = part as ToolPart
-            const toolName = getToolName(toolPart)
-            if (!toolName) return null
-            const toolCallId = getToolCallId(toolPart, message.id, index)
-            const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
-            const toolMeta = toolsByName.get(toolName)
-            const requiresApproval = toolMeta?.executionEnvironment === 'local'
-              ? (shouldRequireLocalApproval ? shouldRequireLocalApproval(toolMeta) : toolMeta.requiresApproval ?? false)
-              : toolMeta?.requiresApproval ?? false
-
-            const toolState = getToolState(toolPart.state)
-
-            // Special handling for task-based tools (like Claude Code's TodoWrite)
-            const isTaskTool = toolName === 'todowrite'
-            const hasTaskInput =
-              Array.isArray(toolInput?.tasks) ||
-              Array.isArray(toolInput?.todos) ||
-              typeof toolInput?.tasks_json === 'string'
-
-            // Builder surface keeps todowrite in the controls pill.
-            if (toolName === 'todowrite' && !showTodowriteTools) {
-              return null
-            }
-            // Special handling for terminal tools
-            const isTerminalTool = toolName === 'bash'
-            // Special handling for file edit tools (show Monaco diff)
-            const isEditTool = isFileEditTool(toolName)
-            const isPreviewBrowserTool = toolName === 'preview_browser'
-            // Special handling for web search tools (show only sources)
-            const isWebSearchTool = toolName.toLowerCase().includes('search') ||
-              toolName.toLowerCase().includes('web') ||
-              toolName === 'tavily_search' ||
-              toolName === 'brave_search' ||
-              toolName === 'bing_search'
-
-            // Non-expandable tools (output is not useful to display)
-            const isStaticTool = toolName === 'read' || toolName === 'grep'
-
-            // Render static (non-expandable) tools
-            if (isStaticTool) {
-              return (
-                <ToolStatic
-                  key={`${message.id}-tool-${index}`}
-                  toolName={toolName}
-                  input={toolInput}
-                  type={toolMeta?.toolType || 'function'}
-                  state={toolState}
-                />
-              )
-            }
-
-            return (
-              <Tool key={`${message.id}-tool-${index}`}>
-                <ToolHeader
-                  toolName={toolName}
-                  input={toolInput}
-                  type={toolMeta?.toolType || 'function'}
-                  state={toolState}
-                />
-                <ToolContent>
-                  {/* For task tools, show TaskProgress from input while running/streaming */}
-                  {isTaskTool && toolState !== 'output-available' && hasTaskInput && (
-                    <TaskProgress tasks={extractTasksFromInput(toolInput)} showSummary />
-                  )}
-
-                  {/* For terminal tools, show live terminal if session is active, otherwise show command */}
-                  {isTerminalTool && typeof toolInput?.command === 'string' && (() => {
-                    const activeTerminalId = terminalSessions?.get(toolCallId)
-                    if (activeTerminalId && projectPath && toolState !== 'output-available') {
-                      // Show live interactive terminal
-                      return (
-                        <div className="px-4 py-2">
-                          <BuilderTerminal
-                            terminalId={activeTerminalId}
-                            command={toolInput.command}
-                            projectPath={projectPath}
-                            isStreaming={true}
-                          />
-                        </div>
-                      )
-                    }
-                    // Show command header only when no live terminal and not complete
-                    if (toolState !== 'output-available') {
-                      return (
-                        <div className="px-4 py-2 text-sm text-muted-foreground font-mono">
-                          $ {toolInput.command}
-                        </div>
-                      )
-                    }
-                    return null
-                  })()}
-
-                  {/* For file edit tools, show Monaco diff viewer */}
-                  {isEditTool && toolInput && (
-                    <ToolDiffOutput
-                      toolName={toolName}
-                      input={toolInput}
-                      maxHeight={300}
-                    />
-                  )}
-
-                  {isPreviewBrowserTool && toolInput && toolState !== 'output-available' && (
-                    <div className="px-2 pb-2">
-                      <ToolPreviewBrowserOutput
-                        input={toolInput}
-                        state={toolState}
-                      />
-                    </div>
-                  )}
-
-                  {/* For non-task/non-terminal/non-edit/non-list/non-web_search tools, show raw input */}
-                  {!isTaskTool && !isTerminalTool && !isEditTool && !isPreviewBrowserTool && !isWebSearchTool && toolName !== 'list' && toolInput && (
-                    <ToolInput input={formatToolPayload(toolInput)} />
-                  )}
-
-                  {requiresApproval && onApproveTool && onDenyTool && (
-                    <ConfirmationDialog
-                      state={(toolState === 'output-denied'
-                        ? 'rejected'
-                        : toolState === 'output-available'
-                          ? 'approved'
-                          : 'pending') as ConfirmationState}
-                      toolName={toolMeta?.displayName || toolName}
-                      toolCallId={toolCallId}
-                      description="This tool requires your approval to execute."
-                      onApprove={() => onApproveTool(toolName, toolCallId, toolInput, toolPart.approval?.id)}
-                      onReject={() => onDenyTool(toolName, toolCallId, toolPart.approval?.id)}
-                    />
-                  )}
-
-                  {toolState === 'output-available' && (
-                    <>
-                      {isTaskTool
-                        ? (() => {
-                          const tasks = extractTasksFromToolOutput(toolPart.output)
-                          if (tasks.length === 0) {
-                            return <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />
-                          }
-                          return <TaskProgress tasks={tasks} showSummary />
-                        })()
-                        : isTerminalTool
-                          ? (
-                            <div className="px-2 pb-2">
-                              <BuilderTerminalOutput
-                                command={typeof toolInput?.command === 'string' ? toolInput.command : undefined}
-                                output={extractTerminalOutput(toolPart.output)}
-                              />
-                            </div>
-                          )
-                          : isPreviewBrowserTool
-                            ? (
-                              <div className="px-2 pb-2">
-                                <ToolPreviewBrowserOutput
-                                  input={toolInput}
-                                  output={toolPart.output}
-                                  state={toolState}
-                                />
-                              </div>
-                            )
-                          : isEditTool
-                            ? null // Diff viewer already shows the edit, no need to show output
-                            : isWebSearchTool
-                              ? null // Web search shows only sources below, no raw output
-                              : <ToolOutput output={formatToolPayload(toolPart.output)} toolName={toolName} />}
-                      {(() => {
-                        const sources = extractSourcesFromToolOutput(toolPart.output, toolName)
-                        if (sources.length === 0) return null
-                        return (
-                          <div className="px-4 pb-4">
-                            <Sources defaultOpen={isWebSearchTool}>
-                              <SourcesTrigger count={sources.length} />
-                              <SourcesContent>
-                                {sources.map((source, idx) => (
-                                  <Source
-                                    key={`${source.url}-${idx}`}
-                                    href={source.url}
-                                    title={source.title}
-                                    favicon={source.favicon}
-                                  />
-                                ))}
-                              </SourcesContent>
-                            </Sources>
-                          </div>
-                        )
-                      })()}
-                    </>
-                  )}
-
-                  {toolState === 'output-error' && (
-                    <ToolOutput
-                      output={null}
-                      errorText={typeof toolPart.errorText === 'string' ? toolPart.errorText : 'Tool execution failed'}
-                      toolName={toolName}
-                    />
-                  )}
-
-                  {toolState === 'output-denied' && (
-                    <ToolOutput output={null} errorText="Tool execution denied" toolName={toolName} />
-                  )}
-                </ToolContent>
-              </Tool>
-            )
-          }
-
-          return null
-          })}
+            return renderedParts
+          })()}
+          {message.role === 'assistant' && !isStreaming && changedFiles.length > 0 ? (
+            <MessageChangedFilesTray changes={changedFiles} />
+          ) : null}
           {sourceItems.length > 0 && (
             <div className="px-2 pb-2">
               <Sources>
@@ -660,6 +676,34 @@ function extractCopyableTextFromParts(parts: UIMessage['parts']): string {
   return textParts.join('\n\n')
 }
 
+function collectMessageToolDiffs(parts: UIMessage['parts']): ToolDiffData[] {
+  const diffs: ToolDiffData[] = []
+
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]
+    if (!(part.type === 'dynamic-tool' || part.type.startsWith('tool-'))) continue
+
+    const toolPart = part as ToolPart
+    const toolName = getToolName(toolPart)
+    if (!toolName || !isFileEditTool(toolName)) continue
+    if (getToolState(toolPart.state) !== 'output-available') continue
+
+    const toolInput = isRecord(toolPart.input) ? toolPart.input : undefined
+    if (!toolInput) continue
+
+    const extracted = extractToolDiffData(toolName, toolInput)
+    if (!extracted) continue
+
+    if (Array.isArray(extracted)) {
+      diffs.push(...extracted)
+    } else {
+      diffs.push(extracted)
+    }
+  }
+
+  return diffs
+}
+
 function formatToolPayload(value: unknown): string {
   if (typeof value === 'string') return value
   try {
@@ -694,6 +738,12 @@ function extractTerminalOutput(output: unknown): string {
     return JSON.stringify(obj, null, 2)
   }
   return String(output)
+}
+
+function hasMeaningfulTerminalOutput(output: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  const strippedAnsi = output.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+  return strippedAnsi.trim().length > 0
 }
 
 function extractTasksFromInput(input: unknown): TaskData[] {

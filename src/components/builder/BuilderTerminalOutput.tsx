@@ -101,11 +101,6 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
       }
     }, 10)
 
-    // Write initial content
-    if (command) {
-      term.writeln(`\x1b[90m$ ${command}\x1b[0m`)
-      term.writeln('')
-    }
     lastOutputRef.current = ''
 
     return () => {
@@ -175,30 +170,19 @@ export const BuilderTerminalOutput = memo(function BuilderTerminalOutput({
         className
       )}
     >
-      <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1">
-        <div className="min-w-0">
-          <p className="truncate font-mono text-[11px] text-muted-foreground">
-            {command ? `$ ${command}` : 'Terminal output'}
-          </p>
-        </div>
+      <div className="relative h-48 w-full overflow-hidden px-3 py-2">
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+          className="absolute right-2 top-2 z-10 size-4 shrink-0 p-0 text-muted-foreground/75 opacity-0 transition-opacity hover:bg-transparent hover:text-foreground group-hover:opacity-100"
           onClick={handleCopy}
           title="Copy output"
         >
-          {isCopied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
+          {isCopied ? <CheckIcon className="h-2 w-2" /> : <CopyIcon className="h-2 w-2" />}
         </Button>
-      </div>
-      <div className="relative h-48 w-full overflow-hidden px-3 py-2">
         <div
           ref={containerRef}
           className="h-full w-full overflow-hidden"
-        />
-        <div
-          className="pointer-events-none absolute inset-x-3 top-2 h-5"
-          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
         />
       </div>
     </div>

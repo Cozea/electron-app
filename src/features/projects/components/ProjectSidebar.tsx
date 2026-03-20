@@ -38,6 +38,7 @@ import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
 import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
 import { buildLegacyProjectPath, buildProjectPath } from "../lib/projectRoutes"
+import { useProjectWorkspaceContext } from "@/features/projects/hooks/useProjectWorkspaceContext"
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -181,11 +182,12 @@ export function ProjectSidebar({
     // Get project context from canonical route first; fallback to legacy slug resolution.
     const projectById = useQuery(
         api.projects.getAccessibleById,
-        providedProjectId
-            ? 'skip'
-            : routeProjectId && convexUserId
-                ? { projectId: routeProjectId as Id<"projects">, userId: convexUserId }
-                : 'skip'
+        convexUserId && (providedProjectId || routeProjectId)
+            ? {
+                projectId: (providedProjectId ?? (routeProjectId as Id<"projects">)),
+                userId: convexUserId,
+            }
+            : 'skip'
     )
     const projectBySlug = useQuery(
         api.projects.getAccessibleBySlug,
@@ -200,11 +202,14 @@ export function ProjectSidebar({
                 : 'skip'
     )
     const project =
-        routeProjectId
+        (providedProjectId || routeProjectId)
             ? projectById
             : projectBySlug?.status === 'ok'
                 ? projectBySlug.project
                 : null
+
+    const projectWorkspace = useProjectWorkspaceContext(project)
+    const isPersonalProject = projectWorkspace.isPersonalWorkspace
 
     // Update lastSeenTimestamp when project identity changes
     React.useEffect(() => {
@@ -245,67 +250,80 @@ export function ProjectSidebar({
                     </SidebarHeader>
 
                     <SidebarContent>
-                        {NAV_GROUPS.map((group) => (
-                            <SidebarGroup key={group.title}>
-                                <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
-                                <SidebarGroupContent>
-                                    <SidebarMenu>
-                                        {group.items.map((item) => {
-                                            const isActive = activeTab === item.title
-                                            const isSyncFeed = item.title === 'Sync Feed'
-                                            const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
+                        {NAV_GROUPS.map((group) => {
+                            const visibleItems = group.items.filter((item) => {
+                                if (item.title === 'Team' && isPersonalProject) {
+                                    return false
+                                }
+                                return true
+                            })
 
-                                            return (
-                                                <SidebarMenuItem key={item.title}>
-                                                    <SidebarMenuButton
-                                                        tooltip={item.title}
-                                                        isActive={isActive}
-                                                        onMouseEnter={() => preloadProjectTab(item.title)}
-                                                        onFocus={() => preloadProjectTab(item.title)}
-                                                        onPointerDown={() => preloadProjectTab(item.title)}
-                                                        onClick={() => {
-                                                            preloadProjectTab(item.title)
+                            if (visibleItems.length === 0) {
+                                return null
+                            }
 
-                                                            // Navigate to the route
-                                                            const route = routeMap[item.title]
-                                                            if (route !== undefined && navigationBasePath) {
-                                                                navigate(`${navigationBasePath}${route ? `/${route}` : ''}`)
-                                                            }
+                            return (
+                                <SidebarGroup key={group.title}>
+                                    <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+                                    <SidebarGroupContent>
+                                        <SidebarMenu>
+                                            {visibleItems.map((item) => {
+                                                const isActive = activeTab === item.title
+                                                const isSyncFeed = item.title === 'Sync Feed'
+                                                const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
 
-                                                            // Mark sync feed as seen when clicking
-                                                            if (isSyncFeed && project?.slug) {
-                                                                markSyncFeedAsSeen(project.slug)
-                                                                setLastSeenTimestamp(Date.now())
-                                                            }
+                                                return (
+                                                    <SidebarMenuItem key={item.title}>
+                                                        <SidebarMenuButton
+                                                            tooltip={item.title}
+                                                            isActive={isActive}
+                                                            onMouseEnter={() => preloadProjectTab(item.title)}
+                                                            onFocus={() => preloadProjectTab(item.title)}
+                                                            onPointerDown={() => preloadProjectTab(item.title)}
+                                                            onClick={() => {
+                                                                preloadProjectTab(item.title)
 
-                                                            setActiveTab(item.title)
-                                                        }}
-                                                    >
-                                                        <item.icon className="opacity-60" />
-                                                        <span>{item.title}</span>
-                                                        {showUnreadBadge && (
-                                                            <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground">
-                                                                {unreadCount > 99 ? '99+' : unreadCount}
-                                                            </Badge>
-                                                        )}
-                                                        {'alpha' in item && item.alpha && (
-                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
-                                                                alpha
-                                                            </Badge>
-                                                        )}
-                                                        {'beta' in item && item.beta && (
-                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
-                                                                beta
-                                                            </Badge>
-                                                        )}
-                                                    </SidebarMenuButton>
-                                                </SidebarMenuItem>
-                                            )
-                                        })}
-                                    </SidebarMenu>
-                                </SidebarGroupContent>
-                            </SidebarGroup>
-                        ))}
+                                                                // Navigate to the route
+                                                                const route = routeMap[item.title]
+                                                                if (route !== undefined && navigationBasePath) {
+                                                                    navigate(`${navigationBasePath}${route ? `/${route}` : ''}`)
+                                                                }
+
+                                                                // Mark sync feed as seen when clicking
+                                                                if (isSyncFeed && project?.slug) {
+                                                                    markSyncFeedAsSeen(project.slug)
+                                                                    setLastSeenTimestamp(Date.now())
+                                                                }
+
+                                                                setActiveTab(item.title)
+                                                            }}
+                                                        >
+                                                            <item.icon className="opacity-60" />
+                                                            <span>{item.title}</span>
+                                                            {showUnreadBadge && (
+                                                                <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground">
+                                                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                                                </Badge>
+                                                            )}
+                                                            {'alpha' in item && item.alpha && (
+                                                                <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                                                                    alpha
+                                                                </Badge>
+                                                            )}
+                                                            {'beta' in item && item.beta && (
+                                                                <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                                                                    beta
+                                                                </Badge>
+                                                            )}
+                                                        </SidebarMenuButton>
+                                                    </SidebarMenuItem>
+                                                )
+                                            })}
+                                        </SidebarMenu>
+                                    </SidebarGroupContent>
+                                </SidebarGroup>
+                            )
+                        })}
                     </SidebarContent>
 
                     <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">

@@ -80,13 +80,6 @@ const TOOL_MESSAGES: Record<string, { present: string; past: string }> = {
   build_complete: { present: "Finalizing build", past: "Finalized build" },
 };
 
-const FILE_WRITE_TOOLS = new Set([
-  "write",
-  "edit",
-  "multiedit",
-  "apply_patch",
-]);
-
 // Extract filename from a file path
 const getFileName = (filePath: string): string => {
   if (!filePath) return "";
@@ -152,26 +145,6 @@ const getToolTarget = (
     default:
       return { type: null, value: "" };
   }
-};
-
-// File pill component showing tech icon + filename
-const FilePill = ({
-  fileName,
-  type,
-}: {
-  fileName: string;
-  type: "file" | "folder";
-}) => {
-  const icon = type === "folder"
-    ? getFolderIcon(fileName, false, { width: 14, height: 14 })
-    : getFileIcon(fileName, { width: 14, height: 14 });
-
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted/80 px-2 py-0.5 text-xs font-medium">
-      {icon}
-      <span className="max-w-[120px] truncate">{fileName}</span>
-    </span>
-  );
 };
 
 interface DiffStats {
@@ -242,11 +215,35 @@ function getDiffStatsForTool(
 }
 
 const DiffStatsBadge = ({ added, removed }: DiffStats) => (
-  <span className="inline-flex items-center gap-1 font-mono text-[11px] leading-none tabular-nums">
+  <span className="inline-flex items-center gap-1 font-mono text-[13px] leading-none tabular-nums">
     {added > 0 ? <span className="text-emerald-400/70">+{added}</span> : null}
     {removed > 0 ? <span className="text-red-400/70">-{removed}</span> : null}
   </span>
 );
+
+function getToolHeaderCopy(
+  toolName: string | undefined,
+  input: Record<string, unknown> | undefined,
+  title: string | undefined,
+  type: string,
+  state: ToolState
+): { heading: string; preview: string | null } {
+  const isComplete = state === "output-available";
+  const isError = state === "output-error" || state === "output-denied";
+  const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
+  const messages = toolName ? TOOL_MESSAGES[toolName] : null;
+  const actionVerb = messages
+    ? isComplete || isError
+      ? messages.past
+      : messages.present
+    : title ?? type.split("-").slice(1).join("-");
+
+  const preview = target.value.trim().length > 0 ? target.value.trim() : null;
+  return {
+    heading: actionVerb,
+    preview,
+  };
+}
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -279,83 +276,31 @@ export const ToolStatic = ({
   ...props
 }: ToolStaticProps) => {
   const Icon = toolName ? getToolIcon(toolName) : WrenchIcon;
-  const isComplete = state === "output-available";
-  const isError = state === "output-error" || state === "output-denied";
   const diffStats = getDiffStatsForTool(toolName, input);
-
-  // Get the target from input (file, folder, command, query)
-  const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
-
-  // Get the action verb (present or past tense based on state)
-  const messages = toolName ? TOOL_MESSAGES[toolName] : null;
-  const actionVerb = messages
-    ? (isComplete || isError ? messages.past : messages.present)
-    : null;
-
-  // Render the header content
-  const renderHeaderContent = () => {
-    if (actionVerb && target.value) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-          {(target.type === "file" || target.type === "folder") && !target.value.includes(" files") ? (
-            <FilePill fileName={target.value} type={target.type} />
-          ) : target.type === "command" ? (
-            <code className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-xs max-w-[200px] truncate">
-              {target.value}
-            </code>
-          ) : target.type === "query" ? (
-            <span className="rounded bg-muted/80 px-1.5 py-0.5 text-xs max-w-[150px] truncate">
-              "{target.value}"
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground">{target.value}</span>
-          )}
-          {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
-        </div>
-      );
-    }
-
-    if (actionVerb && diffStats) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-          <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} />
-        </div>
-      );
-    }
-
-    if (actionVerb) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="font-medium text-sm">
-          {title ?? type.split("-").slice(1).join("-")}
-        </span>
-        {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
-      </div>
-    );
-  };
+  const headerCopy = getToolHeaderCopy(toolName, input, title, type, state);
+  const displayText = headerCopy.preview
+    ? `${headerCopy.heading} - ${headerCopy.preview}`
+    : headerCopy.heading;
 
   return (
     <div
-      className={cn("not-prose mb-1 w-full rounded-md", className)}
+      className={cn("not-prose mb-1 w-full rounded-md px-1 py-1", className)}
       {...props}
     >
-      <div className="inline-flex max-w-full items-center gap-2 py-1.5">
-        <div className="flex min-w-0 items-center gap-2">
-        <span className="flex size-4 items-center justify-center shrink-0">
-          {createElement(Icon, { className: "size-4 text-muted-foreground" })}
+      <div className="flex items-center gap-2">
+        <span className="flex size-5 shrink-0 items-center justify-center">
+          {createElement(Icon, { className: "size-4 text-muted-foreground/70" })}
         </span>
-          {renderHeaderContent()}
-          {getStatusIcon(state)}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="truncate text-[13px] leading-5 text-muted-foreground/70" title={displayText}>
+            <span className="text-foreground/85">{headerCopy.heading}</span>
+            {headerCopy.preview ? (
+              <span className="text-muted-foreground/55"> - {headerCopy.preview}</span>
+            ) : null}
+          </p>
         </div>
+        {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+        {getStatusIcon(state)}
       </div>
     </div>
   );
@@ -378,21 +323,21 @@ export type ToolHeaderProps = {
 export const getStatusIcon = (status: ToolState): ReactNode => {
   switch (status) {
     case "input-streaming":
-      return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
+      return <Loader2Icon className="size-4 text-muted-foreground animate-spin" />;
     case "input-available":
-      return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
+      return <Loader2Icon className="size-4 text-muted-foreground animate-spin" />;
     case "approval-requested":
-      return <Loader2Icon className="size-3.5 text-yellow-500 animate-spin" />;
+      return <Loader2Icon className="size-4 text-yellow-500 animate-spin" />;
     case "approval-responded":
-      return <CheckIcon className="size-3.5 text-blue-500" />;
+      return <CheckIcon className="size-4 text-blue-500" />;
     case "output-available":
       return null;
     case "output-error":
-      return <XIcon className="size-3.5 text-red-500" />;
+      return <XIcon className="size-4 text-red-500" />;
     case "output-denied":
-      return <XIcon className="size-3.5 text-orange-500" />;
+      return <XIcon className="size-4 text-orange-500" />;
     default:
-      return <Loader2Icon className="size-3.5 text-muted-foreground animate-spin" />;
+      return <Loader2Icon className="size-4 text-muted-foreground animate-spin" />;
   }
 };
 
@@ -406,100 +351,34 @@ export const ToolHeader = ({
   ...props
 }: ToolHeaderProps) => {
   const Icon = toolName ? getToolIcon(toolName) : WrenchIcon;
-  const isComplete = state === "output-available";
-  const isError = state === "output-error" || state === "output-denied";
   const diffStats = getDiffStatsForTool(toolName, input);
-  const isFileWriteTool = toolName ? FILE_WRITE_TOOLS.has(toolName) : false;
-
-  // Get the target from input (file, folder, command, query)
-  const target = toolName ? getToolTarget(toolName, input) : { type: null, value: "" };
-
-  // Get the action verb (present or past tense based on state)
-  const messages = toolName ? TOOL_MESSAGES[toolName] : null;
-  const actionVerb = messages
-    ? (isComplete || isError ? messages.past : messages.present)
-    : null;
-
-  // Render the header content
-  const renderHeaderContent = () => {
-    // If we have a dynamic message with target, show it
-    if (actionVerb && target.value) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-          {(target.type === "file" || target.type === "folder") && !target.value.includes(" files") ? (
-            <FilePill fileName={target.value} type={target.type} />
-          ) : target.type === "command" ? (
-            <code className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-xs max-w-[200px] truncate">
-              {target.value}
-            </code>
-          ) : target.type === "query" ? (
-            <span className="rounded bg-muted/80 px-1.5 py-0.5 text-xs max-w-[150px] truncate">
-              "{target.value}"
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground">{target.value}</span>
-          )}
-          {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
-        </div>
-      );
-    }
-
-    if (actionVerb && diffStats) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-          <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} />
-        </div>
-      );
-    }
-
-    if (actionVerb) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm">{actionVerb}</span>
-        </div>
-      );
-    }
-
-    // Fallback to title or type
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="font-medium text-sm">
-          {title ?? type.split("-").slice(1).join("-")}
-        </span>
-        {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
-      </div>
-    );
-  };
+  const headerCopy = getToolHeaderCopy(toolName, input, title, type, state);
+  const displayText = headerCopy.preview
+    ? `${headerCopy.heading} - ${headerCopy.preview}`
+    : headerCopy.heading;
 
   return (
     <CollapsibleTrigger
       className={cn(
-        "inline-flex max-w-full items-center gap-2 py-1.5 text-left",
+        "flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-background/80",
         className
       )}
       {...props}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="flex size-4 items-center justify-center shrink-0">
-          {createElement(Icon, { className: "size-4 text-muted-foreground" })}
-        </span>
-        {isFileWriteTool ? (
-          <>
-            <span className="hidden font-medium text-sm group-data-[state=open]/tool-row:inline">
-              {isComplete || isError ? "Edited file" : "Editing file"}
-            </span>
-            <div className="min-w-0 group-data-[state=open]/tool-row:hidden">
-              {renderHeaderContent()}
-            </div>
-          </>
-        ) : (
-          renderHeaderContent()
-        )}
-        {getStatusIcon(state)}
+      <span className="flex size-5 shrink-0 items-center justify-center">
+        {createElement(Icon, { className: "size-4 text-muted-foreground/70" })}
+      </span>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <p className="truncate text-[13px] leading-5 text-muted-foreground/70" title={displayText}>
+          <span className="text-foreground/85">{headerCopy.heading}</span>
+          {headerCopy.preview ? (
+            <span className="text-muted-foreground/55"> - {headerCopy.preview}</span>
+          ) : null}
+        </p>
       </div>
-      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] group-hover/tool-row:opacity-100 group-focus-within/tool-row:opacity-100 group-data-[state=open]:rotate-180" />
+      {diffStats ? <DiffStatsBadge added={diffStats.added} removed={diffStats.removed} /> : null}
+      {getStatusIcon(state)}
+      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground/65 opacity-0 transition-[opacity,transform] group-hover/tool-row:opacity-100 group-focus-within/tool-row:opacity-100 group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
   );
 };

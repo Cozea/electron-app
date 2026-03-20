@@ -4,10 +4,7 @@ import {
   ChevronDown,
   Code2,
   Globe,
-  Monitor,
   MousePointer2,
-  Smartphone,
-  Tablet,
 } from 'lucide-react'
 import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from 'react-icons/fa6'
 import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm, SiZedindustries } from 'react-icons/si'
@@ -32,15 +29,11 @@ import type {
   ExternalEditorId,
 } from '@shared/electronApiTypes'
 
-import { type PreviewDevice } from './types'
-
 interface ProjectPreviewToolbarProps {
   availableBrowsers: AvailableExternalBrowser[]
   availableEditors: AvailableExternalEditor[]
   defaultBrowserId: ExternalBrowserId
-  device: PreviewDevice
   inspectorEnabled: boolean
-  onDeviceChange: (device: PreviewDevice) => void
   onOpenCode: () => void
   onOpenExternally: () => void
   onSelectedEditorChange: (editorId: ExternalEditorId) => void
@@ -115,9 +108,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   availableBrowsers,
   availableEditors,
   defaultBrowserId,
-  device,
   inspectorEnabled,
-  onDeviceChange,
   onOpenCode,
   onOpenExternally,
   onSelectedEditorChange,
@@ -159,68 +150,6 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex items-center gap-2">
-        <div className="inline-flex h-7 min-w-0 items-center rounded-full border border-border/60 bg-secondary/70 p-0.5 shadow-none">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('desktop')}
-                aria-label="Desktop preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-l-full rounded-r-none bg-transparent px-2 shadow-none',
-                  device === 'desktop'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Monitor className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Desktop</TooltipContent>
-          </Tooltip>
-          <div className="h-4 w-px bg-border/60" aria-hidden />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('tablet')}
-                aria-label="Tablet preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-none bg-transparent px-2 shadow-none',
-                  device === 'tablet'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Tablet className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
-          </Tooltip>
-          <div className="h-4 w-px bg-border/60" aria-hidden />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDeviceChange('mobile')}
-                aria-label="Mobile preview"
-                className={cn(
-                  'relative h-6 min-w-8 rounded-l-none rounded-r-full bg-transparent px-2 shadow-none',
-                  device === 'mobile'
-                    ? 'bg-secondary/80 text-secondary-foreground hover:bg-secondary/80'
-                    : 'text-muted-foreground hover:bg-transparent hover:text-sidebar-foreground'
-                )}
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
-          </Tooltip>
-        </div>
-
         <div className="flex min-w-0 items-center gap-2">
           {serverRunning && useCredentiallessPreview ? (
             <Tooltip>

@@ -41,7 +41,7 @@ const TOOL_DIFF_VERTICAL_PADDING = 24
 /**
  * Extract diff data from tool input based on tool type
  */
-function extractDiffData(
+export function extractToolDiffData(
   toolName: string,
   input: Record<string, unknown>
 ): ToolDiffData | ToolDiffData[] | null {
@@ -112,7 +112,7 @@ function splitLines(input: string): string[] {
   return lines
 }
 
-function getLineDiffStats(original: string, modified: string): LineDiffStats {
+export function getToolLineDiffStats(original: string, modified: string): LineDiffStats {
   const oldLines = splitLines(original)
   const newLines = splitLines(modified)
 
@@ -174,12 +174,11 @@ interface DiffCardProps {
 
 function DiffCard({ diff, maxHeight }: DiffCardProps) {
   const stats = useMemo(
-    () => getLineDiffStats(diff.original, diff.modified),
+    () => getToolLineDiffStats(diff.original, diff.modified),
     [diff.modified, diff.original]
   )
 
   const hasStats = stats.added > 0 || stats.removed > 0
-  const fileName = getDisplayFileName(diff.filePath)
   const panelHeight = getAdaptivePanelHeight(diff, maxHeight)
   // Match the standard tool result/table surface color in AI messages.
   const panelSurface = 'var(--tool-surface)'
@@ -194,29 +193,6 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
       className="overflow-hidden rounded-2xl"
       style={cardStyle}
     >
-      <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-xs font-medium text-foreground/90">{fileName}</span>
-          {hasStats && (
-            <span className="inline-flex items-center gap-1 font-mono text-[10px] tabular-nums">
-              {stats.added > 0 ? <span className="text-emerald-400/70">+{stats.added}</span> : null}
-              {stats.removed > 0 ? <span className="text-red-400/70">-{stats.removed}</span> : null}
-            </span>
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-          title="Copy updated content"
-          onClick={() => {
-            void navigator.clipboard.writeText(diff.modified)
-          }}
-        >
-          <Copy className="h-3 w-3" />
-        </Button>
-      </div>
       <div
         className={cn('relative w-full')}
         style={{
@@ -224,10 +200,18 @@ function DiffCard({ diff, maxHeight }: DiffCardProps) {
           height: `${panelHeight}px`,
         }}
       >
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5"
-          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
-        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 z-10 size-4 shrink-0 p-0 text-muted-foreground/75 opacity-0 hover:bg-transparent hover:text-foreground group-hover:opacity-100"
+          title={hasStats ? `${getDisplayFileName(diff.filePath)} +${stats.added} -${stats.removed}` : 'Copy updated content'}
+          onClick={() => {
+            void navigator.clipboard.writeText(diff.modified)
+          }}
+        >
+          <Copy className="h-2 w-2" />
+        </Button>
         <CodeMirrorMergeViewer
           original={diff.original}
           modified={diff.modified}
@@ -261,7 +245,7 @@ export function ToolDiffOutput({
 }: ToolDiffOutputProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const diffData = useMemo(
-    () => extractDiffData(toolName, input),
+    () => extractToolDiffData(toolName, input),
     [toolName, input]
   )
 
@@ -279,7 +263,7 @@ export function ToolDiffOutput({
       <div className="space-y-2 px-2 pb-2">
         <div className="app-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
           {diffs.map((diff, index) => {
-            const stats = getLineDiffStats(diff.original, diff.modified)
+            const stats = getToolLineDiffStats(diff.original, diff.modified)
             const active = index === clampedIndex
             return (
               <button

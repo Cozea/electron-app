@@ -1794,9 +1794,7 @@ export function ProjectPagesPage() {
             availableBrowsers={availableBrowsers}
             availableEditors={availableEditors}
             defaultBrowserId={defaultBrowserId}
-            device={device}
             inspectorEnabled={inspectorEnabled}
-            onDeviceChange={setDevice}
             onOpenCode={() => {
                 if (previewRoute) {
                     void handleOpenCode(previewRoute.file)
@@ -1818,7 +1816,6 @@ export function ProjectPagesPage() {
         availableBrowsers,
         availableEditors,
         defaultBrowserId,
-        device,
         inspectorEnabled,
         previewEmbedBlocked,
         previewLoading,
@@ -1858,11 +1855,19 @@ export function ProjectPagesPage() {
             <ProjectPreviewRouteBar
                 currentRoute={previewRoute}
                 currentPath={currentPage?.route ?? previewRoute?.path ?? null}
+                device={device}
                 routes={routes}
+                onCycleDevice={() => {
+                    setDevice((current) => {
+                        if (current === 'desktop') return 'tablet'
+                        if (current === 'tablet') return 'mobile'
+                        return 'desktop'
+                    })
+                }}
                 onSelectRoute={(route) => handleSelectPreviewRoute(route.path)}
             />
         )
-    }, [currentPage?.route, handleSelectPreviewRoute, previewRoute, routes])
+    }, [currentPage?.route, device, handleSelectPreviewRoute, previewRoute, routes])
 
     useProjectHeader(
         null,

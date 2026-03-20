@@ -487,8 +487,6 @@ export function ToolPreviewBrowserOutput({
         ? JSON.stringify(payload.snapshot, null, 2)
         : null
 
-  const ActionIcon = actionMeta.icon
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyPayload)
@@ -506,37 +504,16 @@ export function ToolPreviewBrowserOutput({
         className
       )}
     >
-      <div className="flex min-h-8 items-center justify-between gap-2 px-3 py-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-medium dark:bg-white/[0.06]">
-            <ActionIcon className="h-3 w-3" />
-            {actionMeta.label}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[11px] text-muted-foreground">
-              {location.route}
-              {location.host ? (
-                <span className="ml-1 text-muted-foreground/70">@ {location.host}</span>
-              ) : null}
-            </p>
-          </div>
-        </div>
+      <div className="relative max-h-64 overflow-hidden px-3 pb-3 pt-2">
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+          className="absolute right-2 top-2 z-10 size-4 shrink-0 p-0 text-muted-foreground/75 opacity-0 transition-opacity hover:bg-transparent hover:text-foreground group-hover:opacity-100"
           onClick={() => void handleCopy()}
-          title="Copy preview data"
+          title={`Copy preview data for ${actionMeta.label.toLowerCase()} ${location.route}`}
         >
-          {isCopied ? <CheckIcon className="h-3 w-3" /> : <CopyIcon className="h-3 w-3" />}
+          {isCopied ? <CheckIcon className="h-2 w-2" /> : <CopyIcon className="h-2 w-2" />}
         </Button>
-      </div>
-
-      <div className="relative max-h-64 overflow-hidden px-3 pb-3 pt-2">
-        <div
-          className="pointer-events-none absolute inset-x-3 top-2 z-10 h-5"
-          style={{ background: 'linear-gradient(to bottom, var(--tool-surface), transparent)' }}
-        />
         <div className="app-scrollbar relative max-h-[236px] overflow-y-auto">
           <div className="space-y-3 pr-1">
             <div className="rounded-xl border border-border/40 bg-black/[0.02] px-3 py-2 dark:bg-white/[0.03]">
