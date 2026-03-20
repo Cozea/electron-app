@@ -10,11 +10,13 @@ interface ProjectHeaderOptions {
 export function useProjectHeader(
   header: ReactNode | null,
   breadcrumbAddon?: ReactNode | null,
+  centerAddon?: ReactNode | null,
   hideBreadcrumbs?: boolean,
   options?: ProjectHeaderOptions
 ) {
   const setHeader = useProjectHeaderStore((state) => state.setHeader)
   const setBreadcrumbAddon = useProjectHeaderStore((state) => state.setBreadcrumbAddon)
+  const setCenterAddon = useProjectHeaderStore((state) => state.setCenterAddon)
   const setHideBreadcrumbs = useProjectHeaderStore((state) => state.setHideBreadcrumbs)
   const setInsetLeft = useProjectHeaderStore((state) => state.setInsetLeft)
   const setInsetRight = useProjectHeaderStore((state) => state.setInsetRight)
@@ -22,6 +24,7 @@ export function useProjectHeader(
   useEffect(() => {
     setHeader(header ?? null)
     setBreadcrumbAddon(breadcrumbAddon ?? null)
+    setCenterAddon(centerAddon ?? null)
     setHideBreadcrumbs(Boolean(hideBreadcrumbs))
     setInsetLeft(options?.insetLeft ?? 0)
     setInsetRight(options?.insetRight ?? 0)
@@ -29,6 +32,7 @@ export function useProjectHeader(
     return () => {
       setHeader(null)
       setBreadcrumbAddon(null)
+      setCenterAddon(null)
       setHideBreadcrumbs(false)
       setInsetLeft(0)
       setInsetRight(0)
@@ -36,11 +40,13 @@ export function useProjectHeader(
   }, [
     header,
     breadcrumbAddon,
+    centerAddon,
     hideBreadcrumbs,
     options?.insetLeft,
     options?.insetRight,
     setHeader,
     setBreadcrumbAddon,
+    setCenterAddon,
     setHideBreadcrumbs,
     setInsetLeft,
     setInsetRight,

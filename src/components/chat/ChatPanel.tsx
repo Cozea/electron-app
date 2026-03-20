@@ -14,7 +14,7 @@ export function ChatPanel() {
         )}>
             <div className="h-10 shrink-0" aria-hidden="true" />
             <div className="h-14 bdry-b flex items-center justify-between px-4">
-                <span className="font-semibold">AI Chat</span>
+                <span className="text-xs font-normal">AI Chat</span>
             </div>
             <div className="flex-1 p-4">
                 Chat Content Here

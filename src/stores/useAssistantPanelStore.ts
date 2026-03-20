@@ -91,11 +91,11 @@ export const useAssistantPanelStore = create<AssistantPanelState>()(
 
       clearPendingAttachments: () => set({ pendingAttachments: [] }),
 
-      openWithScreenshot: (screenshot, prompt) => set({
-        mode: 'panel',
-        pendingAttachments: [screenshot],
-        pendingPrompt: prompt || null,
-      }),
+      openWithScreenshot: (screenshot, prompt) => set((state) => ({
+        mode: state.mode === 'closed' ? 'panel' : state.mode,
+        pendingAttachments: [...state.pendingAttachments, screenshot],
+        pendingPrompt: prompt ?? state.pendingPrompt,
+      })),
 
       requestClearChat: () => set((state) => ({
         triggerClearChat: state.triggerClearChat + 1,

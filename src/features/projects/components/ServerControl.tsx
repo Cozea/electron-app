@@ -38,6 +38,7 @@ const isProblemHeader = (line: string) =>
     /error:\s/i.test(line)
 
 const formatTerminalTabTitle = (label: string) => label
+const MAX_PORT_SCAN_ATTEMPTS = 20
 
 const getPersistedDevCommand = (projectPath: string): string | null => {
     const key = `dev-command:${encodeURIComponent(projectPath)}`
@@ -262,6 +263,43 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const isStartCancelled = useCallback((runId: string) => {
         return cancelledStartRunIdsRef.current.has(runId)
     }, [])
+
+    const findAvailableLaunchPort = useCallback(async (preferredPort: number, runId: string): Promise<number> => {
+        let candidatePort = preferredPort
+
+        for (let attempt = 0; attempt < MAX_PORT_SCAN_ATTEMPTS; attempt += 1) {
+            if (isStartCancelled(runId)) {
+                throw new Error('Dev server start cancelled')
+            }
+
+            const probe = await window.electronAPI.preview.probePort({
+                port: candidatePort,
+                timeoutMs: 250,
+            })
+
+            if (!probe.reachable) {
+                if (candidatePort !== preferredPort) {
+                    actions.addServerOutput(
+                        `[DevServer] Port ${preferredPort} is busy. Using ${candidatePort} instead.\n`
+                    )
+                    addTimelineEvent({
+                        runId,
+                        type: 'output',
+                        message: `Port ${preferredPort} busy; switched to ${candidatePort}`,
+                        details: {
+                            preferredPort,
+                            selectedPort: candidatePort,
+                        },
+                    })
+                }
+                return candidatePort
+            }
+
+            candidatePort += 1
+        }
+
+        throw new Error(`No available port found starting from ${preferredPort}`)
+    }, [actions, addTimelineEvent, isStartCancelled])
 
     const reportProblemsFromOutput = useCallback((data: string) => {
         if (!projectPath) return
@@ -551,6 +589,8 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             return
         }
 
+        const launchPort = await findAvailableLaunchPort(config.port, runId)
+
         const result = await window.electronAPI.terminal.create({
             projectPath: projectPathValue,
             profileId: isWindowsClient() ? 'cmd' : undefined,
@@ -558,7 +598,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             rows: 24,
             runId,
             env: {
-                PORT: String(config.port),
+                PORT: String(launchPort),
                 BROWSER: 'none',
             },
         })
@@ -579,7 +619,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         devServerLabelRef.current = config.label
         actions.beginServerRun(runId, command)
         actions.setServerStatus('starting')
-        actions.setServerPort(config.port)
+        actions.setServerPort(launchPort)
         actions.setPreviewReadiness({
             runId,
             reachable: false,
@@ -599,7 +639,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             runId,
             phase: 'starting',
             command,
-            port: config.port,
+            port: launchPort,
             nameSource: 'auto',
             title: formatTerminalTabTitle(config.label),
             status: 'starting',
@@ -614,7 +654,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             details: {
                 terminalId: result.terminalId,
                 command,
-                port: config.port,
+                port: launchPort,
             },
         })
 
@@ -628,7 +668,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             })
         }, 100)
 
-        void waitForServerPortReachability(runId, config.port, 'launch')
+        void waitForServerPortReachability(runId, launchPort, 'launch')
 
         const timeout = command.includes('install') ? 120000 : 15000
         clearReadyTimeout()
@@ -644,7 +684,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 markRunUnhealthy(timeoutMessage, 'server_unreachable', runId)
             }
         }, timeout)
-    }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, isStartCancelled, markRunUnhealthy, setPanelOpen, waitForServerPortReachability])
+    }, [actions, addTerminal, addTimelineEvent, clearReadyTimeout, findAvailableLaunchPort, isStartCancelled, markRunUnhealthy, setPanelOpen, waitForServerPortReachability])
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return

@@ -1,3 +1,9 @@
+import type {
+  AvailableExternalBrowserResult,
+  AvailableExternalEditor,
+  ExternalBrowserId,
+  ExternalEditorId,
+} from '../../shared/electronApiTypes'
 import type { IpcMain } from 'electron'
 
 interface ToolRunRequest {
@@ -18,6 +24,15 @@ interface RegisterCoreHandlersDeps {
   installUpdate: () => void
   setUpdateError: (message: string) => void
   openExternal: (url: string) => Promise<void>
+  listAvailableBrowsers: () => AvailableExternalBrowserResult
+  openInBrowser: (options: { url: string; browserId?: ExternalBrowserId }) => Promise<void>
+  listAvailableEditors: () => AvailableExternalEditor[]
+  openInEditor: (options: {
+    editorId: ExternalEditorId
+    filePath: string
+    line?: number
+    column?: number
+  }) => Promise<void>
   isWindowFullScreen: () => boolean
   openSettingsWindow: (route?: string) => Promise<{ success: boolean; error?: string }>
 }
@@ -65,6 +80,52 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
     await deps.openExternal(url)
     return { success: true }
   })
+
+  ipcMain.handle('shell:listAvailableBrowsers', () => {
+    return deps.listAvailableBrowsers()
+  })
+
+  ipcMain.handle(
+    'shell:openInBrowser',
+    async (_event, options: { url: string; browserId?: ExternalBrowserId }) => {
+      try {
+        await deps.openInBrowser(options)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+    }
+  )
+
+  ipcMain.handle('editor:listAvailableEditors', () => {
+    return deps.listAvailableEditors()
+  })
+
+  ipcMain.handle(
+    'editor:openInEditor',
+    async (
+      _event,
+      options: {
+        editorId: ExternalEditorId
+        filePath: string
+        line?: number
+        column?: number
+      }
+    ) => {
+      try {
+        await deps.openInEditor(options)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+    }
+  )
 
   ipcMain.handle('window:isFullScreen', () => {
     return deps.isWindowFullScreen()

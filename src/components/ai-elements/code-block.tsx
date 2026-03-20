@@ -110,11 +110,11 @@ export const CodeBlock = ({
       >
         <div className="relative">
           <div
-            className="app-scrollbar overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:whitespace-pre-wrap [&>pre]:break-all [&>pre]:bg-[var(--codeblock-surface,var(--background))]! [&>pre]:p-4 [&>pre]:text-[var(--codeblock-foreground,var(--foreground))]! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="app-scrollbar overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:whitespace-pre-wrap [&>pre]:break-all [&>pre]:bg-[var(--codeblock-surface,var(--background))]! [&>pre]:p-4 [&>pre]:text-[var(--codeblock-foreground,var(--foreground))]! [&>pre]:text-[13px] [&_code]:font-mono [&_code]:text-[13px]"
             dangerouslySetInnerHTML={{ __html: html }}
           />
           <div
-            className="app-scrollbar hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:whitespace-pre-wrap [&>pre]:break-all [&>pre]:bg-[var(--codeblock-surface,var(--background))]! [&>pre]:p-4 [&>pre]:text-[var(--codeblock-foreground,var(--foreground))]! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="app-scrollbar hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:whitespace-pre-wrap [&>pre]:break-all [&>pre]:bg-[var(--codeblock-surface,var(--background))]! [&>pre]:p-4 [&>pre]:text-[var(--codeblock-foreground,var(--foreground))]! [&>pre]:text-[13px] [&_code]:font-mono [&_code]:text-[13px]"
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />
           {children && (

@@ -44,7 +44,7 @@ import {
   IconSquare,
   IconX,
 } from '@tabler/icons-react'
-import { AlertTriangle, Brain, MousePointer2, Terminal } from 'lucide-react'
+import { AlertTriangle, Brain, Camera, Loader2, MousePointer2, Paperclip, Terminal } from 'lucide-react'
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -59,7 +59,7 @@ import {
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
 import { useAssistantPanelStore } from '@/stores/useAssistantPanelStore'
-import { usePageContextStore } from '@/stores/usePageContextStore'
+import { PREVIEW_SCREENSHOT_REQUEST_EVENT, usePageContextStore } from '@/stores/usePageContextStore'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import {
@@ -303,6 +303,7 @@ export function AIConversation({
     setCurrentConversationId,
   } = useAssistantPanelStore()
   const currentPage = usePageContextStore((state) => state.currentPage)
+  const previewScreenshot = usePageContextStore((state) => state.previewScreenshot)
   const inspectedElement = usePageContextStore((state) => state.inspectedElement)
   const { accessToken, convexUserId } = useAuth()
   const hasProjectContext = !!projectPath
@@ -445,6 +446,7 @@ export function AIConversation({
     [selectedModelCapabilities]
   )
   const supportsAttachments = attachmentSupport.images || attachmentSupport.pdf
+  const supportsImageAttachments = attachmentSupport.images
   const attachmentAccept = useMemo(
     () => getChatAttachmentAccept(attachmentSupport),
     [attachmentSupport]
@@ -455,6 +457,13 @@ export function AIConversation({
     attachments.forEach((attachment) => addPendingAttachment(attachment))
     setAttachmentError(buildAttachmentRejectionMessage(rejected, attachmentSupport) || null)
   }, [addPendingAttachment, attachmentSupport])
+  const canAttachFiles = supportsAttachments
+  const canCapturePreviewScreenshot = previewScreenshot.visible && supportsImageAttachments
+  const canOpenAttachmentMenu = canAttachFiles || canCapturePreviewScreenshot
+  const requestPreviewScreenshot = useCallback(() => {
+    if (!canCapturePreviewScreenshot || !previewScreenshot.enabled || previewScreenshot.capturing) return
+    window.dispatchEvent(new CustomEvent(PREVIEW_SCREENSHOT_REQUEST_EVENT))
+  }, [canCapturePreviewScreenshot, previewScreenshot.capturing, previewScreenshot.enabled])
   const supportedVariants = useMemo(
     () =>
       getSupportedVariantsForModel({
@@ -1796,7 +1805,7 @@ export function AIConversation({
             className={cn(
               uniqueMessages.length === 0
                 ? "h-full p-0"
-                : "w-full max-w-2xl mx-auto px-3 pt-4 pb-24"
+                : "w-full max-w-2xl mx-auto px-5 pt-4 pb-24"
             )}
           >
             {uniqueMessages.length === 0 ? (
@@ -1821,7 +1830,7 @@ export function AIConversation({
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader className="h-4 w-4" />
-                <span className="text-sm">Generating</span>
+                <span className="text-[13px]">Generating</span>
               </div>
             )}
 
@@ -1841,7 +1850,7 @@ export function AIConversation({
       >
         <div
           className={cn(
-            'bg-secondary rounded-2xl overflow-hidden transition-[background-color,box-shadow] duration-150',
+            'rounded-2xl border border-border/60 bg-secondary overflow-hidden transition-[background-color,box-shadow] duration-150',
             isDragActive && 'bg-secondary/90 ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
           )}
           onDragEnter={handleComposerDragEnter}
@@ -2002,7 +2011,7 @@ export function AIConversation({
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything"
-                className="w-full rounded-none border-0 bg-transparent p-0 text-sm leading-6 text-foreground placeholder:text-muted-foreground shadow-none outline-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-6 max-h-[25vh]"
+                className="w-full rounded-none border-0 bg-transparent p-0 text-[13px] leading-6 text-foreground placeholder:text-muted-foreground shadow-none outline-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-6 max-h-[25vh]"
                 rows={1}
                 onInput={(e) => {
                   resizeComposerTextarea(e.currentTarget)
@@ -2013,16 +2022,56 @@ export function AIConversation({
 
           <div className="mb-2 px-2 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 rounded-full border border-border hover:bg-accent"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!supportsAttachments}
-                title={supportsAttachments ? 'Attach files' : 'Attachments unavailable'}
-              >
-                <IconPlus className="size-3" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 rounded-full border border-border p-0 hover:bg-accent"
+                    disabled={!canOpenAttachmentMenu}
+                    title={canOpenAttachmentMenu ? 'Add attachment' : 'Attachments unavailable'}
+                  >
+                    <IconPlus className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  side="top"
+                  sideOffset={6}
+                  className="rounded-2xl border-border bg-popover p-1.5"
+                >
+                  <DropdownMenuGroup className="space-y-1">
+                    <DropdownMenuItem
+                      className="rounded-[calc(1rem-6px)] text-xs"
+                      disabled={!canAttachFiles}
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        fileInputRef.current?.click()
+                      }}
+                    >
+                      <Paperclip className="size-3.5 text-muted-foreground" />
+                      Attach files
+                    </DropdownMenuItem>
+                    {canCapturePreviewScreenshot ? (
+                      <DropdownMenuItem
+                        className="rounded-[calc(1rem-6px)] text-xs"
+                        disabled={!previewScreenshot.enabled || previewScreenshot.capturing}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          requestPreviewScreenshot()
+                        }}
+                      >
+                        {previewScreenshot.capturing ? (
+                          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Camera className="size-3.5 text-muted-foreground" />
+                        )}
+                        {previewScreenshot.capturing ? 'Capturing screenshot...' : 'Take screenshot'}
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {hasSelectableModel && (
                 <ModelSelector

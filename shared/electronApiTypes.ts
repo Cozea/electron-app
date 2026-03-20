@@ -428,6 +428,25 @@ export interface PreviewInspectorMutationResult {
   error?: string
 }
 
+export interface DiagnosticPublishItem {
+  source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  file?: string
+  line?: number
+  column?: number
+  endLine?: number
+  endColumn?: number
+  code?: string
+  related?: Array<{ message: string; file?: string; line?: number; column?: number }>
+}
+
+export interface DiagnosticPublishPayload {
+  projectPath: string
+  source: 'tsserver' | 'eslint' | 'runtime' | 'build'
+  diagnostics: DiagnosticPublishItem[]
+}
+
 export interface WatchProjectResult {
   success: boolean
   error?: string
@@ -933,6 +952,49 @@ export type ElectronWindowContext = 'main' | 'settings'
 
 export type AuthRefreshFailureReason = 'expired' | 'retryable' | 'missing_session'
 
+export type ExternalBrowserId =
+  | 'system'
+  | 'safari'
+  | 'chrome'
+  | 'arc'
+  | 'firefox'
+  | 'edge'
+  | 'brave'
+
+export interface AvailableExternalBrowser {
+  id: ExternalBrowserId
+  name: string
+}
+
+export interface AvailableExternalBrowserResult {
+  browsers: AvailableExternalBrowser[]
+  defaultBrowserId: ExternalBrowserId
+}
+
+export type ExternalEditorId =
+  | 'cozea'
+  | 'vscode'
+  | 'vscode-insiders'
+  | 'cursor'
+  | 'windsurf'
+  | 'vscodium'
+  | 'zed'
+  | 'antigravity'
+  | 'webstorm'
+  | 'intellij-idea'
+  | 'phpstorm'
+  | 'pycharm'
+  | 'rider'
+  | 'goland'
+  | 'rubymine'
+  | 'clion'
+  | 'datagrip'
+
+export interface AvailableExternalEditor {
+  id: ExternalEditorId
+  name: string
+}
+
 export type AuthRefreshResult =
   | {
       ok: true
@@ -1040,6 +1102,17 @@ export interface ElectronAPI {
   }
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean }>
+    listAvailableBrowsers: () => Promise<AvailableExternalBrowserResult>
+    openInBrowser: (options: { url: string; browserId?: ExternalBrowserId }) => Promise<{ success: boolean; error?: string }>
+  }
+  editor: {
+    listAvailableEditors: () => Promise<AvailableExternalEditor[]>
+    openInEditor: (options: {
+      editorId: ExternalEditorId
+      filePath: string
+      line?: number
+      column?: number
+    }) => Promise<{ success: boolean; error?: string }>
   }
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
@@ -1438,5 +1511,6 @@ export interface ElectronAPI {
         related?: Array<{ message: string; file?: string; line?: number; column?: number }>
       }>
     }>
+    onPublish: (callback: (payload: DiagnosticPublishPayload) => void) => () => void
   }
 }
