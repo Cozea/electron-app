@@ -43,13 +43,9 @@ import {
 } from "@/components/ui/sidebar"
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
-import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { ProjectSyncIndicator } from "./ProjectSyncIndicator"
 import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
 import { buildLegacyProjectPath, buildProjectPath } from "../lib/projectRoutes"
-
-// Placeholders / Components
-import { PagesList } from "./PagesList"
 
 // Types
 interface ProjectSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -77,7 +73,7 @@ const routeMap: Record<string, string> = {
     "Tasks": "tasks",
     // Platform group (with secondary panels)
     "Previews": "pages",
-    "Files": "",  // Default/index route shows file editor
+    "Files": "files",
     "Sync Feed": "changes",
     // Development group
     "Dependencies": "dependencies",
@@ -91,8 +87,9 @@ const routeMap: Record<string, string> = {
 function getActiveTabFromPathname(pathname: string, base: string | null): string | null {
     if (!base) return null
 
-    if (pathname === base || pathname === `${base}/`) return "Files"
+    if (pathname === base || pathname === `${base}/`) return "Previews"
     if (pathname === `${base}/pages` || pathname.startsWith(`${base}/pages/`)) return "Previews"
+    if (pathname === `${base}/files` || pathname.startsWith(`${base}/files/`)) return "Files"
     if (pathname === `${base}/tasks` || pathname.startsWith(`${base}/tasks/`)) return "Tasks"
     if (pathname === `${base}/changes` || pathname.startsWith(`${base}/changes/`)) return "Sync Feed"
     if (pathname === `${base}/dependencies` || pathname.startsWith(`${base}/dependencies/`)) return "Dependencies"
@@ -173,8 +170,6 @@ export function ProjectSidebar({
     const location = useLocation()
     const { convexUserId } = useAuth()
     const { preferredConvexOrganizationId } = useScopedAppContext()
-    const pagesListOpen = useProjectPagesStore((s) => s.pagesListOpen)
-    const setPagesListOpen = useProjectPagesStore((s) => s.actions.setPagesListOpen)
     const preloadedTabsRef = React.useRef<Set<string>>(new Set())
 
     const routeBasePath = React.useMemo(() => {
@@ -188,7 +183,6 @@ export function ProjectSidebar({
         [location.pathname, routeBasePath]
     )
     const isFilesRoute = routeActiveTab === "Files"
-    const isPagesRoute = routeActiveTab === "Previews"
     const isBackendStudioRoute = routeActiveTab === "Backend Studio"
 
     const preloadProjectTab = React.useCallback((tabTitle: string) => {
@@ -388,7 +382,6 @@ export function ProjectSidebar({
     }, [])
 
     const isFilesPanelActive = activeTab === 'Files' && isFilesRoute
-    const isPagesPanelActive = isPagesRoute && pagesListOpen
     const shouldDisableSecondarySidebarMotion =
         isFilesRoute ||
         isBackendStudioRoute ||
@@ -420,12 +413,11 @@ export function ProjectSidebar({
     }, [isFilesPanelActive, updateFileScrollFades])
 
     const isSecondarySidebarVisible =
-        (activeTab === "Files" && isFilesRoute) ||
-        (isPagesRoute && pagesListOpen)
+        activeTab === "Files" && isFilesRoute
 
     React.useEffect(() => {
         setFileScrollElement(fileScrollRef.current)
-    }, [isFilesPanelActive, isPagesPanelActive, isSecondarySidebarVisible])
+    }, [isFilesPanelActive, isSecondarySidebarVisible])
 
     const fileTreeElement = React.useMemo(() => {
         if (!React.isValidElement(fileTree)) return fileTree
@@ -443,22 +435,20 @@ export function ProjectSidebar({
     }, [isSecondarySidebarVisible, onSecondaryVisibilityChange])
 
     return (
-        <div className={cn("flex h-full titlebar-drag-region", className)}>
+        <div className={cn("flex h-full", className)}>
             {/* 1. Primary Icon Rail Sidebar */}
             <div style={{ "--sidebar-width": "14rem" } as React.CSSProperties} className="h-full">
                 <Sidebar
                     collapsible="icon"
-                    windowChromeAware
                     className="w-56 shrink-0 z-20 h-screen sidebar-glass"
                     {...props}
                 >
-                    <SidebarHeader className="titlebar-drag-region">
-                        <div className="titlebar-no-drag">
-                            <ContextSwitcher />
-                        </div>
+                    <div className="h-10 shrink-0" aria-hidden="true" />
+                    <SidebarHeader>
+                        <ContextSwitcher />
                     </SidebarHeader>
 
-                    <SidebarContent className="titlebar-no-drag">
+                    <SidebarContent>
                         {NAV_GROUPS.map((group) => (
                             <SidebarGroup key={group.title}>
                                 <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -494,10 +484,7 @@ export function ProjectSidebar({
                                                                 setLastSeenTimestamp(Date.now())
                                                             }
 
-                                                            if (item.title === 'Previews') {
-                                                                setActiveTab('Previews')
-                                                                setPagesListOpen(false) // Pages list closed by default when entering page view
-                                                            } else if (hasSecondaryPanel) {
+                                                            if (hasSecondaryPanel) {
                                                                 setActiveTab(isActive ? null : item.title)
                                                             } else {
                                                                 setActiveTab(item.title)
@@ -537,7 +524,7 @@ export function ProjectSidebar({
                         ))}
                     </SidebarContent>
 
-                    <SidebarFooter className="titlebar-no-drag mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
+                    <SidebarFooter className="mt-auto pb-4 group-data-[collapsible=icon]:pb-3">
                         <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
                             <ProjectSyncIndicator variant="sidebar" />
                         </div>
@@ -572,10 +559,11 @@ export function ProjectSidebar({
                             "--sidebar": "var(--left-sidebar-surface)",
                             "--sidebar-surface": "var(--left-sidebar-surface)",
                         } as React.CSSProperties}
-                        className="file-tree-panel-border shrink-0 h-full bg-sidebar flex-1 min-w-0 relative border-l border-border/55"
+                        className="file-tree-panel-border shrink-0 h-full bg-sidebar flex-1 min-w-0 relative border-r border-sidebar-border"
                     >
-                        <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9 titlebar-drag-region">
-                            <div className="ml-auto flex items-center gap-2 titlebar-no-drag">
+                        <div className="h-10 shrink-0" aria-hidden="true" />
+                        <SidebarHeader className="flex flex-row items-center justify-between px-3 h-9">
+                            <div className="ml-auto flex items-center gap-2">
                                 {activeTab === 'Files' && onCreateFile && (
                                     <button
                                         onClick={onCreateFile}
@@ -605,7 +593,7 @@ export function ProjectSidebar({
                                     </button>
                                 )}
                                 <button
-                                    onClick={() => isPagesRoute ? setPagesListOpen(false) : setActiveTab(null)}
+                                    onClick={() => setActiveTab(null)}
                                     className="h-6 w-6 text-secondary-foreground/60 hover:text-secondary-foreground flex items-center justify-center"
                                     aria-label="Close secondary sidebar"
                                 >
@@ -613,7 +601,7 @@ export function ProjectSidebar({
                                 </button>
                             </div>
                         </SidebarHeader>
-                        <SidebarContent className="titlebar-no-drag h-full overflow-hidden pt-2">
+                        <SidebarContent className="h-full overflow-hidden pt-2">
                             <div className="relative h-full">
                                 <div
                                     className={cn(
@@ -643,14 +631,6 @@ export function ProjectSidebar({
                                     />
                                 </div>
 
-                                <div
-                                    className={cn(
-                                        "absolute inset-0",
-                                        isPagesPanelActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-                                    )}
-                                >
-                                    {(activeTab === 'Previews' || isPagesRoute) && <PagesList />}
-                                </div>
                             </div>
                         </SidebarContent>
                     </Sidebar>

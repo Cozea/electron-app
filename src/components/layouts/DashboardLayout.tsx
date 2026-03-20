@@ -111,7 +111,6 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const sidebar = useOptionalSidebar()
   const closeAssistantPanel = useAssistantPanelStore((state) => state.close)
   const windowChrome = useWindowChrome()
   const windowsCaptionControlsWidth = useWindowsCaptionControlsWidth()
@@ -125,8 +124,6 @@ function DashboardLayoutContent({
       : breadcrumbAddon
   const showHeader = breadcrumbs.length > 0 || Boolean(header) || Boolean(effectiveBreadcrumbAddon)
   const contentTopInsetClassName = headerContentInsetClassName ?? "pt-16"
-  const areAllSidebarsCollapsed = sidebar?.state === "collapsed"
-
   useEffect(() => {
     // Assistant panel is project-scoped and should never be visible in dashboard layout routes.
     closeAssistantPanel()
@@ -212,7 +209,7 @@ function DashboardLayoutContent({
               breadcrumbs={breadcrumbs}
               header={header}
               breadcrumbAddon={effectiveBreadcrumbAddon}
-              leftWindowControlsInset={areAllSidebarsCollapsed}
+              leftWindowControlsInset
               hideInbox={hideInbox}
             />
             {contentMode === 'fixed' ? (

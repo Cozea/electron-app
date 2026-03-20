@@ -112,7 +112,6 @@ interface ProjectLayoutHeaderProps {
     preSearchAddon?: ReactNode
     rightAddon?: ReactNode
     className?: string
-    isSecondarySidebarVisible: boolean
     insetLeft?: number
     insetRight?: number
     compactHeaderActions?: boolean
@@ -129,15 +128,11 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
     preSearchAddon,
     rightAddon,
     className,
-    isSecondarySidebarVisible,
     insetLeft = 0,
     insetRight = 0,
     compactHeaderActions = true,
     projectInviteContext = null,
 }: ProjectLayoutHeaderProps) {
-    const sidebar = useOptionalSidebar()
-    const areAllSidebarsCollapsed = sidebar?.state === "collapsed" && !isSecondarySidebarVisible
-
     return (
         <UnifiedHeader
             breadcrumbs={breadcrumbs}
@@ -146,7 +141,7 @@ const ProjectLayoutHeader = memo(function ProjectLayoutHeader({
             preSearchAddon={preSearchAddon}
             rightAddon={rightAddon}
             className={className}
-            leftWindowControlsInset={areAllSidebarsCollapsed}
+            leftWindowControlsInset
             contentInsetLeft={insetLeft}
             contentInsetRight={insetRight}
             compactHeaderActions={compactHeaderActions}
@@ -667,7 +662,7 @@ export function ProjectLayout({
     const fileTreeRef = useRef<FileTreeHandle>(null)
     const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
-    const [isSecondarySidebarVisible, setIsSecondarySidebarVisible] = useState(true)
+    const [, setIsSecondarySidebarVisible] = useState(true)
 
     const fileTreeNode = useMemo(() => <FileTree ref={fileTreeRef} />, [])
 
@@ -709,7 +704,10 @@ export function ProjectLayout({
     const isDependenciesView = location.pathname.endsWith('/dependencies')
     const isChangesView = location.pathname.endsWith('/changes')
     const isFilesView = Boolean(
-        projectBasePath && (location.pathname === projectBasePath || location.pathname === `${projectBasePath}/`)
+        projectBasePath && (
+            location.pathname === `${projectBasePath}/files` ||
+            location.pathname.startsWith(`${projectBasePath}/files/`)
+        )
     )
     // Remove padding for Editor (has files), Pages, Studio, Dependencies, and Changes
     const shouldRemovePadding = hasOpenFiles || isPagesView || isBackendStudioView || isDependenciesView || isChangesView
@@ -950,34 +948,27 @@ export function ProjectLayout({
                     ) : null}
                     <SidebarInset
                         color="currentColor"
-                        className="flex flex-row flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
+                        className="flex flex-col flex-1 min-w-0 overflow-hidden md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none"
                     >
-                        <div
-                            className="relative flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden"
-                            style={{
-                                flex: isAnyPanelFullscreen ? '0 0 0' : '1 1 0',
-                                opacity: isAnyPanelFullscreen ? 0 : 1,
+                        <ProjectLayoutHeader
+                            breadcrumbs={breadcrumbs}
+                            header={headerSlot ?? undefined}
+                            breadcrumbAddon={breadcrumbAddon ?? undefined}
+                            preSearchAddon={presenceHeaderAddon ?? undefined}
+                            className={
+                                isWindowsClient
+                                    ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
+                                    : "bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40"
+                            }
+                            insetLeft={insetLeft}
+                            insetRight={insetRight}
+                            compactHeaderActions={!isFilesView}
+                            projectInviteContext={{
+                                projectId: project?._id ?? null,
+                                projectName: project?.name ?? null,
                             }}
-                        >
-                            <ProjectLayoutHeader
-                                breadcrumbs={breadcrumbs}
-                                header={headerSlot ?? undefined}
-                                breadcrumbAddon={breadcrumbAddon ?? undefined}
-                                preSearchAddon={presenceHeaderAddon ?? undefined}
-                                className={
-                                    isWindowsClient
-                                        ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
-                                        : "bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40"
-                                }
-                                isSecondarySidebarVisible={isSecondarySidebarVisible}
-                                insetLeft={insetLeft}
-                                insetRight={insetRight}
-                                compactHeaderActions={!isFilesView}
-                                projectInviteContext={{
-                                    projectId: project?._id ?? null,
-                                    projectName: project?.name ?? null,
-                                }}
-                            />
+                        />
+                        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
                             <div
                                 className={cn(
                                     // `min-w-0` prevents the main content from overflowing under the right panels
@@ -986,19 +977,25 @@ export function ProjectLayout({
                                     shouldRemovePadding ? "p-0" : "p-4",
                                     showHeader && "pt-10"
                                 )}
-                                style={undefined}
+                                style={{
+                                    flex: isAnyPanelFullscreen ? '0 0 0' : '1 1 0',
+                                    width: isAnyPanelFullscreen ? 0 : undefined,
+                                    minWidth: isAnyPanelFullscreen ? 0 : undefined,
+                                    opacity: isAnyPanelFullscreen ? 0 : 1,
+                                    pointerEvents: isAnyPanelFullscreen ? 'none' : 'auto',
+                                }}
                             >
                                 {children || <Outlet />}
                             </div>
+                            <ChatPanel />
+                            <AssistantPanel
+                                className="[--assistant-surface:var(--content-surface)]"
+                                projectPath={effectiveLocalPath ?? undefined}
+                                projectId={project?._id ?? null}
+                                projectName={project?.name}
+                                projectSlug={projectSlug}
+                            />
                         </div>
-                        <ChatPanel />
-                        <AssistantPanel
-                            className="[--assistant-surface:var(--content-surface)]"
-                            projectPath={effectiveLocalPath ?? undefined}
-                            projectId={project?._id ?? null}
-                            projectName={project?.name}
-                            projectSlug={projectSlug}
-                        />
                     </SidebarInset>
                 </div >
                 {isResolvingPath && hasSyncIdentities && (

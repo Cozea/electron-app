@@ -368,6 +368,14 @@ export interface PreviewProbeUrlResult {
   elapsedMs: number
 }
 
+export interface PreviewProbePortResult {
+  success: boolean
+  port: number
+  reachable: boolean
+  error?: string
+  elapsedMs: number
+}
+
 export interface PreviewCaptureScreenshotResult {
   success: boolean
   base64?: string
@@ -713,6 +721,7 @@ export interface TerminalCreateOptions {
   cols?: number
   rows?: number
   runId?: string
+  env?: Record<string, string>
 }
 
 export interface TerminalOutputEvent {
@@ -1061,6 +1070,7 @@ export interface ElectronAPI {
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
+    probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>
     probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
     captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
     captureVisibleRegion: (options: { x: number; y: number; width: number; height: number }) => Promise<PreviewCaptureScreenshotResult>

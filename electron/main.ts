@@ -30,6 +30,7 @@ import { registerSyncHandlers } from './ipc/registerSyncHandlers'
 import { loadSyncState } from './services/syncReplicaStore'
 
 import { DevServerService } from './services/DevServerService'
+import { PreviewSnapshotService } from './services/PreviewSnapshotService'
 
 // ============================================
 // Terminal Management (VS Code-style multi-terminal)
@@ -1028,6 +1029,7 @@ app.on('window-all-closed', () => {
 
   // Kill all DevServer background processes
   DevServerService.getInstance().killAll()
+  PreviewSnapshotService.getInstance().dispose()
 
   // Kill all terminal instances when app closes
   TerminalService.getInstance().killAll()
@@ -1039,6 +1041,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  PreviewSnapshotService.getInstance().dispose()
   disposeToolRuntime()
   stopUpdateChecks()
 })

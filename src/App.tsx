@@ -1,5 +1,4 @@
 import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
-import { Loader2 } from 'lucide-react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -67,9 +66,12 @@ const Onboarding = lazy(() =>
 function FullscreenLoading() {
   return (
     <div className="flex min-h-svh items-center justify-center bg-background">
-      <div className="flex items-center gap-3 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span>Loading your workspace...</span>
+      <div className="preview-loading-spinner" aria-label="Loading workspace" role="status">
+        <div className="preview-loading-spinner-square" />
+        <div className="preview-loading-spinner-square" />
+        <div className="preview-loading-spinner-square" />
+        <div className="preview-loading-spinner-square" />
+        <div className="preview-loading-spinner-square" />
       </div>
     </div>
   )

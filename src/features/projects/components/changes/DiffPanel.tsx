@@ -178,7 +178,6 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
   const [commentText, setCommentText] = useState('')
   const [isComposerFocused, setIsComposerFocused] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
   const [cachedChange, setCachedChange] = useState<ChangeWithContent | null>(null)
   const [activeFormats, setActiveFormats] = useState<ComposerFormatState>({
@@ -188,13 +187,11 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
     link: false,
   })
   const composerEditorRef = useRef<HTMLDivElement | null>(null)
-  const handleScrollStateChange = useCallback(({ atTop, atBottom }: { atTop: boolean; atBottom: boolean }) => {
-    setShowTopFade(!atTop)
+  const handleScrollStateChange = useCallback(({ atBottom }: { atTop: boolean; atBottom: boolean }) => {
     setShowBottomFade(!atBottom)
   }, [])
 
   useEffect(() => {
-    setShowTopFade(false)
     setShowBottomFade(true)
   }, [changeId])
 
@@ -483,8 +480,6 @@ export function DiffPanel({ changeId, onClose, showHeader = true }: DiffPanelPro
 
       {/* Diff Content */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
-        {/* Top fade gradient */}
-        <div className={`absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity ${showTopFade ? 'opacity-100' : 'opacity-0'}`} />
         {/* Bottom fade gradient */}
         <div className={`absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none transition-opacity ${showBottomFade ? 'opacity-100' : 'opacity-0'}`} />
         {displayedChange.oldContent === '' && displayedChange.newContent === '' ? (

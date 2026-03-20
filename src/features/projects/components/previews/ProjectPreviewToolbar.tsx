@@ -3,7 +3,8 @@ import {
   Camera,
   CheckCircle2,
   ChevronDown,
-  LayoutGrid,
+  ExternalLink,
+  FileText,
   Loader2,
   Monitor,
   MousePointer2,
@@ -33,12 +34,12 @@ const ZOOM_STEP_PERCENT = 25
 
 interface ProjectPreviewToolbarProps {
   device: PreviewDevice
-  focused: boolean
   inspectorEnabled: boolean
   isCapturingScreenshot: boolean
-  onBackToGrid: () => void
   onCaptureScreenshot: () => void
   onDeviceChange: (device: PreviewDevice) => void
+  onOpenCode: () => void
+  onOpenExternally: () => void
   onRefreshRoutes: () => void
   onRetryBridge: () => void
   onToggleInspector: () => void
@@ -56,12 +57,12 @@ function clampZoomPercent(value: number): number {
 
 export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   device,
-  focused,
   inspectorEnabled,
   isCapturingScreenshot,
-  onBackToGrid,
   onCaptureScreenshot,
   onDeviceChange,
+  onOpenCode,
+  onOpenExternally,
   onRefreshRoutes,
   onRetryBridge,
   onToggleInspector,
@@ -123,29 +124,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
   return (
     <TooltipProvider delayDuration={300}>
       <div ref={headerRef} className="flex items-center gap-2">
-        {focused ? (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onBackToGrid}
-                  className="h-7 gap-2 px-2"
-                >
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                  {toolbarDensity === 'full' ? <span className="text-xs">Grid</span> : null}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>Back to grid view</p>
-              </TooltipContent>
-            </Tooltip>
-            <div className="h-4 w-px bg-border/60" />
-          </>
-        ) : null}
-
-        {focused && toolbarDensity === 'full' ? (
+        {toolbarDensity === 'full' ? (
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Tooltip>
@@ -237,7 +216,7 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
           </div>
         ) : null}
 
-        {focused && toolbarDensity !== 'full' ? (
+        {toolbarDensity !== 'full' ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -387,8 +366,39 @@ export const ProjectPreviewToolbar = memo(function ProjectPreviewToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {focused && serverRunning ? (
+          {serverRunning ? (
             <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={onOpenCode}
+                  >
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in editor</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={onOpenExternally}
+                    disabled={previewEmbedBlocked}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {previewEmbedBlocked ? 'Preview blocked. Open externally unavailable.' : 'Open in new window'}
+                </TooltipContent>
+              </Tooltip>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

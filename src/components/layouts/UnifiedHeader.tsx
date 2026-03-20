@@ -1223,9 +1223,8 @@ export function UnifiedHeader({
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows && !isAssistantOpen
   const windowsCaptionSpacerWidth = useWindowsCaptionControlsWidth()
   const shouldApplyLeftWindowControlsInset = leftWindowControlsInset && windowChrome.isMac
-  const headerBackdropClassName = windowChrome.isWindows
-    ? "bg-background/60 backdrop-blur-md supports-[backdrop-filter]:bg-background/45"
-    : "bg-transparent backdrop-blur-md"
+  const headerSurfaceClassName = "border-b border-border/60 bg-background"
+  const macHeaderControlsBuffer = shouldApplyLeftWindowControlsInset ? 16 : 0
 
   const [visibleBreadcrumbStartIndex, setVisibleBreadcrumbStartIndex] = useState(0)
   const breadcrumbContainerRef = useRef<HTMLDivElement | null>(null)
@@ -1234,13 +1233,12 @@ export function UnifiedHeader({
   const breadcrumbAddonRef = useRef<HTMLDivElement | null>(null)
 
   const windowControlsInsetPadding = shouldApplyLeftWindowControlsInset
-    ? { paddingLeft: windowChrome.compactLeftInset }
-    : undefined
+    ? windowChrome.compactLeftInset
+    : 0
   const rightFrameInset = shouldShowWindowsCaptionSpacer ? 0 : contentInsetRight
-  const headerFrameStyle = {
-    ...windowControlsInsetPadding,
-    left: contentInsetLeft,
-    right: rightFrameInset,
+  const headerContentStyle = {
+    paddingLeft: contentInsetLeft + windowControlsInsetPadding + macHeaderControlsBuffer,
+    paddingRight: rightFrameInset,
   }
   const visibleBreadcrumbs = useMemo(
     () =>
@@ -1379,13 +1377,12 @@ export function UnifiedHeader({
     return (
       <div
         className={cn(
-          "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-2 titlebar-drag-region transition-[left,right,padding] duration-200 ease-out",
-          headerBackdropClassName,
+          "fixed top-0 left-0 right-0 z-40 h-10 flex items-center px-2 titlebar-drag-region transition-[padding] duration-200 ease-out",
+          headerSurfaceClassName,
           className
         )}
-        style={headerFrameStyle}
       >
-        <div className="flex items-center w-full gap-0.5">
+        <div className="flex items-center w-full gap-0.5" style={headerContentStyle}>
           <div className="flex items-center min-w-0 flex-1">
             {compactHeaderActions ? (
               <div className="shared-header-action-pills titlebar-no-drag inline-flex min-w-0 items-center">
@@ -1432,13 +1429,12 @@ export function UnifiedHeader({
   return (
     <div
       className={cn(
-        "absolute top-0 left-0 right-0 z-40 h-10 flex items-center px-4 titlebar-drag-region transition-[left,right,padding] duration-200 ease-out",
-        headerBackdropClassName,
+        "fixed top-0 left-0 right-0 z-40 h-10 flex items-center px-4 titlebar-drag-region transition-[padding] duration-200 ease-out",
+        headerSurfaceClassName,
         className
       )}
-      style={headerFrameStyle}
     >
-      <div className="flex items-center w-full gap-3">
+      <div className="flex items-center w-full gap-3" style={headerContentStyle}>
         <div
           ref={breadcrumbContainerRef}
           className="flex min-w-0 flex-1 items-center gap-2"

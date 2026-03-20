@@ -316,7 +316,8 @@ function Sidebar({
           data-slot="sidebar-inner"
           className={cn(
             "bg-sidebar flex h-full w-full flex-col relative group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:bdry group-data-[variant=floating]:bdry-sidebar",
-            side === "right" && "sidebar-fade-border sidebar-fade-border-left"
+            side === "left" && "border-r border-sidebar-border",
+            side === "right" && "border-l border-sidebar-border"
           )}
         >
           {windowChromeInset}

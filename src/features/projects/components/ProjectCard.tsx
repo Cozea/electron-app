@@ -84,7 +84,7 @@ function formatRelativeTime(timestamp: number): string {
 
 type SyncState = 'idle' | 'checking' | 'syncing' | 'ready' | 'error'
 
-const preloadProjectDetailPage = () => import('@/features/projects/pages/ProjectDetailPage')
+const preloadProjectPagesPage = () => import('@/features/projects/pages/ProjectPagesPage')
 const preloadNewProjectPage = () => import('@/pages/NewProject')
 
 export const ProjectCard = memo(function ProjectCard({ project, userId, workspaceScoped }: ProjectCardProps) {
@@ -134,7 +134,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
       void preloadNewProjectPage()
       return
         }
-        void preloadProjectDetailPage()
+        void preloadProjectPagesPage()
     }, [project.status])
 
     const handleCardClick = useCallback(async () => {
@@ -198,7 +198,7 @@ export const ProjectCard = memo(function ProjectCard({ project, userId, workspac
             setSyncErrorActionLabel(null)
 
             setTimeout(() => {
-                navigate(buildProjectPath(String(project._id)), {
+                navigate(buildProjectPath(String(project._id), 'pages'), {
                     state: {
                         projectId: String(project._id),
                         projectSlug: project.slug,

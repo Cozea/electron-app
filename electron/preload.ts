@@ -207,6 +207,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),
+    probePort: (options: { port: number; timeoutMs?: number }) => ipcRenderer.invoke('preview:probePort', options),
     probeUrl: (options: { url: string; timeoutMs?: number }) => ipcRenderer.invoke('preview:probeUrl', options),
     captureScreenshot: (options: { url: string; width?: number; height?: number }) =>
       ipcRenderer.invoke('preview:captureScreenshot', options),
@@ -551,7 +552,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   terminal: {
-    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string }) =>
+    create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string> }) =>
       ipcRenderer.invoke('terminal:create', options),
     input: (options: { terminalId: string; data: string }) =>
       ipcRenderer.invoke('terminal:input', options),

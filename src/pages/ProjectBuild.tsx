@@ -994,7 +994,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
     }
 
     // Navigate to the project page (same as clicking a project card)
-    navigate(buildProjectPath(String(project._id)))
+    navigate(buildProjectPath(String(project._id), 'pages'))
   }
 
   const handleCancelProject = useCallback(() => {

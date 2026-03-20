@@ -100,9 +100,6 @@ interface ProjectPagesState {
     consolePanelHeight: number
     serverOutput: string[]
     latestDomSnapshot: string | null
-    /** When on the page view, whether the left Pages list panel is open. Default false so it stays closed. */
-    pagesListOpen: boolean
-
     actions: {
         setRoutes: (routes: PageRoute[]) => void
         setServerStatus: (status: ServerStatus) => void
@@ -119,8 +116,6 @@ interface ProjectPagesState {
         resetConsolePanelHeight: () => void
         addServerOutput: (line: string) => void
         clearServerOutput: () => void
-        setPagesListOpen: (open: boolean) => void
-        togglePagesListOpen: () => void
     }
 }
 
@@ -137,8 +132,6 @@ export const useProjectPagesStore = create<ProjectPagesState>()(
             consolePanelHeight: DEFAULT_PANEL_HEIGHT,
             serverOutput: [],
             latestDomSnapshot: null,
-            pagesListOpen: false,
-
             actions: {
                 setRoutes: (routes) => set({ routes }),
                 setServerStatus: (status) => set({ serverStatus: status }),
@@ -201,8 +194,6 @@ export const useProjectPagesStore = create<ProjectPagesState>()(
                     serverOutput: [...state.serverOutput, line].slice(-1000) // Keep last 1000 lines
                 })),
                 clearServerOutput: () => set({ serverOutput: [] }),
-                setPagesListOpen: (open) => set({ pagesListOpen: open }),
-                togglePagesListOpen: () => set((s) => ({ pagesListOpen: !s.pagesListOpen })),
             }
         }),
         {

@@ -59,7 +59,7 @@ export function ProjectJoinPage() {
         token,
         userId: convexUserId,
       })
-      navigate(buildProjectPath(String(result.projectId)), { replace: true })
+      navigate(buildProjectPath(String(result.projectId), 'pages'), { replace: true })
     } catch (error) {
       setJoinError(cleanConvexError(error, "Unable to join this project."))
     } finally {

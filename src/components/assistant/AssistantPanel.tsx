@@ -159,6 +159,8 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
         transition: isDragging ? 'none' : undefined,
       }}
     >
+      <div className="h-10 shrink-0" aria-hidden="true" />
+
       {/* Resize Handle - only when not fullscreen */}
       {isOpen && !isFullscreen && (
         <div
@@ -178,7 +180,7 @@ export function AssistantPanel({ className, projectPath, projectId, projectName,
 
       {/* Inner container to prevent content squishing during animation */}
       <div
-        className="flex flex-col h-full min-w-0"
+        className="flex min-h-0 flex-1 flex-col min-w-0"
         style={{
           width: '100%',
           minWidth: 0,

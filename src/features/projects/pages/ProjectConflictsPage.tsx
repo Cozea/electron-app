@@ -157,7 +157,7 @@ export function ProjectConflictsPage() {
       }
 
       if (resolveResult.mergeCompleted && projectId) {
-        navigate(buildProjectPath(projectId), { replace: true })
+        navigate(buildProjectPath(projectId, 'pages'), { replace: true })
         return
       }
 
@@ -167,7 +167,7 @@ export function ProjectConflictsPage() {
 
       if (nextPaths.length === 0) {
         if (projectId) {
-          navigate(buildProjectPath(projectId), { replace: true })
+          navigate(buildProjectPath(projectId, 'pages'), { replace: true })
         }
         return
       }

@@ -1273,6 +1273,7 @@ export function VisualEditorSidebar({
  transition: !isDragging ? 'width 250ms ease-out' : 'none',
  }}
  >
+ <div className="h-10 shrink-0" aria-hidden="true" />
  <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as EditorTab)} className="flex-1 flex flex-col overflow-hidden">
  {/* Header */}
  <div className="flex items-center gap-2 h-9 px-2 shrink-0">
