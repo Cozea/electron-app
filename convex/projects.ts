@@ -9,6 +9,7 @@ import {
   normalizeProjectInviteEmail,
   PERSONAL_WORKSPACE_PREFIX,
 } from "./lib/projectSharing"
+import { getDefaultVersionControlSetupMode } from "../shared/versionControl"
 import {
   canAccessProjectByWorkspaceOrMembership,
   canArchiveProjectByWorkspaceOrMembership,
@@ -17,6 +18,11 @@ import {
   hasWorkspaceProjectPermission,
 } from "./lib/workspaceProjectAccess"
 import { applyProjectStorageDeltas, ensureProjectStorageUsage } from "./lib/workspaceLimits"
+import {
+  buildProjectRepositoryBindingRecord,
+  findWorkspaceConnectionByProvider,
+  upsertProjectRepositoryBindingDocument,
+} from "./sourceControl"
 
 const AI_GATEWAY_SECRET = process.env.AI_GATEWAY_SECRET
 
@@ -80,11 +86,15 @@ function stripDotGitSuffix(value: string): string {
 function parseRepositoryPathFromUrl(repoUrl: string): { owner: string; name: string } | null {
   const normalized = normalizeRepoUrl(repoUrl)
 
-  const sshMatch = normalized.match(/^(?:git@|ssh:\/\/git@)([^:/]+)[:/]([^/]+)\/(.+?)(?:\.git)?$/i)
+  const sshMatch = normalized.match(/^(?:git@|ssh:\/\/git@)[^:/]+[:/](.+?)(?:\.git)?$/i)
   if (sshMatch) {
+    const segments = stripDotGitSuffix(sshMatch[1]).split("/").filter(Boolean)
+    if (segments.length < 2) {
+      return null
+    }
     return {
-      owner: sshMatch[2],
-      name: stripDotGitSuffix(sshMatch[3]),
+      owner: segments.slice(0, -1).join("/"),
+      name: segments[segments.length - 1],
     }
   }
 
@@ -94,7 +104,7 @@ function parseRepositoryPathFromUrl(repoUrl: string): { owner: string; name: str
     if (segments.length < 2) return null
 
     return {
-      owner: segments[segments.length - 2],
+      owner: segments.slice(0, -1).join("/"),
       name: stripDotGitSuffix(segments[segments.length - 1]),
     }
   } catch {
@@ -317,9 +327,19 @@ export const create = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
 
@@ -425,11 +445,27 @@ export const create = mutation({
     // For prompt/fresh, start as draft until AI generates/builds
     const initialStatus = args.creationPath === 'repo' ? 'active' : 'draft'
 
+    const organization = await ctx.db.get(args.organizationId)
+    if (!organization) {
+      throw new Error("Organization not found")
+    }
+
+    const defaultSetupMode = getDefaultVersionControlSetupMode(
+      organization.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX)
+    )
+
+    const normalizedSourceControl = args.sourceControl
+      ? {
+          ...args.sourceControl,
+          setupMode: args.sourceControl.setupMode ?? defaultSetupMode,
+        }
+      : undefined
+
     // Create project with all fields
     const gitRepository = buildGitRepositoryMetadata({
-      provider: args.repoSource?.provider ?? args.sourceControl?.provider,
-      repoUrl: args.repoSource?.repoUrl ?? args.sourceControl?.repoUrl,
-      defaultBranch: args.repoSource?.branch,
+      provider: args.repoSource?.provider ?? normalizedSourceControl?.provider,
+      repoUrl: args.repoSource?.repoUrl ?? normalizedSourceControl?.repoUrl,
+      defaultBranch: args.repoSource?.branch ?? normalizedSourceControl?.defaultBranch,
     })
 
     const syncMode: ProjectSyncMode = "git"
@@ -448,7 +484,7 @@ export const create = mutation({
         frameworkClass: "web-framework",
       },
       stack: args.stack,
-      sourceControl: args.sourceControl,
+      sourceControl: normalizedSourceControl,
       syncMode,
       gitRepository,
       gitSyncState: {
@@ -470,6 +506,39 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     })
+
+    const automatedProvider =
+      gitRepository?.provider === "github" || gitRepository?.provider === "gitlab"
+        ? gitRepository.provider
+        : normalizedSourceControl?.provider === "github" ||
+            normalizedSourceControl?.provider === "gitlab"
+          ? normalizedSourceControl.provider
+          : undefined
+      const workspaceConnection =
+        automatedProvider
+          ? await findWorkspaceConnectionByProvider(
+              ctx,
+              args.organizationId,
+              automatedProvider,
+              args.userId
+            )
+          : null
+
+      await upsertProjectRepositoryBindingDocument({
+        ctx,
+      binding: buildProjectRepositoryBindingRecord({
+        projectId,
+        organizationId: args.organizationId,
+          sourceControl: normalizedSourceControl,
+          gitRepository,
+          defaultSetupMode,
+          workspaceConnectionId:
+            workspaceConnection?.scopeType === "workspace"
+              ? workspaceConnection._id
+              : undefined,
+          now,
+        }),
+      })
 
     // Add creator as project manager
     // For local folder imports, also set the localPath so sync knows where files are
@@ -1282,9 +1351,19 @@ export const update = mutation({
       v.object({
         provider: v.optional(v.string()),
         repoUrl: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()),
         mergeStrategy: v.optional(v.string()),
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
     visuals: v.optional(
@@ -1370,7 +1449,56 @@ export const update = mutation({
     if (args.targetPlatform !== undefined) updates.targetPlatform = args.targetPlatform
     if (args.buildContract !== undefined) updates.buildContract = args.buildContract
     if (args.stack !== undefined) updates.stack = { ...project.stack, ...args.stack }
-    if (args.sourceControl !== undefined) updates.sourceControl = { ...project.sourceControl, ...args.sourceControl }
+    if (args.sourceControl !== undefined) {
+      const nextSourceControl = { ...project.sourceControl, ...args.sourceControl }
+      const nextGitRepository =
+        buildGitRepositoryMetadata({
+          provider: nextSourceControl.provider,
+          repoUrl: nextSourceControl.repoUrl,
+          defaultBranch:
+            nextSourceControl.defaultBranch ??
+            project.gitRepository?.defaultBranch ??
+            "main",
+        }) ?? undefined
+      updates.sourceControl = nextSourceControl
+      updates.gitRepository = nextGitRepository
+
+      const organization = await ctx.db.get(project.organizationId)
+      const defaultSetupMode = getDefaultVersionControlSetupMode(
+        Boolean(organization?.workosId.startsWith(PERSONAL_WORKSPACE_PREFIX))
+      )
+      const automatedProvider =
+        nextGitRepository?.provider === "github" || nextGitRepository?.provider === "gitlab"
+          ? nextGitRepository.provider
+          : nextSourceControl.provider === "github" || nextSourceControl.provider === "gitlab"
+            ? nextSourceControl.provider
+            : undefined
+      const workspaceConnection =
+        automatedProvider
+          ? await findWorkspaceConnectionByProvider(
+              ctx,
+              project.organizationId,
+              automatedProvider,
+              args.userId
+            )
+          : null
+
+      await upsertProjectRepositoryBindingDocument({
+        ctx,
+        binding: buildProjectRepositoryBindingRecord({
+          projectId: project._id,
+          organizationId: project.organizationId,
+          sourceControl: nextSourceControl,
+          gitRepository: nextGitRepository,
+          defaultSetupMode,
+          workspaceConnectionId:
+            workspaceConnection?.scopeType === "workspace"
+              ? workspaceConnection._id
+              : undefined,
+          now,
+        }),
+      })
+    }
     if (args.visuals !== undefined) updates.visuals = { ...project.visuals, ...args.visuals }
     if (args.originalPrompt !== undefined) updates.originalPrompt = args.originalPrompt
     if (args.promptSettings !== undefined) updates.promptSettings = args.promptSettings
@@ -1379,6 +1507,45 @@ export const update = mutation({
     await ctx.db.patch(args.projectId, updates)
 
     return await ctx.db.get(args.projectId)
+  },
+})
+
+export const updateFrameworkInfo = mutation({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    frameworkInfo: v.object({
+      framework: v.string(),
+      displayName: v.optional(v.string()),
+      routeConvention: v.optional(v.string()),
+      devCommand: v.optional(v.string()),
+      devPort: v.optional(v.number()),
+      buildCommand: v.optional(v.string()),
+      startCommand: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project) throw new Error("Project not found")
+
+    const canEdit = await canEditProjectByWorkspaceOrMembership(
+      ctx,
+      args.projectId,
+      args.userId
+    )
+    if (!canEdit) {
+      throw new Error("Unauthorized to update project framework info")
+    }
+
+    await ctx.db.patch(args.projectId, {
+      frameworkInfo: {
+        ...(project.frameworkInfo ?? {}),
+        ...args.frameworkInfo,
+      },
+      updatedAt: Date.now(),
+    })
+
+    return { success: true }
   },
 })
 

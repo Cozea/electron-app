@@ -1,8 +1,13 @@
 import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
+import {
+  resolveEffectiveProjectGitBranch,
+  resolveProjectGitRemoteConfig,
+  resolveProjectGitSyncPolicy,
+  type ProjectGitRuntimeSourceControlLike,
+} from '@/lib/git/projectGitRuntime'
 
 interface GitSyncMetadataResult {
   projectId: Id<'projects'>
@@ -21,15 +26,8 @@ interface GitSyncMetadataResult {
     lastPushAt?: number
     errorMessage?: string
   } | null
-  sourceControl?: {
-    provider?: string
-    repoUrl?: string | null
-  } | null
+  sourceControl?: ProjectGitRuntimeSourceControlLike | null
   updatedAt: number
-}
-
-interface GitAuthPayload {
-  accessToken?: string
 }
 
 interface GitDurabilityCoordinatorOptions {
@@ -46,20 +44,6 @@ const RETRY_MAX_DELAY_MS = 60000
 
 function buildCoordinatorKey(options: GitDurabilityCoordinatorOptions): string {
   return `${options.projectId}:${options.userId}:${options.projectPath}`
-}
-
-function resolveRepoBranch(metadata: GitSyncMetadataResult): string {
-  return metadata.gitRepository?.defaultBranch?.trim() || 'main'
-}
-
-async function resolveGitAuthPayload(): Promise<GitAuthPayload> {
-  try {
-    const session = await window.electronAPI.auth.getSession()
-    return { accessToken: session?.accessToken }
-  } catch (error) {
-    console.warn('[GitDurabilityCoordinator] Failed to resolve Cozea Git session:', error)
-    return {}
-  }
 }
 
 export class GitDurabilityCoordinator {
@@ -152,7 +136,7 @@ export class GitDurabilityCoordinator {
     this.scheduleFlush(DEFAULT_DEBOUNCE_MS)
   }
 
-  async flushNow(): Promise<void> {
+  async flushNow(force = false): Promise<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer)
       this.flushTimer = null
@@ -168,10 +152,23 @@ export class GitDurabilityCoordinator {
       return
     }
 
+    const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
+      projectId: this.projectId,
+      userId: this.userId,
+    }) as GitSyncMetadataResult | null
+
+    if (!metadata || metadata.syncMode !== 'git') {
+      return
+    }
+
+    if (!force && resolveProjectGitSyncPolicy(metadata.sourceControl) === 'manual') {
+      return
+    }
+
     const reasons = Array.from(this.pendingReasons)
     this.pendingReasons.clear()
 
-    this.flushInFlight = this.runSync(reasons)
+    this.flushInFlight = this.runSync(reasons, metadata)
       .catch((error) => {
         const message = error instanceof Error ? error.message : 'Git durability sync failed'
         console.warn('[GitDurabilityCoordinator] Sync failed:', {
@@ -209,20 +206,31 @@ export class GitDurabilityCoordinator {
     }, delayMs)
   }
 
-  private async runSync(reasons: string[]): Promise<void> {
-    const metadata = await this.convex.query(api.projects.getGitSyncMetadata, {
-      projectId: this.projectId,
+  private async runSync(
+    reasons: string[],
+    metadata: GitSyncMetadataResult
+  ): Promise<void> {
+    const {
+      branch: configuredBranch,
+      repoUrl,
+      provider,
+      accessToken,
+      usesExistingRemote,
+    } = await resolveProjectGitRemoteConfig({
+      convex: this.convex,
+      project: metadata,
       userId: this.userId,
-    }) as GitSyncMetadataResult | null
+    })
 
-    if (!metadata || metadata.syncMode !== 'git') {
+    if (!repoUrl && !usesExistingRemote) {
       return
     }
 
-    const repoUrl = buildCozeaGitRemoteUrl(String(metadata.projectId))
-    const branch = resolveRepoBranch(metadata)
-    const auth = await resolveGitAuthPayload()
-    const extraHeader = buildCozeaGitAuthHeader(auth.accessToken)
+    const branch = await resolveEffectiveProjectGitBranch({
+      projectPath: this.projectPath,
+      fallbackBranch: configuredBranch,
+      usesExistingRemote,
+    })
 
     const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
       projectPath: this.projectPath,
@@ -241,13 +249,13 @@ export class GitDurabilityCoordinator {
       throw new Error(status.error || 'Failed to read git status')
     }
     if (status.hasConflicts) {
-      throw new Error('Local git conflicts must be resolved before Cozea can sync changes.')
+      throw new Error('Local git conflicts must be resolved before automatic sync can continue.')
     }
 
     if (status.hasStagedChanges || status.hasUnstagedChanges || status.hasUntrackedChanges) {
       const commitResult = await window.electronAPI.sync.gitCommitAll({
         projectPath: this.projectPath,
-        message: 'cozea: sync workspace',
+        message: 'auto: sync workspace',
       })
       if (!commitResult.success) {
         throw new Error(commitResult.error || 'Failed to create automatic git sync commit')
@@ -258,7 +266,8 @@ export class GitDurabilityCoordinator {
       projectPath: this.projectPath,
       branch,
       repoUrl,
-      extraHeader,
+      provider,
+      accessToken,
     })
     if (!fetchResult.success) {
       throw new Error(fetchResult.error || 'Failed to fetch latest remote git state')
@@ -272,7 +281,7 @@ export class GitDurabilityCoordinator {
       throw new Error(status.error || 'Failed to verify git status after fetch')
     }
     if (status.hasConflicts) {
-      throw new Error('Local git conflicts must be resolved before Cozea can sync changes.')
+      throw new Error('Local git conflicts must be resolved before automatic sync can continue.')
     }
 
     if (status.behind && status.behind > 0) {
@@ -281,13 +290,14 @@ export class GitDurabilityCoordinator {
         branch,
         repoUrl,
         strategy: 'merge',
-        extraHeader,
+        provider,
+        accessToken,
       })
       if (!pullResult.success) {
         throw new Error(pullResult.error || 'Failed to pull latest remote git state')
       }
       if (pullResult.hadConflicts) {
-        throw new Error('Git merge conflicts must be resolved before Cozea can continue syncing.')
+        throw new Error('Git merge conflicts must be resolved before automatic sync can continue.')
       }
     }
 
@@ -299,7 +309,7 @@ export class GitDurabilityCoordinator {
       throw new Error(status.error || 'Failed to verify git status after pull')
     }
     if (status.hasConflicts) {
-      throw new Error('Git merge conflicts must be resolved before Cozea can continue syncing.')
+      throw new Error('Git merge conflicts must be resolved before automatic sync can continue.')
     }
 
     if (status.ahead && status.ahead > 0) {
@@ -307,7 +317,8 @@ export class GitDurabilityCoordinator {
         projectPath: this.projectPath,
         branch,
         repoUrl,
-        extraHeader,
+        provider,
+        accessToken,
       })
       if (!pushResult.success) {
         throw new Error(pushResult.error || 'Failed to push latest project changes')

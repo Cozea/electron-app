@@ -20,8 +20,8 @@ export interface DependencySnapshot {
 
 export interface DependencyJob {
   id: string
-  action: 'add' | 'update' | 'remove'
-  packageName: string
+  action: 'install' | 'add' | 'update' | 'remove'
+  packageName?: string
   status: 'running' | 'success' | 'error'
   startedAt: number
   finishedAt?: number

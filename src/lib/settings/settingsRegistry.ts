@@ -3,6 +3,7 @@ import {
   Cloud,
   CreditCard,
   FileText,
+  FolderGit2,
   HardDrive,
   Lock,
   Palette,
@@ -34,6 +35,7 @@ const preloadStoragePage = async () => {
   const module = await import("@/pages/settings/Storage")
   await module.prewarmStorageSettings?.()
 }
+const preloadSourceControlPage = () => import("@/pages/workspace/SourceControl")
 const preloadCliToolsPage = () => import("@/pages/workspace/Integrations")
 const preloadToolingPage = async () => {
   const module = await import("@/pages/settings/Tooling")
@@ -112,6 +114,21 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     placements: ["drawer", "command", "settingsWindow"],
     preload: preloadStoragePage,
     commandKeywords: ["storage", "disk", "local files"],
+  },
+  {
+    id: "sourceControl",
+    label: "Source Control",
+    icon: FolderGit2,
+    routes: {
+      personal: "/settings/source-control",
+      workspace: "/workspace/source-control",
+    },
+    storageMode: { personal: "cloud", workspace: "cloud" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { workspace: "workspace" },
+    workspaceAccessKey: "settings",
+    preload: preloadSourceControlPage,
+    commandKeywords: ["source control", "git", "github", "gitlab", "repository", "repos"],
   },
   {
     id: "cliTools",

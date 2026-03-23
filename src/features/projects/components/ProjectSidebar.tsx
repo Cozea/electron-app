@@ -17,6 +17,7 @@ import {
     Server,
     Settings,
     Users,
+    ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -29,11 +30,15 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarMenuSub,
+    SidebarMenuSubButton,
+    SidebarMenuSubItem,
     SidebarGroup,
     SidebarGroupLabel,
     SidebarGroupContent,
     SidebarRail,
 } from "@/components/ui/sidebar"
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/context-switcher"
 import { getSyncFeedLastSeen, markSyncFeedAsSeen } from "../syncFeedSeen"
@@ -99,7 +104,7 @@ const projectRoutePreloaders: Record<string, () => Promise<unknown>> = {
 
 const NAV_GROUPS = [
     {
-        title: "Project",
+        title: "Tasks",
         items: [
             { title: "Tasks", icon: ListTodo }
         ]
@@ -168,6 +173,7 @@ export function ProjectSidebar({
 
     // Top-level active selection (e.g. "Files", "Tasks")
     const [activeTab, setActiveTab] = React.useState<string | null>(routeActiveTab)
+    const [tasksExpanded, setTasksExpanded] = React.useState(true)
 
     // Keep rail selection in sync with route.
     React.useEffect(() => {
@@ -234,6 +240,21 @@ export function ProjectSidebar({
             lastSeenTimestamp,
         } : 'skip'
     )
+    const projectTasks = useQuery(
+        api.projectTasks.listForProject,
+        resolvedProjectId && convexUserId
+            ? {
+                projectId: resolvedProjectId,
+                viewerUserId: convexUserId,
+            }
+            : 'skip'
+    )
+    const sidebarTaskItems = React.useMemo(() => {
+        const tasks = projectTasks ?? []
+        return tasks
+            .filter((task) => task.status !== 'done')
+            .slice(0, 6)
+    }, [projectTasks])
 
     return (
         <div className={cn("flex h-full", className)}>
@@ -272,15 +293,18 @@ export function ProjectSidebar({
                                                 const isSyncFeed = item.title === 'Sync Feed'
                                                 const showUnreadBadge = isSyncFeed && unreadCount !== undefined && unreadCount > 0
 
-                                                return (
-                                                    <SidebarMenuItem key={item.title}>
-                                                        <SidebarMenuButton
-                                                            tooltip={item.title}
-                                                            isActive={isActive}
-                                                            onMouseEnter={() => preloadProjectTab(item.title)}
+                                            return (
+                                                <SidebarMenuItem key={item.title}>
+                                                    <SidebarMenuButton
+                                                        tooltip={item.title}
+                                                        isActive={isActive}
+                                                        onMouseEnter={() => preloadProjectTab(item.title)}
                                                             onFocus={() => preloadProjectTab(item.title)}
                                                             onPointerDown={() => preloadProjectTab(item.title)}
                                                             onClick={() => {
+                                                                if (item.title === 'Tasks') {
+                                                                    setTasksExpanded((current) => (isActive ? !current : true))
+                                                                }
                                                                 preloadProjectTab(item.title)
 
                                                                 // Navigate to the route
@@ -300,6 +324,9 @@ export function ProjectSidebar({
                                                         >
                                                             <item.icon className="opacity-60" />
                                                             <span>{item.title}</span>
+                                                            {item.title === 'Tasks' ? (
+                                                                <ChevronDown className={cn('ml-auto h-3.5 w-3.5 transition-transform', tasksExpanded ? 'rotate-0' : '-rotate-90')} />
+                                                            ) : null}
                                                             {showUnreadBadge && (
                                                                 <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-primary text-primary-foreground">
                                                                     {unreadCount > 99 ? '99+' : unreadCount}
@@ -310,15 +337,59 @@ export function ProjectSidebar({
                                                                     alpha
                                                                 </Badge>
                                                             )}
-                                                            {'beta' in item && item.beta && (
-                                                                <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
-                                                                    beta
-                                                                </Badge>
-                                                            )}
-                                                        </SidebarMenuButton>
-                                                    </SidebarMenuItem>
-                                                )
-                                            })}
+                                                        {'beta' in item && item.beta && (
+                                                            <Badge variant="secondary" className="sidebar-stage-badge text-[10px] px-1 py-0 h-4 font-normal">
+                                                                beta
+                                                            </Badge>
+                                                        )}
+                                                    </SidebarMenuButton>
+                                                    {item.title === 'Tasks' ? (
+                                                        <Collapsible open={tasksExpanded} onOpenChange={setTasksExpanded}>
+                                                            <CollapsibleContent>
+                                                                <SidebarMenuSub>
+                                                                    {projectTasks === undefined ? (
+                                                                        <SidebarMenuSubItem>
+                                                                            <SidebarMenuSubButton asChild>
+                                                                                <span>Loading tasks…</span>
+                                                                            </SidebarMenuSubButton>
+                                                                        </SidebarMenuSubItem>
+                                                                    ) : sidebarTaskItems.length > 0 ? (
+                                                                        sidebarTaskItems.map((task) => (
+                                                                            <SidebarMenuSubItem key={String(task._id)}>
+                                                                                <SidebarMenuSubButton
+                                                                                    asChild
+                                                                                    isActive={activeTab === 'Tasks'}
+                                                                                >
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        title={task.title}
+                                                                                        onClick={() => {
+                                                                                            const route = routeMap[item.title]
+                                                                                            if (route !== undefined && navigationBasePath) {
+                                                                                                navigate(`${navigationBasePath}${route ? `/${route}` : ''}`)
+                                                                                            }
+                                                                                            setActiveTab(item.title)
+                                                                                        }}
+                                                                                    >
+                                                                                        <span>{task.title}</span>
+                                                                                    </button>
+                                                                                </SidebarMenuSubButton>
+                                                                            </SidebarMenuSubItem>
+                                                                        ))
+                                                                    ) : (
+                                                                        <SidebarMenuSubItem>
+                                                                            <SidebarMenuSubButton asChild>
+                                                                                <span>No open tasks</span>
+                                                                            </SidebarMenuSubButton>
+                                                                        </SidebarMenuSubItem>
+                                                                    )}
+                                                                </SidebarMenuSub>
+                                                            </CollapsibleContent>
+                                                        </Collapsible>
+                                                    ) : null}
+                                                </SidebarMenuItem>
+                                            )
+                                        })}
                                         </SidebarMenu>
                                     </SidebarGroupContent>
                                 </SidebarGroup>

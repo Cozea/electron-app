@@ -57,7 +57,6 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   const [filter, setFilter] = useState<FilterType>('all')
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationDefinition | null>(null)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
-
   // Group integrations by category
   const groupedIntegrations = useMemo(() => getIntegrationsGroupedByCategory(), [])
 
@@ -110,6 +109,7 @@ export function Integrations({ surface = 'page', route }: IntegrationsProps) {
   // Handle OAuth start
   const handleStartOAuth = async () => {
     if (!selectedIntegration) return
+
     await startOAuth(selectedIntegration.id)
   }
 

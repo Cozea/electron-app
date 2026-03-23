@@ -8,6 +8,8 @@
 import type { DevCommandSuggestion } from '@shared/electronApiTypes'
 
 export type Framework =
+  | 'expo'
+  | 'react-native'
   | 'nextjs'
   | 'remix'
   | 'vite-react'
@@ -35,6 +37,19 @@ export interface FrameworkInfo {
   devPort: number
   buildCommand: string
   startCommand: string
+}
+
+export interface ProjectPreviewExperience {
+  mode: 'web' | 'expo-native'
+  supportsWebPreview: boolean
+  supportsNativePreview: boolean
+  nativePreviewProvider: 'orbit' | null
+  defaultNativePlatform: 'ios' | 'android' | null
+}
+
+export interface DevServerLaunchContext {
+  previewMode?: 'web' | 'native'
+  nativePlatform?: 'ios' | 'android' | null
 }
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
@@ -80,6 +95,8 @@ function inferDevServerLabelFromCommand(command: string): string {
   if (!normalized) return 'Dev Server'
 
   if (normalized.includes('next')) return 'Next.js Dev'
+  if (normalized.includes('expo')) return 'Expo Dev'
+  if (normalized.includes('react-native')) return 'React Native Dev'
   if (normalized.includes('nuxt')) return 'Nuxt Dev'
   if (normalized.includes('remix')) return 'Remix Dev'
   if (normalized.includes('astro')) return 'Astro Dev'
@@ -95,6 +112,24 @@ function inferDevServerLabelFromCommand(command: string): string {
 
 // Framework detection rules and metadata
 const FRAMEWORK_CONFIGS: Record<Framework, Omit<FrameworkInfo, 'framework'>> = {
+  expo: {
+    displayName: 'Expo',
+    routeConvention: 'unknown',
+    routePatterns: [],
+    devCommand: 'npm start',
+    devPort: 8081,
+    buildCommand: 'npm start',
+    startCommand: 'npm start',
+  },
+  'react-native': {
+    displayName: 'React Native',
+    routeConvention: 'unknown',
+    routePatterns: [],
+    devCommand: 'npm start',
+    devPort: 8081,
+    buildCommand: 'npm start',
+    startCommand: 'npm start',
+  },
   nextjs: {
     displayName: 'Next.js',
     routeConvention: 'file-based',
@@ -234,22 +269,122 @@ interface PackageJson {
   scripts?: Record<string, string>
 }
 
-/**
- * Detect framework from package.json dependencies
- */
-export async function detectFramework(projectPath: string): Promise<FrameworkInfo> {
+function extractNpmScriptName(command: string | null | undefined): string | null {
+  const trimmed = command?.trim()
+  if (!trimmed) return null
+
+  const runMatch = trimmed.match(/^(?:npm|pnpm|yarn|bun)\s+run\s+([^\s]+)$/i)
+  if (runMatch) return runMatch[1]
+
+  const simpleMatch = trimmed.match(/^(?:npm|pnpm|yarn|bun)\s+(start|test|dev)$/i)
+  if (simpleMatch) return simpleMatch[1].toLowerCase()
+
+  return null
+}
+
+async function readPackageJson(projectPath: string): Promise<PackageJson | null> {
   try {
-    // Read package.json
     const result = await window.electronAPI.project.readFile({
       projectPath,
       filePath: 'package.json',
     })
 
     if (!result.success || !result.content) {
-      return { framework: 'unknown', ...FRAMEWORK_CONFIGS.unknown }
+      return null
     }
 
-    const pkg: PackageJson = JSON.parse(result.content)
+    return JSON.parse(result.content) as PackageJson
+  } catch {
+    return null
+  }
+}
+
+function hasScript(scripts: Record<string, string>, name: string): boolean {
+  return Boolean(scripts[name]?.trim())
+}
+
+function resolveExistingDevScriptName(
+  scripts: Record<string, string>,
+  preferredCommand: string,
+): string | null {
+  const preferredScript = extractNpmScriptName(preferredCommand)
+  if (preferredScript && scripts[preferredScript]) {
+    return preferredScript
+  }
+
+  const fallbackScriptNames = ['dev', 'start', 'develop', 'web', 'serve']
+  for (const scriptName of fallbackScriptNames) {
+    if (scripts[scriptName]) return scriptName
+  }
+
+  return null
+}
+
+function buildPackageManagerScriptCommand(pm: PackageManager, scriptName: string): string {
+  if (scriptName === 'start') {
+    return pm === 'npm' ? 'npm start' : `${pm} start`
+  }
+  return `${pm} run ${scriptName}`
+}
+
+function commandExistsInScripts(command: string | null | undefined, scripts: Record<string, string>): boolean {
+  const scriptName = extractNpmScriptName(command)
+  if (!scriptName) return true
+  return Boolean(scripts[scriptName])
+}
+
+function resolvePreferredScriptName(
+  scripts: Record<string, string>,
+  framework: Framework,
+  context?: DevServerLaunchContext,
+): string | null {
+  const previewMode = context?.previewMode ?? 'web'
+  const nativePlatform = context?.nativePlatform ?? null
+
+  const preferredScriptGroups: string[][] = []
+
+  if (previewMode === 'native') {
+    if (framework === 'expo') {
+      preferredScriptGroups.push(['start'])
+    } else if (framework === 'react-native') {
+      preferredScriptGroups.push(
+        nativePlatform === 'ios' ? ['ios', 'start'] : ['android', 'start']
+      )
+    } else if (nativePlatform === 'ios') {
+      preferredScriptGroups.push(['ios', 'start'])
+    } else if (nativePlatform === 'android') {
+      preferredScriptGroups.push(['android', 'start'])
+    } else {
+      preferredScriptGroups.push(['start'])
+    }
+  } else {
+    if (framework === 'expo') {
+      preferredScriptGroups.push(['web', 'start'])
+    } else {
+      preferredScriptGroups.push(['web', 'dev', 'start', 'develop', 'serve'])
+    }
+  }
+
+  preferredScriptGroups.push(['dev', 'start', 'develop', 'web', 'serve'])
+
+  for (const group of preferredScriptGroups) {
+    for (const scriptName of group) {
+      if (scripts[scriptName]) return scriptName
+    }
+  }
+
+  return null
+}
+
+/**
+ * Detect framework from package.json dependencies
+ */
+export async function detectFramework(projectPath: string): Promise<FrameworkInfo> {
+  try {
+    const pkg = await readPackageJson(projectPath)
+    if (!pkg) {
+      return { framework: 'unknown', ...FRAMEWORK_CONFIGS.unknown }
+    }
     const deps = { ...pkg.dependencies, ...pkg.devDependencies }
     const scripts = pkg.scripts || {}
 
@@ -257,7 +392,15 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
     let framework: Framework = 'unknown'
 
     // Next.js
-    if (deps['next']) {
+    if (deps['expo']) {
+      framework = 'expo'
+    }
+    // React Native
+    else if (deps['react-native']) {
+      framework = 'react-native'
+    }
+    // Next.js
+    else if (deps['next']) {
       framework = 'nextjs'
     }
     // Remix
@@ -308,9 +451,6 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
     }
 
     const config = FRAMEWORK_CONFIGS[framework]
-
-    // Override dev command if specified in package.json scripts
-    const devCommand = config.devCommand
     let devPort = config.devPort
 
     // Try to detect port from scripts
@@ -322,10 +462,15 @@ export async function detectFramework(projectPath: string): Promise<FrameworkInf
     }
 
     const packageManager = await detectPackageManagerFromRoot(projectPath)
+    const resolvedScriptName = resolveExistingDevScriptName(scripts, config.devCommand)
+    const devCommand = resolvedScriptName
+      ? buildPackageManagerScriptCommand(packageManager, resolvedScriptName)
+      : rewriteNpmCommandForPackageManager(config.devCommand, packageManager)
+
     return {
       framework,
       ...config,
-      devCommand: rewriteNpmCommandForPackageManager(devCommand, packageManager),
+      devCommand,
       devPort,
       buildCommand: rewriteNpmCommandForPackageManager(config.buildCommand, packageManager),
       startCommand: rewriteNpmCommandForPackageManager(config.startCommand, packageManager),
@@ -363,6 +508,46 @@ export async function getFrameworkInfo(
   return detectFramework(projectPath)
 }
 
+export async function getProjectPreviewExperience(
+  projectPath: string,
+  storedFramework?: Framework | null,
+  storedDevCommand?: string | null,
+  storedDevPort?: number | null,
+): Promise<ProjectPreviewExperience> {
+  const [frameworkInfo, pkg] = await Promise.all([
+    getFrameworkInfo(projectPath, storedFramework, storedDevCommand, storedDevPort),
+    readPackageJson(projectPath),
+  ])
+
+  const scripts = pkg?.scripts ?? {}
+  const deps = { ...pkg?.dependencies, ...pkg?.devDependencies }
+  const hasExpoFramework = frameworkInfo.framework === 'expo'
+  const hasReactNativeFramework = frameworkInfo.framework === 'react-native'
+  const hasMobileScripts = hasScript(scripts, 'ios') || hasScript(scripts, 'android')
+  const supportsWebPreview = hasScript(scripts, 'web') || Boolean(deps['react-native-web'])
+  const supportsNativePreview = hasExpoFramework || hasReactNativeFramework || hasMobileScripts
+  const hostPlatform = typeof navigator !== 'undefined'
+    ? ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+      || navigator.platform
+      || navigator.userAgent)
+    : ''
+  const defaultNativePlatform = /mac/i.test(hostPlatform)
+    ? 'ios'
+    : /win/i.test(hostPlatform)
+      ? 'android'
+      : supportsNativePreview
+        ? (hasScript(scripts, 'ios') ? 'ios' : 'android')
+        : null
+
+  return {
+    mode: supportsNativePreview ? 'expo-native' : 'web',
+    supportsWebPreview,
+    supportsNativePreview,
+    nativePreviewProvider: supportsNativePreview ? 'orbit' : null,
+    defaultNativePlatform,
+  }
+}
+
 /**
  * Get just the dev server config (for ServerControl)
  */
@@ -377,6 +562,7 @@ export async function getDevServerConfig(
   projectPath: string,
   storedDevCommand?: string | null,
   storedDevPort?: number | null,
+  context?: DevServerLaunchContext,
 ): Promise<{
   command: string
   port: number
@@ -402,9 +588,12 @@ export async function getDevServerConfig(
     return Number.isFinite(parsed) ? parsed : fallbackPort
   }
 
+  const packageJson = await readPackageJson(projectPath)
+  const scripts = packageJson?.scripts ?? {}
   const info = await detectFramework(projectPath)
+  const packageManager = await detectPackageManagerFromRoot(projectPath)
 
-  if (storedDevCommand) {
+  if (storedDevCommand && commandExistsInScripts(storedDevCommand, scripts)) {
     return {
       command: storedDevCommand,
       port: inferPortFromCommand(storedDevCommand, storedDevPort ?? info.devPort),
@@ -415,7 +604,7 @@ export async function getDevServerConfig(
   }
 
   const persistedCommand = getPersistedDevCommand(projectPath)
-  if (persistedCommand) {
+  if (persistedCommand && commandExistsInScripts(persistedCommand, scripts)) {
     return {
       command: persistedCommand,
       port: inferPortFromCommand(persistedCommand, info.devPort),
@@ -425,8 +614,20 @@ export async function getDevServerConfig(
     }
   }
 
+  const preferredScriptName = resolvePreferredScriptName(scripts, info.framework, context)
+  if (preferredScriptName) {
+    const preferredCommand = buildPackageManagerScriptCommand(packageManager, preferredScriptName)
+    return {
+      command: preferredCommand,
+      port: inferPortFromCommand(preferredCommand, storedDevPort ?? info.devPort),
+      label: inferDevServerLabelFromCommand(preferredCommand),
+      suggestions,
+      requiresUserSelection: false,
+    }
+  }
+
   const selectedSuggestion = suggestions.find((suggestion) => suggestion.confidence >= 0.8)
-  if (selectedSuggestion) {
+  if (selectedSuggestion && commandExistsInScripts(selectedSuggestion.command, scripts)) {
     const fallbackPort = info.devPort
     return {
       command: selectedSuggestion.command,
@@ -437,7 +638,10 @@ export async function getDevServerConfig(
     }
   }
 
-  const fallbackCommand = suggestions[0]?.command ?? info.devCommand
+  const firstValidSuggestion = suggestions.find((suggestion) =>
+    commandExistsInScripts(suggestion.command, scripts)
+  )
+  const fallbackCommand = firstValidSuggestion?.command ?? info.devCommand
   const fallbackPort = inferPortFromCommand(fallbackCommand, info.devPort)
 
   return {

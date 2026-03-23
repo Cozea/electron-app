@@ -1,0 +1,115 @@
+import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
+import type { Framework, PackageManager } from '@/utils/projectDetector'
+
+export interface DevServerRecoverySuggestion {
+  framework: Framework
+  scriptName: string | null
+  devPort: number | null
+  confidence: 'low' | 'medium' | 'high'
+  reason: string
+}
+
+export interface DevServerRecoverySnapshot {
+  packageManager: PackageManager
+  rootFiles: string[]
+  scripts: Record<string, string>
+  dependencies: string[]
+  devDependencies: string[]
+}
+
+interface PackageJsonLike {
+  scripts?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+}
+
+export async function collectDevServerRecoverySnapshot(
+  projectPath: string,
+  packageManager: PackageManager,
+): Promise<DevServerRecoverySnapshot | null> {
+  const entries = await window.electronAPI.fs.readDir(projectPath)
+  const rootFiles = entries
+    .map((entry) => entry.name)
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, 64)
+
+  const packageJsonResult = await window.electronAPI.project.readFile({
+    projectPath,
+    filePath: 'package.json',
+  })
+  if (!packageJsonResult.success || !packageJsonResult.content) {
+    return null
+  }
+
+  let packageJson: PackageJsonLike
+  try {
+    packageJson = JSON.parse(packageJsonResult.content) as PackageJsonLike
+  } catch {
+    return null
+  }
+
+  const scripts = packageJson.scripts ?? {}
+  if (Object.keys(scripts).length === 0) {
+    return null
+  }
+
+  return {
+    packageManager,
+    rootFiles,
+    scripts,
+    dependencies: Object.keys(packageJson.dependencies ?? {}).sort((left, right) => left.localeCompare(right)),
+    devDependencies: Object.keys(packageJson.devDependencies ?? {}).sort((left, right) => left.localeCompare(right)),
+  }
+}
+
+export async function inferDevServerRecovery(args: {
+  accessToken: string
+  organizationId: string
+  snapshot: DevServerRecoverySnapshot
+  attemptedCommand: string
+  failureMessage?: string | null
+  outputTail?: string | null
+}): Promise<DevServerRecoverySuggestion | null> {
+  const response = await fetch(`${AI_BASE_URL}/dev-server/recover-command`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.accessToken}`,
+    },
+    body: JSON.stringify({
+      organizationId: args.organizationId,
+      packageManager: args.snapshot.packageManager,
+      rootFiles: args.snapshot.rootFiles,
+      scripts: args.snapshot.scripts,
+      dependencies: args.snapshot.dependencies,
+      devDependencies: args.snapshot.devDependencies,
+      attemptedCommand: args.attemptedCommand,
+      failureMessage: args.failureMessage ?? undefined,
+      outputTail: args.outputTail ?? undefined,
+    }),
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const payload = await response.json() as {
+    suggestion?: DevServerRecoverySuggestion
+  }
+
+  return payload.suggestion ?? null
+}
+
+export function buildScriptCommand(args: {
+  packageManager: PackageManager
+  scriptName: string
+}): string {
+  if (args.scriptName === 'start') {
+    return args.packageManager === 'npm'
+      ? 'npm start'
+      : `${args.packageManager} start`
+  }
+
+  return `${args.packageManager} run ${args.scriptName}`
+}

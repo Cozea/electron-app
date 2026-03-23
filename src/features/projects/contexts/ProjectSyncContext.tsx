@@ -190,7 +190,7 @@ export function ProjectSyncProvider({
     })
 
     try {
-      await coordinator.flushNow()
+      await coordinator.flushNow(true)
       const now = Date.now()
       setLastSyncAt(now)
       onFilesChanged?.()

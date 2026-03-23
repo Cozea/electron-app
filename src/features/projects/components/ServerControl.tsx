@@ -1,12 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useMutation } from "convex/react"
 import { Play, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { api } from "../../../../convex/_generated/api"
+import type { Id } from "../../../../convex/_generated/dataModel"
+import { useAuth } from "@/contexts/AuthContext"
+import { useScopedAppContext } from "@/hooks/useScopedAppContext"
 import { useProjectPagesStore } from "@/stores/useProjectPagesStore"
 import { useTerminalActions, useTerminalStore } from "@/stores/useTerminalStore"
 import type { DevCommandSuggestion, PreviewFailureReason } from "@shared/electronApiTypes"
 import {
     getDevServerConfig,
+    getFrameworkInfo,
     detectPackageManager,
     getInstallCommand,
     checkDependenciesInstalled,
@@ -14,6 +20,11 @@ import {
 } from "@/utils/projectDetector"
 import { useProblemsStore, type ProblemSeverity } from "@/stores/useProblemsStore"
 import { DevCommandPickerDialog } from "./DevCommandPickerDialog"
+import {
+    buildScriptCommand,
+    collectDevServerRecoverySnapshot,
+    inferDevServerRecovery,
+} from "@/features/projects/lib/devServerAiRecovery"
 
 const stripAnsi = (input: string) =>
     // eslint-disable-next-line no-control-regex
@@ -81,22 +92,37 @@ function getAutoStartState(projectPath: string): AutoStartState {
 
 interface ServerControlProps {
     projectPath?: string | null
+    projectId?: Id<"projects"> | null
     // Optional stored framework info from Convex (uses detection as fallback)
     storedDevCommand?: string | null
     storedDevPort?: number | null
+    previewMode?: 'web' | 'native'
+    nativePlatform?: 'ios' | 'android' | null
 }
 
-export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: ServerControlProps) {
+export function ServerControl({
+    projectPath,
+    projectId,
+    storedDevCommand,
+    storedDevPort,
+    previewMode,
+    nativePlatform,
+}: ServerControlProps) {
+    const { accessToken, convexUserId } = useAuth()
+    const { organizationId: workspaceOrganizationId } = useScopedAppContext()
     const { serverStatus, actions } = useProjectPagesStore()
     const { addTerminal, removeTerminal, updateTerminalDisplay, updateTerminalStatus, setPanelOpen } = useTerminalActions()
     const terminals = useTerminalStore((state) => state.terminals)
     const addRuntimeProblem = useProblemsStore((state) => state.actions.addRuntimeProblem)
     const clearProblemsBySource = useProblemsStore((state) => state.actions.clearProblemsBySource)
+    const updateFrameworkInfo = useMutation(api.projects.updateFrameworkInfo)
     const [isUpdating, setIsUpdating] = useState(false)
     const [showCommandPicker, setShowCommandPicker] = useState(false)
     const [commandSuggestions, setCommandSuggestions] = useState<DevCommandSuggestion[]>([])
     const [commandPickerDefault, setCommandPickerDefault] = useState<string | undefined>(undefined)
     const pendingCommandSelectionRef = useRef<{ label: string; port: number } | null>(null)
+    const aiRecoveryAttemptedCommandsRef = useRef<Set<string>>(new Set())
+    const aiRecoveryInFlightRef = useRef(false)
 
     // Track the dev server terminal ID
     const devServerTerminalIdRef = useRef<string | null>(null)
@@ -105,6 +131,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
     const devServerRunIdRef = useRef<string | null>(null)
     const pendingReadyProbeKeyRef = useRef<string | null>(null)
     const cancelledStartRunIdsRef = useRef<Set<string>>(new Set())
+    const retryStartRef = useRef<(() => Promise<void>) | null>(null)
 
     // Ref for startup watchdog when ready patterns/probes don't confirm in time
     const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -123,6 +150,141 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         if (crypto?.randomUUID) return crypto.randomUUID()
         return `pages-devsrv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     }, [])
+
+    const maybeRecoverFromFailedStart = useCallback(async (args: {
+        attemptedCommand: string | null | undefined
+        failureMessage: string
+        outputTail?: string | null
+    }): Promise<boolean> => {
+        const attemptedCommand = args.attemptedCommand?.trim()
+        if (!projectPath || !attemptedCommand) return false
+        if (!accessToken || !workspaceOrganizationId) return false
+
+        const attemptKey = `${projectPath}::${attemptedCommand.toLowerCase()}`
+        if (aiRecoveryInFlightRef.current || aiRecoveryAttemptedCommandsRef.current.has(attemptKey)) {
+            return false
+        }
+
+        aiRecoveryAttemptedCommandsRef.current.add(attemptKey)
+        aiRecoveryInFlightRef.current = true
+
+        try {
+            const packageManager = await detectPackageManager(projectPath)
+            const snapshot = await collectDevServerRecoverySnapshot(projectPath, packageManager)
+            if (!snapshot) {
+                return false
+            }
+
+            const suggestion = await inferDevServerRecovery({
+                accessToken,
+                organizationId: workspaceOrganizationId,
+                snapshot,
+                attemptedCommand,
+                failureMessage: args.failureMessage,
+                outputTail: args.outputTail,
+            })
+            if (!suggestion) {
+                return false
+            }
+
+            const scriptName = suggestion.scriptName?.trim()
+            if (!scriptName || !snapshot.scripts[scriptName]) {
+                return false
+            }
+
+            const recoveredCommand = buildScriptCommand({
+                packageManager,
+                scriptName,
+            }).trim()
+
+            if (!recoveredCommand || recoveredCommand === attemptedCommand) return false
+
+            persistDevCommand(projectPath, recoveredCommand)
+
+            const frameworkInfo = await getFrameworkInfo(
+                projectPath,
+                suggestion.framework,
+                recoveredCommand,
+                suggestion.devPort ?? undefined,
+            )
+
+            if (projectId && convexUserId) {
+                await updateFrameworkInfo({
+                    projectId,
+                    userId: convexUserId,
+                    frameworkInfo: {
+                        framework: frameworkInfo.framework,
+                        displayName: frameworkInfo.displayName,
+                        routeConvention: frameworkInfo.routeConvention,
+                        devCommand: recoveredCommand,
+                        devPort: suggestion.devPort ?? frameworkInfo.devPort,
+                        buildCommand: frameworkInfo.buildCommand,
+                        startCommand: frameworkInfo.startCommand,
+                    },
+                })
+            }
+
+            return true
+        } catch (error) {
+            console.warn('[ServerControl] AI dev-server recovery failed:', error)
+            return false
+        } finally {
+            aiRecoveryInFlightRef.current = false
+        }
+    }, [
+        accessToken,
+        actions,
+        convexUserId,
+        projectId,
+        projectPath,
+        updateFrameworkInfo,
+        workspaceOrganizationId,
+    ])
+
+    const maybeSelectAiStartCommand = useCallback(async (args: {
+        attemptedCommand: string
+    }): Promise<string | null> => {
+        if (!projectPath) return null
+        if (!accessToken || !workspaceOrganizationId) return null
+
+        try {
+            const packageManager = await detectPackageManager(projectPath)
+            const snapshot = await collectDevServerRecoverySnapshot(projectPath, packageManager)
+            if (!snapshot) return null
+
+            const suggestion = await inferDevServerRecovery({
+                accessToken,
+                organizationId: workspaceOrganizationId,
+                snapshot,
+                attemptedCommand: args.attemptedCommand,
+                failureMessage: 'Preflight command selection before first launch.',
+                outputTail: null,
+            })
+
+            if (!suggestion) return null
+
+            const scriptName = suggestion.scriptName?.trim()
+            if (!scriptName || !snapshot.scripts[scriptName]) return null
+
+            const selectedCommand = buildScriptCommand({
+                packageManager,
+                scriptName,
+            }).trim()
+
+            if (!selectedCommand) return null
+            persistDevCommand(projectPath, selectedCommand)
+
+            return selectedCommand
+        } catch (error) {
+            console.warn('[ServerControl] AI preflight command selection failed:', error)
+            return null
+        }
+    }, [
+        accessToken,
+        actions,
+        projectPath,
+        workspaceOrganizationId,
+    ])
 
     const addTimelineEvent = useCallback((event: {
         runId?: string | null
@@ -526,13 +688,21 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         })
 
         // Handle terminal exit
-        const unsubExit = window.electronAPI.terminal.onExit(({ terminalId, runId }) => {
+        const unsubExit = window.electronAPI.terminal.onExit(({ terminalId, runId, exitCode }) => {
             if (terminalId === devServerTerminalIdRef.current) {
                 if (runId && devServerRunIdRef.current && runId !== devServerRunIdRef.current) {
                     return
                 }
 
                 const activeRunId = devServerRunIdRef.current
+                const previousLifecycle = useProjectPagesStore.getState().serverLifecycle
+                const attemptedCommand = previousLifecycle.command
+                const outputTail = useProjectPagesStore.getState().serverOutput.slice(-40).join('')
+                const shouldAttemptRecovery =
+                    exitCode !== null &&
+                    exitCode !== 0 &&
+                    previousLifecycle.state === 'starting'
+
                 actions.setServerStatus('stopped')
                 actions.setServerPort(null)
                 actions.setServerPid(null)
@@ -550,8 +720,21 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 addTimelineEvent({
                     runId: activeRunId,
                     type: 'exited',
-                    message: 'Dev server terminal exited',
+                    message: exitCode === null ? 'Dev server terminal exited' : `Dev server terminal exited with code ${exitCode}`,
                 })
+
+                if (shouldAttemptRecovery) {
+                    void (async () => {
+                        const recovered = await maybeRecoverFromFailedStart({
+                            attemptedCommand,
+                            failureMessage: `Dev server exited with code ${exitCode}`,
+                            outputTail,
+                        })
+                        if (recovered) {
+                            await retryStartRef.current?.()
+                        }
+                    })()
+                }
             }
         })
 
@@ -560,7 +743,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             unsubExit()
             clearReadyTimeout()
         }
-    }, [actions, addTimelineEvent, clearReadyTimeout, reportProblemsFromOutput])
+    }, [actions, addTimelineEvent, clearReadyTimeout, maybeRecoverFromFailedStart, reportProblemsFromOutput])
 
     const launchDevServerTerminal = useCallback(async (
         projectPathValue: string,
@@ -664,7 +847,7 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
             }
             void window.electronAPI.terminal.input({
                 terminalId: result.terminalId!,
-                data: `${command}\r\n`
+                data: `${command}\r\n`,
             })
         }, 100)
 
@@ -688,7 +871,8 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
 
     const handleStart = useCallback(async () => {
         if (!projectPath) return
-        if (serverStatus === 'starting' || serverStatus === 'running' || serverStatus === 'unhealthy') return
+        const currentStatus = useProjectPagesStore.getState().serverStatus
+        if (currentStatus === 'starting' || currentStatus === 'running' || currentStatus === 'unhealthy') return
 
         try {
             setIsUpdating(true)
@@ -707,12 +891,24 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
                 message: 'Start requested from Pages toolbar',
             })
 
-            const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort)
+            const config = await getDevServerConfig(projectPath, storedDevCommand, storedDevPort, {
+                previewMode,
+                nativePlatform,
+            })
             if (isStartCancelled(runId)) {
                 return
             }
             const persistedCommand = getPersistedDevCommand(projectPath)
-            const selectedCommand = persistedCommand || config.command
+            let selectedCommand = persistedCommand || config.command
+
+            if (!persistedCommand) {
+                const aiSelectedCommand = await maybeSelectAiStartCommand({
+                    attemptedCommand: selectedCommand,
+                })
+                if (aiSelectedCommand) {
+                    selectedCommand = aiSelectedCommand
+                }
+            }
 
             if (!persistedCommand && config.requiresUserSelection) {
                 pendingCommandSelectionRef.current = { label: config.label, port: config.port }
@@ -756,12 +952,21 @@ export function ServerControl({ projectPath, storedDevCommand, storedDevPort }: 
         addTimelineEvent,
         createRunId,
         launchDevServerTerminal,
+        maybeSelectAiStartCommand,
         projectPath,
-        serverStatus,
+        previewMode,
         storedDevCommand,
         storedDevPort,
+        nativePlatform,
         isStartCancelled,
     ])
+
+    useEffect(() => {
+        retryStartRef.current = handleStart
+        return () => {
+            retryStartRef.current = null
+        }
+    }, [handleStart])
 
     const handleCommandPickerConfirm = useCallback(async (command: string) => {
         if (!projectPath) return

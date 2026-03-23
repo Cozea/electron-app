@@ -37,6 +37,7 @@ interface DashboardLayoutProps {
     profileImageUrl?: string | null
   } | null
   onLogout?: () => void
+  headerAbsolute?: boolean
 }
 
 const DEFAULT_BREADCRUMBS = [{ label: "Projects" }];
@@ -68,6 +69,7 @@ interface DashboardLayoutContentProps {
     profileImageUrl?: string | null
   } | null
   onLogout?: () => void
+  headerAbsolute?: boolean
 }
 
 function SidebarFullscreenSync() {
@@ -111,6 +113,7 @@ function DashboardLayoutContent({
   hideInbox,
   user,
   onLogout,
+  headerAbsolute,
 }: DashboardLayoutContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -228,13 +231,14 @@ function DashboardLayoutContent({
               breadcrumbAddon={effectiveBreadcrumbAddon}
               leftWindowControlsInset
               hideInbox={hideInbox}
+              className={headerAbsolute ? 'absolute inset-x-0 top-0 z-40' : undefined}
             />
             {contentMode === 'fixed' ? (
               <div
                 className={cn(
                   'flex flex-1 min-h-0 flex-col overflow-hidden',
                   featureFlags.contentVisibility && 'perf-contain-card',
-                  showHeader && contentTopInsetClassName
+                  !headerAbsolute && showHeader && contentTopInsetClassName
                 )}
               >
                 {children}
@@ -244,23 +248,24 @@ function DashboardLayoutContent({
                 <div
                   className={cn(
                     'flex min-h-full flex-col gap-4 p-4',
+                    headerAbsolute && showHeader ? 'pt-[72px]' : '',
                     featureFlags.contentVisibility && 'perf-contain-card',
-                    showHeader && contentTopInsetClassName
+                    !headerAbsolute && showHeader && contentTopInsetClassName
                   )}
                 >
                   {children}
                 </div>
               </ScrollArea>
             )}
-            {footer && (
-              <div className="flex-none bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                {footer}
-              </div>
-            )}
-            {statusBar}
           </div>
         </SidebarInset>
       </div>
+      {footer && (
+        <div className="flex-none bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {footer}
+        </div>
+      )}
+      {statusBar}
     </div>
   )
 }
@@ -276,6 +281,7 @@ export function DashboardLayout({
   hideInbox,
   user,
   onLogout,
+  headerAbsolute,
 }: DashboardLayoutProps) {
   return (
     <SidebarProvider>
@@ -290,6 +296,7 @@ export function DashboardLayout({
         hideInbox={hideInbox}
         user={user}
         onLogout={onLogout}
+        headerAbsolute={headerAbsolute}
       />
     </SidebarProvider>
   )

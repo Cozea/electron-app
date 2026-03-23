@@ -20,6 +20,9 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
+        sourceControlDefaultProvider: v.optional(
+          v.union(v.literal("github"), v.literal("gitlab"))
+        ),
       })
     ),
 
@@ -68,6 +71,14 @@ export default defineSchema({
         // Default model tier for new users
         defaultModelTier: v.optional(
           v.union(v.literal("fast"), v.literal("standard"), v.literal("powerful"))
+        ),
+      })
+    ),
+
+    sourceControlSettings: v.optional(
+      v.object({
+        defaultProvider: v.optional(
+          v.union(v.literal("github"), v.literal("gitlab"))
         ),
       })
     ),
@@ -1130,9 +1141,19 @@ export default defineSchema({
       v.object({
         provider: v.optional(v.string()), // github, gitlab, bitbucket, local
         repoUrl: v.optional(v.string()),
+        defaultBranch: v.optional(v.string()),
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
         mergeQueue: v.optional(v.string()),
+        syncPolicy: v.optional(
+          v.union(v.literal("auto"), v.literal("manual"))
+        ),
+        workingCopyMode: v.optional(
+          v.union(v.literal("managed"), v.literal("attached"))
+        ),
+        setupMode: v.optional(
+          v.union(v.literal("personal"), v.literal("organization"))
+        ),
       })
     ),
 
@@ -1148,7 +1169,7 @@ export default defineSchema({
         owner: v.string(),
         name: v.string(),
         url: v.string(),
-        defaultBranch: v.string(), // currently always main
+        defaultBranch: v.string(),
       })
     ),
 
@@ -1405,6 +1426,120 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_project_and_status", ["projectId", "status"]),
 
+  projectRepoAccess: defineTable({
+    projectId: v.id("projects"),
+    provider: v.union(v.literal("github"), v.literal("gitlab")),
+    repoUrl: v.optional(v.string()),
+    subjectType: v.union(v.literal("member"), v.literal("invite")),
+    memberUserId: v.optional(v.id("users")),
+    inviteEmail: v.optional(v.string()),
+    role: v.union(
+      v.literal("project_manager"),
+      v.literal("developer"),
+      v.literal("designer"),
+      v.literal("viewer")
+    ),
+    accessState: v.union(
+      v.literal("pending"),
+      v.literal("granted"),
+      v.literal("needs_identity"),
+      v.literal("manual_required"),
+      v.literal("revoked"),
+      v.literal("error")
+    ),
+    providerAccountHandle: v.optional(v.string()),
+    externalInvitationId: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    lastAttemptAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+    lastAttemptedBy: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_member_provider", ["projectId", "memberUserId", "provider"])
+    .index("by_project_and_email_provider", ["projectId", "inviteEmail", "provider"]),
+
+  workspaceSourceControlConnections: defineTable({
+    organizationId: v.id("organizations"),
+    scopeType: v.union(v.literal("user"), v.literal("workspace")),
+    userId: v.optional(v.id("users")),
+    provider: v.union(v.literal("github"), v.literal("gitlab")),
+    authType: v.union(v.literal("oauth")),
+    authStatus: v.union(
+      v.literal("active"),
+      v.literal("needs_reauth"),
+      v.literal("revoked"),
+      v.literal("missing_setup"),
+      v.literal("error")
+    ),
+    setupMode: v.union(v.literal("personal"), v.literal("organization")),
+    providerHost: v.optional(v.string()),
+    externalAccountId: v.optional(v.string()),
+    externalAccountName: v.optional(v.string()),
+    externalAccountLogin: v.optional(v.string()),
+    oauthScopes: v.optional(v.array(v.string())),
+    tokenExpiresAt: v.optional(v.number()),
+    encryptedCredentials: v.string(),
+    namespaceId: v.optional(v.string()),
+    namespaceName: v.optional(v.string()),
+    namespaceLogin: v.optional(v.string()),
+    namespaceType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
+    ),
+    installationId: v.optional(v.string()),
+    installationTargetType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"))
+    ),
+    installationTargetLogin: v.optional(v.string()),
+    installationTargetName: v.optional(v.string()),
+    lastVerifiedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    connectedBy: v.id("users"),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_provider", ["organizationId", "provider"])
+    .index("by_scope_user", ["scopeType", "userId"])
+    .index("by_scope_user_provider", ["scopeType", "userId", "provider"])
+    .index("by_scope_organization", ["scopeType", "organizationId"])
+    .index("by_scope_organization_provider", ["scopeType", "organizationId", "provider"]),
+
+  projectRepositoryBindings: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    workspaceConnectionId: v.optional(v.id("workspaceSourceControlConnections")),
+    provider: v.union(
+      v.literal("github"),
+      v.literal("gitlab"),
+      v.literal("bitbucket"),
+      v.literal("local")
+    ),
+    setupMode: v.union(v.literal("personal"), v.literal("organization")),
+    syncPolicy: v.union(v.literal("auto"), v.literal("manual")),
+    workingCopyMode: v.union(v.literal("managed"), v.literal("attached")),
+    repoUrl: v.optional(v.string()),
+    defaultBranch: v.string(),
+    ownerId: v.optional(v.string()),
+    ownerLogin: v.optional(v.string()),
+    ownerName: v.optional(v.string()),
+    ownerType: v.optional(
+      v.union(v.literal("user"), v.literal("organization"), v.literal("group"))
+    ),
+    repoId: v.optional(v.string()),
+    repoName: v.optional(v.string()),
+    repoFullName: v.optional(v.string()),
+    visibility: v.optional(v.string()),
+    providerHost: v.optional(v.string()),
+    repoAccessPolicy: v.union(v.literal("on_first_open")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_provider", ["organizationId", "provider"])
+    .index("by_workspace_connection", ["workspaceConnectionId"]),
+
   // Shared project tasks created from the task board UI.
   projectTasks: defineTable({
     projectId: v.id("projects"),
@@ -1654,6 +1789,7 @@ export default defineSchema({
               v.object({
                 provider: v.string(),
                 repoUrl: v.optional(v.string()),
+                defaultBranch: v.optional(v.string()),
                 visibility: v.string(),
                 mergeStrategy: v.string(),
               })

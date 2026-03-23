@@ -9,6 +9,7 @@ import { Appearance } from '@/pages/settings/Appearance'
 import { Storage } from '@/pages/settings/Storage'
 import { Tooling } from '@/pages/settings/Tooling'
 import { Integrations } from '@/pages/workspace/Integrations'
+import { SourceControl } from '@/pages/workspace/SourceControl'
 import { ModelSelection } from '@/pages/settings/ModelSelection'
 import { Billing } from '@/pages/workspace/Billing'
 import { AI } from '@/pages/workspace/AI'
@@ -54,6 +55,10 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
   if (section === 'cliTools') {
     return <Integrations surface="drawer" route={route} />
+  }
+
+  if (section === 'sourceControl') {
+    return <SourceControl surface="drawer" route={route} />
   }
 
   return <Tooling surface="drawer" route={route} />

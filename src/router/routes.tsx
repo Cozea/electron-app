@@ -10,6 +10,7 @@ import { General } from '@/pages/workspace/General'
 import { Billing } from '@/pages/workspace/Billing'
 import { AI } from '@/pages/workspace/AI'
 import { Integrations } from '@/pages/workspace/Integrations'
+import { SourceControl } from '@/pages/workspace/SourceControl'
 import { Sync } from '@/pages/workspace/Sync'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
@@ -142,6 +143,10 @@ const WORKSPACE_INTEGRATIONS_ROUTE =
   getSettingsSurfaceRoute('cliTools', 'workspace') ?? '/workspace/integrations'
 const PERSONAL_INTEGRATIONS_ROUTE =
   getSettingsSurfaceRoute('cliTools', 'personal') ?? '/settings/cli-tools'
+const WORKSPACE_SOURCE_CONTROL_ROUTE =
+  getSettingsSurfaceRoute('sourceControl', 'workspace') ?? '/workspace/source-control'
+const PERSONAL_SOURCE_CONTROL_ROUTE =
+  getSettingsSurfaceRoute('sourceControl', 'personal') ?? '/settings/source-control'
 const WORKSPACE_CLOUD_STORAGE_ROUTE =
   getSettingsSurfaceRoute('cloudStorage', 'workspace') ?? '/workspace/sync'
 const PERSONAL_CLOUD_STORAGE_ROUTE =
@@ -345,6 +350,17 @@ export const appRoutes: RouteObject[] = [
         ),
       },
       { path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE), element: <Integrations /> },
+      {
+        path: toRoutePath(WORKSPACE_SOURCE_CONTROL_ROUTE),
+        element: (
+          <WorkspaceScopedSettingRoute personalRedirect={PERSONAL_SOURCE_CONTROL_ROUTE}>
+            <OrganizationWorkspacePermissionOnly surfaceId="sourceControl">
+              <SourceControl />
+            </OrganizationWorkspacePermissionOnly>
+          </WorkspaceScopedSettingRoute>
+        ),
+      },
+      { path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE), element: <SourceControl /> },
       {
         path: toRoutePath(WORKSPACE_CLOUD_STORAGE_ROUTE),
         element: (

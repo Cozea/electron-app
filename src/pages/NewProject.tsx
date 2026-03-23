@@ -1,72 +1,46 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { useProjectTargetScope } from '@/hooks/useProjectTargetScope'
 import { DashboardLayout } from '../components/layouts/DashboardLayout'
 import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '../components/ui/tooltip'
 import { Progress } from '@/components/ui/progress'
-import { ArrowLeft, ArrowLeftRight, ArrowRight, Rocket, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowRight, RefreshCw, Rocket, Search, Loader2 } from 'lucide-react'
 import type { Id } from '../../convex/_generated/dataModel'
 
 import {
   WizardLayout,
   EntryChoice,
-  IntentStep,
-  TemplateStep,
-  StackStep,
-  SourceControlStep,
-  VisualsStep,
   TeamStep,
   ReviewStep,
-  PromptInput,
   WizardConversation,
   RepoSourceStep,
+  type GuidedEntryChoice,
   type PromptSettings,
   type PlanOption,
   type OrgMember,
 } from '../components/wizard'
-import { useWizardState, type CreationPath, type WizardTeamMember } from '../hooks/useWizardState'
+import { useWizardState, type WizardTeamMember } from '../hooks/useWizardState'
 import { useMutation, useQuery, useConvex } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import { getDefaultWebBuildContract, normalizeGeneratedPlan, validateWebOnlyPlanConfig } from '../lib/plan'
-import {
-  detectFramework,
-  detectPackageManager,
-  getInstallCommand,
-  getLegacyPeerDepsInstallCommand,
-  checkDependenciesInstalled,
-  hasPackageJson,
-} from '../utils/projectDetector'
-import { useTerminalStore, useTerminalActions } from '@/stores/useTerminalStore'
-import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
+import { detectFramework } from '../utils/projectDetector'
 import { cn } from '@/lib/utils'
 import { ensureProjectRuntimeToolchains, runtimeLabel } from '@/lib/runtime/projectRuntimePreflight'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
-import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
 import { logDeferredTeamSetupDebug } from '@/lib/projects/deferredTeamSetupDebug'
-import {
-  buildImportTerminalCommand,
-  parseImportTerminalCompletionCode,
-  type ImportTerminalPlatform,
-} from '@/lib/importTerminalCommand'
+import { getDefaultVersionControlSetupMode } from '@shared/versionControl'
+import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
+import { readSourceControlProviderPreferences } from '@/lib/sourceControlPreferences'
+import { resolveSourceControlProviderPreference } from '@/lib/sourceControlDefaultProvider'
 
 type RepoIntegrationProvider = 'github' | 'gitlab'
-
-const INSTALL_TIMEOUT_MS = 12 * 60 * 1000
-
-function isWindowsClient(): boolean {
-  if (typeof navigator === 'undefined') return false
-  const nav = navigator as Navigator & {
-    userAgentData?: { platform?: string }
-  }
-  const platformHint = nav.userAgentData?.platform || navigator.platform || navigator.userAgent
-  return /win/i.test(platformHint)
-}
 
 function getRepoDisplayName(repoUrl: string): string {
   const trimmed = repoUrl.trim().replace(/\/+$/, '')
@@ -102,6 +76,18 @@ function isRepoIntegrationProvider(provider: string): provider is RepoIntegratio
   return provider === 'github' || provider === 'gitlab'
 }
 
+function inferRepoProviderFromUrl(repoUrl: string): RepoIntegrationProvider | null {
+  const normalized = repoUrl.trim().toLowerCase()
+  if (!normalized) return null
+  if (normalized.includes('gitlab.com') || normalized.includes('/gitlab/')) {
+    return 'gitlab'
+  }
+  if (normalized.includes('github.com') || normalized.includes('/github/')) {
+    return 'github'
+  }
+  return null
+}
+
 function buildImportPreflightIssueMessage(
   _issues: Array<{ path: string; reason: string }>,
   _truncated?: boolean
@@ -111,6 +97,80 @@ function buildImportPreflightIssueMessage(
 
 function buildDeferredTeamSetup(team: WizardTeamMember[]): WizardTeamMember[] {
   return team.filter((member) => !member.isCurrentUser)
+}
+
+async function installProjectDependenciesForImport(args: {
+  projectPath: string
+  onProgress?: (message: string) => void
+}): Promise<{ success: true; installed: boolean } | { success: false; error: string }> {
+  const runtimeApi = window.electronAPI?.runtime
+  const dependenciesApi = window.electronAPI?.dependencies
+
+  if (!runtimeApi?.getProjectCapabilities || !dependenciesApi?.run || !dependenciesApi?.onJobStatus) {
+    return { success: true, installed: false }
+  }
+
+  const profile = await runtimeApi.getProjectCapabilities({ projectPath: args.projectPath })
+  const evidenceFiles = new Set([
+    ...(profile.evidence?.files ?? []),
+    ...(profile.evidence?.lockfiles ?? []),
+  ])
+
+  const shouldInstallNodeDependencies =
+    evidenceFiles.has('package.json') ||
+    evidenceFiles.has('package-lock.json') ||
+    evidenceFiles.has('pnpm-lock.yaml') ||
+    evidenceFiles.has('yarn.lock') ||
+    evidenceFiles.has('bun.lock') ||
+    evidenceFiles.has('bun.lockb')
+
+  if (!shouldInstallNodeDependencies) {
+    return { success: true, installed: false }
+  }
+
+  args.onProgress?.('Installing dependencies...')
+
+  const startResult = await dependenciesApi.run({
+    projectPath: args.projectPath,
+    action: 'install',
+  })
+
+  if (!startResult.success || !startResult.jobId) {
+    return {
+      success: false,
+      error: startResult.error || 'Failed to start dependency installation.',
+    }
+  }
+
+  return await new Promise((resolve) => {
+    const unsubscribe = dependenciesApi.onJobStatus((payload) => {
+      if (payload.projectPath !== args.projectPath || payload.job.id !== startResult.jobId) {
+        return
+      }
+
+      const output = payload.job.stderr?.trim() || payload.job.stdout?.trim()
+      if (output) {
+        const lastLine = output.split(/\r?\n/).filter(Boolean).at(-1)
+        if (lastLine) {
+          args.onProgress?.(`Installing dependencies... ${lastLine}`)
+        }
+      }
+
+      if (payload.job.status === 'success') {
+        unsubscribe?.()
+        resolve({ success: true, installed: true })
+        return
+      }
+
+      if (payload.job.status === 'error') {
+        unsubscribe?.()
+        resolve({
+          success: false,
+          error: payload.job.error || 'Dependency installation failed.',
+        })
+      }
+    })
+  })
 }
 
 export function NewProject() {
@@ -129,10 +189,10 @@ export function NewProject() {
   const wizard = useWizardState(organizationId, convexUserId ?? undefined, {
     includeTeamStep,
   })
-
-  // Prompt path options
-  const [reviewBeforeBuild, setReviewBeforeBuild] = useState(true)
-  const [customizeTeam, setCustomizeTeam] = useState(false)
+  const workspaceSetupMode = getDefaultVersionControlSetupMode(isPersonalWorkspace)
+  const [remoteRepositorySearch, setRemoteRepositorySearch] = useState('')
+  const [remoteRepositoryRefreshNonce, setRemoteRepositoryRefreshNonce] = useState(0)
+  const [isRemoteRepositoriesLoading, setIsRemoteRepositoriesLoading] = useState(false)
 
   // Conversation mode state (for prompt path) - stored locally until plan is selected
   const [isConversationMode, setIsConversationMode] = useState(false)
@@ -145,16 +205,6 @@ export function NewProject() {
   const [isScanning, setIsScanning] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const isImporting = importSyncState !== 'idle' && importSyncState !== 'error'
-  const [importTerminalId, setImportTerminalId] = useState<string | null>(null)
-  const importTerminal = useTerminalStore((store) =>
-    importTerminalId ? store.terminals[importTerminalId] ?? null : null
-  )
-  const {
-    addTerminal,
-    removeTerminal,
-    setActiveTerminal,
-    updateTerminalStatus,
-  } = useTerminalActions()
 
   // Convex mutation for creating project
   const createProject = useMutation(api.projects.create)
@@ -162,6 +212,7 @@ export function NewProject() {
   const updateMemberLocalPath = useMutation(api.projectMembers.updateMemberLocalPath)
   const deleteProject = useMutation(api.projects.deleteProject)
   const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
+  const recordRepoAccessSyncResult = useMutation(api.projectRepoAccess.recordSyncResult)
 
   // Fetch organization members for the team step
   const orgMembersData = useQuery(
@@ -180,6 +231,49 @@ export function NewProject() {
     profileImageUrl: m.user?.profileImageUrl,
     role: m.role,
   })).filter((m) => m.email) // Filter out members without email
+  const profile = useQuery(
+    api.users.getById,
+    convexUserId ? { userId: convexUserId } : 'skip'
+  )
+  const organizationSettings = useQuery(
+    api.organizations.get,
+    organizationId ? { id: organizationId } : 'skip'
+  )
+  const { getConnection } = useWorkspaceSourceControl({
+    route: '/projects/new',
+    enabled: Boolean(organizationId && convexUserId),
+  })
+  const githubIntegration = getConnection('github')
+  const gitlabIntegration = getConnection('gitlab')
+  const connectedRepoProviders = useMemo(
+    () => [
+      ...(githubIntegration ? (['github'] as const) : []),
+      ...(gitlabIntegration ? (['gitlab'] as const) : []),
+    ],
+    [githubIntegration, gitlabIntegration]
+  )
+  const preferredSourceControlProviders = useMemo(
+    () => readSourceControlProviderPreferences(),
+    []
+  )
+  const sourceControlProviderPreference = useMemo(
+    () =>
+      resolveSourceControlProviderPreference({
+        userDefaultProvider: profile?.preferences?.sourceControlDefaultProvider,
+        workspaceDefaultProvider: organizationSettings?.sourceControlSettings?.defaultProvider,
+        preferredProviders: preferredSourceControlProviders,
+        githubConnection: githubIntegration,
+        gitlabConnection: gitlabIntegration,
+      }),
+    [
+      gitlabIntegration,
+      githubIntegration,
+      organizationSettings?.sourceControlSettings?.defaultProvider,
+      preferredSourceControlProviders,
+      profile?.preferences?.sourceControlDefaultProvider,
+    ]
+  )
+  const defaultSourceControlProvider = sourceControlProviderPreference.provider
 
   const {
     state,
@@ -191,15 +285,11 @@ export function NewProject() {
     goToStep,
     nextStep,
     prevStep,
-    updateIntent,
-    setTemplate,
-    updateStack,
     updateSourceControl,
     addTeamMember,
     removeTeamMember,
     setOriginalPrompt,
     setRepoSource,
-    createOrUpdateProject,
   } = wizard
 
   // Add current user as project manager when entering team step
@@ -238,6 +328,16 @@ export function NewProject() {
     })
   }, [addTeamMember, isPersonalWorkspace, state.team, user])
 
+  useEffect(() => {
+    if (state.sourceControl.setupMode === workspaceSetupMode) {
+      return
+    }
+
+    updateSourceControl({
+      setupMode: workspaceSetupMode,
+    })
+  }, [state.sourceControl.setupMode, updateSourceControl, workspaceSetupMode])
+
   const handleBack = () => {
     if (isFirstStep) {
       navigate('/projects')
@@ -246,203 +346,7 @@ export function NewProject() {
     }
   }
 
-  const runTerminalCommand = useCallback(
-    async (projectPath: string, command: string): Promise<{ success: boolean; error?: string }> => {
-      const platform: ImportTerminalPlatform = isWindowsClient() ? 'windows' : 'posix'
-      const profiles = await window.electronAPI.terminal.getProfiles().catch(() => [])
-      const commandPlan = buildImportTerminalCommand(command, platform, profiles)
-
-      const createResult = await window.electronAPI.terminal.create({
-        projectPath,
-        profileId: commandPlan.profileId,
-        cwd: projectPath,
-        cols: 100,
-        rows: 30,
-      })
-
-      if (!createResult.success || !createResult.terminalId) {
-        return { success: false, error: createResult.error || 'Failed to create terminal session' }
-      }
-
-      const terminalId = createResult.terminalId
-      addTerminal({
-        id: terminalId,
-        profileId: 'task',
-        profileName: 'Import Setup',
-        title: 'Import Setup',
-        projectPath,
-        label: 'Import Setup',
-        kind: 'task',
-        command,
-        nameSource: 'auto',
-        status: 'starting',
-        hasOutput: false,
-      })
-      setActiveTerminal(terminalId)
-      setImportTerminalId(terminalId)
-
-      return await new Promise((resolve) => {
-        let settled = false
-        let commandDispatchTimer: number | null = null
-        let completionBuffer = ''
-        let recentOutput = ''
-        const buildTerminalFailureMessage = (fallback: string) => {
-          const sanitizedOutput = recentOutput
-            .replace(new RegExp(`${commandPlan.completionMarker}:\\d+`, 'g'), '')
-            .trim()
-          if (!sanitizedOutput) return fallback
-          return sanitizedOutput.slice(-4000)
-        }
-        const cleanup = () => {
-          if (settled) return
-          settled = true
-          unsubscribeOutput()
-          unsubscribeExit()
-          window.clearTimeout(timeoutId)
-          if (commandDispatchTimer !== null) {
-            window.clearTimeout(commandDispatchTimer)
-            commandDispatchTimer = null
-          }
-        }
-
-        const unsubscribeExit = window.electronAPI.terminal.onExit(({ terminalId: exitedTerminalId, exitCode }) => {
-          if (exitedTerminalId !== terminalId || settled) return
-          updateTerminalStatus(
-            terminalId,
-            exitCode === 0 ? 'exited' : 'error',
-            exitCode ?? undefined
-          )
-          cleanup()
-          resolve({
-            success: exitCode === 0,
-            error: exitCode === 0
-              ? undefined
-              : buildTerminalFailureMessage(`Command exited with code ${exitCode ?? 'unknown'}`),
-          })
-        })
-
-        const unsubscribeOutput = window.electronAPI.terminal.onOutput(({ terminalId: outputTerminalId, data }) => {
-          if (outputTerminalId !== terminalId || settled) return
-
-          recentOutput = `${recentOutput}${data}`.slice(-8000)
-          completionBuffer = `${completionBuffer}${data}`.slice(-512)
-          const exitCode = parseImportTerminalCompletionCode(
-            completionBuffer,
-            commandPlan.completionMarker
-          )
-          if (exitCode === null) return
-
-          updateTerminalStatus(
-            terminalId,
-            exitCode === 0 ? 'exited' : 'error',
-            exitCode
-          )
-          cleanup()
-          resolve({
-            success: exitCode === 0,
-            error: exitCode === 0
-              ? undefined
-              : buildTerminalFailureMessage(`Command exited with code ${exitCode}`),
-          })
-        })
-
-        const timeoutId = window.setTimeout(() => {
-          if (settled) return
-          cleanup()
-          void window.electronAPI.terminal.kill({ terminalId })
-          updateTerminalStatus(terminalId, 'error')
-          resolve({ success: false, error: 'Command timed out' })
-        }, INSTALL_TIMEOUT_MS)
-
-        commandDispatchTimer = window.setTimeout(() => {
-          window.electronAPI.terminal.input({
-            terminalId,
-            data: `${commandPlan.commandLine}\r\n`,
-          }).catch((error) => {
-            if (settled) return
-            updateTerminalStatus(terminalId, 'error')
-            cleanup()
-            resolve({
-              success: false,
-              error: error instanceof Error ? error.message : 'Failed to send terminal input',
-            })
-          })
-        }, 100)
-
-        updateTerminalStatus(terminalId, 'running')
-      })
-    },
-    [addTerminal, setActiveTerminal, updateTerminalStatus]
-  )
-
-  const preinstallDependencies = useCallback(async (projectPath: string) => {
-    const hasPkg = await hasPackageJson(projectPath)
-    if (!hasPkg) return
-
-    const packageManager = await detectPackageManager(projectPath)
-    const depsInstalled = await checkDependenciesInstalled(projectPath, packageManager)
-    if (depsInstalled) return
-
-    setImportSyncMessage(`Installing dependencies (${packageManager})...`)
-    const installCommand = getInstallCommand(packageManager)
-    const installResult = await runTerminalCommand(projectPath, installCommand)
-    if (installResult.success) {
-      return
-    }
-
-    const legacyPeerDepsCommand = getLegacyPeerDepsInstallCommand(packageManager)
-    const installError = installResult.error || 'Dependency installation failed'
-    const shouldRetryWithLegacyPeerDeps =
-      Boolean(legacyPeerDepsCommand) &&
-      /ERESOLVE|peer dep|peer dependency|unable to resolve dependency tree/i.test(installError)
-
-    if (shouldRetryWithLegacyPeerDeps && legacyPeerDepsCommand) {
-      setImportSyncMessage(`Retrying install with legacy peer deps (${packageManager})...`)
-      const retryResult = await runTerminalCommand(projectPath, legacyPeerDepsCommand)
-      if (retryResult.success) {
-        return
-      }
-      throw new Error(retryResult.error || installError)
-    }
-
-    throw new Error(installError)
-  }, [runTerminalCommand])
-
-  const cleanupImportTerminal = useCallback(async () => {
-    if (!importTerminalId) return
-
-    try {
-      const terminalStatus = importTerminal?.status
-      if (terminalStatus === 'starting' || terminalStatus === 'running') {
-        await window.electronAPI.terminal.kill({ terminalId: importTerminalId })
-      }
-    } catch {
-      // Ignore terminal shutdown errors during import cleanup.
-    } finally {
-      removeTerminal(importTerminalId)
-      setImportTerminalId(null)
-    }
-  }, [importTerminal?.status, importTerminalId, removeTerminal])
-
   const handleNext = async () => {
-    // On the review step for fresh path, create project and go to build
-    if (currentStepDef?.id === 'review' && state.path === 'fresh') {
-      const projectId = await createOrUpdateProject()
-      if (projectId) {
-        navigate(`/projects/${projectId}/build`)
-      }
-      return
-    }
-
-    // For prompt path, create project and go to build
-    if (currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review') {
-      const projectId = await createOrUpdateProject()
-      if (projectId) {
-        navigate(`/projects/${projectId}/build`)
-      }
-      return
-    }
-
     // For repo-source step, scan the repo before advancing
     if (currentStepDef?.id === 'repo-source' && state.repoSource?.repoUrl) {
       setIsScanning(true)
@@ -532,13 +436,37 @@ export function NewProject() {
 
         // Update repo source with detected stack
         setRepoSource({ ...baseRepoSource, detectedStack })
+        const currentUserEmail = user?.email?.trim().toLowerCase()
+        if (
+          user &&
+          currentUserEmail &&
+          !state.team.some((member) => member.email.trim().toLowerCase() === currentUserEmail)
+        ) {
+          addTeamMember({
+            email: user.email,
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+            role: 'project_manager',
+            isCurrentUser: true,
+            profileImageUrl: user.profileImageUrl,
+          })
+        }
         setIsScanning(false)
-        nextStep()
+        const reviewStepIndex = steps.findIndex((step) => step.id === 'review')
+        if (reviewStepIndex >= 0) {
+          goToStep(reviewStepIndex)
+        } else {
+          nextStep()
+        }
       } catch (error) {
         console.error('Scan failed:', error)
         setIsScanning(false)
         // Still advance even if scan fails
-        nextStep()
+        const reviewStepIndex = steps.findIndex((step) => step.id === 'review')
+        if (reviewStepIndex >= 0) {
+          goToStep(reviewStepIndex)
+        } else {
+          nextStep()
+        }
       }
       return
     }
@@ -546,9 +474,26 @@ export function NewProject() {
     nextStep()
   }
 
-  const handleSelectPath = async (path: CreationPath) => {
-    if (path !== 'repo') {
-      setPath(path)
+  const handleSelectPath = async (path: GuidedEntryChoice) => {
+    setImportError(null)
+    setImportSyncState('idle')
+    setImportSyncMessage('')
+
+    if (path === 'remote-repository') {
+      const initialRemoteProvider = defaultSourceControlProvider ?? ''
+      setRepoSource({
+        provider: initialRemoteProvider,
+        repoUrl: '',
+        branch: 'main',
+      })
+      updateSourceControl({
+        provider: initialRemoteProvider,
+        defaultBranch: 'main',
+        syncPolicy: 'auto',
+        workingCopyMode: 'managed',
+        setupMode: workspaceSetupMode,
+      })
+      setPath('repo')
       return
     }
 
@@ -562,6 +507,13 @@ export function NewProject() {
       repoUrl: result.path,
       branch: 'main',
     })
+    updateSourceControl({
+      provider: 'local',
+      defaultBranch: 'main',
+      syncPolicy: 'manual',
+      workingCopyMode: 'attached',
+      setupMode: workspaceSetupMode,
+    })
     setPath('repo')
   }
 
@@ -573,6 +525,56 @@ export function NewProject() {
     setPendingPromptText(promptText)
     setConversationPromptSettings(settings)
     setIsConversationMode(true)
+  }
+
+  const markCurrentUserRepoAccessGranted = async (args: {
+    projectId: Id<'projects'>
+    provider?: string
+    repoUrl?: string | null
+  }) => {
+    if (!convexUserId) {
+      return
+    }
+
+    const provider =
+      args.provider === 'github' || args.provider === 'gitlab'
+        ? args.provider
+        : undefined
+    const repoUrl = args.repoUrl?.trim()
+
+    if (!provider || !repoUrl) {
+      return
+    }
+
+    try {
+      await recordRepoAccessSyncResult({
+        projectId: args.projectId,
+        actorUserId: convexUserId,
+        provider,
+        repoUrl,
+        subjectType: 'member',
+        memberUserId: convexUserId,
+        role: 'project_manager',
+        accessState: 'granted',
+      })
+    } catch (error) {
+      console.warn('[NewProject] Failed to mark creator repository access as granted:', error)
+    }
+  }
+
+  const resolvePlanSourceControl = (plan: PlanOption) => {
+    const planProvider =
+      plan.config.sourceControl?.provider === 'gitlab' ||
+      plan.config.sourceControl?.provider === 'github'
+        ? plan.config.sourceControl.provider
+        : defaultSourceControlProvider ?? undefined
+
+    return {
+      visibility: 'private',
+      mergeStrategy: 'squash',
+      ...plan.config.sourceControl,
+      ...(planProvider ? { provider: planProvider } : {}),
+    }
   }
 
   const handlePlanSelected = async (plan: PlanOption) => {
@@ -595,6 +597,15 @@ export function NewProject() {
     console.log('[NewProject] Creating project with promptSettings:', conversationPromptSettings)
 
     try {
+      const normalizedSourceControl = resolvePlanSourceControl(plan)
+      if (
+        normalizedSourceControl.provider !== 'github' &&
+        normalizedSourceControl.provider !== 'gitlab'
+      ) {
+        alert('Please tell the planner whether this project should use GitHub or GitLab, then try again.')
+        return
+      }
+
       // NOW create the project with the selected plan configuration
       const result = await createProject({
         organizationId,
@@ -607,7 +618,7 @@ export function NewProject() {
         targetPlatform: plan.config.targetPlatform,
         buildContract: plan.config.buildContract ?? getDefaultWebBuildContract(),
         stack: plan.config.stack,
-        sourceControl: plan.config.sourceControl,
+        sourceControl: normalizedSourceControl,
         visuals: plan.config.visuals,
         originalPrompt: pendingPromptText,
         promptSettings: conversationPromptSettings ? {
@@ -618,6 +629,11 @@ export function NewProject() {
           toolsEnabled: true,
           webSearchEnabled: true,
         } : undefined,
+      })
+      await markCurrentUserRepoAccessGranted({
+        projectId: result.projectId,
+        provider: normalizedSourceControl.provider,
+        repoUrl: normalizedSourceControl.repoUrl,
       })
 
       const generatedPlan = normalizeGeneratedPlan(
@@ -660,10 +676,11 @@ export function NewProject() {
 
     const repoSource = state.repoSource
       ? {
-        ...state.repoSource,
-        provider: state.repoSource.provider || 'github',
-        branch: state.repoSource.branch || 'main',
-      }
+          provider: state.repoSource.provider || 'github',
+          repoUrl: state.repoSource.repoUrl,
+          branch: state.repoSource.branch || 'main',
+          detectedStack: state.repoSource.detectedStack,
+        }
       : null
 
     if (!repoSource?.repoUrl) {
@@ -688,7 +705,7 @@ export function NewProject() {
         setImportSyncMessage('Checking local files...')
         const preflightResult = await runImportPreflight({
           projectPath: repoSource.repoUrl,
-          mode: 'relocation',
+          mode: 'raw',
         })
 
         if (!preflightResult.success) {
@@ -713,6 +730,18 @@ export function NewProject() {
     }
 
     setImportSyncMessage('Creating project...')
+
+    const sourceControlForImport = {
+      provider: repoSource.provider,
+      repoUrl: repoSource.provider === 'local' ? undefined : repoSource.repoUrl,
+      defaultBranch: repoSource.branch,
+      visibility: state.sourceControl.visibility,
+      mergeStrategy: state.sourceControl.mergeStrategy,
+      mergeQueue: state.sourceControl.mergeQueue,
+      syncPolicy: state.sourceControl.syncPolicy === 'manual' ? 'manual' as const : 'auto' as const,
+      workingCopyMode: state.sourceControl.workingCopyMode || (repoSource.provider === 'local' ? 'attached' as const : 'managed' as const),
+      setupMode: state.sourceControl.setupMode ?? workspaceSetupMode,
+    }
 
     let createdProjectId: Id<'projects'> | null = null
     let createdWorkspacePath: string | null = null
@@ -754,7 +783,13 @@ export function NewProject() {
         userId: convexUserId,
         name: repoName,
         creationPath: 'repo',
+        sourceControl: sourceControlForImport,
         repoSource,
+      })
+      await markCurrentUserRepoAccessGranted({
+        projectId: result.projectId,
+        provider: sourceControlForImport.provider,
+        repoUrl: sourceControlForImport.repoUrl,
       })
       createdProjectId = result.projectId
       console.log('[Import] Project created:', result)
@@ -762,26 +797,24 @@ export function NewProject() {
       let importPath = repoSource.repoUrl
 
       if (repoSource.provider !== 'local') {
-        let encryptedCredentials: string | undefined
-        let keyId: string | undefined
+        let accessToken: string | undefined
 
-        if (isRepoIntegrationProvider(repoSource.provider) && window.electronAPI?.integrations) {
+        if (isRepoIntegrationProvider(repoSource.provider)) {
           try {
-            const [integrationCredentials, keyMetadata] = await Promise.all([
-              convex.query(api.integrations.getEncryptedCredentials, {
+            const providerSession = await convex.action(
+              api.sourceControl.issueWorkspaceProviderSession,
+              {
                 organizationId,
+                userId: convexUserId,
                 provider: repoSource.provider,
-              }),
-              convex.query(api.integrations.getKeyMetadata, { organizationId }),
-            ])
+                purpose: 'git',
+              }
+            )
 
-            if (integrationCredentials?.encryptedCredentials && keyMetadata?.keyId) {
-              encryptedCredentials = integrationCredentials.encryptedCredentials
-              keyId = keyMetadata.keyId
-            }
+            accessToken = providerSession?.accessToken
           } catch (credentialError) {
             console.warn(
-              `[Import] Failed to resolve ${repoSource.provider} integration credentials:`,
+              `[Import] Failed to resolve ${repoSource.provider} source-control credentials:`,
               credentialError
             )
           }
@@ -801,8 +834,7 @@ export function NewProject() {
           repoUrl: repoSource.repoUrl,
           provider: repoSource.provider,
           branch: repoSource.branch,
-          encryptedCredentials,
-          keyId,
+          accessToken,
         })
 
         if (!cloneResult.success || !cloneResult.localPath) {
@@ -810,9 +842,9 @@ export function NewProject() {
           let cloneMessage = cloneResult.error || 'Failed to clone repository'
           if (
             isRepoIntegrationProvider(repoSource.provider) &&
-            !encryptedCredentials
+            !accessToken
           ) {
-            cloneMessage += ` If this repository is private, connect your ${repoSource.provider === 'github' ? 'GitHub' : 'GitLab'} integration and try again.`
+            cloneMessage += ` If this repository is private, connect your ${repoSource.provider === 'github' ? 'GitHub' : 'GitLab'} source control and try again.`
           }
           setImportSyncState('error')
           setImportSyncMessage(cloneMessage)
@@ -827,45 +859,11 @@ export function NewProject() {
           userId: convexUserId,
           localPath: importPath,
         })
+        
+        
       } else {
-        if (!result.slug) {
-          await cleanupPartialImport()
-          setImportSyncState('error')
-          setImportSyncMessage('Project created but no slug was returned.')
-          setImportError('Project created but no slug was returned.')
-          return
-        }
-
-        setImportSyncMessage('Relocating repository...')
-        const createFolderResult = await window.electronAPI.project.createFolder({
-          slug: result.slug,
-          initGit: false,
-        })
-        if (!createFolderResult.success || !createFolderResult.localPath) {
-          await cleanupPartialImport()
-          const message = createFolderResult.error || 'Failed to prepare project workspace'
-          setImportSyncState('error')
-          setImportSyncMessage(message)
-          setImportError(message)
-          return
-        }
-        createdWorkspacePath = createFolderResult.localPath
-
-        const copyResult = await window.electronAPI.project.copyDirectorySnapshot({
-          sourcePath: repoSource.repoUrl,
-          targetPath: createFolderResult.localPath,
-          mode: 'relocation',
-        })
-        if (!copyResult.success) {
-          await cleanupPartialImport()
-          const message = copyResult.error || 'Failed to relocate local repository'
-          setImportSyncState('error')
-          setImportSyncMessage(message)
-          setImportError(message)
-          return
-        }
-
-        importPath = copyResult.copiedTo || createFolderResult.localPath
+        setImportSyncMessage('Attaching repository...')
+        importPath = repoSource.repoUrl
         await updateMemberLocalPath({
           projectId: result.projectId,
           userId: convexUserId,
@@ -896,6 +894,23 @@ export function NewProject() {
           setImportSyncMessage(`Installed runtimes: ${runtimePreflight.installed.map(runtimeLabel).join(', ')}`)
         }
 
+        if (repoSource.provider !== 'local') {
+          const dependencyInstall = await installProjectDependenciesForImport({
+            projectPath: importPath,
+            onProgress: (message) => {
+              setImportSyncMessage(message)
+            },
+          })
+
+          if (!dependencyInstall.success) {
+            await cleanupPartialImport()
+            setImportError(dependencyInstall.error)
+            setImportSyncState('error')
+            setImportSyncMessage(dependencyInstall.error)
+            return
+          }
+        }
+
         try {
           await updateSyncStatus({
             projectId: result.projectId,
@@ -906,44 +921,8 @@ export function NewProject() {
           console.warn('[Import] Failed to set sync status to syncing:', syncStatusError)
         }
 
-        try {
-          await preinstallDependencies(importPath)
-        } catch (dependencyError) {
-          const message = dependencyError instanceof Error ? dependencyError.message : 'Dependency installation failed'
-          await cleanupPartialImport()
-          setImportError(message)
-          setImportSyncState('error')
-          setImportSyncMessage('Import failed')
-          return
-        }
-
         retainCreatedProject = true
         try {
-          await publishWorkspaceToCozeaGit({
-            convex,
-            project: {
-              _id: result.projectId,
-              slug: result.slug ?? repoName,
-              organizationId,
-              syncMode: 'git',
-              gitRepository: {
-                provider: repoSource.provider === 'local' ? 'cozea' : repoSource.provider,
-                url: repoSource.repoUrl,
-                defaultBranch: 'main',
-              },
-              sourceControl: {
-                provider: repoSource.provider,
-                repoUrl: repoSource.repoUrl,
-              },
-            },
-            projectPath: importPath,
-            userId: convexUserId,
-            onProgress: (message) => {
-              setImportSyncMessage(message)
-            },
-            updateMemberLocalPath,
-          })
-
           await updateSyncStatus({
             projectId: result.projectId,
             userId: convexUserId,
@@ -951,8 +930,8 @@ export function NewProject() {
           })
         } catch (gitImportError) {
           publishFailed = true
-          const message = gitImportError instanceof Error ? gitImportError.message : 'Git import sync failed'
-          console.warn('[Import] Import publish to Cozea git failed:', message)
+          const message = gitImportError instanceof Error ? gitImportError.message : 'Git import setup failed'
+          console.warn('[Import] Import git setup failed:', message)
           try {
             await updateSyncStatus({
               projectId: result.projectId,
@@ -982,7 +961,6 @@ export function NewProject() {
             })),
           })
           console.log('[Import] Navigating to:', targetPath)
-          void cleanupImportTerminal()
           navigate(targetPath, {
             state: {
               syncMode: 'git',
@@ -1017,6 +995,9 @@ export function NewProject() {
       return (
         <WizardConversation
           initialPrompt={pendingPromptText}
+          defaultSourceControlProvider={defaultSourceControlProvider}
+          shouldAskForSourceControlProvider={sourceControlProviderPreference.shouldAskUser}
+          availableSourceControlProviders={sourceControlProviderPreference.connectedProviders}
           promptSettings={conversationPromptSettings}
           onPlanSelected={handlePlanSelected}
           className="flex-1 h-full"
@@ -1029,6 +1010,8 @@ export function NewProject() {
       return (
         <EntryChoice
           onSelect={handleSelectPath}
+          defaultSourceControlProvider={defaultSourceControlProvider}
+          shouldAskForSourceControlProvider={sourceControlProviderPreference.shouldAskUser}
           promptValue={state.originalPrompt || ''}
           onPromptChange={setOriginalPrompt}
           onPromptSubmit={handlePromptSubmit}
@@ -1039,20 +1022,26 @@ export function NewProject() {
 
     // Path-specific steps
     switch (currentStepDef?.id) {
-      case 'intent':
-        return <IntentStep intent={state.intent} onUpdate={updateIntent} />
-
-      case 'template':
-        return <TemplateStep selected={state.template} onSelect={setTemplate} />
-
-      case 'stack':
-        return <StackStep stack={state.stack} onUpdate={updateStack} />
-
-      case 'source':
-        return <SourceControlStep sourceControl={state.sourceControl} onUpdate={updateSourceControl} />
-
-      case 'visuals':
-        return <VisualsStep visuals={state.visuals} onUpdate={wizard.updateVisuals} />
+      case 'repo-source':
+        return (
+          <div
+            className={cn(
+              'flex-1 min-h-0 flex flex-col'
+            )}
+          >
+            <RepoSourceStep
+              repoSource={state.repoSource}
+              onUpdate={updateRepoSourcePartial}
+              onBrowseFolder={browseLocalRepoFolder}
+              organizationId={organizationId}
+              entryMode={state.repoSource?.provider === 'local' ? 'local' : 'remote'}
+              connectedProviders={connectedRepoProviders}
+              remoteRepositorySearchValue={remoteRepositorySearch}
+              remoteRepositoryRefreshNonce={remoteRepositoryRefreshNonce}
+              onRemoteRepositoriesLoadingChange={setIsRemoteRepositoriesLoading}
+            />
+          </div>
+        )
 
       case 'team':
         return (
@@ -1069,7 +1058,6 @@ export function NewProject() {
         )
 
       case 'review': {
-        const showImportTerminalPanel = Boolean(importTerminalId && importSyncState !== 'idle')
         return (
           <div
             className={cn(
@@ -1082,97 +1070,23 @@ export function NewProject() {
               <div className={cn("min-w-0 h-full")}>
                 <ReviewStep
                   state={state}
+                  organizationId={organizationId}
+                  userId={convexUserId}
                   onEditStep={handleEditStep}
+                  editStepIndexById={Object.fromEntries(steps.map((step, index) => [step.id, index]))}
+                  onUpdateSourceControl={updateSourceControl}
                   onImport={state.path === 'repo' ? handleImportProject : undefined}
                   isImporting={isImporting}
                   importError={importError}
                   importSyncState={importSyncState}
                   importSyncMessage={importSyncMessage}
-                  fillHeight={state.path === 'repo'}
                   className="max-w-none mx-0"
                 />
               </div>
             </div>
-
-            {showImportTerminalPanel && importTerminalId && (
-              <div className="mt-2 flex h-[280px] min-h-[200px] max-h-[36vh] flex-col overflow-hidden rounded-xl border border-border bg-content-surface">
-                <div className="flex h-8 items-center justify-between border-b border-border px-3">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Import Terminal
-                    </p>
-                  </div>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <TerminalInstance
-                    terminalId={importTerminalId}
-                    className="h-full w-full [--terminal-panel-bg:var(--content-surface)]"
-                    shouldAutoFocus={isImporting}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         )
       }
-
-      case 'prompt':
-        return (
-          <PromptInput
-            value={state.originalPrompt || ''}
-            onChange={setOriginalPrompt}
-            reviewBeforeBuild={reviewBeforeBuild}
-            setReviewBeforeBuild={setReviewBeforeBuild}
-            customizeTeam={customizeTeam}
-            setCustomizeTeam={setCustomizeTeam}
-            allowCustomizeTeam={!isPersonalWorkspace}
-          />
-        )
-
-      case 'quick-review':
-        // For one-shot path, show a simplified review
-        return (
-          <div className="space-y-6 max-w-2xl mx-auto">
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-semibold">Ready to Generate</h2>
-              <p className="text-muted-foreground">
-                Your AI assistant will analyze your prompt and generate a complete project plan.
-              </p>
-            </div>
-            <div className="bg-muted/50 rounded-lg p-6">
-              <h3 className="text-sm font-medium mb-2">Your prompt:</h3>
-              <p className="text-muted-foreground whitespace-pre-wrap">
-                {state.originalPrompt}
-              </p>
-            </div>
-          </div>
-        )
-
-      // Repo path steps
-      case 'repo-source':
-        return (
-          <div
-            className={cn(
-              "flex-1 min-h-0 flex flex-col",
-              // Local folder uses a split file tree + Monaco preview; remove WizardLayout padding
-              // so the panes can truly fill the available vertical space.
-              "-my-8"
-            )}
-          >
-            <RepoSourceStep
-              repoSource={state.repoSource}
-              onUpdate={updateRepoSourcePartial}
-              onBrowseFolder={browseLocalRepoFolder}
-              onContinue={handleNext}
-              canContinue={Boolean(canProceed)}
-            />
-          </div>
-        )
-
-      // Plan and Build steps redirect to dedicated pages
-      case 'plan':
-      case 'build':
-        return null
 
       default:
         return null
@@ -1181,16 +1095,19 @@ export function NewProject() {
 
   // Determine button text
   const nextButtonText = useMemo(() => {
-    if (state.isSaving) return 'Saving...'
     if (isScanning) return 'Analyzing...'
-    if (currentStepDef?.id === 'review') return 'Generate Plan'
-    if (currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review') return 'Generate Project'
     return 'Next'
-  }, [currentStepDef?.id, state.isSaving, isScanning])
+  }, [isScanning])
 
-  // Don't show Next button on entry step (path selection handles it), in conversation mode, or for repo review (button is in card)
-  const isRepoReview = state.path === 'repo' && currentStepDef?.id === 'review'
-  const showNextButton = state.path !== null && state.step > 0 && !['plan', 'build'].includes(currentStepDef?.id || '') && !isConversationMode && !isRepoReview
+  const usesInlineContinueButton =
+    currentStepDef?.id === 'repo-source' ||
+    currentStepDef?.id === 'team' ||
+    currentStepDef?.id === 'review'
+  const showNextButton =
+    state.path !== null &&
+    state.step > 0 &&
+    !isConversationMode &&
+    !usesInlineContinueButton
 
   // Don't show navigation at all in conversation mode
   const showNavigation = state.step > 0 && !isConversationMode
@@ -1237,14 +1154,53 @@ export function NewProject() {
       repoUrl: '',
       branch: 'main',
     }
-    setRepoSource({ ...baseRepoSource, ...partial })
+    const nextRepoSource = { ...baseRepoSource, ...partial }
+    const inferredProvider =
+      nextRepoSource.provider === 'github' || nextRepoSource.provider === 'gitlab'
+        ? nextRepoSource.provider
+        : inferRepoProviderFromUrl(nextRepoSource.repoUrl)
+    if (
+      nextRepoSource.provider !== 'local' &&
+      (!nextRepoSource.provider || nextRepoSource.provider.trim().length === 0) &&
+      inferredProvider
+    ) {
+      nextRepoSource.provider = inferredProvider
+    }
+    if (nextRepoSource.provider === 'local') {
+      nextRepoSource.ownerLogin = undefined
+      nextRepoSource.ownerAvatarUrl = undefined
+      nextRepoSource.lastActivityAt = undefined
+      nextRepoSource.sizeBytes = undefined
+      nextRepoSource.starsCount = undefined
+    }
+    setRepoSource(nextRepoSource)
+    updateSourceControl({
+      provider: nextRepoSource.provider,
+      defaultBranch: nextRepoSource.branch || state.sourceControl.defaultBranch || 'main',
+      syncPolicy:
+        nextRepoSource.provider === 'local'
+          ? state.sourceControl.syncPolicy === 'auto'
+            ? 'auto'
+            : 'manual'
+          : state.sourceControl.syncPolicy === 'manual'
+            ? 'manual'
+            : 'auto',
+      workingCopyMode: nextRepoSource.provider === 'local' ? 'attached' : 'managed',
+      setupMode: state.sourceControl.setupMode ?? workspaceSetupMode,
+    })
   }
 
   const browseLocalRepoFolder = async () => {
     try {
       const result = await window.electronAPI.dialog.selectDirectory()
       if (result && result.path) {
-        updateRepoSourcePartial({ repoUrl: result.path, provider: 'local', branch: 'main' })
+        updateRepoSourcePartial({
+          repoUrl: result.path,
+          provider: 'local',
+          branch: 'main',
+          ownerLogin: undefined,
+          ownerAvatarUrl: undefined,
+        })
       }
     } catch (error) {
       console.error('[Import] Failed to select directory:', error)
@@ -1252,10 +1208,65 @@ export function NewProject() {
   }
 
   const isRepoSourceStep = state.path === 'repo' && currentStepDef?.id === 'repo-source'
+  const isLocalFolderRepoSourceStep = isRepoSourceStep && state.repoSource?.provider === 'local'
+  const isRemoteRepositorySourceStep = isRepoSourceStep && !isLocalFolderRepoSourceStep
+  const repoSourceFloatingAction = isRepoSourceStep ? (
+    <div className="fixed bottom-10 right-4 z-50">
+      <Button
+        type="button"
+        onClick={handleNext}
+        disabled={!canProceed || state.isSaving || isScanning}
+        className="rounded-full shadow-none hover:shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+      >
+        {state.isSaving || isScanning ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : null}
+        Continue
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+    </div>
+  ) : undefined
 
   const headerControls = (!showNavigation || isConversationMode || state.step <= 0) ? null : (
     <div className="flex items-center gap-2">
-      {isRepoSourceStep && (
+      {isRemoteRepositorySourceStep && (
+        <>
+          <div className="flex h-8 w-[240px] shrink-0 items-center gap-2 rounded-full border border-border/60 bg-secondary/70 px-3 shadow-none">
+            <Search className="pointer-events-none h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <Input
+              value={remoteRepositorySearch}
+              onChange={(event) => {
+                setRemoteRepositorySearch(event.target.value)
+              }}
+              placeholder="Search repositories"
+              className="h-full rounded-none border-0 bg-transparent px-0 py-0 text-xs shadow-none ring-0 focus-visible:ring-0"
+            />
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRemoteRepositoryRefreshNonce((value) => value + 1)}
+                  disabled={isRemoteRepositoriesLoading}
+                  aria-label="Refresh repositories"
+                  className="h-7 w-7 rounded-full px-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+                >
+                  {isRemoteRepositoriesLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Refresh repositories</TooltipContent>
+          </Tooltip>
+        </>
+      )}
+      {isLocalFolderRepoSourceStep && (
         <button
           type="button"
           onClick={browseLocalRepoFolder}
@@ -1301,7 +1312,7 @@ export function NewProject() {
               >
                 {state.isSaving || isScanning ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : currentStepDef?.id === 'review' || currentStepDef?.id === 'prompt' || currentStepDef?.id === 'quick-review' ? (
+                ) : currentStepDef?.id === 'review' ? (
                   <Rocket className="h-4 w-4" />
                 ) : (
                   <ArrowRight className="h-4 w-4" />
@@ -1328,6 +1339,7 @@ export function NewProject() {
       footer={undefined}
       contentMode="fixed"
       hideInbox
+      headerAbsolute={state.path === 'repo' && currentStepDef?.id === 'repo-source'}
     >
       <WizardLayout
         steps={steps}
@@ -1335,8 +1347,12 @@ export function NewProject() {
         onStepClick={goToStep}
         canNavigateToStep={(step) => step < state.step}
         title={isConversationMode ? 'AI Project Planning' : state.path ? 'New Project' : 'Create a New Project'}
-        fullHeight={isConversationMode || (state.path === 'repo' && currentStepDef?.id === 'review')}
-        preserveInsetInFullHeight={state.path === 'repo' && currentStepDef?.id === 'review'}
+        fullHeight={
+          isConversationMode ||
+          (state.path === 'repo' &&
+            (currentStepDef?.id === 'review' || currentStepDef?.id === 'repo-source'))
+        }
+        preserveInsetInFullHeight={false}
         showInternalStepHeader={false}
       >
         {/* Step Content */}
@@ -1352,6 +1368,7 @@ export function NewProject() {
           {renderStepContent()}
         </div>
       </WizardLayout>
+      {repoSourceFloatingAction}
     </DashboardLayout>
   )
 }

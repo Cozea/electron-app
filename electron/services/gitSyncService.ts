@@ -1340,7 +1340,7 @@ export class GitSyncService {
 
       const commitResult = await this.commitAll({
         projectPath,
-        message: 'cozea: bootstrap cloud history',
+        message: 'bootstrap: remote history',
       })
       if (!commitResult.success) {
         return {
@@ -1365,7 +1365,7 @@ export class GitSyncService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to adopt workspace into Cozea Git',
+        error: error instanceof Error ? error.message : 'Failed to adopt workspace into remote git',
       }
     }
   }
@@ -1420,7 +1420,7 @@ export class GitSyncService {
       }
     }
 
-    const commit = await this.runGit(['commit', '-m', options.message.trim() || 'cozea: sync workspace'], {
+    const commit = await this.runGit(['commit', '-m', options.message.trim() || 'sync: workspace'], {
       cwd: projectPath,
       timeoutMs: 60_000,
     })

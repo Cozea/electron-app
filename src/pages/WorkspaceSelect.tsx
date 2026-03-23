@@ -75,7 +75,9 @@ export function WorkspaceSelect() {
         <div className="flex justify-center">
           <Button
             variant="secondary"
-            onClick={openCreateWorkspaceDialog}
+            onClick={() => {
+              openCreateWorkspaceDialog()
+            }}
             className="gap-2"
           >
             <Plus className="size-4" />

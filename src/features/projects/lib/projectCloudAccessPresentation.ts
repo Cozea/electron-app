@@ -47,6 +47,9 @@ export function formatProjectCloudAccessError(
   const billingHref =
     getSettingsSurfaceRoute('billing', options.workspaceScoped ? 'workspace' : 'personal') ??
     '/settings/billing'
+  const sourceControlHref =
+    getSettingsSurfaceRoute('sourceControl', options.workspaceScoped ? 'workspace' : 'personal') ??
+    (options.workspaceScoped ? '/workspace/source-control' : '/settings/source-control')
 
   if (lower.includes('not a member of this project')) {
     return {
@@ -161,13 +164,13 @@ export function formatProjectCloudAccessError(
     includesAny(lower, [
       'remote branch origin/',
       'remote branch ',
-      'failed to restore missing cloud history',
-      'failed to prepare imported project for cozea git',
+      'failed to restore missing remote history',
+      'failed to prepare imported project for remote git',
       'failed to create initial project commit',
-      'failed to publish project files to cloud',
-      'failed to restore project files from cloud',
-      'failed to refresh local project from cloud',
-      'failed to replay local changes on top of cloud history',
+      'failed to publish project files to the remote',
+      'failed to restore project files from the remote',
+      'failed to refresh local project from the remote',
+      'failed to replay local changes on top of remote history',
     ])
   ) {
     return {
@@ -177,6 +180,43 @@ export function formatProjectCloudAccessError(
       actionHref: null,
       actionLabel: null,
       isAccessError: false,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'repository access requires your github username',
+      'repository access requires your provider identity',
+      'repository access requires an email address on your account',
+      'repository access must be resolved before this project can open',
+      'repository access must be granted manually before this project can open',
+    ])
+  ) {
+    return {
+      summary: 'Repository Access Required',
+      detail:
+        normalized ||
+        'This project cannot open until repository access is provisioned for your account.',
+      actionHref: sourceControlHref,
+      actionLabel: 'Open Source Control',
+      isAccessError: true,
+    }
+  }
+
+  if (
+    includesAny(lower, [
+      'repository access is pending',
+      'accept the provider invitation',
+    ])
+  ) {
+    return {
+      summary: 'Repository Access Pending',
+      detail:
+        normalized ||
+        'Accept the repository invitation in your git provider, then reopen the project.',
+      actionHref: sourceControlHref,
+      actionLabel: 'Open Source Control',
+      isAccessError: true,
     }
   }
 
@@ -196,7 +236,7 @@ export function formatProjectCloudAccessError(
     return {
       summary: 'Could Not Reach Project Repository',
       detail:
-        'Cozea could not reach the project repository right now. Check your connection and try opening the project again.',
+        'The app could not reach the project repository right now. Check your connection and try opening the project again.',
       actionHref: null,
       actionLabel: null,
       isAccessError: false,
@@ -209,9 +249,9 @@ export function formatProjectCloudAccessError(
     ])
   ) {
     return {
-      summary: 'Cloud Sync Failed',
+      summary: 'Repository Sync Failed',
       detail:
-        'The project opened locally, but Cozea could not finish syncing its git history to the cloud. Try again in a moment.',
+        'The project opened locally, but the app could not finish syncing its git history to the remote. Try again in a moment.',
       actionHref: null,
       actionLabel: null,
       isAccessError: false,

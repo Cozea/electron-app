@@ -36,12 +36,10 @@ export function WizardLayout({
 
   return (
     <div className={cn(
-      "flex flex-col -m-4",
+      "flex flex-col",
       fullHeight
-        ? preserveInsetInFullHeight
-          ? "h-full min-h-0"
-          : "h-[calc(100vh-56px)]"
-        : "min-h-[calc(100vh-56px)]"
+        ? "flex-1 min-h-0 w-full"
+        : "-m-4 min-h-[calc(100vh-56px)]"
     )}>
       {!fullHeight && showInternalStepHeader && currentStep > 0 && (
         <div className="w-full sticky top-0 z-40 bg-background/80 backdrop-blur-sm bdry-b">

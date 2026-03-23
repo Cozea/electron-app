@@ -125,7 +125,7 @@ export interface DependencySnapshot {
 
 export interface DependencyJobPayload {
   id: string
-  action: 'add' | 'update' | 'remove'
+  action: 'install' | 'add' | 'update' | 'remove'
   packageName: string
   status: 'running' | 'success' | 'error'
   startedAt: number
@@ -192,6 +192,141 @@ export interface ProjectRuntimeProfile {
   }
 }
 
+export interface NativePreviewDeviceDescriptor {
+  id: string
+  name: string
+  platform: 'ios' | 'android'
+  kind: 'simulator' | 'emulator'
+  state: 'booted' | 'shutdown' | 'available' | 'offline'
+  osVersion?: string
+  runtimeId?: string
+  isManaged?: boolean
+}
+
+export interface NativePreviewListDevicesResult {
+  success: boolean
+  devices?: NativePreviewDeviceDescriptor[]
+  error?: string
+}
+
+export interface NativePreviewCaptureSourceDescriptor {
+  id: string
+  name: string
+  displayId: string
+  appIconDataUrl?: string
+  thumbnailDataUrl?: string
+}
+
+export interface NativePreviewListCaptureSourcesResult {
+  success: boolean
+  sources?: NativePreviewCaptureSourceDescriptor[]
+  error?: string
+}
+
+export type NativePreviewPlatform = 'ios' | 'android'
+export type NativePreviewLauncher = 'expo-go' | 'dev-build' | 'web'
+export type NativePreviewBuildMode = 'debug' | 'dev-client'
+export type NativePreviewVerificationStatus = 'idle' | 'running' | 'passed' | 'failed' | 'unavailable'
+export type NativePreviewSessionState =
+  | 'idle'
+  | 'booting_device'
+  | 'starting_metro'
+  | 'building_app'
+  | 'installing_app'
+  | 'launching_app'
+  | 'stream_ready'
+  | 'automation_running'
+  | 'stopped'
+  | 'error'
+
+export interface NativePreviewSession {
+  id: string
+  projectPath: string
+  platform: NativePreviewPlatform
+  launcher: NativePreviewLauncher
+  buildMode: NativePreviewBuildMode
+  state: NativePreviewSessionState
+  startedAt: number
+  updatedAt: number
+  device?: NativePreviewDeviceDescriptor
+  message?: string
+  error?: string
+  streamUrl?: string
+  verificationStatus?: NativePreviewVerificationStatus
+}
+
+export interface NativePreviewStartSessionInput {
+  projectPath: string
+  platform: NativePreviewPlatform
+  launcher: NativePreviewLauncher
+  buildMode: NativePreviewBuildMode
+  terminalId?: string
+  devServerPort?: number
+}
+
+export interface NativePreviewStartSessionResult {
+  success: boolean
+  session?: NativePreviewSession
+  error?: string
+}
+
+export interface NativePreviewStopSessionResult {
+  success: boolean
+  error?: string
+}
+
+export interface NativePreviewOpenDeviceResult {
+  success: boolean
+  error?: string
+}
+
+export interface NativePreviewGetSessionStateResult {
+  success: boolean
+  session?: NativePreviewSession
+  error?: string
+}
+
+export interface NativePreviewListSessionsResult {
+  success: boolean
+  sessions?: NativePreviewSession[]
+  error?: string
+}
+
+export interface NativePreviewSendInputResult {
+  success: boolean
+  error?: string
+}
+
+export interface NativePreviewRunAutomationInput {
+  sessionId: string
+  flow?: string
+  flowPath?: string
+  appId?: string
+  selectorId?: string
+}
+
+export interface NativePreviewRunAutomationResult {
+  success: boolean
+  status: NativePreviewVerificationStatus
+  stdout?: string
+  stderr?: string
+  error?: string
+}
+
+export interface NativePreviewCaptureScreenshotResult {
+  success: boolean
+  dataUrl?: string
+  error?: string
+}
+
+export interface NativePreviewInputPayload {
+  sessionId: string
+  type: 'tap' | 'down' | 'move' | 'up' | 'key'
+  x?: number
+  y?: number
+  key?: string
+}
+
 export interface RuntimeResolveCommandResult {
   success: boolean
   command: string
@@ -255,6 +390,57 @@ export interface CloneRepositoryResult {
   localPath?: string
   normalizedRepoUrl?: string
   error?: string
+}
+
+export interface RepositoryOwnerDescriptor {
+  id: string
+  login: string
+  displayName: string
+  kind: 'user' | 'organization' | 'group'
+  installationId?: string
+  installationTargetType?: 'user' | 'organization'
+  installationTargetLogin?: string
+  installationTargetName?: string
+}
+
+export interface RepositoryDescriptor {
+  id: string
+  name: string
+  fullName: string
+  ownerLogin: string
+  ownerId?: string
+  ownerAvatarUrl?: string
+  lastActivityAt?: string
+  defaultBranch?: string
+  private: boolean
+  visibility?: 'public' | 'private' | 'internal'
+  url: string
+  provider: 'github' | 'gitlab'
+  canAdmin?: boolean
+  sizeBytes?: number
+  starsCount?: number
+  description?: string
+  language?: string
+}
+
+export interface RepositoryBranchDescriptor {
+  name: string
+  isDefault: boolean
+}
+
+export interface RepositoryLanguageDescriptor {
+  name: string
+  percentage: number
+}
+
+export interface RepositoryReadmeSnippetDescriptor {
+  excerpt: string | null
+}
+
+export interface RepositoryListPageResult {
+  items: RepositoryDescriptor[]
+  hasNextPage: boolean
+  nextPage?: number
 }
 
 export interface CopyDirectorySnapshotResult {
@@ -1040,6 +1226,102 @@ export interface ElectronAPI {
   localAiRuntime: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
   }
+  sourceControl: {
+    startOAuth: (options: {
+      provider: 'github' | 'gitlab'
+      orgId: string
+      metadata?: Record<string, unknown>
+    }) => Promise<{ success: boolean; error?: string }>
+    onOAuthSuccess: (callback: (data: {
+      provider: string
+      accessToken?: string
+      refreshToken?: string
+      tokenExpiresAt?: number
+      externalId?: string
+      externalAccountName?: string
+      scopes?: string[]
+      metadata?: Record<string, unknown>
+    }) => void) => () => void
+    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
+    listRepositoryOwners: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      bypassCache?: boolean
+    }) => Promise<RepositoryOwnerDescriptor[]>
+    listRepositoriesPage: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      search?: string
+      page: number
+      pageSize: number
+      bypassCache?: boolean
+    }) => Promise<RepositoryListPageResult>
+    listBranches: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repositoryId?: string
+      repositoryFullName: string
+      defaultBranch?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryBranchDescriptor[]>
+    listRepositoryLanguages: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      repositoryId?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryLanguageDescriptor[]>
+    getRepositoryReadmeSnippet: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      branch?: string
+      repositoryId?: string
+      bypassCache?: boolean
+    }) => Promise<RepositoryReadmeSnippetDescriptor>
+    createRepository: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      name: string
+      description?: string
+      private?: boolean
+      autoInit?: boolean
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+    }) => Promise<RepositoryDescriptor>
+    invalidateProviderCache: (options?: {
+      provider?: 'github' | 'gitlab'
+      ownerId?: string
+      repositoryId?: string
+    }) => Promise<{ success: boolean }>
+    syncRepositoryAccess: (options: {
+      projectId?: string
+      provider: 'github' | 'gitlab'
+      repoUrl: string
+      providerHost?: string
+      accessToken?: string
+      action?: 'grant' | 'revoke'
+      role?: string
+      inviteEmail?: string
+      providerAccountHandle?: string
+    }) => Promise<{ success: boolean; error?: string; accessState?: 'pending' | 'error' | 'revoked' | 'granted' | 'needs_identity' | 'manual_required'; externalInvitationId?: string; providerAccountHandle?: string }>
+  }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
     generateKey: () => Promise<IntegrationKeyResult>
@@ -1057,7 +1339,7 @@ export interface ElectronAPI {
       scopes?: string[]
     }) => void) => () => void
     onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
-    startOAuth: (options: { provider: string; orgId: string }) => Promise<{ success: boolean; error?: string }>
+    startOAuth: (options: { provider: string; orgId: string; metadata?: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
     runTool: (options: {
       toolName: string
       args: string[]
@@ -1101,7 +1383,7 @@ export interface ElectronAPI {
     cancel: (request: { runId: string }) => Promise<{ success: boolean; canceled?: number; error?: string }>
   }
   shell: {
-    openExternal: (url: string) => Promise<{ success: boolean }>
+    openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
     listAvailableBrowsers: () => Promise<AvailableExternalBrowserResult>
     openInBrowser: (options: { url: string; browserId?: ExternalBrowserId }) => Promise<{ success: boolean; error?: string }>
   }
@@ -1124,6 +1406,10 @@ export interface ElectronAPI {
   }
   dialog: {
     selectDirectory: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
+    selectFile: (options: {
+      title?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>
     showMessageBox: (options: import('electron').MessageBoxOptions) => Promise<import('electron').MessageBoxReturnValue>
   }
   storage: {
@@ -1159,8 +1445,6 @@ export interface ElectronAPI {
       provider: string
       branch?: string
       accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) => Promise<CloneRepositoryResult>
     getLocalPath: (options: string | { slug: string; projectId?: string }) => Promise<string | null>
     openFolder: (options: { projectPath: string }) => Promise<StorageActionResult>
@@ -1409,6 +1693,18 @@ export interface ElectronAPI {
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
     onError: (callback: (data: { projectPath: string; error: string }) => void) => () => void
   }
+  nativePreview: {
+    listDevices: (options?: { platform?: NativePreviewPlatform }) => Promise<NativePreviewListDevicesResult>
+    listSessions: () => Promise<NativePreviewListSessionsResult>
+    startSession: (options: NativePreviewStartSessionInput) => Promise<NativePreviewStartSessionResult>
+    stopSession: (options: { sessionId: string }) => Promise<NativePreviewStopSessionResult>
+    getSessionState: (options: { sessionId: string }) => Promise<NativePreviewGetSessionStateResult>
+    sendInput: (options: NativePreviewInputPayload) => Promise<NativePreviewSendInputResult>
+    captureScreenshot: (options: { sessionId: string }) => Promise<NativePreviewCaptureScreenshotResult>
+    runAutomation: (options: NativePreviewRunAutomationInput) => Promise<NativePreviewRunAutomationResult>
+    openDevice: (options: { platform: NativePreviewPlatform; deviceId?: string }) => Promise<NativePreviewOpenDeviceResult>
+    onSessionUpdated: (callback: (session: NativePreviewSession) => void) => () => void
+  }
   terminal: {
     create: (options: TerminalCreateOptions) => Promise<{ success: boolean; terminalId?: string; error?: string }>
     input: (options: { terminalId: string; data: string }) => Promise<void>
@@ -1443,8 +1739,8 @@ export interface ElectronAPI {
     inspect: (options: { projectPath: string }) => Promise<DependenciesInspectResult>
     run: (options: {
       projectPath: string
-      action: 'add' | 'update' | 'remove'
-      packageName: string
+      action: 'install' | 'add' | 'update' | 'remove'
+      packageName?: string
       version?: string
       dev?: boolean
       updateMode?: 'latest' | 'range'

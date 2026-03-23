@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       externalId?: string
       externalAccountName?: string
       scopes?: string[]
+      metadata?: Record<string, unknown>
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         provider: string
@@ -105,6 +106,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         externalId?: string
         externalAccountName?: string
         scopes?: string[]
+        metadata?: Record<string, unknown>
       }) => callback(data)
       ipcRenderer.on('integrations:oauthSuccess', handler)
       return () => ipcRenderer.removeListener('integrations:oauthSuccess', handler)
@@ -114,8 +116,45 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('integrations:oauthError', handler)
       return () => ipcRenderer.removeListener('integrations:oauthError', handler)
     },
-    startOAuth: (options: { provider: string; orgId: string }) =>
+    startOAuth: (options: { provider: string; orgId: string; metadata?: Record<string, unknown> }) =>
       ipcRenderer.invoke('integrations:startOAuth', options),
+    syncRepositoryAccess: (options: {
+      provider: 'github' | 'gitlab'
+      repoUrl: string
+      encryptedCredentials?: string
+      keyId?: string
+      action: 'grant' | 'revoke'
+      role: 'project_manager' | 'developer' | 'designer' | 'viewer'
+      inviteEmail?: string
+      providerAccountHandle?: string
+    }) => ipcRenderer.invoke('integrations:syncRepositoryAccess', options),
+    listRepositoryOwners: (options: {
+      provider: 'github' | 'gitlab'
+      encryptedCredentials?: string
+      keyId?: string
+      providerHost?: string
+    }) => ipcRenderer.invoke('integrations:listRepositoryOwners', options),
+    listRepositories: (options: {
+      provider: 'github' | 'gitlab'
+      encryptedCredentials?: string
+      keyId?: string
+      providerHost?: string
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      search?: string
+    }) => ipcRenderer.invoke('integrations:listRepositories', options),
+    createRepository: (options: {
+      provider: 'github' | 'gitlab'
+      encryptedCredentials?: string
+      keyId?: string
+      providerHost?: string
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      name: string
+      private: boolean
+    }) => ipcRenderer.invoke('integrations:createRepository', options),
     runTool: (options: {
       toolName: string
       args: string[]
@@ -129,6 +168,111 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getToolDefinition: (options: { toolName: string }) =>
       ipcRenderer.invoke('integrations:getToolDefinition', options),
     listTools: () => ipcRenderer.invoke('integrations:listTools'),
+  },
+  sourceControl: {
+    onOAuthSuccess: (callback: (data: {
+      provider: string
+      accessToken?: string
+      refreshToken?: string
+      tokenExpiresAt?: number
+      externalId?: string
+      externalAccountName?: string
+      scopes?: string[]
+      metadata?: Record<string, unknown>
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        provider: string
+        accessToken?: string
+        refreshToken?: string
+        tokenExpiresAt?: number
+        externalId?: string
+        externalAccountName?: string
+        scopes?: string[]
+        metadata?: Record<string, unknown>
+      }) => callback(data)
+      ipcRenderer.on('sourceControl:oauthSuccess', handler)
+      return () => ipcRenderer.removeListener('sourceControl:oauthSuccess', handler)
+    },
+    onOAuthError: (callback: (data: { provider: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { provider: string; error: string }) => callback(data)
+      ipcRenderer.on('sourceControl:oauthError', handler)
+      return () => ipcRenderer.removeListener('sourceControl:oauthError', handler)
+    },
+    startOAuth: (options: { provider: 'github' | 'gitlab'; orgId: string; metadata?: Record<string, unknown> }) =>
+      ipcRenderer.invoke('sourceControl:startOAuth', options),
+    listRepositoryOwners: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      bypassCache?: boolean
+    }) => ipcRenderer.invoke('sourceControl:listRepositoryOwners', options),
+    listRepositoriesPage: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      search?: string
+      page: number
+      pageSize: number
+      bypassCache?: boolean
+    }) => ipcRenderer.invoke('sourceControl:listRepositoriesPage', options),
+    listBranches: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repositoryId?: string
+      repositoryFullName: string
+      defaultBranch?: string
+      bypassCache?: boolean
+    }) => ipcRenderer.invoke('sourceControl:listBranches', options),
+    listRepositoryLanguages: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      repositoryId?: string
+      bypassCache?: boolean
+    }) => ipcRenderer.invoke('sourceControl:listRepositoryLanguages', options),
+    getRepositoryReadmeSnippet: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      repoUrl: string
+      repositoryId?: string
+      branch?: string
+      bypassCache?: boolean
+    }) => ipcRenderer.invoke('sourceControl:getRepositoryReadmeSnippet', options),
+    createRepository: (options: {
+      provider: 'github' | 'gitlab'
+      accessToken?: string
+      providerHost?: string
+      authStrategy?: 'oauth' | 'github_app_installation'
+      ownerId?: string
+      ownerLogin?: string
+      ownerKind?: 'user' | 'organization' | 'group'
+      name: string
+      private: boolean
+    }) => ipcRenderer.invoke('sourceControl:createRepository', options),
+    syncRepositoryAccess: (options: {
+      provider: 'github' | 'gitlab'
+      repoUrl: string
+      accessToken?: string
+      providerHost?: string
+      action: 'grant' | 'revoke'
+      role: 'project_manager' | 'developer' | 'designer' | 'viewer'
+      inviteEmail?: string
+      providerAccountHandle?: string
+    }) => ipcRenderer.invoke('sourceControl:syncRepositoryAccess', options),
+    invalidateProviderCache: (options?: {
+      provider?: 'github' | 'gitlab'
+    }) => ipcRenderer.invoke('sourceControl:invalidateProviderCache', options),
   },
   database: {
     supabaseSelect: (options: {
@@ -194,6 +338,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   dialog: {
     selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+    selectFile: (options?: {
+      title?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }) => ipcRenderer.invoke('dialog:selectFile', options ?? {}),
     showMessageBox: (options: MessageBoxOptions) =>
       ipcRenderer.invoke('dialog:showMessageBox', options),
   },
@@ -257,8 +405,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       provider: string
       branch?: string
       accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) =>
       ipcRenderer.invoke('project:cloneRepository', options),
     getLocalPath: (options: string | { slug: string; projectId?: string }) =>
@@ -563,6 +709,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('devServer:error', handler)
     },
   },
+  nativePreview: {
+    listDevices: (options?: { platform?: 'ios' | 'android' }) =>
+      ipcRenderer.invoke('nativePreview:listDevices', options),
+    listSessions: () =>
+      ipcRenderer.invoke('nativePreview:listSessions'),
+    startSession: (options: {
+      projectPath: string
+      platform: 'ios' | 'android'
+      launcher: 'expo-go' | 'orbit' | 'web'
+      buildMode: 'debug' | 'dev-client'
+      terminalId?: string
+    }) =>
+      ipcRenderer.invoke('nativePreview:startSession', options),
+    stopSession: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('nativePreview:stopSession', options),
+    getSessionState: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('nativePreview:getSessionState', options),
+    sendInput: (options: {
+      sessionId: string
+      type: 'tap' | 'down' | 'move' | 'up' | 'key'
+      x?: number
+      y?: number
+      key?: string
+    }) =>
+      ipcRenderer.invoke('nativePreview:sendInput', options),
+    captureScreenshot: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('nativePreview:captureScreenshot', options),
+    runAutomation: (options: { sessionId: string; flow?: string; flowPath?: string }) =>
+      ipcRenderer.invoke('nativePreview:runAutomation', options),
+    openDevice: (options: { platform: 'ios' | 'android'; deviceId?: string }) =>
+      ipcRenderer.invoke('nativePreview:openDevice', options),
+    onSessionUpdated: (callback: (session: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, session: unknown) => callback(session)
+      ipcRenderer.on('nativePreview:sessionUpdated', handler)
+      return () => ipcRenderer.removeListener('nativePreview:sessionUpdated', handler)
+    },
+  },
   terminal: {
     create: (options: { projectPath: string; profileId?: string; cwd?: string; cols?: number; rows?: number; runId?: string; env?: Record<string, string> }) =>
       ipcRenderer.invoke('terminal:create', options),
@@ -619,8 +802,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     inspect: (options: { projectPath: string }) => ipcRenderer.invoke('dependencies:inspect', options),
     run: (options: {
       projectPath: string
-      action: 'add' | 'update' | 'remove'
-      packageName: string
+      action: 'install' | 'add' | 'update' | 'remove'
+      packageName?: string
       version?: string
       dev?: boolean
       updateMode?: 'latest' | 'range'
@@ -633,7 +816,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectPath: string
       job: {
         id: string
-        action: 'add' | 'update' | 'remove'
+        action: 'install' | 'add' | 'update' | 'remove'
         packageName: string
         status: 'running' | 'success' | 'error'
         startedAt: number
@@ -647,7 +830,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         projectPath: string
         job: {
           id: string
-          action: 'add' | 'update' | 'remove'
+          action: 'install' | 'add' | 'update' | 'remove'
           packageName: string
           status: 'running' | 'success' | 'error'
           startedAt: number

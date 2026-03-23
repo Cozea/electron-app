@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
 import { Check, Zap, Rocket, Crown, Loader2, Expand, ChevronLeft } from 'lucide-react'
+import { IconBrandGithub, IconBrandGitlab } from '@tabler/icons-react'
 import type { BuildContract, TargetPlatform } from '@/lib/plan'
 import { validateWebOnlyPlanConfig } from '@/lib/plan'
 
@@ -21,10 +22,10 @@ export interface PlanConfig {
     aiProvider: string
   }
   sourceControl?: {
-    provider: string
+    provider?: string
     repoUrl?: string
-    visibility: string
-    mergeStrategy: string
+    visibility?: string
+    mergeStrategy?: string
   }
   visuals?: {
     uiLibrary: string
@@ -62,6 +63,29 @@ export interface PlanOption {
 }
 
 type TierType = 'prototype' | 'beta' | 'mvp'
+
+function getPlanSourceControlProvider(plan: PlanOption): 'github' | 'gitlab' | null {
+  return plan.config?.sourceControl?.provider === 'gitlab'
+    ? 'gitlab'
+    : plan.config?.sourceControl?.provider === 'github'
+      ? 'github'
+      : null
+}
+
+function PlanSourceControlBadge({ plan }: { plan: PlanOption }) {
+  const provider = getPlanSourceControlProvider(plan)
+  if (!provider) return null
+
+  const Icon = provider === 'gitlab' ? IconBrandGitlab : IconBrandGithub
+  const label = provider === 'gitlab' ? 'GitLab' : 'GitHub'
+
+  return (
+    <Badge variant="secondary" className="gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </Badge>
+  )
+}
 
 const tierConfig = {
   prototype: {
@@ -128,8 +152,11 @@ function CompactPlanCard({ plan, isSelected, isSelectable, onSelect, onExpand }:
         {plan.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mb-1">{plan.description}</p>
         )}
+        <div className="mt-1">
+          <PlanSourceControlBadge plan={plan} />
+        </div>
         {plan.estimatedScope && (
-          <p className="text-[10px] text-muted-foreground/70">{plan.estimatedScope}</p>
+          <p className="mt-1 text-[10px] text-muted-foreground/70">{plan.estimatedScope}</p>
         )}
       </CardContent>
 
@@ -196,6 +223,7 @@ function ExpandedPlanCard({ plan, isSelected, isSelectable, onSelect, onCollapse
         {/* Left: Features */}
         <div className="space-y-3">
           <h4 className="font-medium text-sm text-muted-foreground">Features included</h4>
+          <PlanSourceControlBadge plan={plan} />
           <div className="space-y-2">
             {(plan.features || []).map((feature, index) => (
               <div key={index} className="flex items-start gap-2 text-sm">
@@ -234,6 +262,7 @@ function ExpandedPlanCard({ plan, isSelected, isSelectable, onSelect, onCollapse
             <div>
               <h4 className="font-medium text-sm text-muted-foreground mb-2">Tech stack</h4>
               <div className="flex flex-wrap gap-2">
+                <PlanSourceControlBadge plan={plan} />
                 <Badge variant="secondary" className="capitalize">{plan.config.stack.backend}</Badge>
                 <Badge variant="secondary" className="capitalize">{plan.config.stack.hosting}</Badge>
                 {plan.config.stack.aiProvider && (
@@ -330,6 +359,9 @@ export function PlanCard({ plan, isSelected, isSelectable = true, onSelect, clas
       <CardHeader className="pt-6">
         <CardTitle className="text-lg">{plan.name || 'Untitled Plan'}</CardTitle>
         <CardDescription>{plan.description || 'No description'}</CardDescription>
+        <div>
+          <PlanSourceControlBadge plan={plan} />
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-4">

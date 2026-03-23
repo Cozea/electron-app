@@ -19,7 +19,7 @@ import type {
 } from '../../shared/electronApiTypes'
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
-import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from '../services/gitAuth'
+import { buildGitAuthorizationHeader } from '../services/gitAuth'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { resolveKnownProjectPath } from '../projectPathResolution'
 import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
@@ -137,15 +137,6 @@ async function preflightImportSource(
     issues,
     truncated,
   }
-}
-
-function resolveCloneAccessToken(args: {
-  provider: string
-  accessToken?: string
-  encryptedCredentials?: string
-  keyId?: string
-}): { accessToken?: string; error?: string } {
-  return resolveRepositoryAccessToken(args)
 }
 
 function normalizeRepositoryUrl(repoUrl: string, provider: string): string | null {
@@ -336,39 +327,22 @@ npm-debug.log*
         provider,
         branch,
         accessToken,
-        encryptedCredentials,
-        keyId,
       }: {
         slug: string
         repoUrl: string
         provider: string
         branch?: string
         accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
       }
     ): Promise<CloneRepositoryResult> => {
       const settings = deps.loadSettings()
       const projectsDir = settings.projectsDirectory
       const normalizedRepoUrl = normalizeRepositoryUrl(repoUrl, provider)
-      const resolvedCloneAuth = resolveCloneAccessToken({
-        provider,
-        accessToken,
-        encryptedCredentials,
-        keyId,
-      })
 
       if (!normalizedRepoUrl) {
         return {
           success: false,
           error: 'Invalid repository URL. Use a full URL or owner/repo format.',
-        }
-      }
-
-      if (resolvedCloneAuth.error) {
-        return {
-          success: false,
-          error: resolvedCloneAuth.error,
         }
       }
 
@@ -380,7 +354,7 @@ npm-debug.log*
         const resolvedTargetPath = resolveAvailableProjectPath(projectsDir, slug)
 
         const cloneArgs: string[] = []
-        const authHeader = buildGitAuthorizationHeader(provider, resolvedCloneAuth.accessToken)
+        const authHeader = buildGitAuthorizationHeader(provider, accessToken)
 
         if (authHeader && /^https?:\/\//i.test(normalizedRepoUrl)) {
           cloneArgs.push('-c', `http.extraheader=${authHeader}`)

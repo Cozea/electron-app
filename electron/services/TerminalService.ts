@@ -306,6 +306,30 @@ export class TerminalService {
         return this.terminalHistory.get(trimmedId) ?? null
     }
 
+    async sendInput(terminalId: string, data: string): Promise<boolean> {
+        const term = this.terminals.get(terminalId)
+        if (!term) return false
+
+        const normalized = data.replace(/\r?\n/g, '').trim()
+        if (normalized) {
+            term.lastInput = normalized
+        }
+
+        term.ptyProcess.write(data)
+        return true
+    }
+
+    getInfo(terminalId: string): TerminalInfo | null {
+        const term = this.terminals.get(terminalId)
+        if (!term) return null
+        return {
+            id: term.id,
+            profileId: term.profile.id,
+            profileName: term.profile.name,
+            title: term.title,
+        }
+    }
+
     registerIpcHandlers(): void {
         ipcMain.handle('terminal:create', async (event, options: {
             projectPath: string
@@ -412,14 +436,7 @@ export class TerminalService {
         })
 
         ipcMain.handle('terminal:input', async (_event, options: { terminalId: string; data: string }) => {
-            const term = this.terminals.get(options.terminalId)
-            if (term) {
-                const normalized = options.data.replace(/\r?\n/g, '').trim()
-                if (normalized) {
-                    term.lastInput = normalized
-                }
-                term.ptyProcess.write(options.data)
-            }
+            await this.sendInput(options.terminalId, options.data)
         })
 
         ipcMain.handle('terminal:resize', async (_event, options: { terminalId: string; cols: number; rows: number }) => {
@@ -459,14 +476,7 @@ export class TerminalService {
         })
 
         ipcMain.handle('terminal:getInfo', (_event, options: { terminalId: string }) => {
-            const term = this.terminals.get(options.terminalId)
-            if (!term) return null
-            return {
-                id: term.id,
-                profileId: term.profile.id,
-                profileName: term.profile.name,
-                title: term.title
-            } as TerminalInfo
+            return this.getInfo(options.terminalId)
         })
     }
 

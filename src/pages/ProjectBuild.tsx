@@ -43,7 +43,7 @@ import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDelet
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { prepareGitProjectForOpen } from '@/features/projects/lib/projectOpenGitSync'
-import { publishWorkspaceToCozeaGit } from '@/lib/git/publishWorkspaceToCozeaGit'
+import { publishWorkspaceToGitRemote } from '@/lib/git/publishWorkspaceToGitRemote'
 import {
   createInitialProjectBuildSessionState,
   parseStoredProjectBuildSessionState,
@@ -436,6 +436,11 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       return
     }
 
+    if (project.sourceControl?.syncPolicy === 'manual') {
+      addLog('Manual git mode is enabled. Final repository sync was left for you to run explicitly.')
+      return
+    }
+
     await updateSyncStatus({
       projectId: project._id,
       userId: convexUserId,
@@ -444,7 +449,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
 
     addLog('Syncing final project state to git...')
 
-    await publishWorkspaceToCozeaGit({
+    await publishWorkspaceToGitRemote({
       convex,
       project: {
         _id: project._id,
@@ -569,7 +574,7 @@ function ProjectBuildScreen({ projectId }: ProjectBuildScreenProps) {
       await syncLocalSnapshotToCloud()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
-      addLog(`Final cloud sync failed: ${message}`)
+      addLog(`Final git sync failed: ${message}`)
       if (project?._id && convexUserId) {
         try {
           await updateSyncStatus({

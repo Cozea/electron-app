@@ -52,7 +52,7 @@ const categoryConfig: Record<string, Omit<StorageCategory, 'size'>> = {
     id: 'source',
     categoryKey: 'sourceAndConfig',
     name: 'Source & Config',
-    description: 'Canonical Cozea Git repositories and source configuration stored in cloud sync',
+    description: 'Git remotes, working copy metadata, and source-control configuration',
     icon: FileCode,
     color: 'bg-blue-500',
     canClear: false,

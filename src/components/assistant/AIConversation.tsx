@@ -97,6 +97,12 @@ import { getContextWindowSize } from '@/components/assistant/ContextDisplay'
 import type { ModelOption } from '@/lib/ai/modelOptions'
 import { AI_BASE_URL } from '@/lib/ai/apiEndpoints'
 import {
+  buildFallbackConversationTitle,
+  inferConversationTitle,
+  shouldPreserveConversationTitle,
+  type ConversationTitleMessage,
+} from '@/lib/ai/conversationTitles'
+import {
   getModelCatalog,
   type ModelApiModel,
 } from '@/lib/ai/modelCatalogClient'
@@ -335,6 +341,7 @@ export function AIConversation({
   // Conversation persistence
   const createConversation = useMutation(api.aiConversations.create)
   const saveConversationMessages = useMutation(api.aiConversations.saveMessages)
+  const updateConversationTitle = useMutation(api.aiConversations.updateTitle)
   const storedConversation = useQuery(
     api.aiConversations.get,
     currentConversationId && projectSlug ? { id: currentConversationId } : "skip"
@@ -383,6 +390,7 @@ export function AIConversation({
   const isSavingRef = useRef(false)
   const lastProjectScopeRef = useRef<string | null>(null)
   const previousStoredConversationIdRef = useRef(currentConversationId)
+  const generatedConversationTitleIdsRef = useRef<Set<string>>(new Set())
 
   const projectScopeKey = resolvedProjectId ? String(resolvedProjectId) : (projectSlug ?? null)
 
@@ -1254,11 +1262,16 @@ export function AIConversation({
           }
         })
 
-        // Generate title from first user message
-        const firstUserMessage = storedMessages.find((m) => m.role === 'user')
-        const title = firstUserMessage
-          ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '')
-          : 'New Conversation'
+        const titleMessages: ConversationTitleMessage[] = storedMessages
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+          }))
+          .filter((message) => message.content.trim().length > 0)
+        const fallbackTitle = buildFallbackConversationTitle(titleMessages)
+        const title = shouldPreserveConversationTitle(storedConversation?.title, fallbackTitle)
+          ? undefined
+          : fallbackTitle
 
         await saveConversationMessages({
           conversationId: currentConversationId,
@@ -1275,7 +1288,74 @@ export function AIConversation({
     // Debounce saves
     const timeoutId = setTimeout(saveMessages, 500)
     return () => clearTimeout(timeoutId)
-  }, [uniqueMessages, currentConversationId, resolvedProjectId, status, saveConversationMessages])
+  }, [
+    uniqueMessages,
+    currentConversationId,
+    resolvedProjectId,
+    status,
+    saveConversationMessages,
+    storedConversation?.title,
+  ])
+
+  useEffect(() => {
+    if (!accessToken || !organizationId || !currentConversationId) return
+    if (status === 'streaming' || status === 'submitted') return
+    if (generatedConversationTitleIdsRef.current.has(String(currentConversationId))) return
+
+    const titleMessages: ConversationTitleMessage[] = uniqueMessages
+      .map((message) => ({
+        role: message.role as 'user' | 'assistant' | 'system',
+        content: getMessageText(message),
+      }))
+      .filter((message) => message.content.trim().length > 0)
+      .slice(0, 6)
+
+    if (titleMessages.length < 2) return
+
+    const hasUserMessage = titleMessages.some((message) => message.role === 'user')
+    const hasAssistantMessage = titleMessages.some((message) => message.role === 'assistant')
+    if (!hasUserMessage || !hasAssistantMessage) return
+
+    const fallbackTitle = buildFallbackConversationTitle(titleMessages)
+    if (shouldPreserveConversationTitle(storedConversation?.title, fallbackTitle)) return
+
+    generatedConversationTitleIdsRef.current.add(String(currentConversationId))
+
+    let cancelled = false
+
+    const generateTitle = async () => {
+      try {
+        const generatedTitle = await inferConversationTitle({
+          accessToken,
+          organizationId,
+          messages: titleMessages,
+        })
+        if (cancelled || !generatedTitle || generatedTitle === fallbackTitle) return
+
+        await updateConversationTitle({
+          conversationId: currentConversationId,
+          title: generatedTitle,
+        })
+        useAssistantPanelStore.getState().setChatTitle(generatedTitle)
+      } catch (error) {
+        console.warn('Failed to generate conversation title:', error)
+      }
+    }
+
+    void generateTitle()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    accessToken,
+    organizationId,
+    currentConversationId,
+    status,
+    uniqueMessages,
+    storedConversation?.title,
+    updateConversationTitle,
+  ])
 
   const genericErrorMessage = useMemo(() => {
     if (!error || billingError) return null
@@ -1629,19 +1709,25 @@ export function AIConversation({
 
   // Update chat title based on first message
   useEffect(() => {
-    if (uniqueMessages.length > 0) {
-      const firstMessage = uniqueMessages[0]
-      if (firstMessage.role === 'user') {
-        const text = getMessageText(firstMessage)
-        if (text) {
-          const title = text.slice(0, 30) + (text.length > 30 ? '...' : '')
-          useAssistantPanelStore.getState().setChatTitle(title)
-        }
-      }
-    } else {
+    if (uniqueMessages.length === 0) {
       useAssistantPanelStore.getState().setChatTitle("New Chat")
+      return
     }
-  }, [uniqueMessages])
+
+    const titleMessages: ConversationTitleMessage[] = uniqueMessages
+      .map((message) => ({
+        role: message.role as 'user' | 'assistant' | 'system',
+        content: getMessageText(message),
+      }))
+      .filter((message) => message.content.trim().length > 0)
+
+    const fallbackTitle = buildFallbackConversationTitle(titleMessages)
+    const resolvedTitle = shouldPreserveConversationTitle(storedConversation?.title, fallbackTitle)
+      ? storedConversation?.title?.trim() ?? fallbackTitle
+      : fallbackTitle
+
+    useAssistantPanelStore.getState().setChatTitle(resolvedTitle)
+  }, [uniqueMessages, storedConversation?.title])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1655,10 +1741,13 @@ export function AIConversation({
     // Create conversation on first message if we don't have one
     if (!currentConversationId && resolvedProjectId && convexUserId) {
       try {
+        const fallbackTitle = buildFallbackConversationTitle([
+          { role: 'user', content: input },
+        ])
         const newConversationId = await createConversation({
           projectId: resolvedProjectId,
           userId: convexUserId,
-          title: input.slice(0, 50) + (input.length > 50 ? '...' : '') || 'New Conversation',
+          title: fallbackTitle,
         })
         setTransportConversationId(newConversationId)
         setCurrentConversationId(newConversationId)

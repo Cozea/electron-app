@@ -1070,6 +1070,59 @@ export const updateAiSettings = mutation({
   },
 })
 
+export const updateSourceControlSettings = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    sourceControlSettings: v.object({
+      defaultProvider: v.optional(
+        v.union(v.literal("github"), v.literal("gitlab"), v.null())
+      ),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const { allowed } = await requireOrganizationPermission(
+      ctx,
+      args.orgId,
+      args.userId,
+      "settings:update"
+    )
+    if (!allowed) {
+      throw new Error("Unauthorized")
+    }
+
+    const org = await ctx.db.get(args.orgId)
+    if (!org) throw new Error("Organization not found")
+
+    const now = Date.now()
+    const nextSourceControlSettings: NonNullable<typeof org.sourceControlSettings> = {
+      ...(org.sourceControlSettings || {}),
+    }
+    if (args.sourceControlSettings.defaultProvider === null) {
+      delete nextSourceControlSettings.defaultProvider
+    } else if (args.sourceControlSettings.defaultProvider !== undefined) {
+      nextSourceControlSettings.defaultProvider = args.sourceControlSettings.defaultProvider
+    }
+
+    await ctx.db.patch(args.orgId, {
+      sourceControlSettings: nextSourceControlSettings,
+      updatedAt: now,
+    })
+
+    await ctx.db.insert("auditLogs", {
+      organizationId: args.orgId,
+      userId: args.userId,
+      action: "source_control_settings.updated",
+      resourceType: "organization",
+      resourceId: args.orgId,
+      metadata: {
+        ...args.sourceControlSettings,
+      },
+      timestamp: now,
+    })
+  },
+})
+
 // Update organization details (name, slug, description)
 export const updateOrganization = mutation({
   args: {

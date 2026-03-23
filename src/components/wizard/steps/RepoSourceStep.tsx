@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import type { WizardRepoSource } from '@/hooks/useWizardState'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
+import { ConnectedRepositoryPicker } from '@/components/git/ConnectedRepositoryPicker'
 
 interface DirectoryEntry {
   name: string
@@ -140,45 +141,55 @@ interface RepoSourceStepProps {
   repoSource: WizardRepoSource | undefined
   onUpdate: (repoSource: Partial<WizardRepoSource>) => void
   onBrowseFolder?: () => void | Promise<void>
-  onContinue?: () => void
-  canContinue?: boolean
+  organizationId?: Id<'organizations'>
+  entryMode: 'local' | 'remote'
+  connectedProviders?: Array<'github' | 'gitlab'>
+  remoteRepositorySearchValue?: string
+  remoteRepositoryRefreshNonce?: number
+  onRemoteRepositoriesLoadingChange?: (isLoading: boolean) => void
 }
 
 export function RepoSourceStep({
   repoSource,
   onUpdate,
   onBrowseFolder,
-  onContinue,
-  canContinue = true,
+  organizationId,
+  entryMode,
+  connectedProviders = [],
+  remoteRepositorySearchValue,
+  remoteRepositoryRefreshNonce,
+  onRemoteRepositoriesLoadingChange,
 }: RepoSourceStepProps) {
-  const folderPath = repoSource?.repoUrl ?? ''
-  
-  const [selectedDirectoryPath, setSelectedDirectoryPath] = useState<string | null>(folderPath || null)
+  const folderPath = repoSource?.provider === 'local' ? repoSource.repoUrl ?? '' : ''
+  const [navigatedDirectoryPath, setNavigatedDirectoryPath] = useState<string | null>(null)
   const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([])
   const [isLoadingGrid, setIsLoadingGrid] = useState(false)
   const hasLocalFolderSelected = Boolean(folderPath)
   const selectedFolderName = folderPath ? folderPath.split(/[/\\]/).pop() : null
 
   useEffect(() => {
-    if (repoSource?.provider !== 'local' || !repoSource?.branch) {
-      onUpdate({ provider: 'local', branch: 'main' })
+    if (!repoSource?.branch) {
+      onUpdate({ branch: 'main' })
     }
-  }, [onUpdate, repoSource?.branch, repoSource?.provider])
+  }, [onUpdate, repoSource?.branch])
 
-  const [prevFolderPath, setPrevFolderPath] = useState(folderPath)
-  if (folderPath !== prevFolderPath) {
-    setPrevFolderPath(folderPath)
+  const selectedDirectoryPath = useMemo(() => {
     if (!folderPath) {
-      setSelectedDirectoryPath(null)
-      setDirectoryEntries([])
-    } else {
-      setSelectedDirectoryPath(folderPath)
+      return null
     }
-  }
+
+    if (!navigatedDirectoryPath) {
+      return folderPath
+    }
+
+    return navigatedDirectoryPath.startsWith(folderPath) ? navigatedDirectoryPath : folderPath
+  }, [folderPath, navigatedDirectoryPath])
 
   useEffect(() => {
     const dirPath = selectedDirectoryPath
-    if (!dirPath) return
+    if (!dirPath) {
+      return
+    }
 
     let canceled = false
     setTimeout(() => setIsLoadingGrid(true), 0)
@@ -219,6 +230,8 @@ export function RepoSourceStep({
   }, [selectedDirectoryPath])
 
   const handleBrowseFolder = useCallback(async () => {
+    setNavigatedDirectoryPath(null)
+
     if (onBrowseFolder) {
       await onBrowseFolder()
       return
@@ -255,10 +268,80 @@ export function RepoSourceStep({
     ]
   }, [directoryEntries, folderPath, selectedDirectoryPath])
 
+  const availableRemoteProviders = useMemo(
+    () =>
+      (['github', 'gitlab'] as const).filter((provider) =>
+        connectedProviders.includes(provider)
+      ),
+    [connectedProviders]
+  )
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="relative flex-1 min-h-0">
-        {!hasLocalFolderSelected ? (
+      <div
+        className={cn(
+          entryMode === 'remote' ? 'pl-3 pr-1 flex flex-1 min-h-0 flex-col' : 'px-3 pb-3 space-y-4'
+        )}
+      >
+        {entryMode === 'remote' ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {availableRemoteProviders.length > 0 && organizationId ? (
+              <ConnectedRepositoryPicker
+                provider={availableRemoteProviders[0]}
+                providers={availableRemoteProviders}
+                organizationId={organizationId}
+                integrationConnected
+                selectedRepoUrl={repoSource?.repoUrl}
+                selectedBranch={repoSource?.branch}
+                repositorySearchValue={remoteRepositorySearchValue}
+                refreshNonce={remoteRepositoryRefreshNonce}
+                onRemoteRepositoriesLoadingChange={onRemoteRepositoriesLoadingChange}
+                onRepositorySelected={(repository) => {
+                  onUpdate({
+                    provider: repository.provider,
+                    repoUrl: repository.url,
+                    branch: repository.defaultBranch || repoSource?.branch || 'main',
+                    ownerLogin: repository.ownerLogin,
+                    ownerAvatarUrl: repository.ownerAvatarUrl,
+                    lastActivityAt: repository.lastActivityAt,
+                    sizeBytes: repository.sizeBytes,
+                    starsCount: repository.starsCount,
+                  })
+                }}
+                onRepositoryBranchSelected={(repository, branch) => {
+                  onUpdate({
+                    provider: repository.provider,
+                    repoUrl: repository.url,
+                    branch,
+                    ownerLogin: repository.ownerLogin,
+                    ownerAvatarUrl: repository.ownerAvatarUrl,
+                    lastActivityAt: repository.lastActivityAt,
+                    sizeBytes: repository.sizeBytes,
+                    starsCount: repository.starsCount,
+                  })
+                }}
+              />
+            ) : null}
+
+            {availableRemoteProviders.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Connect GitHub or GitLab in Source Control to open a remote repository from the app.
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/30 p-4">
+            <p className="text-sm font-medium">Open from local folder</p>
+            <p className="text-xs text-muted-foreground">
+              Use the same checkout already on this machine. Cozea will attach to it instead of cloning a separate workspace.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {entryMode === 'local' ? (
+        <div className="relative flex-1 min-h-0">
+          {!hasLocalFolderSelected ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <button
               type="button"
@@ -290,7 +373,7 @@ export function RepoSourceStep({
                       entry={entry}
                       onOpenDirectory={(path) => {
                         if (!entry.isDirectory) return
-                        setSelectedDirectoryPath(path)
+                        setNavigatedDirectoryPath(path)
                       }}
                     />
                   ))}
@@ -302,23 +385,10 @@ export function RepoSourceStep({
               )}
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-end px-3 pt-1 pb-2">
-        <Button
-          type="button"
-          onClick={onContinue}
-          disabled={!hasLocalFolderSelected || !canContinue || !onContinue}
-          className={cn(
-            "rounded-full",
-            "focus-visible:ring-0 focus-visible:ring-offset-0"
           )}
-        >
-          Continue
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </div>
+        </div>
+      ) : null}
+
     </div>
   )
 }
@@ -345,14 +415,6 @@ function FileGridItem({
     const ext = entry.name.split('.').pop()?.toLowerCase() ?? ''
     return THUMBNAIL_EXTENSIONS.has(ext)
   }, [entry.name, isImage])
-
-  const [prevEntryPath, setPrevEntryPath] = useState(entry.path)
-  if (entry.path !== prevEntryPath) {
-    setPrevEntryPath(entry.path)
-    setThumbnailOk(true)
-    setThumbnailDataUrl(null)
-    setThumbnailRequested(false)
-  }
 
   useEffect(() => {
     const element = buttonRef.current

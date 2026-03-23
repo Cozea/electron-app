@@ -77,8 +77,15 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
   })
 
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {
-    await deps.openExternal(url)
-    return { success: true }
+    try {
+      await deps.openExternal(url)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
   })
 
   ipcMain.handle('shell:listAvailableBrowsers', () => {

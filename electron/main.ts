@@ -13,17 +13,20 @@ import { createApplicationMenu } from './menu'
 import { AuthService } from './services/AuthService'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
+import { ProjectSourceControlService } from './services/ProjectSourceControlService'
 import { DatabaseService } from './services/DatabaseService'
 import { DiagnosticsService } from './services/DiagnosticsService'
 import { DependenciesService } from './services/DependenciesService'
 import { ProviderAuthService } from './services/ProviderAuthService'
 import { LocalAiRuntimeService } from './services/LocalAiRuntimeService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
+import { forwardSourceControlOAuthCallback } from './sourceControlOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
+import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerSyncHandlers } from './ipc/registerSyncHandlers'
@@ -104,7 +107,13 @@ function extractNavigationPath(protocolUrl: string): string | null {
     const host = parsedUrl.hostname.replace(/^\/+/, '')
     const pathname = parsedUrl.pathname.replace(/^\/+/, '')
     const routePath = `/${[host, pathname].filter(Boolean).join('/')}`.replace(/\/{2,}/g, '/')
-    if (routePath === '/' || routePath.startsWith('/auth/callback') || routePath.startsWith('/billing/') || routePath.startsWith('/oauth/callback')) {
+    if (
+      routePath === '/' ||
+      routePath.startsWith('/auth/callback') ||
+      routePath.startsWith('/billing/') ||
+      routePath.startsWith('/oauth/callback') ||
+      routePath.startsWith('/source-control/callback')
+    ) {
       return null
     }
 
@@ -772,6 +781,12 @@ app.on('open-url', async (event, url) => {
       integrationService: IntegrationService.getInstance(),
       sender: win?.webContents ?? null,
     })
+  } else if (matchesProtocolUrl(url, 'source-control/callback')) {
+    await forwardSourceControlOAuthCallback({
+      url,
+      sourceControlService: ProjectSourceControlService.getInstance(),
+      sender: win?.webContents ?? null,
+    })
   } else {
     const navigationPath = extractNavigationPath(url)
     if (navigationPath) {
@@ -811,6 +826,12 @@ if (!gotTheLock) {
         void forwardIntegrationOAuthCallback({
           url,
           integrationService: IntegrationService.getInstance(),
+          sender: win?.webContents ?? null,
+        })
+      } else if (matchesProtocolUrl(url, 'source-control/callback')) {
+        void forwardSourceControlOAuthCallback({
+          url,
+          sourceControlService: ProjectSourceControlService.getInstance(),
           sender: win?.webContents ?? null,
         })
       } else {
@@ -973,6 +994,7 @@ AuthService.getInstance().registerIpcHandlers()
 ProviderAuthService.getInstance().registerIpcHandlers()
 TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
+ProjectSourceControlService.getInstance().registerIpcHandlers()
 DatabaseService.getInstance().registerIpcHandlers()
 DiagnosticsService.getInstance().registerIpcHandlers()
 DependenciesService.getInstance().registerIpcHandlers()
@@ -1011,6 +1033,10 @@ registerCoreHandlers(ipcMain, {
 registerPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
   getLatestPreviewHeaderDiagnostic,
+})
+
+registerNativePreviewHandlers(ipcMain, {
+  getWindows: () => BrowserWindow.getAllWindows(),
 })
 
 registerSettingsStorageHandlers(ipcMain, {

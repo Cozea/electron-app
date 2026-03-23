@@ -21,7 +21,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '@/components/ai/model-selector'
-import { Brain, FolderGit2 } from 'lucide-react'
+import { Brain, FolderOpen, GitBranchPlus } from 'lucide-react'
 import {
   IconArrowUp,
   IconSquare,
@@ -29,7 +29,6 @@ import {
   IconChevronDown,
   IconCheck,
 } from '@tabler/icons-react'
-import type { CreationPath } from '@/hooks/useWizardState'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAiExecutionScope } from '@/hooks/useAiExecutionScope'
 import {
@@ -76,20 +75,30 @@ export interface PromptSettings {
   variantId?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
+export type GuidedEntryChoice = 'local-folder' | 'remote-repository'
+
 interface EntryChoiceProps {
-  onSelect: (path: CreationPath) => void
+  onSelect: (path: GuidedEntryChoice) => void
   promptValue: string
   onPromptChange: (value: string) => void
   onPromptSubmit: (settings: PromptSettings, promptText: string) => void
   isSubmitting?: boolean
+  defaultSourceControlProvider?: 'github' | 'gitlab' | null
+  shouldAskForSourceControlProvider?: boolean
 }
 
 const GUIDED_OPTIONS = [
   {
-    id: 'repo' as const,
-    icon: FolderGit2,
-    title: 'Existing Repo',
-    description: 'Import from a local folder',
+    id: 'local-folder' as const,
+    icon: FolderOpen,
+    title: 'Open From Local Folder',
+    description: 'Attach an existing checkout on this machine',
+  },
+  {
+    id: 'remote-repository' as const,
+    icon: GitBranchPlus,
+    title: 'Open From Remote Repository',
+    description: 'Clone or connect a GitHub or GitLab repository',
   },
 ]
 
@@ -98,7 +107,9 @@ export function EntryChoice({
   promptValue = '',
   onPromptChange,
   onPromptSubmit,
-  isSubmitting
+  isSubmitting,
+  defaultSourceControlProvider = null,
+  shouldAskForSourceControlProvider = false,
 }: EntryChoiceProps) {
   const { accessToken } = useAuth()
   const { organizationId } = useAiExecutionScope()
@@ -316,6 +327,23 @@ export function EntryChoice({
           <h2 className="text-2xl font-semibold">What do you want to build?</h2>
           <p className="text-muted-foreground text-sm">
             Describe your project and let AI handle the rest
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {defaultSourceControlProvider ? (
+              <>
+                New AI plans will default to{' '}
+                <span className="font-medium text-foreground">
+                  {defaultSourceControlProvider === 'gitlab' ? 'GitLab' : 'GitHub'}
+                </span>{' '}
+                unless you ask for something else.
+              </>
+            ) : shouldAskForSourceControlProvider ? (
+              <>
+                If both GitHub and GitLab are available, the planner will ask which one to use.
+              </>
+            ) : (
+              <>You can mention GitHub or GitLab in your prompt if you want a specific provider.</>
+            )}
           </p>
         </div>
 

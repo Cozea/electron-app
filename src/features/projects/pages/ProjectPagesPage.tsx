@@ -23,11 +23,18 @@ import {
   type SelectedElementData,
 } from '@/utils/previewBridge'
 import { FocusedProjectPreview } from '@/features/projects/components/previews/FocusedProjectPreview'
+import { NativePreviewEditorPill } from '@/features/projects/components/previews/NativePreviewEditorPill'
+import { EmbeddedNativePreview } from '@/features/projects/components/previews/EmbeddedNativePreview'
+import { NativeProjectPreview } from '@/features/projects/components/previews/NativeProjectPreview'
+import { NativePreviewLaunchPill, type NativePreviewLauncher } from '@/features/projects/components/previews/NativePreviewLaunchPill'
+import { NativePreviewQrPopover } from '@/features/projects/components/previews/NativePreviewQrPopover'
+import { NativePreviewRouteBar, type NativePreviewTarget } from '@/features/projects/components/previews/NativePreviewRouteBar'
 import { ProjectPreviewRouteBar } from '@/features/projects/components/previews/ProjectPreviewRouteBar'
 import { ProjectPreviewToolbar } from '@/features/projects/components/previews/ProjectPreviewToolbar'
 import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { useNativePreviewSession } from '../hooks/useNativePreviewSession'
 import { useProjectRouteScan } from '../hooks/useProjectRouteScan'
 import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
 import { Button } from '@/components/ui/button'
@@ -40,7 +47,7 @@ import { cn } from '@/lib/utils'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import type { AvailableExternalBrowser, AvailableExternalBrowserResult, ExternalBrowserId } from '@shared/electronApiTypes'
-import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electronApiTypes'
+import type { AvailableExternalEditor, ExternalEditorId, NativePreviewDeviceDescriptor } from '@shared/electronApiTypes'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
 import {
   openProjectFileInExternalEditor,
@@ -51,6 +58,8 @@ import {
 import { getPreviewFailurePresentation } from '@/features/projects/lib/previewFailurePresentation'
 import { buildDirectVisualEdit } from '@/features/projects/lib/visualEditorPersistence'
 import type { TaskOverlayLocationState, TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
+import { getProjectPreviewExperience } from '@/utils/projectDetector'
+import type { Framework } from '@/utils/projectDetector'
 
 function normalizePreviewPath(path?: string | null): string {
     if (!path) return '/'
@@ -108,7 +117,7 @@ export function ProjectPagesPage() {
     )
 
     // Store state
-    const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, actions } = useProjectPagesStore()
+    const { routes, serverStatus, serverPort, serverLifecycle, previewReadiness, previewTimeline, serverOutput, actions } = useProjectPagesStore()
     const activeServerRunId = serverLifecycle.runId
     const currentPage = usePageContextStore((state) => state.currentPage)
     const inspectedElement = usePageContextStore((state) => state.inspectedElement)
@@ -167,6 +176,11 @@ export function ProjectPagesPage() {
     const [selectedEditorId, setSelectedEditorId] = useState<ExternalEditorId>(() => {
         return readStoredExternalEditorPreference() ?? 'vscode'
     })
+    const [nativePreviewMode, setNativePreviewMode] = useState(false)
+    const [defaultNativePreviewPlatform, setDefaultNativePreviewPlatform] = useState<'ios' | 'android' | null>(null)
+    const [nativePreviewTarget, setNativePreviewTarget] = useState<NativePreviewTarget>('both')
+    const [nativePreviewLauncher, setNativePreviewLauncher] = useState<NativePreviewLauncher>('expo-go')
+    const [supportsWebPreview, setSupportsWebPreview] = useState(false)
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
         const focus = searchParams.get('focus')
@@ -198,6 +212,21 @@ export function ProjectPagesPage() {
     // Shift-to-inspect: track whether inspector was enabled via Shift key
     const [shiftInspectorActive, setShiftInspectorActive] = useState(false)
     const manualInspectorEnabled = useRef(false)
+
+    const {
+        devices: nativePreviewDevices,
+        devicesLoading: nativePreviewDevicesLoading,
+        primarySession: primaryNativePreviewSession,
+        openDevice: openNativePreviewDevice,
+        refreshDevices: refreshNativePreviewDeviceList,
+    } = useNativePreviewSession({
+        projectPath,
+        enabled: nativePreviewMode,
+        target: nativePreviewTarget,
+        launcher: nativePreviewLauncher,
+        serverPort,
+        serverStatus,
+    })
 
     useEffect(() => {
         // Keep task context through same-route search param cleanup after task-driven navigation.
@@ -283,6 +312,10 @@ export function ProjectPagesPage() {
         )
     const isFocusedPreview = Boolean(previewRoute)
     const prevProjectPathRef = useRef<string | null>(null)
+
+    useEffect(() => {
+        setNativePreviewTarget('both')
+    }, [projectPath])
 
     useEffect(() => {
         let cancelled = false
@@ -394,18 +427,71 @@ export function ProjectPagesPage() {
     )
 
     // Extract stored framework info from project
-    const storedFrameworkInfo = useMemo(() => {
+    const storedFrameworkInfo = useMemo<{
+        framework: Framework
+        devCommand?: string
+        devPort?: number
+    } | null>(() => {
         if (!project?.frameworkInfo) return null
         return {
-            framework: project.frameworkInfo.framework,
-            devCommand: project.frameworkInfo.devCommand,
-            devPort: project.frameworkInfo.devPort,
+            framework: project.frameworkInfo.framework as Framework,
+            devCommand: project.frameworkInfo.devCommand ?? undefined,
+            devPort: project.frameworkInfo.devPort ?? undefined,
         }
     }, [project?.frameworkInfo])
+
+    useEffect(() => {
+        let cancelled = false
+
+        if (!projectPath) {
+            setNativePreviewMode(false)
+            setDefaultNativePreviewPlatform(null)
+            setSupportsWebPreview(false)
+            return
+        }
+
+        void (async () => {
+            try {
+                const experience = await getProjectPreviewExperience(
+                    projectPath,
+                    storedFrameworkInfo?.framework,
+                    storedFrameworkInfo?.devCommand,
+                    storedFrameworkInfo?.devPort,
+                )
+
+                if (cancelled) return
+                setNativePreviewMode(experience.mode === 'expo-native')
+                setDefaultNativePreviewPlatform(experience.defaultNativePlatform)
+                setSupportsWebPreview(experience.supportsWebPreview)
+            } catch {
+                if (cancelled) return
+                setNativePreviewMode(false)
+                setDefaultNativePreviewPlatform(null)
+                setSupportsWebPreview(false)
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [
+        projectPath,
+        storedFrameworkInfo?.devCommand,
+        storedFrameworkInfo?.devPort,
+        storedFrameworkInfo?.framework,
+    ])
+
+    useEffect(() => {
+        if (!nativePreviewMode) return
+        if (!defaultNativePreviewPlatform) return
+        setNativePreviewTarget((current) => current === 'both' ? defaultNativePreviewPlatform : current)
+    }, [defaultNativePreviewPlatform, nativePreviewMode])
+
     const {
         routes: scannedRoutes,
         refreshRoutes,
     } = useProjectRouteScan({
+        enabled: !nativePreviewMode,
         projectPath,
         storedFrameworkInfo,
     })
@@ -419,6 +505,7 @@ export function ProjectPagesPage() {
 
     // Capture home page screenshot and upload as project preview (for Projects dashboard showcase)
     const captureAndUploadProjectPreview = useCallback(async () => {
+        if (nativePreviewMode) return
         const projectId = project?._id
         if (!projectId || !projectPreviewCaptureUrl) return
         try {
@@ -431,11 +518,11 @@ export function ProjectPagesPage() {
         } catch {
             // Silent: preview capture is best-effort for dashboard
         }
-    }, [project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrlForUser, updatePreviewImageForUser])
+    }, [nativePreviewMode, project?._id, projectPreviewCaptureUrl, generatePreviewUploadUrlForUser, updatePreviewImageForUser])
 
     // When dev server becomes ready, capture home page (showcase for Projects page) after delay; retry once later
     useEffect(() => {
-        if (serverStatus !== 'running' || !serverPort || !project?._id || !activeServerRunId) {
+        if (nativePreviewMode || serverStatus !== 'running' || !serverPort || !project?._id || !activeServerRunId) {
             previewCaptureScheduleKeyRef.current = null
             return
         }
@@ -459,6 +546,7 @@ export function ProjectPagesPage() {
         project?._id,
         projectPreviewCapturePath,
         captureAndUploadProjectPreview,
+        nativePreviewMode,
     ])
 
     useEffect(() => {
@@ -466,9 +554,9 @@ export function ProjectPagesPage() {
             serverStatus,
             serverPort,
             projectId: project?._id ?? null,
-            capture: captureAndUploadProjectPreview,
+            capture: nativePreviewMode ? null : captureAndUploadProjectPreview,
         }
-    }, [captureAndUploadProjectPreview, project?._id, serverPort, serverStatus])
+    }, [captureAndUploadProjectPreview, nativePreviewMode, project?._id, serverPort, serverStatus])
 
     // On exit from Pages page: capture latest home page and replace project showcase
     useEffect(() => {
@@ -1789,7 +1877,57 @@ export function ProjectPagesPage() {
         })()
     }, [defaultBrowserId, focusedPreviewUrl, selectedBrowserId])
 
+    const showNativeLauncherInfo = useCallback((launcher: 'orbit' | 'expo-go') => {
+        const message = launcher === 'expo-go'
+            ? 'Expo Go integration is turned off right now. Use the QR button to open the app on your phone.'
+            : 'Orbit integration is turned off right now. Open Orbit manually outside Cozea if you need it.'
+        actions.addServerOutput(`\n[NativePreview] ${message}\n`)
+    }, [actions])
+
+    const handleOpenNativePreviewDevice = useCallback((device: NativePreviewDeviceDescriptor) => {
+        void (async () => {
+            const result = await openNativePreviewDevice(device.platform, device.id)
+            if (!result.success) {
+                actions.addServerOutput(`\n[NativePreview] ${result.error ?? 'Failed to open the selected device.'}\n`)
+            }
+        })()
+    }, [actions, openNativePreviewDevice])
+
+    const handleSelectNativePreviewTarget = useCallback((target: NativePreviewTarget) => {
+        setNativePreviewTarget(target)
+    }, [])
+
+    const refreshNativePreviewDevices = useCallback(() => {
+        void refreshNativePreviewDeviceList()
+    }, [refreshNativePreviewDeviceList])
+
     const headerControls = useMemo(() => (
+        nativePreviewMode ? (
+            <div className="flex items-center gap-2">
+                <NativePreviewEditorPill
+                    availableEditors={availableEditors}
+                    onOpenCode={() => {
+                        if (!projectPath) return
+                        void handleOpenCode(projectPath)
+                    }}
+                    onSelectedEditorChange={setSelectedEditorId}
+                    selectedEditorId={selectedEditorId}
+                />
+                <NativePreviewLaunchPill
+                    canOpenExpoGo={Boolean(previewServerActive && serverPort)}
+                    onOpenExpoGo={() => showNativeLauncherInfo('expo-go')}
+                    onOpenOrbit={() => showNativeLauncherInfo('orbit')}
+                    onOpenWebPreview={supportsWebPreview && focusedPreviewUrl ? openFocusedPreviewExternally : null}
+                    selectedLauncher={nativePreviewLauncher}
+                    supportsWebPreview={supportsWebPreview}
+                    onSelectedLauncherChange={setNativePreviewLauncher}
+                />
+                <NativePreviewQrPopover
+                    serverOutput={serverOutput}
+                    serverRunning={Boolean(previewServerActive && serverPort)}
+                />
+            </div>
+        ) : (
         <ProjectPreviewToolbar
             availableBrowsers={availableBrowsers}
             availableEditors={availableEditors}
@@ -1812,14 +1950,21 @@ export function ProjectPagesPage() {
             serverRunning={previewServerActive && Boolean(serverPort)}
             useCredentiallessPreview={useCredentiallessPreview}
         />
+        )
     ), [
         availableBrowsers,
         availableEditors,
         defaultBrowserId,
         inspectorEnabled,
+        nativePreviewMode,
+        projectPath,
+        showNativeLauncherInfo,
         previewEmbedBlocked,
         previewLoading,
         previewReady,
+        nativePreviewLauncher,
+        serverOutput,
+        focusedPreviewUrl,
         handleOpenCode,
         openFocusedPreviewExternally,
         selectedEditorId,
@@ -1827,6 +1972,7 @@ export function ProjectPagesPage() {
         previewRoute,
         previewServerActive,
         serverPort,
+        supportsWebPreview,
         toggleInspector,
         useCredentiallessPreview,
     ])
@@ -1836,20 +1982,52 @@ export function ProjectPagesPage() {
             <div className="h-4 w-px shrink-0 bg-border/60" />
             <ServerControl
                 projectPath={projectPath}
+                projectId={project?._id ?? null}
                 storedDevCommand={storedFrameworkInfo?.devCommand}
                 storedDevPort={storedFrameworkInfo?.devPort}
+                previewMode={nativePreviewMode ? 'native' : 'web'}
+                nativePlatform={nativePreviewMode ? (nativePreviewTarget === 'both' ? defaultNativePreviewPlatform : nativePreviewTarget) : null}
             />
         </div>
-    ), [projectPath, storedFrameworkInfo?.devCommand, storedFrameworkInfo?.devPort])
+    ), [
+        nativePreviewTarget,
+        defaultNativePreviewPlatform,
+        nativePreviewMode,
+        project?._id,
+        projectPath,
+        storedFrameworkInfo?.devCommand,
+        storedFrameworkInfo?.devPort,
+    ])
 
     const focusedPreviewBreadcrumbAddon = useMemo(() => (
         <div className="flex min-w-0 items-center gap-2">
-            {headerControls}
-            {serverControlBreadcrumbAddon}
+            {nativePreviewMode ? (
+                <>
+                    {serverControlBreadcrumbAddon}
+                    {headerControls}
+                </>
+            ) : (
+                <>
+                    {headerControls}
+                    {serverControlBreadcrumbAddon}
+                </>
+            )}
         </div>
-    ), [headerControls, serverControlBreadcrumbAddon])
+    ), [headerControls, nativePreviewMode, serverControlBreadcrumbAddon])
 
     const focusedPreviewCenterAddon = useMemo(() => {
+        if (nativePreviewMode) {
+            return (
+                <NativePreviewRouteBar
+                    devices={nativePreviewDevices}
+                    devicesLoading={nativePreviewDevicesLoading}
+                    target={nativePreviewTarget}
+                    onOpenDevice={handleOpenNativePreviewDevice}
+                    onRefreshDevices={refreshNativePreviewDevices}
+                    onSelectTarget={handleSelectNativePreviewTarget}
+                />
+            )
+        }
         if (routes.length === 0) return null
         return (
             <ProjectPreviewRouteBar
@@ -1867,7 +2045,20 @@ export function ProjectPagesPage() {
                 onSelectRoute={(route) => handleSelectPreviewRoute(route.path)}
             />
         )
-    }, [currentPage?.route, device, handleSelectPreviewRoute, previewRoute, routes])
+    }, [
+        currentPage?.route,
+        device,
+        handleOpenNativePreviewDevice,
+        handleSelectNativePreviewTarget,
+        handleSelectPreviewRoute,
+        nativePreviewDevices,
+        nativePreviewDevicesLoading,
+        nativePreviewMode,
+        nativePreviewTarget,
+        previewRoute,
+        refreshNativePreviewDevices,
+        routes,
+    ])
 
     useProjectHeader(
         null,
@@ -1914,7 +2105,19 @@ export function ProjectPagesPage() {
                 <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
                     {/* Content */}
                     <div className="relative flex-1 overflow-hidden flex flex-col">
-                        {routes.length === 0 ? (
+                        {nativePreviewMode ? (
+                            nativePreviewLauncher !== 'web' && primaryNativePreviewSession && primaryNativePreviewSession.state !== 'stopped' && primaryNativePreviewSession.state !== 'error' ? (
+                                <EmbeddedNativePreview session={primaryNativePreviewSession} />
+                            ) : (
+                                <NativeProjectPreview
+                                    serverRunning={previewServerActive && Boolean(serverPort)}
+                                    serverStarting={serverStatus === 'starting'}
+                                    serverOutput={serverOutput}
+                                    selectedLauncher={nativePreviewLauncher}
+                                    target={nativePreviewTarget}
+                                />
+                            )
+                        ) : routes.length === 0 ? (
                             /* Empty State */
                             <div
                                 key="pages-empty"

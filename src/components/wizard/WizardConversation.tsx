@@ -136,6 +136,9 @@ import { fetchWithAbort } from '@/lib/abort'
 interface WizardConversationProps {
   projectId?: Id<"projects"> // Optional - project created when plan selected
   initialPrompt: string
+  defaultSourceControlProvider?: 'github' | 'gitlab' | null
+  shouldAskForSourceControlProvider?: boolean
+  availableSourceControlProviders?: Array<'github' | 'gitlab'>
   promptSettings: {
     model: string
     agentId: 'plan' | 'build' | 'assistant_general' | 'assistant_project' | 'explore' | 'review'
@@ -258,6 +261,9 @@ const PLANNING_TOOLS = new Set([
 export function WizardConversation({
   projectId,
   initialPrompt,
+  defaultSourceControlProvider = null,
+  shouldAskForSourceControlProvider = false,
+  availableSourceControlProviders = [],
   promptSettings,
   onPlanSelected,
   className,
@@ -303,6 +309,27 @@ export function WizardConversation({
   const addToolOutputRef = useRef<ChatHookResult['addToolOutput'] | null>(null)
   const cancelledToolCallsRef = useRef<Set<string>>(new Set())
   const toolsByNameRef = useRef<Record<string, ToolMeta>>({})
+
+  const normalizePlanSourceControl = useCallback((plan: PlanOption): PlanOption => {
+    const provider =
+      plan.config?.sourceControl?.provider === 'gitlab' ||
+      plan.config?.sourceControl?.provider === 'github'
+        ? plan.config.sourceControl.provider
+        : defaultSourceControlProvider ?? undefined
+
+    return {
+      ...plan,
+      config: {
+        ...plan.config,
+        sourceControl: {
+          visibility: 'private',
+          mergeStrategy: 'squash',
+          ...plan.config?.sourceControl,
+          ...(provider ? { provider } : {}),
+        },
+      },
+    }
+  }, [defaultSourceControlProvider])
 
   const providerScopedModels = useMemo(() => {
     const supportedModels = availableModels.filter((m) => isConnectedProvider(m.chefSlug))
@@ -657,6 +684,17 @@ export function WizardConversation({
       enableTools: true,
       enableWebSearch: true,
       extraBody: {
+        planningContext: {
+          ...(defaultSourceControlProvider
+            ? {
+                defaultSourceControlProvider,
+                defaultSourceControlLabel:
+                  defaultSourceControlProvider === 'gitlab' ? 'GitLab' : 'GitHub',
+              }
+            : {}),
+          availableSourceControlProviders,
+          shouldAskForSourceControlProvider,
+        },
         projectContext: {
           name: projectId || 'wizard-project',
           slug: (projectId || 'wizard-project').toLowerCase(),
@@ -794,7 +832,7 @@ export function WizardConversation({
   }, [initialPrompt, canSendMessage, sendMessage])
 
   // Validate and filter plan options
-  const validatePlans = (plans: unknown[]): PlanOption[] => {
+  const validatePlans = useCallback((plans: unknown[]): PlanOption[] => {
     return plans
       .filter((plan): plan is PlanOption => {
         if (!plan || typeof plan !== 'object') return false
@@ -812,8 +850,9 @@ export function WizardConversation({
         features: plan.features || [],
         config: plan.config || {},
       }))
+      .map(normalizePlanSourceControl)
       .filter((plan) => validateWebOnlyPlanConfig(plan.config).valid)
-  }
+  }, [normalizePlanSourceControl])
 
   // Track how many plans we've extracted (need exactly 3 for complete extraction)
   const extractedPlanCountRef = useRef(0)
@@ -890,7 +929,7 @@ export function WizardConversation({
         }
       }
     }
-  }, [dedupedMessages, messages])
+  }, [dedupedMessages, messages, validatePlans])
 
   // Compute token usage
   const accumulatedUsage = useMemo(() => {

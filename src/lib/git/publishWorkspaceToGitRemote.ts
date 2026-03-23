@@ -3,10 +3,13 @@ import type { ConvexReactClient } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { prepareGitProjectForOpen, type ProjectOpenGitProjectLike } from '@/features/projects/lib/projectOpenGitSync'
-import { buildCozeaGitAuthHeader, buildCozeaGitRemoteUrl } from '@/lib/git/cozeaRemote'
 import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
+import {
+  resolveEffectiveProjectGitBranch,
+  resolveProjectGitRemoteConfig,
+} from '@/lib/git/projectGitRuntime'
 
-interface PublishWorkspaceToCozeaGitOptions {
+interface PublishWorkspaceToGitRemoteOptions {
   convex: ConvexReactClient
   project: ProjectOpenGitProjectLike
   projectPath: string
@@ -20,26 +23,20 @@ interface PublishWorkspaceToCozeaGitOptions {
   }) => Promise<unknown>
 }
 
-async function resolveAccessToken(): Promise<string | undefined> {
-  try {
-    const session = await window.electronAPI.auth.getSession()
-    return session?.accessToken
-  } catch (error) {
-    console.warn('[GitPublish] Failed to resolve session token:', error)
-    return undefined
-  }
-}
-
-export async function publishWorkspaceToCozeaGit({
+export async function publishWorkspaceToGitRemote({
   convex,
   project,
   projectPath,
   userId,
-  message = 'cozea: sync workspace',
+  message = 'manual: sync workspace',
   onProgress,
   updateMemberLocalPath,
-}: PublishWorkspaceToCozeaGitOptions): Promise<void> {
-  const branch = project.gitRepository?.defaultBranch?.trim() || 'main'
+}: PublishWorkspaceToGitRemoteOptions): Promise<void> {
+  const remoteConfig = await resolveProjectGitRemoteConfig({
+    convex,
+    project,
+    userId,
+  })
 
   const prepareResult = await prepareGitProjectForOpen({
     convex,
@@ -57,17 +54,24 @@ export async function publishWorkspaceToCozeaGit({
     return
   }
 
-  const accessToken = await resolveAccessToken()
-  const repoUrl = buildCozeaGitRemoteUrl(String(project._id))
-  const extraHeader = buildCozeaGitAuthHeader(accessToken)
+  if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
+    return
+  }
+
+  const branch = await resolveEffectiveProjectGitBranch({
+    projectPath,
+    fallbackBranch: remoteConfig.branch,
+    usesExistingRemote: remoteConfig.usesExistingRemote,
+  })
 
   onProgress?.('Publishing workspace changes...')
   const commitAndPushResult = await window.electronAPI.sync.gitCommitAndPush({
     projectPath,
     branch,
-    repoUrl,
+    repoUrl: remoteConfig.repoUrl,
     message,
-    extraHeader,
+    provider: remoteConfig.provider,
+    accessToken: remoteConfig.accessToken,
   })
 
   if (!commitAndPushResult.success) {
@@ -87,8 +91,9 @@ export async function publishWorkspaceToCozeaGit({
       const pushResult = await window.electronAPI.sync.gitPushMain({
         projectPath,
         branch,
-        repoUrl,
-        extraHeader,
+        repoUrl: remoteConfig.repoUrl,
+        provider: remoteConfig.provider,
+        accessToken: remoteConfig.accessToken,
       })
       if (!pushResult.success) {
         throw new Error(pushResult.error || 'Failed to push workspace changes')

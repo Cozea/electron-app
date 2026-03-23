@@ -33,7 +33,7 @@ export interface DependencySnapshot {
 
 export interface DependencyJobPayload {
   id: string
-  action: 'add' | 'update' | 'remove'
+  action: 'install' | 'add' | 'update' | 'remove'
   packageName: string
   status: 'running' | 'success' | 'error'
   startedAt: number
@@ -293,8 +293,8 @@ export class DependenciesService {
 
     ipcMain.handle('dependencies:run', async (_event, options: {
       projectPath: string
-      action: 'add' | 'update' | 'remove'
-      packageName: string
+      action: 'install' | 'add' | 'update' | 'remove'
+      packageName?: string
       version?: string
       dev?: boolean
       updateMode?: 'latest' | 'range'
@@ -510,8 +510,8 @@ export class DependenciesService {
 
   private async runJob(options: {
     projectPath: string
-    action: 'add' | 'update' | 'remove'
-    packageName: string
+    action: 'install' | 'add' | 'update' | 'remove'
+    packageName?: string
     version?: string
     dev?: boolean
     updateMode?: 'latest' | 'range'
@@ -520,7 +520,7 @@ export class DependenciesService {
       return { success: false, error: 'Project directory not found' }
     }
 
-    if (!options.packageName?.trim()) {
+    if (options.action !== 'install' && !options.packageName?.trim()) {
       return { success: false, error: 'Package name is required' }
     }
 
@@ -533,7 +533,7 @@ export class DependenciesService {
       const payload: DependencyJobPayload = {
         id: jobId,
         action: options.action,
-        packageName: options.packageName,
+        packageName: options.packageName ?? '(project)',
         status: 'error',
         startedAt,
         finishedAt: Date.now(),
@@ -548,7 +548,7 @@ export class DependenciesService {
       const payload: DependencyJobPayload = {
         id: jobId,
         action: options.action,
-        packageName: options.packageName,
+        packageName: options.packageName ?? '(project)',
         status: 'error',
         startedAt,
         finishedAt: Date.now(),
@@ -562,7 +562,7 @@ export class DependenciesService {
       const payload: DependencyJobPayload = {
         id: jobId,
         action: options.action,
-        packageName: options.packageName,
+        packageName: options.packageName ?? '(project)',
         status: 'error',
         startedAt,
         finishedAt: Date.now(),
@@ -578,7 +578,7 @@ export class DependenciesService {
         const payload: DependencyJobPayload = {
           id: jobId,
           action: options.action,
-          packageName: options.packageName,
+          packageName: options.packageName ?? '(project)',
           status: 'error',
           startedAt,
           finishedAt: Date.now(),
@@ -594,7 +594,7 @@ export class DependenciesService {
     const basePayload = {
       id: jobId,
       action: options.action,
-      packageName: options.packageName,
+      packageName: options.packageName ?? '(project)',
       startedAt,
     }
 
@@ -648,14 +648,23 @@ export class DependenciesService {
   private getCommandForJob(
     pm: PackageManager,
     options: {
-      action: 'add' | 'update' | 'remove'
-      packageName: string
+      action: 'install' | 'add' | 'update' | 'remove'
+      packageName?: string
       version?: string
       dev?: boolean
       updateMode?: 'latest' | 'range'
     }
   ): { cmd: string | null; args: string[] } {
-    const nameWithVersion = options.version ? `${options.packageName}@${options.version}` : options.packageName
+    const packageName = options.packageName?.trim() ?? ''
+    const nameWithVersion = packageName && options.version ? `${packageName}@${options.version}` : packageName
+
+    if (options.action === 'install') {
+      if (pm === 'npm') return { cmd: 'npm', args: ['install'] }
+      if (pm === 'pnpm') return { cmd: 'pnpm', args: ['install'] }
+      if (pm === 'yarn') return { cmd: 'yarn', args: ['install'] }
+      if (pm === 'bun') return { cmd: 'bun', args: ['install'] }
+    }
+
     if (options.action === 'add') {
       if (pm === 'npm') return { cmd: 'npm', args: ['install', nameWithVersion, options.dev ? '--save-dev' : '--save'] }
       if (pm === 'pnpm') return { cmd: 'pnpm', args: ['add', nameWithVersion, options.dev ? '-D' : undefined].filter(Boolean) as string[] }

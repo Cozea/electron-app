@@ -1,16 +1,43 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useViewTransitionNavigate } from '@/lib/navigation'
-import { useMutation, useQuery } from 'convex/react'
+import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { RepositoryProvisioner } from '@/components/git/RepositoryProvisioner'
 import { useProjectHeader } from '@/hooks/useProjectHeader'
+import { useWorkspaceSourceControl } from '@/hooks/useWorkspaceSourceControl'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useProjectWorkspaceContext } from '@/features/projects/hooks/useProjectWorkspaceContext'
 import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
+import { GitDurabilityCoordinator } from '@/lib/git/GitDurabilityCoordinator'
+import { dispatchGitStatusEvent } from '@/lib/git/gitStatusEvents'
+import {
+  resolveProjectRepoAccessStatus,
+} from '@/lib/git/projectRepoAccess'
+import {
+  resolveEffectiveProjectGitBranch,
+  resolveProjectGitRemoteConfig,
+} from '@/lib/git/projectGitRuntime'
+import type { GitSyncStatusResult } from '@shared/electronApiTypes'
+import {
+  getDefaultVersionControlSetupMode,
+  getVersionControlSetupLabel,
+  normalizeVersionControlProvider,
+  supportsVersionControlAutomation,
+} from '@shared/versionControl'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { buildLegacyProjectPath, buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +50,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import {
   AlertTriangle,
@@ -30,12 +58,26 @@ import {
   Save,
   Trash2,
 } from 'lucide-react'
+import type { ProjectGitRuntimeProjectLike } from '@/lib/git/projectGitRuntime'
 
-type SettingsSectionId = 'general' | 'danger'
+type SettingsSectionId = 'general' | 'source-control' | 'danger'
+type VersionControlProviderOption = 'github' | 'gitlab' | 'bitbucket' | 'local'
+type GitActionKey = 'status' | 'fetch' | 'pull' | 'commit' | 'push' | 'sync'
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; label: string }> = [
   { id: 'general', label: 'General' },
+  { id: 'source-control', label: 'Source Control' },
   { id: 'danger', label: 'Danger' },
+]
+
+const VERSION_CONTROL_PROVIDER_OPTIONS: Array<{
+  value: VersionControlProviderOption
+  label: string
+}> = [
+  { value: 'github', label: 'GitHub' },
+  { value: 'gitlab', label: 'GitLab' },
+  { value: 'bitbucket', label: 'Bitbucket' },
+  { value: 'local', label: 'Local only' },
 ]
 
 function cleanConvexError(error: unknown, fallback: string): string {
@@ -44,13 +86,15 @@ function cleanConvexError(error: unknown, fallback: string): string {
 }
 
 export function ProjectSettingsPage() {
+  const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const { section: sectionParam } = useParams<{ section?: string }>()
   const { convexUserId } = useAuth()
   const { project, projectIdParam, slugParam } = useAccessibleProject()
+  const projectWorkspace = useProjectWorkspaceContext(project)
 
   const currentSection: SettingsSectionId =
-    sectionParam === 'danger' ? sectionParam : 'general'
+    sectionParam === 'danger' || sectionParam === 'source-control' ? sectionParam : 'general'
 
   const buildSettingsPath = useCallback((section: SettingsSectionId) => {
     if (project?._id) return buildProjectPath(String(project._id), `settings/${section}`)
@@ -61,6 +105,7 @@ export function ProjectSettingsPage() {
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const removeProject = useMutation(api.projects.deleteProject)
+  const updateSyncStatus = useMutation(api.projects.updateSyncStatus)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -68,11 +113,83 @@ export function ProjectSettingsPage() {
       ? { projectId: project._id, userId: convexUserId }
       : 'skip'
   )
+  const memberLocalPath = useQuery(
+    api.projectMembers.getMemberLocalPath,
+    project?._id && convexUserId
+      ? { projectId: project._id, userId: convexUserId }
+      : 'skip'
+  )
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [provider, setProvider] = useState<VersionControlProviderOption>('local')
+  const [repoUrl, setRepoUrl] = useState('')
+  const [defaultBranch, setDefaultBranch] = useState('main')
+  const [syncPolicy, setSyncPolicy] = useState<'auto' | 'manual'>('auto')
+  const [commitMessage, setCommitMessage] = useState('manual: sync workspace')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [gitError, setGitError] = useState<string | null>(null)
+  const [gitNotice, setGitNotice] = useState<string | null>(null)
+  const [gitStatus, setGitStatus] = useState<GitSyncStatusResult | null>(null)
+  const [gitActionKey, setGitActionKey] = useState<GitActionKey | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+
+  const { getConnection } = useWorkspaceSourceControl({
+    route: projectWorkspace.isPersonalWorkspace
+      ? '/settings/source-control'
+      : '/workspace/source-control',
+    enabled: Boolean(project?.organizationId && convexUserId),
+  })
+  const repoIntegration =
+    project?.organizationId && (provider === 'github' || provider === 'gitlab')
+      ? getConnection(provider)
+      : null
+  const setupMode = useMemo(
+    () => project?.sourceControl?.setupMode ?? getDefaultVersionControlSetupMode(projectWorkspace.isPersonalWorkspace),
+    [project?.sourceControl?.setupMode, projectWorkspace.isPersonalWorkspace]
+  )
+  const normalizedRepoUrl = repoUrl.trim()
+  const normalizedDefaultBranch = defaultBranch.trim() || 'main'
+  const editableProject = useMemo<ProjectGitRuntimeProjectLike | null>(() => {
+    if (!project) return null
+
+    return {
+      _id: project._id,
+      organizationId: project.organizationId,
+      gitRepository:
+        provider !== 'local' && normalizedRepoUrl
+          ? {
+              provider,
+              url: normalizedRepoUrl,
+              defaultBranch: normalizedDefaultBranch,
+            }
+          : null,
+      sourceControl: {
+        ...project.sourceControl,
+        provider,
+        repoUrl: normalizedRepoUrl || undefined,
+        defaultBranch: normalizedDefaultBranch,
+        syncPolicy,
+        setupMode,
+      },
+    }
+  }, [
+    normalizedDefaultBranch,
+    normalizedRepoUrl,
+    project,
+    provider,
+    setupMode,
+    syncPolicy,
+  ])
+  const repoAccessStatus = useMemo(
+    () =>
+      resolveProjectRepoAccessStatus({
+        project: editableProject,
+        sourceControlConnection: repoIntegration,
+        isPersonalWorkspace: projectWorkspace.isPersonalWorkspace,
+      }),
+    [editableProject, projectWorkspace.isPersonalWorkspace, repoIntegration]
+  )
 
   const [showArchiveDialog, setShowArchiveDialog] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -86,18 +203,345 @@ export function ProjectSettingsPage() {
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
+    setProvider(
+      normalizeVersionControlProvider(
+        project.sourceControl?.provider ?? project.gitRepository?.provider
+      ) ?? 'local'
+    )
+    setRepoUrl(project.gitRepository?.url ?? project.sourceControl?.repoUrl ?? '')
+    setDefaultBranch(
+      project.sourceControl?.defaultBranch ??
+        project.gitRepository?.defaultBranch ??
+        'main'
+    )
+    setSyncPolicy(project.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto')
     setSaveError(null)
+    setGitError(null)
+    setGitNotice(null)
+    setGitStatus(null)
     setArchiveError(null)
     setDeleteError(null)
-  }, [project?._id, project?.name, project?.description, project])
+  }, [
+    project?._id,
+    project?.description,
+    project?.gitRepository?.defaultBranch,
+    project?.gitRepository?.provider,
+    project?.gitRepository?.url,
+    project?.name,
+    project?.sourceControl?.defaultBranch,
+    project?.sourceControl?.provider,
+    project?.sourceControl?.repoUrl,
+    project?.sourceControl?.syncPolicy,
+    project,
+  ])
 
   const isManager = memberRole === 'project_manager'
   const canEditGeneral = memberRole !== null && memberRole !== undefined && memberRole !== 'viewer'
 
   const projectName = project?.name ?? ''
   const projectDescription = project?.description ?? ''
-  const hasChanges = Boolean(project) && (name !== projectName || description !== projectDescription)
+  const projectProvider =
+    normalizeVersionControlProvider(project?.sourceControl?.provider ?? project?.gitRepository?.provider) ??
+    'local'
+  const projectRepoUrl = project?.gitRepository?.url ?? project?.sourceControl?.repoUrl ?? ''
+  const projectDefaultBranch =
+    project?.sourceControl?.defaultBranch ??
+    project?.gitRepository?.defaultBranch ??
+    'main'
+  const projectSyncPolicy = project?.sourceControl?.syncPolicy === 'manual' ? 'manual' : 'auto'
+  const usesExistingRemote = project?.sourceControl?.workingCopyMode === 'attached'
+  const hasRemoteOperations = Boolean(normalizedRepoUrl) || usesExistingRemote
+  const hasChanges = Boolean(project) && (
+    name !== projectName ||
+    description !== projectDescription ||
+    provider !== projectProvider ||
+    normalizedRepoUrl !== projectRepoUrl ||
+    normalizedDefaultBranch !== projectDefaultBranch ||
+    syncPolicy !== projectSyncPolicy
+  )
   const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
+
+  const refreshGitStatus = useCallback(async (options?: { silent?: boolean }) => {
+    if (!memberLocalPath) {
+      setGitStatus(null)
+      return
+    }
+
+    const isSilent = options?.silent === true
+    if (!isSilent) {
+      setGitActionKey('status')
+      setGitError(null)
+      setGitNotice(null)
+    }
+
+    try {
+      const statusResult = await window.electronAPI.sync.gitStatus({
+        projectPath: memberLocalPath,
+      })
+      if (!statusResult.success) {
+        throw new Error(statusResult.error || 'Failed to read local git status')
+      }
+      setGitStatus(statusResult)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to read local git status'
+      setGitStatus(null)
+      if (!isSilent) {
+        setGitError(message)
+      }
+    } finally {
+      if (!isSilent) {
+        setGitActionKey(null)
+      }
+    }
+  }, [memberLocalPath])
+
+  useEffect(() => {
+    if (currentSection !== 'source-control' || !memberLocalPath) return
+    void refreshGitStatus()
+  }, [currentSection, memberLocalPath, refreshGitStatus])
+
+  const resolveGitActionContext = useCallback(async () => {
+    if (!project || !editableProject || !memberLocalPath) {
+      throw new Error('Local project checkout is not available on this device.')
+    }
+
+    const remoteConfig = await resolveProjectGitRemoteConfig({
+      convex,
+      project: editableProject,
+      userId: convexUserId,
+    })
+    const branch = await resolveEffectiveProjectGitBranch({
+      projectPath: memberLocalPath,
+      fallbackBranch: normalizedDefaultBranch || remoteConfig.branch,
+      usesExistingRemote: remoteConfig.usesExistingRemote,
+    })
+    const ensureResult = await window.electronAPI.sync.gitEnsureRepo({
+      projectPath: memberLocalPath,
+      branch,
+      repoUrl: remoteConfig.repoUrl,
+    })
+    if (!ensureResult.success) {
+      throw new Error(ensureResult.error || 'Failed to prepare the local git repository')
+    }
+
+    return {
+      branch,
+      projectPath: memberLocalPath,
+      remoteConfig,
+    }
+  }, [convex, convexUserId, editableProject, memberLocalPath, normalizedDefaultBranch, project])
+
+  const recordSyncState = useCallback(async (
+    status: 'syncing' | 'synced' | 'error',
+    errorMessage?: string
+  ) => {
+    if (!project?._id || !convexUserId) return
+    await updateSyncStatus({
+      projectId: project._id,
+      userId: convexUserId,
+      status,
+      errorMessage,
+    })
+  }, [convexUserId, project?._id, updateSyncStatus])
+
+  const handleGitActionFailure = useCallback(async (message: string) => {
+    try {
+      await recordSyncState('error', message)
+    } catch {
+      // Ignore sync metadata failures and surface the git error itself.
+    }
+    setGitError(message)
+  }, [recordSyncState])
+
+  const finalizeGitAction = useCallback(async (notice: string, kind: 'dirty' | 'synced' | 'pulled' | 'published') => {
+    if (!project || !memberLocalPath) return
+    await recordSyncState('synced')
+    setGitNotice(notice)
+    dispatchGitStatusEvent({
+      projectId: String(project._id),
+      projectPath: memberLocalPath,
+      kind,
+    })
+    await refreshGitStatus({ silent: true })
+  }, [memberLocalPath, project, recordSyncState, refreshGitStatus])
+
+  const handleFetch = useCallback(async () => {
+    setGitActionKey('fetch')
+    setGitError(null)
+    setGitNotice(null)
+
+    try {
+      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
+      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
+        throw new Error('This project does not have a remote repository configured yet.')
+      }
+
+      await recordSyncState('syncing')
+      const fetchResult = await window.electronAPI.sync.gitFetchMain({
+        projectPath,
+        branch,
+        repoUrl: remoteConfig.repoUrl,
+        provider: remoteConfig.provider,
+        accessToken: remoteConfig.accessToken,
+      })
+      if (!fetchResult.success) {
+        throw new Error(fetchResult.error || 'Failed to fetch latest remote changes')
+      }
+
+      await finalizeGitAction('Fetched latest remote changes.', 'dirty')
+    } catch (error) {
+      await handleGitActionFailure(
+        error instanceof Error ? error.message : 'Failed to fetch latest remote changes'
+      )
+    } finally {
+      setGitActionKey(null)
+    }
+  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
+
+  const handlePull = useCallback(async () => {
+    setGitActionKey('pull')
+    setGitError(null)
+    setGitNotice(null)
+
+    try {
+      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
+      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
+        throw new Error('This project does not have a remote repository configured yet.')
+      }
+
+      await recordSyncState('syncing')
+      const pullResult = await window.electronAPI.sync.gitPullMain({
+        projectPath,
+        branch,
+        repoUrl: remoteConfig.repoUrl,
+        strategy: 'merge',
+        provider: remoteConfig.provider,
+        accessToken: remoteConfig.accessToken,
+      })
+      if (!pullResult.success) {
+        throw new Error(pullResult.error || 'Failed to pull latest remote changes')
+      }
+      if (pullResult.hadConflicts) {
+        throw new Error('Git merge conflicts must be resolved before continuing.')
+      }
+
+      await finalizeGitAction(
+        pullResult.alreadyUpToDate ? 'Already up to date.' : 'Pulled latest remote changes.',
+        'pulled'
+      )
+    } catch (error) {
+      await handleGitActionFailure(
+        error instanceof Error ? error.message : 'Failed to pull latest remote changes'
+      )
+    } finally {
+      setGitActionKey(null)
+    }
+  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
+
+  const handleCommit = useCallback(async () => {
+    setGitActionKey('commit')
+    setGitError(null)
+    setGitNotice(null)
+
+    const nextCommitMessage = commitMessage.trim()
+    if (!nextCommitMessage) {
+      setGitError('Commit message is required.')
+      return
+    }
+
+    try {
+      const { projectPath } = await resolveGitActionContext()
+      await recordSyncState('syncing')
+      const commitResult = await window.electronAPI.sync.gitCommitAll({
+        projectPath,
+        message: nextCommitMessage,
+      })
+      if (!commitResult.success) {
+        throw new Error(commitResult.error || 'Failed to create git commit')
+      }
+
+      await finalizeGitAction(
+        commitResult.commitCreated === false
+          ? 'No local changes to commit.'
+          : 'Created local git commit.',
+        'dirty'
+      )
+    } catch (error) {
+      await handleGitActionFailure(
+        error instanceof Error ? error.message : 'Failed to create git commit'
+      )
+    } finally {
+      setGitActionKey(null)
+    }
+  }, [commitMessage, finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
+
+  const handlePush = useCallback(async () => {
+    setGitActionKey('push')
+    setGitError(null)
+    setGitNotice(null)
+
+    try {
+      const { branch, projectPath, remoteConfig } = await resolveGitActionContext()
+      if (!remoteConfig.repoUrl && !remoteConfig.usesExistingRemote) {
+        throw new Error('This project does not have a remote repository configured yet.')
+      }
+
+      await recordSyncState('syncing')
+      const pushResult = await window.electronAPI.sync.gitPushMain({
+        projectPath,
+        branch,
+        repoUrl: remoteConfig.repoUrl,
+        provider: remoteConfig.provider,
+        accessToken: remoteConfig.accessToken,
+      })
+      if (!pushResult.success) {
+        throw new Error(pushResult.error || 'Failed to push local git commits')
+      }
+
+      await finalizeGitAction(
+        pushResult.pushed === false ? 'No local commits to push.' : 'Pushed local commits.',
+        'published'
+      )
+    } catch (error) {
+      await handleGitActionFailure(
+        error instanceof Error ? error.message : 'Failed to push local git commits'
+      )
+    } finally {
+      setGitActionKey(null)
+    }
+  }, [finalizeGitAction, handleGitActionFailure, recordSyncState, resolveGitActionContext])
+
+  const handleSyncNow = useCallback(async () => {
+    if (!project?._id || !convexUserId || !memberLocalPath) {
+      setGitError('Local project checkout is not available on this device.')
+      return
+    }
+
+    setGitActionKey('sync')
+    setGitError(null)
+    setGitNotice(null)
+
+    const coordinator = GitDurabilityCoordinator.acquireShared({
+      projectId: project._id,
+      projectPath: memberLocalPath,
+      convex,
+      userId: convexUserId,
+    })
+
+    try {
+      await recordSyncState('syncing')
+      await coordinator.flushNow(true)
+      await finalizeGitAction('Git sync complete.', 'synced')
+    } catch (error) {
+      await handleGitActionFailure(
+        error instanceof Error ? error.message : 'Failed to complete git sync'
+      )
+    } finally {
+      coordinator.release()
+      setGitActionKey(null)
+    }
+  }, [convex, convexUserId, finalizeGitAction, handleGitActionFailure, memberLocalPath, project?._id, recordSyncState])
 
   const handleSave = useCallback(async () => {
     if (!project || !convexUserId) return
@@ -118,13 +562,32 @@ export function ProjectSettingsPage() {
         userId: convexUserId,
         name: nextName,
         description,
+        sourceControl: {
+          provider,
+          repoUrl: normalizedRepoUrl || undefined,
+          defaultBranch: normalizedDefaultBranch,
+          syncPolicy,
+          setupMode,
+        },
       })
     } catch (error) {
       setSaveError(cleanConvexError(error, 'Failed to save project settings'))
     } finally {
       setIsSaving(false)
     }
-  }, [convexUserId, description, hasChanges, name, project, updateProject])
+  }, [
+    convexUserId,
+    description,
+    hasChanges,
+    name,
+    normalizedDefaultBranch,
+    normalizedRepoUrl,
+    project,
+    provider,
+    setupMode,
+    syncPolicy,
+    updateProject,
+  ])
 
   const handleArchive = useCallback(async () => {
     if (!project || !convexUserId) return
@@ -171,7 +634,7 @@ export function ProjectSettingsPage() {
   }, [convexUserId, navigate, project, removeProject])
 
   const headerActions = useMemo(() => {
-    if (currentSection !== 'general') return null
+    if (currentSection !== 'general' && currentSection !== 'source-control') return null
     return (
       <Button
         size="sm"
@@ -275,6 +738,293 @@ export function ProjectSettingsPage() {
                       Slug is retained for compatibility links. Canonical routes use project id.
                     </p>
                   </div>
+
+                  {saveError ? (
+                    <p className="text-xs text-destructive">{saveError}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {currentSection === 'source-control' ? (
+                <div className="space-y-4 rounded-2xl border border-border/60 bg-card/50 p-5">
+                  <div className="rounded-xl border border-border/60 bg-secondary/40 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">{repoAccessStatus.title}</p>
+                        <p className="text-xs text-muted-foreground">{repoAccessStatus.description}</p>
+                      </div>
+                      {repoAccessStatus.state === 'integration_missing' || repoAccessStatus.state === 'integration_mismatch' ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="rounded-full"
+                          onClick={() => {
+                            navigate(projectWorkspace.isPersonalWorkspace ? '/settings/source-control' : '/workspace/source-control')
+                          }}
+                        >
+                          {repoAccessStatus.state === 'integration_mismatch' ? 'Fix Source Control' : 'Connect Source Control'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Provider</Label>
+                    <Select
+                      value={provider}
+                      onValueChange={(value) => {
+                        const nextProvider = value as VersionControlProviderOption
+                        setProvider(nextProvider)
+                        if (nextProvider === 'local') {
+                          setRepoUrl('')
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="rounded-xl bg-background">
+                        <SelectValue placeholder="Select provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VERSION_CONTROL_PROVIDER_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Remote URL</Label>
+                    <Input
+                      value={repoUrl}
+                      onChange={(event) => {
+                        setRepoUrl(event.target.value)
+                      }}
+                      placeholder={usesExistingRemote ? 'Uses the remote configured in your attached checkout' : 'https://github.com/owner/repo'}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {usesExistingRemote && !normalizedRepoUrl
+                        ? 'Leave this blank to keep using the remote configured in the attached checkout.'
+                        : 'This remote is owned by your connected git provider, not by the app.'}
+                    </p>
+                  </div>
+
+                  {supportsVersionControlAutomation(provider) && project.organizationId ? (
+                    <RepositoryProvisioner
+                      provider={provider}
+                      organizationId={project.organizationId}
+                      integrationConnected={Boolean(repoIntegration)}
+                      setupMode={setupMode}
+                      selectedRepoUrl={normalizedRepoUrl}
+                      suggestedRepoName={name}
+                      visibility={project.sourceControl?.visibility ?? 'private'}
+                      onRepositorySelected={(repository) => {
+                        setRepoUrl(repository.url)
+                        setDefaultBranch(repository.defaultBranch || 'main')
+                      }}
+                    />
+                  ) : null}
+
+                  <div className="space-y-2">
+                    <Label>Default Branch</Label>
+                    <Input
+                      value={defaultBranch}
+                      onChange={(event) => {
+                        setDefaultBranch(event.target.value)
+                      }}
+                      placeholder="main"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Working Copy</Label>
+                    <Input
+                      value={usesExistingRemote ? 'Attached checkout' : 'Managed workspace'}
+                      disabled
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Provider Setup</Label>
+                    <Input
+                      value={getVersionControlSetupLabel({
+                        provider,
+                        setupMode,
+                      })}
+                      disabled
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {projectWorkspace.isPersonalWorkspace
+                        ? 'Personal workspaces use personal provider ownership.'
+                        : 'Organization workspaces require non-personal provider ownership.'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Sync Mode</Label>
+                    <RadioGroup
+                      value={syncPolicy}
+                      onValueChange={(value) => {
+                        setSyncPolicy(value === 'manual' ? 'manual' : 'auto')
+                      }}
+                      className="space-y-3"
+                    >
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 p-4">
+                        <RadioGroupItem value="auto" id="sync-auto" className="mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Automatic</p>
+                          <p className="text-xs text-muted-foreground">
+                            The app commits, fetches, pulls, and pushes for you when the workspace changes.
+                          </p>
+                        </div>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 p-4">
+                        <RadioGroupItem value="manual" id="sync-manual" className="mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Manual</p>
+                          <p className="text-xs text-muted-foreground">
+                            The app still tracks git status, but commit, pull, and push happen only when you trigger them.
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Local git status</p>
+                        <p className="text-xs text-muted-foreground">
+                          {memberLocalPath
+                            ? memberLocalPath
+                            : 'This project has not been opened on this device yet.'}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-full"
+                        onClick={() => {
+                          void refreshGitStatus()
+                        }}
+                        disabled={!memberLocalPath || gitActionKey === 'status'}
+                      >
+                        {gitActionKey === 'status' ? 'Refreshing...' : 'Refresh Status'}
+                      </Button>
+                    </div>
+
+                    {gitStatus ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary" className="rounded-full">
+                          {gitStatus.currentBranch || normalizedDefaultBranch}
+                        </Badge>
+                        <Badge variant={gitStatus.clean ? 'outline' : 'secondary'} className="rounded-full">
+                          {gitStatus.clean ? 'Clean' : 'Dirty'}
+                        </Badge>
+                        <Badge variant="outline" className="rounded-full">
+                          {`${gitStatus.ahead ?? 0} ahead`}
+                        </Badge>
+                        <Badge variant="outline" className="rounded-full">
+                          {`${gitStatus.behind ?? 0} behind`}
+                        </Badge>
+                        {gitStatus.hasConflicts ? (
+                          <Badge variant="destructive" className="rounded-full">
+                            Conflicts
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="manual-commit-message">Commit Message</Label>
+                        <Input
+                          id="manual-commit-message"
+                          value={commitMessage}
+                          onChange={(event) => {
+                            setCommitMessage(event.target.value)
+                          }}
+                          placeholder="manual: sync workspace"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full rounded-xl"
+                          onClick={() => {
+                            void handleFetch()
+                          }}
+                          disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
+                        >
+                          {gitActionKey === 'fetch' ? 'Fetching...' : 'Fetch'}
+                        </Button>
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full rounded-xl"
+                          onClick={() => {
+                            void handlePull()
+                          }}
+                          disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
+                        >
+                          {gitActionKey === 'pull' ? 'Pulling...' : 'Pull'}
+                        </Button>
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full rounded-xl"
+                          onClick={() => {
+                            void handleCommit()
+                          }}
+                          disabled={!memberLocalPath || gitActionKey !== null}
+                        >
+                          {gitActionKey === 'commit' ? 'Committing...' : 'Commit'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-xl"
+                        onClick={() => {
+                          void handlePush()
+                        }}
+                        disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
+                      >
+                        {gitActionKey === 'push' ? 'Pushing...' : 'Push'}
+                      </Button>
+                      <Button
+                        type="button"
+                        className="rounded-xl"
+                        onClick={() => {
+                          void handleSyncNow()
+                        }}
+                        disabled={!memberLocalPath || !hasRemoteOperations || gitActionKey !== null}
+                      >
+                        {gitActionKey === 'sync' ? 'Syncing...' : 'Sync Now'}
+                      </Button>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {syncPolicy === 'manual'
+                        ? 'Manual mode disables background commit, pull, and push. Use these buttons when you want to update the repository.'
+                        : 'Automatic mode still runs background git durability, but these controls are available for explicit repo operations.'}
+                    </p>
+                  </div>
+
+                  {gitNotice ? (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">{gitNotice}</p>
+                  ) : null}
+                  {gitError ? (
+                    <p className="text-xs text-destructive">{gitError}</p>
+                  ) : null}
 
                   {saveError ? (
                     <p className="text-xs text-destructive">{saveError}</p>

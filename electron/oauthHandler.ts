@@ -28,6 +28,10 @@ interface PendingOAuthFlow {
   orgId: string
   state: string
   codeVerifier?: string // For PKCE
+  metadata?: Record<string, unknown>
+  clientIdEnvVar?: string
+  clientSecretEnvVar?: string
+  scopes?: string[]
   createdAt: number
 }
 
@@ -40,6 +44,7 @@ interface OAuthResult {
   externalId?: string
   externalAccountName?: string
   scopes?: string[]
+  metadata?: Record<string, unknown>
   error?: string
 }
 
@@ -55,7 +60,13 @@ const OAUTH_CONFIGS: Record<string, Omit<OAuthConfig, 'clientId' | 'clientSecret
   github: {
     authUrl: 'https://github.com/login/oauth/authorize',
     tokenUrl: 'https://github.com/login/oauth/access_token',
-    scopes: ['repo', 'read:user', 'workflow'],
+    scopes: ['repo', 'read:user', 'user:email', 'read:org', 'workflow'],
+    pkce: false,
+  },
+  gitlab: {
+    authUrl: 'https://gitlab.com/oauth/authorize',
+    tokenUrl: 'https://gitlab.com/oauth/token',
+    scopes: ['api', 'read_user', 'read_repository', 'write_repository'],
     pkce: false,
   },
   vercel: {
@@ -100,7 +111,13 @@ function generateCodeChallenge(verifier: string): string {
 export async function startOAuthFlow(
   provider: string,
   orgId: string,
-  redirectUri: string = 'cozea://oauth/callback'
+  redirectUri: string = 'cozea://oauth/callback',
+  metadata?: Record<string, unknown>,
+  options?: {
+    clientIdEnvVar?: string
+    clientSecretEnvVar?: string
+    scopes?: string[]
+  }
 ): Promise<{ success: boolean; error?: string }> {
   const config = OAUTH_CONFIGS[provider]
   if (!config) {
@@ -108,7 +125,7 @@ export async function startOAuthFlow(
   }
 
   // Get client ID from environment
-  const clientIdEnvVar = `${provider.toUpperCase()}_CLIENT_ID`
+  const clientIdEnvVar = options?.clientIdEnvVar || `${provider.toUpperCase()}_CLIENT_ID`
   const clientId = process.env[clientIdEnvVar]
   if (!clientId) {
     return { success: false, error: `OAuth not configured: ${clientIdEnvVar} environment variable not set` }
@@ -125,12 +142,18 @@ export async function startOAuthFlow(
     codeChallenge = generateCodeChallenge(codeVerifier)
   }
 
+  const scopes = options?.scopes ?? config.scopes
+
   // Store pending flow
   pendingFlows.set(state, {
     provider,
     orgId,
     state,
     codeVerifier,
+    metadata,
+    clientIdEnvVar: options?.clientIdEnvVar,
+    clientSecretEnvVar: options?.clientSecretEnvVar,
+    scopes,
     createdAt: Date.now(),
   })
 
@@ -141,8 +164,8 @@ export async function startOAuthFlow(
   authUrl.searchParams.set('state', state)
   authUrl.searchParams.set('response_type', 'code')
 
-  if (config.scopes.length > 0) {
-    authUrl.searchParams.set('scope', config.scopes.join(' '))
+  if (scopes.length > 0) {
+    authUrl.searchParams.set('scope', scopes.join(' '))
   }
 
   if (config.pkce && codeChallenge) {
@@ -209,8 +232,12 @@ export async function handleOAuthCallback(
   }
 
   // Get credentials from environment
-  const clientId = process.env[`${pendingFlow.provider.toUpperCase()}_CLIENT_ID`]
-  const clientSecret = process.env[`${pendingFlow.provider.toUpperCase()}_CLIENT_SECRET`]
+  const clientId = process.env[
+    pendingFlow.clientIdEnvVar || `${pendingFlow.provider.toUpperCase()}_CLIENT_ID`
+  ]
+  const clientSecret = process.env[
+    pendingFlow.clientSecretEnvVar || `${pendingFlow.provider.toUpperCase()}_CLIENT_SECRET`
+  ]
 
   if (!clientId) {
     return { success: false, provider: pendingFlow.provider, error: 'Client ID not configured' }
@@ -247,7 +274,8 @@ export async function handleOAuthCallback(
       tokenExpiresAt: tokenResponse.expiresAt,
       externalId: userInfo?.id,
       externalAccountName: userInfo?.name || userInfo?.login || userInfo?.email,
-      scopes: config.scopes,
+      scopes: pendingFlow.scopes ?? config.scopes,
+      metadata: pendingFlow.metadata,
     }
   } catch (err) {
     console.error('OAuth callback error:', err)
@@ -354,6 +382,9 @@ async function fetchUserInfo(
         url = 'https://api.github.com/user'
         headers['Accept'] = 'application/vnd.github+json'
         break
+      case 'gitlab':
+        url = 'https://gitlab.com/api/v4/user'
+        break
       case 'vercel':
         url = 'https://api.vercel.com/v2/user'
         break
@@ -383,7 +414,7 @@ async function fetchUserInfo(
     return {
       id: data.id?.toString(),
       name: data.name || data.username,
-      login: data.login,
+      login: data.login || data.username,
       email: data.email,
     }
   } catch (err) {

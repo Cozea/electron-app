@@ -21,6 +21,7 @@ export type SettingsSurfaceId =
   | "modelSelection"
   | "appearance"
   | "storage"
+  | "sourceControl"
   | "cliTools"
   | "tooling"
   | "general"
