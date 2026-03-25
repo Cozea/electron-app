@@ -118,43 +118,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     startOAuth: (options: { provider: string; orgId: string; metadata?: Record<string, unknown> }) =>
       ipcRenderer.invoke('integrations:startOAuth', options),
-    syncRepositoryAccess: (options: {
-      provider: 'github' | 'gitlab'
-      repoUrl: string
-      encryptedCredentials?: string
-      keyId?: string
-      action: 'grant' | 'revoke'
-      role: 'project_manager' | 'developer' | 'designer' | 'viewer'
-      inviteEmail?: string
-      providerAccountHandle?: string
-    }) => ipcRenderer.invoke('integrations:syncRepositoryAccess', options),
-    listRepositoryOwners: (options: {
-      provider: 'github' | 'gitlab'
-      encryptedCredentials?: string
-      keyId?: string
-      providerHost?: string
-    }) => ipcRenderer.invoke('integrations:listRepositoryOwners', options),
-    listRepositories: (options: {
-      provider: 'github' | 'gitlab'
-      encryptedCredentials?: string
-      keyId?: string
-      providerHost?: string
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-      search?: string
-    }) => ipcRenderer.invoke('integrations:listRepositories', options),
-    createRepository: (options: {
-      provider: 'github' | 'gitlab'
-      encryptedCredentials?: string
-      keyId?: string
-      providerHost?: string
-      ownerId?: string
-      ownerLogin?: string
-      ownerKind?: 'user' | 'organization' | 'group'
-      name: string
-      private: boolean
-    }) => ipcRenderer.invoke('integrations:createRepository', options),
     runTool: (options: {
       toolName: string
       args: string[]
@@ -254,19 +217,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       accessToken?: string
       providerHost?: string
       authStrategy?: 'oauth' | 'github_app_installation'
+      name: string
+      description?: string
+      private?: boolean
+      autoInit?: boolean
       ownerId?: string
       ownerLogin?: string
       ownerKind?: 'user' | 'organization' | 'group'
-      name: string
-      private: boolean
     }) => ipcRenderer.invoke('sourceControl:createRepository', options),
     syncRepositoryAccess: (options: {
+      projectId?: string
       provider: 'github' | 'gitlab'
       repoUrl: string
-      accessToken?: string
       providerHost?: string
-      action: 'grant' | 'revoke'
-      role: 'project_manager' | 'developer' | 'designer' | 'viewer'
+      accessToken?: string
+      action?: 'grant' | 'revoke'
+      role?: string
       inviteEmail?: string
       providerAccountHandle?: string
     }) => ipcRenderer.invoke('sourceControl:syncRepositoryAccess', options),
@@ -709,6 +675,70 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('devServer:error', handler)
     },
   },
+  radon: {
+    getLicenseState: () =>
+      ipcRenderer.invoke('radon:getLicenseState'),
+    activateLicense: (options: { licenseKey: string; email: string }) =>
+      ipcRenderer.invoke('radon:activateLicense', options),
+    removeLicense: () =>
+      ipcRenderer.invoke('radon:removeLicense'),
+    getProjectCapabilities: (options: { projectPath: string }) =>
+      ipcRenderer.invoke('radon:getProjectCapabilities', options),
+    listDevices: (options?: { platform?: 'ios' | 'android' }) =>
+      ipcRenderer.invoke('radon:listDevices', options),
+    listSessions: () =>
+      ipcRenderer.invoke('radon:listSessions'),
+    startSession: (options: import('../shared/electronApiTypes').NativePreviewStartSessionInput) =>
+      ipcRenderer.invoke('radon:startSession', options),
+    stopSession: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('radon:stopSession', options),
+    focusSession: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('radon:focusSession', options),
+    sendDeviceCommand: (options: {
+      sessionId: string
+      command: import('../shared/electronApiTypes').RadonDeviceCommand
+      payload?: Record<string, unknown>
+    }) => ipcRenderer.invoke('radon:sendDeviceCommand', options),
+    captureScreenshot: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('radon:captureScreenshot', options),
+    openDevice: (options: { platform: 'ios' | 'android'; deviceId?: string }) =>
+      ipcRenderer.invoke('radon:openDevice', options),
+    getAvailableTools: (options: { sessionId: string }) =>
+      ipcRenderer.invoke('radon:getAvailableTools', options),
+    openComponentPreview: (options: { sessionId: string; previewId: string }) =>
+      ipcRenderer.invoke('radon:openComponentPreview', options),
+    showStorybookStory: (options: { sessionId: string; storyId: string }) =>
+      ipcRenderer.invoke('radon:showStorybookStory', options),
+    openNavigation: (options: { sessionId: string; route: string }) =>
+      ipcRenderer.invoke('radon:openNavigation', options),
+    requestInspect: (options: { sessionId: string; target?: unknown }) =>
+      ipcRenderer.invoke('radon:requestInspect', options),
+    onLicenseChanged: (callback: (state: import('../shared/electronApiTypes').RadonLicenseState) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: import('../shared/electronApiTypes').RadonLicenseState) => callback(state)
+      ipcRenderer.on('radon:licenseChanged', handler)
+      return () => ipcRenderer.removeListener('radon:licenseChanged', handler)
+    },
+    onSessionUpdated: (callback: (session: import('../shared/electronApiTypes').RadonSession) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, session: import('../shared/electronApiTypes').RadonSession) => callback(session)
+      ipcRenderer.on('radon:sessionUpdated', handler)
+      return () => ipcRenderer.removeListener('radon:sessionUpdated', handler)
+    },
+    onRuntimeEvent: (callback: (event: import('../shared/electronApiTypes').RadonRuntimeEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonRuntimeEvent) => callback(event)
+      ipcRenderer.on('radon:runtimeEvent', handler)
+      return () => ipcRenderer.removeListener('radon:runtimeEvent', handler)
+    },
+    onToolsUpdated: (callback: (event: import('../shared/electronApiTypes').RadonToolsUpdatedEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonToolsUpdatedEvent) => callback(event)
+      ipcRenderer.on('radon:toolsUpdated', handler)
+      return () => ipcRenderer.removeListener('radon:toolsUpdated', handler)
+    },
+    onLogEvent: (callback: (event: import('../shared/electronApiTypes').RadonLogEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, event: import('../shared/electronApiTypes').RadonLogEvent) => callback(event)
+      ipcRenderer.on('radon:logEvent', handler)
+      return () => ipcRenderer.removeListener('radon:logEvent', handler)
+    },
+  },
   nativePreview: {
     listDevices: (options?: { platform?: 'ios' | 'android' }) =>
       ipcRenderer.invoke('nativePreview:listDevices', options),
@@ -717,9 +747,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startSession: (options: {
       projectPath: string
       platform: 'ios' | 'android'
-      launcher: 'expo-go' | 'orbit' | 'web'
+      launcher: 'simulator' | 'web'
       buildMode: 'debug' | 'dev-client'
       terminalId?: string
+      devServerPort?: number
+      radonToken?: string
     }) =>
       ipcRenderer.invoke('nativePreview:startSession', options),
     stopSession: (options: { sessionId: string }) =>
@@ -740,10 +772,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('nativePreview:runAutomation', options),
     openDevice: (options: { platform: 'ios' | 'android'; deviceId?: string }) =>
       ipcRenderer.invoke('nativePreview:openDevice', options),
-    onSessionUpdated: (callback: (session: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, session: unknown) => callback(session)
+    activateLicense: (options: { licenseKey: string; email: string }) =>
+      ipcRenderer.invoke('nativePreview:activateLicense', options),
+    onSessionUpdated: (callback: (session: import('../shared/electronApiTypes').NativePreviewSession) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, session: import('../shared/electronApiTypes').NativePreviewSession) => callback(session)
       ipcRenderer.on('nativePreview:sessionUpdated', handler)
-      return () => ipcRenderer.removeListener('nativePreview:sessionUpdated', handler)
+      return () => { ipcRenderer.removeListener('nativePreview:sessionUpdated', handler) }
     },
   },
   terminal: {

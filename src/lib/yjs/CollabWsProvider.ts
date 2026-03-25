@@ -320,11 +320,11 @@ export class CollabWsProvider {
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
     this.socket = socket
 
-    console.info('[CollabWsProvider] Opening collaboration websocket', {
-      projectId: this.session.projectId,
-      roomId: this.session.roomId,
-      reconnectAttempt: this.reconnectAttempt,
-    })
+    // console.info('[CollabWsProvider] Opening collaboration websocket', {
+    //   projectId: this.session.projectId,
+    //   roomId: this.session.roomId,
+    //   reconnectAttempt: this.reconnectAttempt,
+    // })
 
     socket.onopen = () => {
       socket.send(
@@ -544,10 +544,10 @@ export class CollabWsProvider {
         this.hasConnectedOnce = true
         this.consecutiveInitialFailures = 0
         this.onStateChange?.('connected', null)
-        console.info('[CollabWsProvider] Collaboration websocket handshake acknowledged', {
-          projectId: this.session.projectId,
-          roomId: this.session.roomId,
-        })
+        // console.info('[CollabWsProvider] Collaboration websocket handshake acknowledged', {
+        //   projectId: this.session.projectId,
+        //   roomId: this.session.roomId,
+        // })
         this.requestInitialSync()
         this.flushPendingUpdates()
         this.publishLocalAwareness()

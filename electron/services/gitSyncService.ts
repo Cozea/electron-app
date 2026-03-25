@@ -76,12 +76,12 @@ export class GitSyncService {
 
   private constructor() {}
 
-  private debug(enabled: boolean | undefined, event: string, payload: Record<string, unknown>): void {
+  private debug(enabled: boolean | undefined, _event: string, _payload: Record<string, unknown>): void {
     if (!enabled) {
       return
     }
 
-    console.info(`[GitOpenDebug][Main] ${event}`, payload)
+    // console.info(`[GitOpenDebug][Main] ${_event}`, _payload)
   }
 
   async ensureRepo(options: {

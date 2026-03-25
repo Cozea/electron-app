@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { useMutation } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -35,15 +33,32 @@ import { ServerControl } from '../components/ServerControl'
 import { TerminalPanel } from '../components/TerminalPanel'
 import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
 import { useNativePreviewSession } from '../hooks/useNativePreviewSession'
+import { useProjectRuntimeSync } from '../hooks/useProjectRuntimeSync'
 import { useProjectRouteScan } from '../hooks/useProjectRouteScan'
 import { VisualEditorSidebar } from '@/components/visual-editor/VisualEditorSidebar'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   FileText,
   Loader2,
   Sparkles,
+  RotateCw,
+  Home,
+  Volume2,
+  Volume1,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { captureAndUploadProjectPreviewFromUrl } from '@/lib/captureProjectPreview'
 import type { PreviewFailureReason } from '@shared/electronApiTypes'
 import type { AvailableExternalBrowser, AvailableExternalBrowserResult, ExternalBrowserId } from '@shared/electronApiTypes'
@@ -105,7 +120,7 @@ function resolvePreviewEmbedModeForRun(
 }
 
 export function ProjectPagesPage() {
-    const { convexUserId } = useAuth()
+    const { convexUserId, user } = useAuth()
     const location = useLocation()
     const [searchParams, setSearchParams] = useSearchParams()
     const { project } = useAccessibleProject()
@@ -149,6 +164,9 @@ export function ProjectPagesPage() {
     )
     const [previewEmbedBlocked, setPreviewEmbedBlocked] = useState(false)
     const [previewReloadToken, setPreviewReloadToken] = useState(0)
+
+    const [tempRadonToken, setTempRadonToken] = useState('')
+    const updatePreferencesMutation = useMutation(api.users.updatePreferences)
     const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
         { id: 'system', name: 'System Default' },
     ])
@@ -178,8 +196,9 @@ export function ProjectPagesPage() {
     })
     const [nativePreviewMode, setNativePreviewMode] = useState(false)
     const [defaultNativePreviewPlatform, setDefaultNativePreviewPlatform] = useState<'ios' | 'android' | null>(null)
-    const [nativePreviewTarget, setNativePreviewTarget] = useState<NativePreviewTarget>('both')
-    const [nativePreviewLauncher, setNativePreviewLauncher] = useState<NativePreviewLauncher>('expo-go')
+    const [nativePreviewTarget, setNativePreviewTarget] = useState<NativePreviewTarget>('ios')
+    const [nativePreviewLauncher, setNativePreviewLauncher] = useState<NativePreviewLauncher>('simulator')
+    const [nativeInspectMode, setNativeInspectMode] = useState(false)
     const [supportsWebPreview, setSupportsWebPreview] = useState(false)
     const [focusedPageIndex, setFocusedPageIndex] = useState<number | null>(() => {
         // Initialize from URL param if present
@@ -217,8 +236,13 @@ export function ProjectPagesPage() {
         devices: nativePreviewDevices,
         devicesLoading: nativePreviewDevicesLoading,
         primarySession: primaryNativePreviewSession,
+        selectedDeviceIds: nativePreviewSelectedDeviceIds,
         openDevice: openNativePreviewDevice,
         refreshDevices: refreshNativePreviewDeviceList,
+        retryPreview: retryNativePreview,
+        selectDeviceForPlatform: selectNativePreviewDevice,
+        showTokenDialog,
+        setShowTokenDialog,
     } = useNativePreviewSession({
         projectPath,
         enabled: nativePreviewMode,
@@ -227,6 +251,25 @@ export function ProjectPagesPage() {
         serverPort,
         serverStatus,
     })
+    const nativeRuntimeState = useProjectRuntimeSync(projectPath, nativePreviewMode, primaryNativePreviewSession?.id ?? null)
+
+    useEffect(() => {
+        if (!nativePreviewMode || !projectPath) {
+            return
+        }
+
+        return window.electronAPI.radon.onLogEvent((event) => {
+            if (event.projectPath && event.projectPath !== projectPath) {
+                return
+            }
+
+            const sourceLabel = event.source === 'simulator-server'
+                ? 'sim'
+                : event.source
+            const levelLabel = event.level === 'info' ? '' : ` ${event.level.toUpperCase()}`
+            actions.addServerOutput(`[Radon ${sourceLabel}${levelLabel}] ${event.message}`)
+        })
+    }, [actions, nativePreviewMode, projectPath])
 
     useEffect(() => {
         // Keep task context through same-route search param cleanup after task-driven navigation.
@@ -314,8 +357,10 @@ export function ProjectPagesPage() {
     const prevProjectPathRef = useRef<string | null>(null)
 
     useEffect(() => {
-        setNativePreviewTarget('both')
-    }, [projectPath])
+        if (defaultNativePreviewPlatform) {
+            setNativePreviewTarget(defaultNativePreviewPlatform)
+        }
+    }, [defaultNativePreviewPlatform, projectPath])
 
     useEffect(() => {
         let cancelled = false
@@ -480,12 +525,6 @@ export function ProjectPagesPage() {
         storedFrameworkInfo?.devPort,
         storedFrameworkInfo?.framework,
     ])
-
-    useEffect(() => {
-        if (!nativePreviewMode) return
-        if (!defaultNativePreviewPlatform) return
-        setNativePreviewTarget((current) => current === 'both' ? defaultNativePreviewPlatform : current)
-    }, [defaultNativePreviewPlatform, nativePreviewMode])
 
     const {
         routes: scannedRoutes,
@@ -1877,13 +1916,6 @@ export function ProjectPagesPage() {
         })()
     }, [defaultBrowserId, focusedPreviewUrl, selectedBrowserId])
 
-    const showNativeLauncherInfo = useCallback((launcher: 'orbit' | 'expo-go') => {
-        const message = launcher === 'expo-go'
-            ? 'Expo Go integration is turned off right now. Use the QR button to open the app on your phone.'
-            : 'Orbit integration is turned off right now. Open Orbit manually outside Cozea if you need it.'
-        actions.addServerOutput(`\n[NativePreview] ${message}\n`)
-    }, [actions])
-
     const handleOpenNativePreviewDevice = useCallback((device: NativePreviewDeviceDescriptor) => {
         void (async () => {
             const result = await openNativePreviewDevice(device.platform, device.id)
@@ -1895,11 +1927,92 @@ export function ProjectPagesPage() {
 
     const handleSelectNativePreviewTarget = useCallback((target: NativePreviewTarget) => {
         setNativePreviewTarget(target)
-    }, [])
+        if (nativePreviewSelectedDeviceIds[target]) return
+
+        const preferred = nativePreviewDevices
+            .filter((device) => device.platform === target)
+            .sort((a, b) => {
+                if (a.state === 'booted' && b.state !== 'booted') return -1
+                if (b.state === 'booted' && a.state !== 'booted') return 1
+                return a.name.localeCompare(b.name)
+            })[0]
+
+        if (preferred) {
+            selectNativePreviewDevice(target, preferred.id)
+        }
+    }, [nativePreviewDevices, nativePreviewSelectedDeviceIds, selectNativePreviewDevice])
 
     const refreshNativePreviewDevices = useCallback(() => {
         void refreshNativePreviewDeviceList()
     }, [refreshNativePreviewDeviceList])
+
+    useEffect(() => {
+        if (!nativePreviewMode || !primaryNativePreviewSession || primaryNativePreviewSession.state !== 'app_ready') {
+            setNativeInspectMode(false)
+        }
+    }, [nativePreviewMode, primaryNativePreviewSession])
+
+    const nativeInspectFrame = useMemo(() => {
+        const result = nativeRuntimeState.lastInspectResult
+        if (!result || typeof result !== 'object') {
+            return null
+        }
+
+        const frame = (result as { frame?: unknown }).frame
+        if (!frame || typeof frame !== 'object') {
+            return null
+        }
+
+        const candidate = frame as Record<string, unknown>
+        if (
+            typeof candidate.x !== 'number'
+            || typeof candidate.y !== 'number'
+            || typeof candidate.width !== 'number'
+            || typeof candidate.height !== 'number'
+        ) {
+            return null
+        }
+
+        return {
+            x: candidate.x,
+            y: candidate.y,
+            width: candidate.width,
+            height: candidate.height,
+        }
+    }, [nativeRuntimeState.lastInspectResult])
+
+    const handleNativeInspect = useCallback((point: { x: number; y: number }) => {
+        if (!primaryNativePreviewSession) return
+
+        void window.electronAPI.radon.requestInspect({
+            sessionId: primaryNativePreviewSession.id,
+            target: {
+                x: point.x,
+                y: point.y,
+                requestStack: true,
+            },
+        }).then((result) => {
+            if (!result.success) {
+                actions.addServerOutput(`\n[Radon runtime] ${result.error ?? 'Inspect request failed.'}\n`)
+                setNativeInspectMode(false)
+                return
+            }
+            setNativeInspectMode(false)
+        })
+    }, [actions, primaryNativePreviewSession])
+
+    const handleOpenNativeNavigation = useCallback((route: string) => {
+        if (!primaryNativePreviewSession) return
+
+        void window.electronAPI.radon.openNavigation({
+            sessionId: primaryNativePreviewSession.id,
+            route,
+        }).then((result) => {
+            if (!result.success) {
+                actions.addServerOutput(`\n[Radon runtime] ${result.error ?? 'Navigation request failed.'}\n`)
+            }
+        })
+    }, [actions, primaryNativePreviewSession])
 
     const headerControls = useMemo(() => (
         nativePreviewMode ? (
@@ -1914,9 +2027,6 @@ export function ProjectPagesPage() {
                     selectedEditorId={selectedEditorId}
                 />
                 <NativePreviewLaunchPill
-                    canOpenExpoGo={Boolean(previewServerActive && serverPort)}
-                    onOpenExpoGo={() => showNativeLauncherInfo('expo-go')}
-                    onOpenOrbit={() => showNativeLauncherInfo('orbit')}
                     onOpenWebPreview={supportsWebPreview && focusedPreviewUrl ? openFocusedPreviewExternally : null}
                     selectedLauncher={nativePreviewLauncher}
                     supportsWebPreview={supportsWebPreview}
@@ -1926,6 +2036,48 @@ export function ProjectPagesPage() {
                     serverOutput={serverOutput}
                     serverRunning={Boolean(previewServerActive && serverPort)}
                 />
+                {primaryNativePreviewSession && primaryNativePreviewSession.state !== 'stopped' && (
+                    <div className="flex h-7 items-center gap-1 rounded-full border border-border/60 bg-secondary/70 px-2 shadow-none ml-2">
+                        <Button
+                            variant={nativeInspectMode ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="h-6 rounded-full px-2 text-xs"
+                            title="Inspect native UI"
+                            disabled={primaryNativePreviewSession.state !== 'app_ready'}
+                            onClick={() => setNativeInspectMode((current) => !current)}
+                        >
+                            Inspect
+                        </Button>
+                        {primaryNativePreviewSession.capabilities?.buttons.home ? (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" title="Home" onClick={() => {
+                                void window.electronAPI.radon.sendDeviceCommand({ sessionId: primaryNativePreviewSession.id, command: 'home' })
+                            }}>
+                                <Home className="h-3.5 w-3.5" />
+                            </Button>
+                        ) : null}
+                        {primaryNativePreviewSession.capabilities?.rotate ? (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" title="Rotate" onClick={() => {
+                                void window.electronAPI.radon.sendDeviceCommand({ sessionId: primaryNativePreviewSession.id, command: 'rotate_clockwise' })
+                            }}>
+                                <RotateCw className="h-3.5 w-3.5" />
+                            </Button>
+                        ) : null}
+                        {primaryNativePreviewSession.capabilities?.buttons.volumeDown ? (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" title="Volume Down" onClick={() => {
+                                void window.electronAPI.radon.sendDeviceCommand({ sessionId: primaryNativePreviewSession.id, command: 'volume_down' })
+                            }}>
+                                <Volume1 className="h-3.5 w-3.5" />
+                            </Button>
+                        ) : null}
+                        {primaryNativePreviewSession.capabilities?.buttons.volumeUp ? (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" title="Volume Up" onClick={() => {
+                                void window.electronAPI.radon.sendDeviceCommand({ sessionId: primaryNativePreviewSession.id, command: 'volume_up' })
+                            }}>
+                                <Volume2 className="h-3.5 w-3.5" />
+                            </Button>
+                        ) : null}
+                    </div>
+                )}
             </div>
         ) : (
         <ProjectPreviewToolbar
@@ -1958,7 +2110,6 @@ export function ProjectPagesPage() {
         inspectorEnabled,
         nativePreviewMode,
         projectPath,
-        showNativeLauncherInfo,
         previewEmbedBlocked,
         previewLoading,
         previewReady,
@@ -1975,6 +2126,8 @@ export function ProjectPagesPage() {
         supportsWebPreview,
         toggleInspector,
         useCredentiallessPreview,
+        primaryNativePreviewSession,
+        nativeInspectMode,
     ])
 
     const serverControlBreadcrumbAddon = useMemo(() => (
@@ -1986,12 +2139,11 @@ export function ProjectPagesPage() {
                 storedDevCommand={storedFrameworkInfo?.devCommand}
                 storedDevPort={storedFrameworkInfo?.devPort}
                 previewMode={nativePreviewMode ? 'native' : 'web'}
-                nativePlatform={nativePreviewMode ? (nativePreviewTarget === 'both' ? defaultNativePreviewPlatform : nativePreviewTarget) : null}
+                nativePlatform={nativePreviewMode ? nativePreviewTarget : null}
             />
         </div>
     ), [
         nativePreviewTarget,
-        defaultNativePreviewPlatform,
         nativePreviewMode,
         project?._id,
         projectPath,
@@ -2003,8 +2155,8 @@ export function ProjectPagesPage() {
         <div className="flex min-w-0 items-center gap-2">
             {nativePreviewMode ? (
                 <>
-                    {serverControlBreadcrumbAddon}
                     {headerControls}
+                    {serverControlBreadcrumbAddon}
                 </>
             ) : (
                 <>
@@ -2022,7 +2174,8 @@ export function ProjectPagesPage() {
                     devices={nativePreviewDevices}
                     devicesLoading={nativePreviewDevicesLoading}
                     target={nativePreviewTarget}
-                    onOpenDevice={handleOpenNativePreviewDevice}
+                    selectedDeviceId={nativePreviewSelectedDeviceIds[nativePreviewTarget] ?? null}
+                    onSelectDevice={handleOpenNativePreviewDevice}
                     onRefreshDevices={refreshNativePreviewDevices}
                     onSelectTarget={handleSelectNativePreviewTarget}
                 />
@@ -2054,6 +2207,7 @@ export function ProjectPagesPage() {
         nativePreviewDevices,
         nativePreviewDevicesLoading,
         nativePreviewMode,
+        nativePreviewSelectedDeviceIds,
         nativePreviewTarget,
         previewRoute,
         refreshNativePreviewDevices,
@@ -2104,10 +2258,16 @@ export function ProjectPagesPage() {
 
                 <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
                     {/* Content */}
-                    <div className="relative flex-1 overflow-hidden flex flex-col">
+                    <div className="relative flex-1 overflow-hidden flex flex-col pt-10">
                         {nativePreviewMode ? (
-                            nativePreviewLauncher !== 'web' && primaryNativePreviewSession && primaryNativePreviewSession.state !== 'stopped' && primaryNativePreviewSession.state !== 'error' ? (
-                                <EmbeddedNativePreview session={primaryNativePreviewSession} />
+                            nativePreviewLauncher !== 'web' ? (
+                                <EmbeddedNativePreview
+                                    session={primaryNativePreviewSession}
+                                    inspectMode={nativeInspectMode}
+                                    highlightFrame={nativeInspectFrame}
+                                    onInspect={handleNativeInspect}
+                                    onRetry={() => void retryNativePreview(primaryNativePreviewSession)}
+                                />
                             ) : (
                                 <NativeProjectPreview
                                     serverRunning={previewServerActive && Boolean(serverPort)}
@@ -2191,7 +2351,15 @@ export function ProjectPagesPage() {
 
                     {/* Terminal Panel */}
                     {projectPath && (
-                        <TerminalPanel projectPath={projectPath} onOpenFile={handleOpenCode} />
+                        <TerminalPanel
+                            projectPath={projectPath}
+                            onOpenFile={handleOpenCode}
+                            nativeSession={nativePreviewMode ? primaryNativePreviewSession : null}
+                            nativeRuntimeState={nativePreviewMode ? nativeRuntimeState : null}
+                            nativeInspectMode={nativeInspectMode}
+                            onNativeInspectModeChange={setNativeInspectMode}
+                            onOpenNativeNavigation={handleOpenNativeNavigation}
+                        />
                     )}
                 </div>
 
@@ -2212,6 +2380,82 @@ export function ProjectPagesPage() {
 
             {/* (Removed custom inspector context menu in favor of native Electron menu) */}
 
+            <Dialog open={showTokenDialog} onOpenChange={(open) => {
+                setShowTokenDialog(open);
+                if (!open && !tempRadonToken && projectPath) void window.electronAPI.devServer.stop({ projectPath });
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Radon IDE Token Required</DialogTitle>
+                        <DialogDescription>
+                            To use the Native Simulator Preview, you need to configure your Radon IDE license token.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="radonToken">Radon IDE License Key</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="radonToken"
+                                    type="password"
+                                    placeholder="e.g. D0A4-0FC7..."
+                                    value={tempRadonToken}
+                                    onChange={(e) => setTempRadonToken(e.target.value)}
+                                />
+                                <Button variant="secondary" onClick={async () => {
+                                    const key = tempRadonToken.trim();
+                                    if (!key) return;
+                                    if (!user?.email?.trim()) {
+                                        alert('Please sign in again before activating a Radon license key.');
+                                        return;
+                                    }
+                                    const result = await window.electronAPI.radon.activateLicense({
+                                        licenseKey: key,
+                                        email: user.email.trim()
+                                    });
+                                    if (result?.success && result.token) {
+                                        setTempRadonToken(result.token);
+                                        if (convexUserId) {
+                                            await updatePreferencesMutation({
+                                                userId: convexUserId as Id<'users'>,
+                                                preferences: { radonToken: result.token }
+                                            });
+                                        }
+                                        setShowTokenDialog(false);
+                                    } else {
+                                        alert("Failed to activate: " + result?.error);
+                                    }
+                                }}>Activate Key</Button>
+                            </div>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                            Don't have a license key? <a href="#" onClick={(e) => {
+                                e.preventDefault();
+                                window.electronAPI?.shell?.openExternal('https://ide.swmansion.com/pricing').catch(console.error);
+                            }} className="underline hover:text-foreground">Get one here</a>.
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => {
+                            setShowTokenDialog(false);
+                            if (projectPath) {
+                                void window.electronAPI.devServer.stop({ projectPath });
+                            }
+                        }}>Cancel</Button>
+                        <Button onClick={async () => {
+                            if (tempRadonToken.trim() && tempRadonToken.trim().startsWith('eyJ') && convexUserId) {
+                                await updatePreferencesMutation({
+                                    userId: convexUserId as Id<'users'>,
+                                    preferences: { radonToken: tempRadonToken.trim() }
+                                });
+                                setShowTokenDialog(false);
+                            } else if (tempRadonToken.trim()) {
+                                alert("Please click 'Activate Key' to convert your license key into a JWT token first!");
+                            }
+                        }}>Save & Continue</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

@@ -1101,7 +1101,7 @@ function HeaderProjectShareButton({
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              className="h-7 gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 gap-1.5 rounded-full border border-border/60 bg-secondary/70 px-3 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground shadow-none"
               disabled={!projectId || roleCheckPending || shareStatePending}
               onMouseEnter={prewarmPersonalContacts}
               onFocus={prewarmPersonalContacts}

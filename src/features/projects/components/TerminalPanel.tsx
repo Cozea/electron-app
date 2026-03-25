@@ -10,10 +10,13 @@ import {
     selectUnreadCount,
 } from "@/stores/useProblemsStore"
 import { requestEditorDiagnosticsRefresh } from "@/hooks/useDiagnosticsBridge"
-import { TerminalTabBar } from "./TerminalTabBar"
+import { TerminalTabBar, type TerminalPanelView } from "./TerminalTabBar"
 import { TerminalInstance } from "./TerminalInstance"
 import { TerminalSplitView } from "./TerminalSplitView"
 import { ProblemsView, type ViewMode } from "./ProblemsView"
+import { NativeRuntimeContent } from "./previews/NativeRuntimeContent"
+import type { ProjectRuntimeStateSnapshot } from "@/stores/useProjectRuntimeStore"
+import type { NativePreviewSession } from "@shared/electronApiTypes"
 
 // Panel height constraints
 const MIN_PANEL_HEIGHT = 150
@@ -23,9 +26,23 @@ interface TerminalPanelProps {
     className?: string
     projectPath: string
     onOpenFile?: (filePath: string, line?: number, column?: number) => void
+    nativeSession?: NativePreviewSession | null
+    nativeRuntimeState?: ProjectRuntimeStateSnapshot | null
+    nativeInspectMode?: boolean
+    onNativeInspectModeChange?: (next: boolean) => void
+    onOpenNativeNavigation?: (route: string) => void
 }
 
-export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPanelProps) {
+export function TerminalPanel({
+    className,
+    projectPath,
+    onOpenFile,
+    nativeSession,
+    nativeRuntimeState,
+    nativeInspectMode = false,
+    onNativeInspectModeChange,
+    onOpenNativeNavigation,
+}: TerminalPanelProps) {
     // Use individual primitive selectors to avoid infinite loops
     const isPanelOpen = useTerminalStore((s) => s.isPanelOpen)
     const isMaximized = useTerminalStore((s) => s.isMaximized)
@@ -54,7 +71,7 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     }, [activeGroup, terminals])
     const previousTerminalStatusesRef = useRef<Record<string, string>>({})
 
-    const [activeView, setActiveView] = useState<"terminal" | "problems">("terminal")
+    const [activeView, setActiveView] = useState<TerminalPanelView>("terminal")
     const [isDragging, setIsDragging] = useState(false)
     const dragStartY = useRef(0)
     const dragStartHeight = useRef(0)
@@ -120,7 +137,7 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
     const actualHeight = isMaximized ? '100%' : `${panelHeight}px`
 
     // Hide panel instead of unmounting to keep terminals alive
-    const handleViewChange = useCallback((view: "terminal" | "problems") => {
+    const handleViewChange = useCallback((view: TerminalPanelView) => {
         setActiveView(view)
         if (view === "problems") {
             markRead(projectPath)
@@ -191,6 +208,7 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                 problemCount={unreadErrorCount}
                 projectPath={projectPath}
                 onClose={() => setPanelOpen(false)}
+                hasNativeSession={Boolean(nativeSession)}
                 problemsSearchQuery={problemsSearchQuery}
                 onProblemsSearchChange={setProblemsSearchQuery}
                 problemsViewMode={problemsViewMode}
@@ -266,6 +284,18 @@ export function TerminalPanel({ className, projectPath, onOpenFile }: TerminalPa
                         showErrors={showProblemErrors}
                         showWarnings={showProblemWarnings}
                         showInfos={showProblemInfos}
+                    />
+                )}
+
+                {/* Native runtime views */}
+                {nativeSession && nativeRuntimeState && activeView.startsWith('native-') && (
+                    <NativeRuntimeContent
+                        activeTab={activeView}
+                        session={nativeSession}
+                        runtimeState={nativeRuntimeState}
+                        inspectMode={nativeInspectMode}
+                        onInspectModeChange={onNativeInspectModeChange}
+                        onOpenNavigation={onOpenNativeNavigation}
                     />
                 )}
             </div>

@@ -1,131 +1,211 @@
-import { memo, useRef, useState, type MouseEvent } from 'react'
-import { Loader2, Smartphone } from 'lucide-react'
+import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Smartphone } from 'lucide-react'
 
 import type { NativePreviewSession } from '@shared/electronApiTypes'
 
 interface EmbeddedNativePreviewProps {
-  session: NativePreviewSession
+  session: NativePreviewSession | null
+  inspectMode?: boolean
+  highlightFrame?: { x: number; y: number; width: number; height: number } | null
+  onInspect?: (point: { x: number; y: number }) => void
+  onRetry?: () => void
+}
+
+function eventToRatio(event: ReactPointerEvent<HTMLImageElement>, element: HTMLImageElement): { x: number; y: number } | null {
+  const rect = element.getBoundingClientRect()
+  const relativeX = event.clientX - rect.left
+  const relativeY = event.clientY - rect.top
+
+  if (relativeX < 0 || relativeX > rect.width || relativeY < 0 || relativeY > rect.height) {
+    return null
+  }
+
+  return {
+    x: rect.width > 0 ? relativeX / rect.width : 0.5,
+    y: rect.height > 0 ? relativeY / rect.height : 0.5,
+  }
 }
 
 export const EmbeddedNativePreview = memo(function EmbeddedNativePreview({
   session,
+  inspectMode = false,
+  highlightFrame = null,
+  onInspect,
+  onRetry,
 }: EmbeddedNativePreviewProps) {
-  const imageRef = useRef<HTMLImageElement | null>(null)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamKey = `${session.id}:${session.streamUrl ?? 'none'}`
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const pointerActiveRef = useRef(false)
+  const streamKey = session ? `${session.id}:${session.streamUrl ?? 'none'}` : 'empty-session'
+  const [delayedStreamUrl, setDelayedStreamUrl] = useState<string | null>(null)
   const [loadedStreamKey, setLoadedStreamKey] = useState<string | null>(null)
   const [errorState, setErrorState] = useState<{ key: string; message: string } | null>(null)
-  const ready = loadedStreamKey === streamKey
-  const error = errorState?.key === streamKey ? errorState.message : null
-  const loading = !session.streamUrl || (!ready && !error)
-  const isAndroidVideo = session.platform === 'android'
 
-  const handleClick = async (event: MouseEvent<HTMLImageElement | HTMLVideoElement>) => {
-    if (session.platform !== 'android') return
+  useEffect(() => {
+    pointerActiveRef.current = false
+  }, [streamKey])
 
-    const mediaElement = videoRef.current ?? imageRef.current
-    if (!mediaElement) return
-
-    const rect = mediaElement.getBoundingClientRect()
-    const naturalWidth = mediaElement instanceof HTMLVideoElement ? mediaElement.videoWidth : mediaElement.naturalWidth
-    const naturalHeight = mediaElement instanceof HTMLVideoElement ? mediaElement.videoHeight : mediaElement.naturalHeight
-    if (rect.width <= 0 || rect.height <= 0 || naturalWidth <= 0 || naturalHeight <= 0) {
+  useEffect(() => {
+    if (!session?.streamUrl) {
+      setDelayedStreamUrl(null)
       return
     }
 
-    const relativeX = event.clientX - rect.left
-    const relativeY = event.clientY - rect.top
-    const scaledX = (relativeX / rect.width) * naturalWidth
-    const scaledY = (relativeY / rect.height) * naturalHeight
+    // React strict mode remounts can briefly double-request the MJPEG endpoint.
+    const timeout = setTimeout(() => {
+      setDelayedStreamUrl(session.streamUrl ?? null)
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [session?.streamUrl])
 
-    await window.electronAPI.nativePreview.sendInput({
+  const ready = loadedStreamKey === streamKey
+  const error = errorState?.key === streamKey ? errorState.message : null
+  const loading = session && session.state !== 'error' && session.state !== 'stopped' && (!delayedStreamUrl || (!ready && !error))
+
+  const sendTouchCommand = async (
+    command: 'touch_down' | 'touch_move' | 'touch_up' | 'tap',
+    event: ReactPointerEvent<HTMLImageElement>,
+  ) => {
+    const element = imgRef.current
+    if (!element || !session) return
+
+    const ratio = eventToRatio(event, element)
+    if (!ratio) return
+
+    await window.electronAPI.radon.sendDeviceCommand({
       sessionId: session.id,
-      type: 'tap',
-      x: scaledX,
-      y: scaledY,
+      command,
+      payload: ratio,
     })
   }
 
+  const inspectAtPoint = (event: ReactPointerEvent<HTMLImageElement>) => {
+    const element = imgRef.current
+    if (!element || !onInspect) return
+
+    const ratio = eventToRatio(event, element)
+    if (!ratio) return
+    onInspect(ratio)
+  }
+
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#0f1115]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_35%)]" />
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-transparent p-6">
+      <div
+        className="relative flex items-center justify-center"
+        style={{
+          height: '100%',
+          maxHeight: '100%',
+          aspectRatio: '1186 / 2564',
+        }}
+      >
+        <div
+          className="pointer-events-none absolute inset-0 z-20"
+          style={{
+            backgroundImage: 'url(/radon-assets/assets/bezel-2WO2PIQB.png)',
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            filter: 'none',
+          }}
+        />
 
-      <div className="relative flex h-full w-full items-center justify-center px-10 py-12">
-        <div className="relative w-full max-w-[28rem] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between border-b border-white/10 bg-black/70 px-4 py-3 text-xs uppercase tracking-[0.22em] text-white/55 backdrop-blur">
-            <span>{session.platform === 'ios' ? 'iOS Simulator' : 'Android Emulator'}</span>
-            <span>{session.device?.name ?? 'Device'}</span>
-          </div>
+        <div
+          className="absolute z-10 flex items-center justify-center overflow-hidden bg-black"
+          style={{
+            width: '95%',
+            height: '96%',
+            borderRadius: '12%',
+          }}
+        >
+          {delayedStreamUrl ? (
+            <img
+              key={streamKey}
+              ref={imgRef}
+              src={delayedStreamUrl}
+              className={`h-full w-full object-fill ${inspectMode ? 'cursor-crosshair' : 'cursor-pointer'}`}
+              onLoad={() => {
+                setLoadedStreamKey(streamKey)
+                setErrorState(null)
+              }}
+              onError={() => {
+                setLoadedStreamKey(null)
+                setErrorState({
+                  key: streamKey,
+                  message: 'Stream disconnected.',
+                })
+              }}
+              onPointerDown={(event) => {
+                if (inspectMode) {
+                  pointerActiveRef.current = false
+                  event.preventDefault()
+                  return
+                }
+                pointerActiveRef.current = true
+                void sendTouchCommand('touch_down', event)
+              }}
+              onPointerMove={(event) => {
+                if (inspectMode) return
+                if (!pointerActiveRef.current || event.buttons === 0) return
+                void sendTouchCommand('touch_move', event)
+              }}
+              onPointerUp={(event) => {
+                if (inspectMode) {
+                  inspectAtPoint(event)
+                  return
+                }
+                if (!pointerActiveRef.current) return
+                pointerActiveRef.current = false
+                void sendTouchCommand('touch_up', event)
+              }}
+              onPointerLeave={(event) => {
+                if (inspectMode) return
+                if (!pointerActiveRef.current) return
+                pointerActiveRef.current = false
+                void sendTouchCommand('touch_up', event)
+              }}
+            />
+          ) : null}
 
-          <div className="relative aspect-[9/19.5] w-full bg-[#0a0a0a] pt-11">
-            {session.streamUrl ? (
-              isAndroidVideo ? (
-                <video
-                  key={streamKey}
-                  ref={videoRef}
-                  src={session.streamUrl}
-                  className="h-full w-full cursor-pointer object-contain"
-                  autoPlay
-                  muted
-                  playsInline
-                  controls={false}
-                  onLoadedData={() => {
-                    setLoadedStreamKey(streamKey)
-                    setErrorState(null)
-                  }}
-                  onError={() => {
-                    setLoadedStreamKey(null)
-                    setErrorState({
-                      key: streamKey,
-                      message: 'The embedded native preview video stream could not be loaded.',
-                    })
-                  }}
-                  onClick={(event) => {
-                    void handleClick(event)
-                  }}
-                />
-              ) : (
-                <img
-                  ref={imageRef}
-                  src={session.streamUrl}
-                  alt={`${session.platform} device preview`}
-                  className="h-full w-full object-contain"
-                  draggable={false}
-                  onLoad={() => {
-                    setLoadedStreamKey(streamKey)
-                    setErrorState(null)
-                  }}
-                  onError={() => {
-                    setLoadedStreamKey(null)
-                    setErrorState({
-                      key: streamKey,
-                      message: 'The embedded native preview stream could not be loaded.',
-                    })
-                  }}
-                />
-              )
-            ) : (
-              <div className="h-full w-full" />
-            )}
+          {highlightFrame ? (
+            <div
+              className="pointer-events-none absolute border-2 border-sky-400 shadow-[0_0_0_1px_rgba(15,23,42,0.6)]"
+              style={{
+                left: `${highlightFrame.x * 100}%`,
+                top: `${highlightFrame.y * 100}%`,
+                width: `${highlightFrame.width * 100}%`,
+                height: `${highlightFrame.height * 100}%`,
+              }}
+            />
+          ) : null}
 
-            {(loading || error) && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/78 px-6 text-center text-white">
-                {loading ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-white/70" />
-                ) : (
-                  <Smartphone className="h-6 w-6 text-white/70" />
-                )}
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    {loading ? 'Connecting embedded preview…' : 'Embedded preview unavailable'}
-                  </p>
-                  <p className="text-xs text-white/65">
-                    {error ?? session.message ?? 'Waiting for the device stream.'}
-                  </p>
+          {(loading || error || !session || session.state === 'stopped') && (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center font-mono text-xs uppercase tracking-widest text-white">
+              {loading && session && session.state !== 'stopped' ? (
+                <div className="flex flex-col items-center gap-4 text-[#8a8a8a]">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-white border-white/20" />
+                  <span>{session.message || 'Booting device...'}</span>
                 </div>
-              </div>
-            )}
-          </div>
+              ) : (!session || session.state === 'stopped') ? (
+                <div className="flex flex-col items-center gap-3 text-[#444444]">
+                  <Smartphone className="mb-2 h-8 w-8 opacity-20" />
+                  <span>Simulator Offline</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-[#8a8a8a]">
+                  <Smartphone className="h-6 w-6 opacity-50" />
+                  <span>{error || session.error || 'Waiting for connection'}</span>
+                  {onRetry ? (
+                    <button
+                      type="button"
+                      onClick={onRetry}
+                      className="mt-2 rounded-full border border-white/20 px-4 py-1.5 text-[10px] font-medium tracking-[0.18em] text-white transition hover:border-white/40 hover:bg-white/10"
+                    >
+                      Retry Preview
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

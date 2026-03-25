@@ -888,11 +888,7 @@ export function ProjectLayout({
                             breadcrumbAddon={breadcrumbAddon ?? undefined}
                             centerAddon={centerAddon ?? undefined}
                             preSearchAddon={presenceHeaderAddon ?? undefined}
-                            className={
-                                isWindowsClient
-                                    ? "bg-background/65 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50"
-                                    : "bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40"
-                            }
+                        className="bg-background"
                             insetLeft={insetLeft}
                             insetRight={insetRight}
                             compactHeaderActions

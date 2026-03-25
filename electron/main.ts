@@ -1035,9 +1035,6 @@ registerPreviewHandlers(ipcMain, {
   getLatestPreviewHeaderDiagnostic,
 })
 
-registerNativePreviewHandlers(ipcMain, {
-  getWindows: () => BrowserWindow.getAllWindows(),
-})
 
 registerSettingsStorageHandlers(ipcMain, {
   getMainWindow: () => win,
@@ -1050,6 +1047,10 @@ registerProjectHandlers(ipcMain, {
 })
 
 registerRuntimeHandlers(ipcMain)
+
+registerNativePreviewHandlers(ipcMain, {
+  getWindows: () => BrowserWindow.getAllWindows(),
+})
 
 registerSyncHandlers(ipcMain)
 

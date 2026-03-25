@@ -20,6 +20,7 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
+        radonToken: v.optional(v.string()),
         sourceControlDefaultProvider: v.optional(
           v.union(v.literal("github"), v.literal("gitlab"))
         ),

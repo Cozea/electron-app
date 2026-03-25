@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -27,9 +27,10 @@ import {
   Upload,
 } from 'lucide-react'
 
-interface NotificationPrefs {
+interface UserPrefs {
   emailNotifications: boolean
   pushNotifications: boolean
+  radonToken: string
 }
 
 interface AccountProps {
@@ -48,23 +49,22 @@ export function Account({ surface = 'page' }: AccountProps) {
   // Mutations
   const updatePreferencesMutation = useMutation(api.users.updatePreferences)
 
-  // Notification preferences state
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>({
+  // User preferences state
+  const [userPrefs, setUserPrefs] = useState<UserPrefs>({
     emailNotifications: true,
     pushNotifications: true,
+    radonToken: '',
   })
 
-  // Initialize notification prefs from Convex profile
-  const [prevProfile, setPrevProfile] = useState(profile)
-  if (profile !== prevProfile) {
-    setPrevProfile(profile)
-    if (profile) {
-      setNotificationPrefs({
-        emailNotifications: profile.preferences?.emailNotifications ?? true,
-        pushNotifications: profile.preferences?.pushNotifications ?? true,
-      })
-    }
-  }
+  useEffect(() => {
+    if (!profile) return
+
+    setUserPrefs({
+      emailNotifications: profile.preferences?.emailNotifications ?? true,
+      pushNotifications: profile.preferences?.pushNotifications ?? true,
+      radonToken: profile.preferences?.radonToken ?? '',
+    })
+  }, [profile])
 
   // Derived state
   const displayName = profile?.firstName
@@ -75,11 +75,11 @@ export function Account({ surface = 'page' }: AccountProps) {
   const avatarImageUrl = profile?.profileImageUrl || user?.profileImageUrl || undefined
 
   // Handlers
-  const handleNotificationToggle = async (key: keyof NotificationPrefs, value: boolean) => {
+  const handlePrefChange = async (key: keyof UserPrefs, value: boolean | string) => {
     if (!convexUserId) return
 
-    const newPrefs = { ...notificationPrefs, [key]: value }
-    setNotificationPrefs(newPrefs)
+    const newPrefs = { ...userPrefs, [key]: value }
+    setUserPrefs(newPrefs)
 
     try {
       await updatePreferencesMutation({
@@ -88,8 +88,8 @@ export function Account({ surface = 'page' }: AccountProps) {
       })
     } catch (error) {
       // Revert on error
-      setNotificationPrefs(notificationPrefs)
-      console.error('Failed to update notification preference:', error)
+      setUserPrefs(userPrefs)
+      console.error(`Failed to update preference ${key}:`, error)
     }
   }
 
@@ -158,6 +158,59 @@ export function Account({ surface = 'page' }: AccountProps) {
           </div>
         </div>
 
+        {/* External Services */}
+        <div>
+          <h3 className="text-base font-medium mb-1 flex items-center gap-2">
+            <Monitor className="h-4 w-4" />
+            Native Preview (Radon IDE)
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Connect your Radon IDE account to enable unlimited native mobile previews.
+          </p>
+          <div className="space-y-4 mt-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <Label htmlFor="radonToken">Radon IDE License Key</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    id="radonToken"
+                    type="password"
+                    placeholder="Paste your License Key (e.g. D0A4-...) here"
+                    value={userPrefs.radonToken.startsWith('eyJ') ? '••••••••••••••••••••••••' : userPrefs.radonToken}
+                    onChange={(e) => handlePrefChange('radonToken', e.target.value)}
+                    disabled={isProfileLoading}
+                  />
+                  <Button variant="secondary" onClick={async () => {
+                    const key = userPrefs.radonToken.trim();
+                    if (!key || key.startsWith('eyJ')) return;
+                    if (!user?.email) {
+                      console.error("No email found for activation");
+                      return;
+                    }
+                    const result = await window.electronAPI?.radon.activateLicense({
+                      licenseKey: key,
+                      email: user.email
+                    });
+                    if (result?.success && result.token) {
+                      await handlePrefChange('radonToken', result.token);
+                      alert("Successfully activated and saved JWT token!");
+                    } else {
+                      alert("Failed to activate: " + result?.error);
+                    }
+                  }}>
+                    Activate Key
+                  </Button>
+                  <Button variant="outline" onClick={() => {
+                    window.electronAPI?.shell?.openExternal('https://ide.swmansion.com/pricing').catch(console.error)
+                  }}>
+                    Get a Key
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Notifications */}
         <div>
           <h3 className="text-base font-medium mb-1 flex items-center gap-2">
@@ -176,8 +229,8 @@ export function Account({ surface = 'page' }: AccountProps) {
                 </div>
               </div>
               <Switch
-                checked={notificationPrefs.emailNotifications}
-                onCheckedChange={(checked) => handleNotificationToggle('emailNotifications', checked)}
+                checked={userPrefs.emailNotifications}
+                onCheckedChange={(checked) => handlePrefChange('emailNotifications', checked)}
                 disabled={isProfileLoading}
               />
             </div>
@@ -192,8 +245,8 @@ export function Account({ surface = 'page' }: AccountProps) {
                 </div>
               </div>
               <Switch
-                checked={notificationPrefs.pushNotifications}
-                onCheckedChange={(checked) => handleNotificationToggle('pushNotifications', checked)}
+                checked={userPrefs.pushNotifications}
+                onCheckedChange={(checked) => handlePrefChange('pushNotifications', checked)}
                 disabled={isProfileLoading}
               />
             </div>

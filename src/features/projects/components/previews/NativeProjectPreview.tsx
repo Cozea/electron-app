@@ -34,7 +34,7 @@ export const NativeProjectPreview = memo(function NativeProjectPreview({
 }: NativeProjectPreviewProps) {
   const previewStopped = !serverRunning && !serverStarting
   const targetLabel = target === 'both' ? 'iOS and Android' : target === 'ios' ? 'iOS' : 'Android'
-  const launcherLabel = selectedLauncher === 'expo-go' ? 'Expo Go' : selectedLauncher === 'orbit' ? 'Orbit' : 'Web'
+  const launcherLabel = selectedLauncher === 'simulator' ? 'Simulator' : 'Web'
   const qrRows = useMemo(() => getExpoQrRows(serverOutput), [serverOutput])
   const stateTitle = serverRunning
     ? 'Preview running'

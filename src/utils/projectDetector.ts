@@ -43,7 +43,7 @@ export interface ProjectPreviewExperience {
   mode: 'web' | 'expo-native'
   supportsWebPreview: boolean
   supportsNativePreview: boolean
-  nativePreviewProvider: 'orbit' | null
+  nativePreviewProvider: 'radon' | null
   defaultNativePlatform: 'ios' | 'android' | null
 }
 
@@ -543,7 +543,7 @@ export async function getProjectPreviewExperience(
     mode: supportsNativePreview ? 'expo-native' : 'web',
     supportsWebPreview,
     supportsNativePreview,
-    nativePreviewProvider: supportsNativePreview ? 'orbit' : null,
+    nativePreviewProvider: supportsNativePreview ? 'radon' : null,
     defaultNativePlatform,
   }
 }
@@ -612,6 +612,25 @@ export async function getDevServerConfig(
       suggestions,
       requiresUserSelection: false,
     }
+  }
+
+  let overrideCommand = null;
+  const radonLibEnv = navigator.userAgent.toLowerCase().includes('win') ? '%COZEA_RADON_LIB_PATH%' : '$COZEA_RADON_LIB_PATH';
+
+  if (info.framework === 'expo') {
+    overrideCommand = `node "${radonLibEnv}/expo/expo_start.js" --port 8081`;
+  } else if (info.framework === 'react-native') {
+    overrideCommand = `node node_modules/react-native/cli.js start --config "${radonLibEnv}/metro_config.js" --customLogReporterPath "${radonLibEnv}/metro_reporter.js"`;
+  }
+
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      port: storedDevPort ?? 8081,
+      label: info.framework === 'expo' ? 'Expo Dev Server (Radon IDE)' : 'Metro Dev Server (Radon IDE)',
+      suggestions,
+      requiresUserSelection: false,
+    };
   }
 
   const preferredScriptName = resolvePreferredScriptName(scripts, info.framework, context)

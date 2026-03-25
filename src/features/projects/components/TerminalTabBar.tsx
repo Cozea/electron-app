@@ -15,6 +15,11 @@ import {
     RefreshCw,
     Search,
     SlidersHorizontal,
+    Zap,
+    ScrollText,
+    MousePointerClick,
+    Navigation,
+    Wrench,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -34,12 +39,15 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import type { ViewMode } from "./ProblemsView"
 
+export type TerminalPanelView = "terminal" | "problems" | "native-events" | "native-logs" | "native-inspect" | "native-navigation" | "native-tools"
+
 interface TerminalTabBarProps {
-    activeView: "terminal" | "problems"
-    onViewChange: (view: "terminal" | "problems") => void
+    activeView: TerminalPanelView
+    onViewChange: (view: TerminalPanelView) => void
     problemCount?: number
     projectPath: string
     onClose?: () => void
+    hasNativeSession?: boolean
     problemsSearchQuery: string
     onProblemsSearchChange: (query: string) => void
     problemsViewMode: ViewMode
@@ -96,6 +104,7 @@ export function TerminalTabBar({
     problemCount = 0,
     projectPath,
     onClose,
+    hasNativeSession = false,
     problemsSearchQuery,
     onProblemsSearchChange,
     problemsViewMode,
@@ -263,6 +272,34 @@ export function TerminalTabBar({
                         </span>
                     )}
                 </button>
+
+                {/* Native runtime tabs (only when a native session is active) */}
+                {hasNativeSession && (
+                    <>
+                        <div className="w-px h-3.5 bg-border/40 mx-0.5 shrink-0" />
+                        {([
+                            { id: 'native-events' as const, label: 'EVENTS', Icon: Zap },
+                            { id: 'native-logs' as const, label: 'LOGS', Icon: ScrollText },
+                            { id: 'native-inspect' as const, label: 'INSPECT', Icon: MousePointerClick },
+                            { id: 'native-navigation' as const, label: 'NAV', Icon: Navigation },
+                            { id: 'native-tools' as const, label: 'TOOLS', Icon: Wrench },
+                        ]).map(({ id, label, Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => onViewChange(id)}
+                                className={cn(
+                                    "flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-[background-color,color,box-shadow]",
+                                    activeView === id
+                                        ? "bg-sidebar/90 dark:bg-secondary/80 text-sidebar-foreground dark:text-secondary-foreground"
+                                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+                                )}
+                            >
+                                <Icon className="h-3.5 w-3.5" />
+                                <span className="tracking-tight">{label}</span>
+                            </button>
+                        ))}
+                    </>
+                )}
             </div>
 
             {/* Right: Controls */}

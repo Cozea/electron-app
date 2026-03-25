@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process'
 import { createRuntimeEnv } from '../runtime/runtimeEnv'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimePathPrefixes } from '../runtime/runtimeResolver'
+import { resolveRadonLibPath } from '../lib/radonPaths'
+import { RadonHostService } from './RadonHostService'
 
 function shellBasename(shellPath: string): string {
     const name = shellPath.split('/').pop()
@@ -352,6 +354,7 @@ export class TerminalService {
 
                 ensureNodePtySpawnHelperExecutable()
                 const runtimeEnv = createRuntimeEnv(getRuntimePathPrefixes(), process.env)
+                const runtimeBridgePort = await RadonHostService.getInstance().ensureRuntimeBridge(options.projectPath)
 
                 if (profile.id === 'node') {
                     const ensured = await ensureRuntimeInstalled('node')
@@ -374,6 +377,10 @@ export class TerminalService {
                             env: toPtyEnv(runtimeEnv, {
                                 ...(candidate.env ?? {}),
                                 ...(options.env ?? {}),
+                                COZEA_RADON_LIB_PATH: resolveRadonLibPath().replace(/\\/g, '/'),
+                                RADON_IDE_LIB_PATH: resolveRadonLibPath().replace(/\\/g, '/'),
+                                RCT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
+                                REACT_DEVTOOLS_PORT: runtimeBridgePort.toString(),
                             }),
                         })
                         selectedProfile = candidate

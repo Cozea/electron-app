@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
-import { ChevronDown, RefreshCw, Smartphone, TabletSmartphone } from 'lucide-react'
+import { ChevronDown, RefreshCw, Smartphone } from 'lucide-react'
+import { FaApple, FaAndroid } from 'react-icons/fa6'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -13,43 +14,40 @@ import {
 import { cn } from '@/lib/utils'
 import type { NativePreviewDeviceDescriptor } from '@shared/electronApiTypes'
 
-export type NativePreviewTarget = 'ios' | 'android' | 'both'
+export type NativePreviewTarget = 'ios' | 'android'
 
 interface NativePreviewRouteBarProps {
   devices: NativePreviewDeviceDescriptor[]
   devicesLoading: boolean
   target: NativePreviewTarget
-  onOpenDevice: (device: NativePreviewDeviceDescriptor) => void
+  selectedDeviceId?: string | null
+  onSelectDevice: (device: NativePreviewDeviceDescriptor) => void
   onRefreshDevices: () => void
   onSelectTarget: (target: NativePreviewTarget) => void
 }
 
-function getTargetLabel(target: NativePreviewTarget): string {
+function getTargetLabel(target: NativePreviewTarget): React.ReactNode {
   switch (target) {
     case 'ios':
-      return 'iOS'
+      return <FaApple className="h-3.5 w-3.5 ml-1" />
     case 'android':
-      return 'Android'
-    case 'both':
+      return <FaAndroid className="h-3.5 w-3.5 ml-1" />
     default:
-      return 'Both'
+      return null
   }
 }
 
-function getTargetSummary(target: NativePreviewTarget, devices: NativePreviewDeviceDescriptor[]): string {
-  const relevantDevices = target === 'both'
-    ? devices
-    : devices.filter((device) => device.platform === target)
+function getTargetSummary(
+  target: NativePreviewTarget,
+  devices: NativePreviewDeviceDescriptor[],
+  selectedDeviceId?: string | null,
+): string {
+  const relevantDevices = devices.filter((device) => device.platform === target)
 
   const booted = relevantDevices.filter((device) => device.state === 'booted')
-  if (target === 'both') {
-    if (booted.length > 0) {
-      return booted.map((device) => device.name).join(' · ')
-    }
-    return `${relevantDevices.length} available`
-  }
-
-  const preferred = booted[0] ?? relevantDevices[0]
+  const selected = selectedDeviceId ? relevantDevices.find((device) => device.id === selectedDeviceId) : null
+  const preferred = selected ?? booted[0] ?? relevantDevices[0]
+  
   if (preferred) {
     return preferred.name
   }
@@ -57,8 +55,7 @@ function getTargetSummary(target: NativePreviewTarget, devices: NativePreviewDev
   return target === 'ios' ? 'No simulator' : 'No emulator'
 }
 
-function getTargetIcon(target: NativePreviewTarget) {
-  if (target === 'both') return <TabletSmartphone className="h-3.5 w-3.5" />
+function getTargetIcon(_target: NativePreviewTarget) {
   return <Smartphone className="h-3.5 w-3.5" />
 }
 
@@ -66,18 +63,25 @@ export const NativePreviewRouteBar = memo(function NativePreviewRouteBar({
   devices,
   devicesLoading,
   target,
-  onOpenDevice,
+  selectedDeviceId,
+  onSelectDevice,
   onRefreshDevices,
   onSelectTarget,
 }: NativePreviewRouteBarProps) {
-  const widthClassName = 'w-[28rem] max-w-[42vw] min-w-0 max-xl:w-[22rem] max-lg:w-[18rem] max-[980px]:hidden'
-  const targetSummary = useMemo(() => getTargetSummary(target, devices), [devices, target])
+  const widthClassName = 'w-64 max-w-[42vw] min-w-0 max-[980px]:hidden'
+  const targetSummary = useMemo(() => getTargetSummary(target, devices, selectedDeviceId), [devices, selectedDeviceId, target])
   const quickDevices = useMemo(() => {
-    if (target === 'both') {
-      return devices.slice(0, 8)
-    }
-    return devices.filter((device) => device.platform === target).slice(0, 8)
-  }, [devices, target])
+    return devices
+      .filter((device) => device.platform === target)
+      .sort((a, b) => {
+        if (a.id === selectedDeviceId) return -1
+        if (b.id === selectedDeviceId) return 1
+        if (a.state === 'booted' && b.state !== 'booted') return -1
+        if (b.state === 'booted' && a.state !== 'booted') return 1
+        return a.name.localeCompare(b.name)
+      })
+      .slice(0, 8)
+  }, [devices, selectedDeviceId, target])
 
   return (
     <div className={widthClassName}>
@@ -90,11 +94,11 @@ export const NativePreviewRouteBar = memo(function NativePreviewRouteBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
               aria-label="Choose native preview target"
             >
               <span className="truncate text-sm text-foreground">{targetSummary}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{getTargetLabel(target)}</span>
+              <span className="shrink-0 text-muted-foreground flex items-center justify-center">{getTargetLabel(target)}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
@@ -118,12 +122,15 @@ export const NativePreviewRouteBar = memo(function NativePreviewRouteBar({
           align="center"
           side="bottom"
           sideOffset={6}
-          className="w-[28rem] max-w-[42vw] max-xl:w-[22rem] max-lg:w-[18rem] max-[980px]:hidden"
+          className="w-64"
         >
           <DropdownMenuLabel>Preview target</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => onSelectTarget('ios')}>iOS</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onSelectTarget('android')}>Android</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onSelectTarget('both')}>Both</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onSelectTarget('ios')}>
+            <FaApple className="h-3.5 w-3.5 mr-2" /> iOS
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onSelectTarget('android')}>
+            <FaAndroid className="h-3.5 w-3.5 mr-2" /> Android
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Devices</DropdownMenuLabel>
@@ -138,11 +145,14 @@ export const NativePreviewRouteBar = memo(function NativePreviewRouteBar({
                 key={device.id}
                 onSelect={() => {
                   onSelectTarget(device.platform)
-                  onOpenDevice(device)
+                  onSelectDevice(device)
                 }}
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="truncate">{device.name}</span>
+                  {device.id === selectedDeviceId ? (
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-primary">Selected</span>
+                  ) : null}
                   <span className="shrink-0 text-xs text-muted-foreground capitalize">{device.state}</span>
                 </div>
               </DropdownMenuItem>
