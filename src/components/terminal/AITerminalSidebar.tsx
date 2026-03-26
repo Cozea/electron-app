@@ -3,6 +3,7 @@ import { Terminal, Maximize2, Minimize2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useAITerminalStore } from '@/stores/useAITerminalStore'
+import { useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalInstance } from '@/features/projects/components/TerminalInstance'
 
 
@@ -12,9 +13,9 @@ interface AITerminalSidebarProps {
 }
 
 const AI_TERMINAL_PROFILES = [
-  { id: 'claude', name: 'Claude Code', command: 'claude' },
-  { id: 'gemini', name: 'Gemini CLI', command: 'gemini' },
-  { id: 'kilo', name: 'Kilo Code', command: 'kilo' },
+  { id: 'claude', name: 'Claude Code', command: 'npx -y @anthropic-ai/claude-code' },
+  { id: 'gemini', name: 'Gemini CLI', command: 'npx -y @google/gemini-cli' },
+  { id: 'kilo', name: 'Kilo Code', command: 'npx -y kilo-code' },
   { id: 'sh', name: 'Shell', command: '' },
 ]
 
@@ -60,19 +61,34 @@ export function AITerminalSidebar({ className, projectPath }: AITerminalSidebarP
     resetPanelWidth()
   }, [resetPanelWidth])
 
+    const { addTerminal } = useTerminalStore((state) => state.actions)
+
   // Launching a new terminal
   const launchAITerminal = async (profileId: string, command: string) => {
-    void profileId; if (!projectPath) return
+    if (!projectPath) return;
     
     try {
       const result = await window.electronAPI.terminal.create({
         projectPath,
         cwd: projectPath,
+        profileId: "default",
         cols: 80,
         rows: 24,
       })
 
       if (result.success && result.terminalId) {
+        // Add to Zustand store so the frontend TerminalInstance can sync with the backend
+        addTerminal({
+          id: result.terminalId,
+          status: 'running',
+          nameSource: 'generated',
+          title: 'AI Agent',
+          label: 'AI Agent',
+          kind: 'agent',
+          projectPath,
+          lastHeartbeatAt: Date.now(),
+        })
+
         setActiveTerminalId(result.terminalId)
         
         if (command) {
