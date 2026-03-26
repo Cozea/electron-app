@@ -1,8 +1,7 @@
 use tokio::io::{self, AsyncBufReadExt, BufReader};
-use objc2::rc::Id;
-use objc2::runtime::Object;
+use objc2::runtime::AnyObject;
 
-pub async fn start_stdin_loop(_device: *mut Object) {
+pub async fn start_stdin_loop(_device: *mut AnyObject) {
     let stdin = io::stdin();
     let mut reader = BufReader::new(stdin).lines();
     
@@ -48,7 +47,7 @@ pub struct IndigoMessage {
     pub payload: [u8; 468],
 }
 
-fn send_touch(_device: *mut Object, _x: f64, _y: f64, _state: &str) {
+fn send_touch(_device: *mut AnyObject, _x: f64, _y: f64, _state: &str) {
     // TODO: Actually construct the 512 byte struct and dispatch to SimDeviceLegacyHIDClient.
     // For now we just parse it so the engine doesn't crash on pipe inputs.
 }
